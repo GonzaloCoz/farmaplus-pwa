@@ -3,7 +3,6 @@ export function register() {
     window.addEventListener('load', () => {
       navigator.serviceWorker
         .register(`${import.meta.env.BASE_URL}service-worker.js`, {
-          // Explicitly set the scope to match the base URL
           scope: import.meta.env.BASE_URL,
         })
         .then((registration) => {

@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppLayout } from "./components/AppLayout";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster as Sonner } from "@/components/ui/sonner";
-import { SidebarProvider } from "@/components/ui/sidebar";
 
 import Dashboard from "./pages/Dashboard";
 import Import from "./pages/Import";
@@ -32,22 +31,20 @@ function Layout() {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <SidebarProvider>
-        <Sonner />
-        <BrowserRouter>
-            <Routes>
-              <Route element={<Layout />}>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/import" element={<Import />} />
-                <Route path="/cyclic-inventory" element={<Cyclic />} />
-                <Route path="/products" element={<Products />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route path="/settings" element={<Settings />} />
-              </Route>
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-        </BrowserRouter>
-      </SidebarProvider>
+      <Sonner />
+      <BrowserRouter>
+          <Routes>
+            <Route element={<Layout />}>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/import" element={<Import />} />
+              <Route path="/cyclic-inventory" element={<Cyclic />} />
+              <Route path="/products" element={<Products />} />
+              <Route path="/reports" element={<Reports />} />
+              <Route path="/settings" element={<Settings />} />
+            </Route>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+      </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
 );

@@ -1,73 +1,77 @@
-# Welcome to your Lovable project
+# Farmaplus - PWA de Gestión de Inventario
 
-## Project info
+![Farmaplus Screenshot](https://lovable.dev/opengraph-image-p98pqg.png)
 
-**URL**: https://lovable.dev/projects/ab490215-aee6-4a82-93af-c44d27c60c25
+Una aplicación web progresiva (PWA) moderna y responsiva para la gestión de inventarios, diseñada para funcionar a la perfección tanto en dispositivos de escritorio como móviles, incluyendo terminales de escaneo profesionales.
 
-## How can I edit this code?
+**[Ver Demo en Vivo](https://gonzalocoz.github.io/farmaplus-pwa/)**
 
-There are several ways of editing your application.
+---
 
-**Use Lovable**
+## ✨ Características Principales
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/ab490215-aee6-4a82-93af-c44d27c60c25) and start prompting.
+- **Diseño Adaptativo:** Interfaz optimizada para una experiencia de usuario excepcional en cualquier tamaño de pantalla, desde móviles hasta monitores de escritorio anchos.
+- **Progressive Web App (PWA):**
+  - **Instalable:** Se puede añadir a la pantalla de inicio de cualquier dispositivo para una experiencia similar a la de una aplicación nativa.
+  - **Soporte Offline:** Gracias al Service Worker, la aplicación puede funcionar incluso sin conexión a internet.
+  - **Interfaz Limpia:** Se ejecuta en modo `standalone` para ocultar la interfaz del navegador.
+- **Navegación Intuitiva:**
+  - **Escritorio:** Una barra lateral minimalista con iconos y tooltips para un uso eficiente del espacio.
+  - **Móvil:** Una barra de navegación inferior ergonómica, siguiendo las guías de Material Design 3.
+- **Gestión de Inventario:**
+  - Dashboard principal.
+  - Importación de inventario.
+  - Seguimiento de inventarios cíclicos.
+  - Gestión de productos.
+  - Generación de reportes.
 
-Changes made via Lovable will be committed automatically to this repo.
+## 🚀 Tecnologías Utilizadas
 
-**Use your preferred IDE**
+- **Framework:** React
+- **Bundler:** Vite
+- **Lenguaje:** TypeScript
+- **Estilos:** Tailwind CSS
+- **Componentes UI:** shadcn/ui
+- **Iconos:** Lucide React
+- **Enrutamiento:** React Router
+- **Gestión de Estado (Servidor):** TanStack Query
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## 🏁 Cómo Empezar
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+Sigue estos pasos para ejecutar el proyecto en tu máquina local.
 
-Follow these steps:
+### Prerrequisitos
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+- Node.js (versión 18 o superior)
+- npm (o tu gestor de paquetes preferido)
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+### Instalación
 
-# Step 3: Install the necessary dependencies.
-npm i
+1. **Clona el repositorio:**
+   ```bash
+   git clone https://github.com/GonzaloCoz/farmaplus-pwa.git
+   ```
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+2. **Navega al directorio del proyecto:**
+   ```bash
+   cd farmaplus-pwa
+   ```
 
-**Edit a file directly in GitHub**
+3. **Instala las dependencias:**
+   ```bash
+   npm install
+   ```
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+4. **Inicia el servidor de desarrollo:**
+   ```bash
+   npm run dev
+   ```
 
-**Use GitHub Codespaces**
+Abre http://localhost:8080 en tu navegador para ver la aplicación.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## 📜 Scripts Disponibles
 
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/ab490215-aee6-4a82-93af-c44d27c60c25) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+- `npm run dev`: Inicia el servidor de desarrollo.
+- `npm run build`: Compila la aplicación para producción.
+- `npm run preview`: Previsualiza la build de producción localmente.
+- `npm run deploy`: Despliega la aplicación en GitHub Pages.

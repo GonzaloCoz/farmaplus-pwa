@@ -4,12 +4,12 @@
   "description": "Sistema de gestión de inventarios para Farmaplus.",
   "icons": [
     {
-      "src": "/logo.png",
+      "src": "logo.png",
       "type": "image/png",
       "sizes": "192x192"
     },
     {
-      "src": "/logo512.png",
+      "src": "logo512.png",
       "type": "image/png",
       "sizes": "512x512"
     }
@@ -18,6 +18,6 @@
   "display": "standalone",
   "theme_color": "#ffffff",
   "background_color": "#ffffff",
-  "scope": ".",
+  "scope": "/farmaplus-pwa/",
   "lang": "es-ES"
 }

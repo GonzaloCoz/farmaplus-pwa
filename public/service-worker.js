@@ -1,9 +1,13 @@
 const CACHE_NAME = "farmaplus-v1";
+
+// Determine the base URL for the service worker
+const BASE_URL = self.location.pathname.replace('/service-worker.js', '/');
+
 const urlsToCache = [
-  "/",
-  "/index.html",
-  "/offline.html",
-  "/logo.png"
+  BASE_URL,
+  `${BASE_URL}index.html`,
+  `${BASE_URL}offline.html`,
+  `${BASE_URL}logo.png`
 ];
 
 const self = this;
@@ -24,7 +28,7 @@ self.addEventListener("fetch", (event) => {
     caches.match(event.request).then((response) => {
       // Si la petición está en caché, la devolvemos. Si no, la buscamos en la red.
       // Si la red falla, mostramos la página offline.
-      return response || fetch(event.request).catch(() => caches.match("/offline.html"));
+      return response || fetch(event.request).catch(() => caches.match(`${BASE_URL}offline.html`));
     })
   );
 });

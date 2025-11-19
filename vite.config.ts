@@ -5,7 +5,8 @@ import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
-  base: "/farmaplus-pwa/",
+  // La base debe coincidir con el nombre de tu repositorio en GitHub
+  base: "/farmaplus-pwa/", 
   server: {
     host: "::",
     port: 8080,

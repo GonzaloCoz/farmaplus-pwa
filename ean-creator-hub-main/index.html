@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Generador de Códigos EAN | Escanea y Genera Códigos de Barras</title>
+    <meta name="description" content="Aplicación web para generar y escanear códigos de barras EAN-13. Crea códigos de barras desde entrada manual o escanea con tu cámara." />
+    <meta name="author" content="Tu Nombre o el de tu Proyecto" />
+
+    <meta property="og:title" content="Generador de Códigos EAN" />
+    <meta property="og:description" content="Genera y escanea códigos de barras EAN-13 de forma rápida y sencilla" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="./opengraph-image.png" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@TuUsuarioDeTwitter" />
+    <meta name="twitter:image" content="./opengraph-image.png" />
+
+    <!-- Script para redirección en GitHub Pages (solución para SPA) -->
+    <script type="text/javascript">
+      (function(l) {
+        if (l.search[1] === '/' ) {
+          var decoded = l.search.slice(1).split('&').map(function(s) { 
+            return s.replace(/~and~/g, '&')
+          }).join('?');
+          window.history.replaceState(null, null,
+              l.pathname.slice(0, -1) + decoded + l.hash
+          );
+        }
+      }(window.location))
+    </script>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>

@@ -78,7 +78,6 @@ function AppSidebarMenuItemMobile({ item, end }: AppSidebarMenuItemProps) {
 export function AppSidebar() {
   return (
     <>
-      {/* Sideb<::marker></::marker>ar para Desktop */}
       {/* Se muestra solo en pantallas 'lg' y mayores */}
       <aside className="hidden lg:flex flex-col border-r w-24 fixed inset-y-0 left-0 z-20 bg-background">
         <div className="flex h-16 items-center justify-center border-b">

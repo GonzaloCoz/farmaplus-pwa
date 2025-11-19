@@ -11,7 +11,7 @@ import Import from "./pages/Import";
 import Cyclic from "./pages/Cyclic";
 import Products from "./pages/Products";
 import Reports from "./pages/Reports"; // Asumiendo que Reports ya está en pages
-import Settings from "./pages/Settings"; // Actualizar la ruta de Settings
+import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -19,8 +19,9 @@ const queryClient = new QueryClient();
 function Layout() {
   return (
     <AppLayout>
+      {/* Contenedor principal del contenido que se adapta */}
       <div className="flex h-screen flex-1 flex-col overflow-hidden lg:pl-24">
-        <main className="flex-1 overflow-y-auto p-4 pb-24 sm:p-6 sm:pb-6">
+        <main className="flex-1 overflow-y-auto p-4 pb-24 lg:p-6 lg:pb-6">
           <Outlet />
         </main>
       </div>

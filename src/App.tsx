@@ -32,7 +32,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Sonner />
-      <BrowserRouter>
+      <BrowserRouter basename="/farmaplus-pwa/">
           <Routes>
             <Route element={<Layout />}>
               <Route path="/" element={<Dashboard />} />

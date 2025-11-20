@@ -6,8 +6,6 @@ import { AppLayout } from "./components/AppLayout";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 
-import { Fab } from "./components/Fab";
-import { GenerateEanModal } from "./components/GenerateEanModal";
 import Dashboard from "./pages/Dashboard";
 import Import from "./pages/Import";
 import Cyclic from "./pages/Cyclic";
@@ -19,10 +17,6 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 function Layout() {
-  const [isEanModalOpen, setIsEanModalOpen] = useState(false);
-  const location = useLocation();
-  const showFab = location.pathname === "/products";
-
   return (
     <AppLayout>
       {/* Contenedor principal del contenido que se adapta */}
@@ -30,10 +24,6 @@ function Layout() {
         <main className="flex-1 overflow-y-auto p-4 pb-24 lg:p-6 lg:pb-6">
           <Outlet />
         </main>
-        {showFab && <Fab onClick={() => setIsEanModalOpen(true)} />}
-        {showFab && (
-          <GenerateEanModal isOpen={isEanModalOpen} onOpenChange={setIsEanModalOpen} />
-        )}
       </div>
     </AppLayout>
   );
@@ -44,17 +34,17 @@ const App = () => (
     <TooltipProvider>
       <Sonner />
       <BrowserRouter basename="/farmaplus-pwa/">
-          <Routes>
-            <Route element={<Layout />}>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/import" element={<Import />} />
-              <Route path="/cyclic-inventory" element={<Cyclic />} />
-              <Route path="/products" element={<Products />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/settings" element={<Settings />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/import" element={<Import />} />
+            <Route path="/cyclic-inventory" element={<Cyclic />} />
+            <Route path="/products" element={<Products />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/settings" element={<Settings />} />
+          </Route>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

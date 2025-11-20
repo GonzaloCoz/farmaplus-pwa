@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useBarcodeHistory } from "@/hooks/use-barcode-history";
 import { BarcodeDisplay } from "@/components/BarcodeDisplay";
 import { Copy, Printer } from "lucide-react";
+import { Fab } from "@/components/Fab";
 
 interface Product {
   Codebar: number | string;
@@ -141,7 +142,7 @@ export default function Products() {
           clearGenerator(); // Limpia el estado cuando se cierra el diálogo
         }
       }}>
-        <DialogContent className="sm:max-w-3xl p-0">
+        <DialogContent className="sm:max-w-3xl p-0 max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <div className="p-6 pb-4">
               <DialogTitle>Generar EAN manualmente</DialogTitle>
@@ -202,7 +203,17 @@ export default function Products() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="ean-code">Código de barras a generar</Label>
-                <Input id="ean-code" value={eanCode} onChange={(e) => setEanCode(e.target.value.replace(/\D/g, ""))} placeholder="Ej: 123456789012" />
+                <Input
+                  id="ean-code"
+                  value={eanCode}
+                  onChange={(e) => setEanCode(e.target.value.replace(/\D/g, ""))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleGenerateFromInput();
+                    }
+                  }}
+                  placeholder="Ej: 123456789012"
+                />
               </div>
               <div className="flex gap-2">
                 <Button onClick={handleGenerateFromInput} className="flex-1">Generar</Button>
@@ -212,6 +223,7 @@ export default function Products() {
           </div>
         </DialogContent>
       </Dialog>
+      <Fab onClick={() => setOpen(true)} />
     </div>
   );
 }

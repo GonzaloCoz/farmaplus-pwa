@@ -38,7 +38,7 @@ export default function Import() {
   const [file, setFile] = useState<File | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [results, setResults] = useState<AnalysisResults | null>(null);
-  const [originalData, setOriginalData] = useState<{headers: any[], rows: any[][]}>({ headers: [], rows: [] });
+  const [originalData, setOriginalData] = useState<{ headers: any[], rows: any[][] }>({ headers: [], rows: [] });
   const [viewMode, setViewMode] = useState<"value" | "quantity">("value");
   const [hasExported, setHasExported] = useState(false);
   const [saveReportOpen, setSaveReportOpen] = useState(false);
@@ -48,8 +48,8 @@ export default function Import() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
-      if (selectedFile.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || 
-          selectedFile.type === "application/vnd.ms-excel") {
+      if (selectedFile.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+        selectedFile.type === "application/vnd.ms-excel") {
         setFile(selectedFile);
         setResults(null); // Limpiar resultados anteriores al cargar un nuevo archivo
         setOriginalData({ headers: [], rows: [] });
@@ -193,6 +193,13 @@ export default function Import() {
       const rowIndex = index + 2; // +2 porque Excel es 1-based y tenemos una fila de encabezado
       const newRow = [...row];
 
+      // Aseguramos que los valores numéricos sean correctos para las fórmulas
+      // Esto evita problemas si el Excel original tenía formatos de texto o valores nulos
+      newRow[13] = Number(row[13]) || 0; // N: Conteo Físico
+      newRow[15] = Number(row[15]) || 0; // P: Stock Sistema
+      newRow[19] = Number(row[19]) || 0; // T: Costo
+      newRow[21] = Number(row[21]) || 0; // V: Precio Venta
+
       // Columna R (17): Nueva Diferencia (Unidades)
       // (Conteo Físico [N] + CANTIDAD AJUSTE [Z]) - Stock Sistema [P]
       newRow[17] = { f: `(N${rowIndex}+Z${rowIndex})-P${rowIndex}` };
@@ -312,7 +319,7 @@ export default function Import() {
     const existingReports = JSON.parse(localStorage.getItem("inventory-reports") || "[]");
     existingReports.push(report);
     localStorage.setItem("inventory-reports", JSON.stringify(existingReports));
-    
+
     setSaveReportOpen(false);
   }
 
@@ -483,8 +490,8 @@ export default function Import() {
                 <Download className="mr-2 h-4 w-4" />
                 Exportar Inventario
               </Button>
-              <Button 
-                onClick={() => setSaveReportOpen(true)} 
+              <Button
+                onClick={() => setSaveReportOpen(true)}
                 disabled={!hasExported}
                 variant="default"
               >
@@ -504,7 +511,7 @@ export default function Import() {
                   Productos con Más Faltantes
                 </h2>
               </div>
-              
+
               <div className="space-y-4">
                 {displayedShortages.map((item, index) => (
                   <div key={index} className="flex items-center justify-between p-4 bg-destructive/5 rounded-lg border border-destructive/20">
@@ -529,7 +536,7 @@ export default function Import() {
                   Productos con Más Sobrantes
                 </h2>
               </div>
-              
+
               <div className="space-y-4">
                 {displayedSurpluses.map((item, index) => (
                   <div key={index} className="flex items-center justify-between p-4 bg-success/5 rounded-lg border border-success/20">
@@ -565,8 +572,8 @@ export default function Import() {
         </div>
       )}
 
-      <SaveReportModal 
-        open={saveReportOpen} 
+      <SaveReportModal
+        open={saveReportOpen}
         onOpenChange={setSaveReportOpen}
         onSave={handleSaveReport}
       />

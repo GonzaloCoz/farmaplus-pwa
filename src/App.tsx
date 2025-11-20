@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes, Outlet } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Outlet, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -20,6 +20,8 @@ const queryClient = new QueryClient();
 
 function Layout() {
   const [isEanModalOpen, setIsEanModalOpen] = useState(false);
+  const location = useLocation();
+  const showFab = location.pathname === "/products";
 
   return (
     <AppLayout>
@@ -28,8 +30,10 @@ function Layout() {
         <main className="flex-1 overflow-y-auto p-4 pb-24 lg:p-6 lg:pb-6">
           <Outlet />
         </main>
-        <Fab onClick={() => setIsEanModalOpen(true)} />
-        <GenerateEanModal isOpen={isEanModalOpen} onOpenChange={setIsEanModalOpen} />
+        {showFab && <Fab onClick={() => setIsEanModalOpen(true)} />}
+        {showFab && (
+          <GenerateEanModal isOpen={isEanModalOpen} onOpenChange={setIsEanModalOpen} />
+        )}
       </div>
     </AppLayout>
   );

@@ -6,15 +6,9 @@ import { es } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
-const DUMMY_NOTIFICATIONS = [
-  { id: "n1", text: "1 de Diciembre, Inventario Nocturno - Sector Farmacia", date: "2025-12-01" },
-  { id: "n2", text: "30 de Noviembre, Ajuste manual realizado - Sucursal Centro", date: "2025-11-30" },
-];
+const DUMMY_NOTIFICATIONS: Array<{ id: string; text: string; date: string }> = [];
 
-const DUMMY_SETTINGS = [
-  { id: "s2", title: "Idioma", value: "Español" },
-  { id: "s3", title: "Modo de Inventario", value: "Automático" },
-];
+const DUMMY_SETTINGS: Array<{ id: string; title: string; value: string }> = [];
 
 const DUMMY_USER = {
   name: "Gonzalo Coz",

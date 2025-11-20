@@ -83,12 +83,9 @@ export default function Products() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground mb-2">Base de Datos de Productos</h1>
-          <p className="text-muted-foreground">Busca y consulta los productos existentes.</p>
-        </div>
-        <Button onClick={() => setOpen(true)}>Generar EAN Manualmente</Button>
+      <div>
+        <h1 className="text-3xl font-bold text-foreground mb-2">Base de Datos de Productos</h1>
+        <p className="text-muted-foreground">Busca y consulta los productos existentes.</p>
       </div>
 
       {/* Input de búsqueda */}

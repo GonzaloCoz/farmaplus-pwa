@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { Bell, Settings, User, ChevronRight, Moon, Sun, Trash2 } from "lucide-react";
+import { Bell, Settings, User, ChevronRight, Moon, Sun, Trash2, BellRing } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { parseISO, differenceInCalendarDays, format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { notificationService } from "@/services/NotificationService";
 
 const DUMMY_NOTIFICATIONS: Array<{ id: string; text: string; date: string }> = [];
 
@@ -20,8 +21,14 @@ export function NotificationsMenu() {
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState<Array<{ id: string; text: string; date: string }>>([]);
   const [nearCount, setNearCount] = useState(0);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
 
   useEffect(() => {
+    // Check notification permission status
+    if (notificationService.isSupported()) {
+      setNotificationPermission(notificationService.getPermissionStatus());
+    }
+
     // build notifications from localStorage events, excluding events that are within 2-5 days
     const stored = localStorage.getItem("inventory-events");
     const evs = stored ? JSON.parse(stored) : [];
@@ -66,6 +73,22 @@ export function NotificationsMenu() {
     toast.success("Notificaciones limpiadas.");
   };
 
+  const handleEnableNotifications = async () => {
+    const permission = await notificationService.requestPermission();
+    setNotificationPermission(permission);
+
+    if (permission === 'granted') {
+      toast.success("Notificaciones habilitadas correctamente");
+      // Mostrar notificación de prueba
+      await notificationService.showNotification({
+        title: "¡Notificaciones activadas!",
+        body: "Ahora recibirás alertas de eventos próximos",
+      });
+    } else {
+      toast.error("Permiso de notificaciones denegado");
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <div className="inline-block relative">
@@ -94,6 +117,22 @@ export function NotificationsMenu() {
             )}
           </div>
         </DialogHeader>
+        {notificationPermission !== 'granted' && notificationService.isSupported() && (
+          <div className="p-4 border-b bg-muted/30">
+            <Button
+              onClick={handleEnableNotifications}
+              variant="outline"
+              size="sm"
+              className="w-full"
+            >
+              <BellRing className="w-4 h-4 mr-2" />
+              Habilitar notificaciones push
+            </Button>
+            <p className="text-xs text-muted-foreground mt-2 text-center">
+              Recibe alertas de eventos próximos
+            </p>
+          </div>
+        )}
         {notifs.length > 0 ? (
           <div className="p-4 max-h-[400px] overflow-y-auto">
             <ul className="divide-y">
@@ -106,8 +145,14 @@ export function NotificationsMenu() {
             </ul>
           </div>
         ) : (
-          <div className="p-6 text-center text-muted-foreground">
-            No tienes notificaciones nuevas.
+          <div className="p-6 text-center">
+            <p className="text-muted-foreground mb-4">No tienes notificaciones nuevas.</p>
+            {notificationPermission !== 'granted' && notificationService.isSupported() && (
+              <Button onClick={handleEnableNotifications} variant="outline" size="sm">
+                <BellRing className="w-4 h-4 mr-2" />
+                Habilitar notificaciones push
+              </Button>
+            )}
           </div>
         )}
       </DialogContent>

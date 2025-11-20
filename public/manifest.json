@@ -1,23 +1,68 @@
 {
   "short_name": "Farmaplus",
   "name": "Farmaplus - Gestión de Inventario",
-  "description": "Sistema de gestión de inventarios para Farmaplus.",
+  "description": "Sistema de gestión de inventarios para Farmaplus. Gestiona inventarios cíclicos, importa datos, genera reportes y más.",
   "icons": [
     {
       "src": "logo.png",
       "type": "image/png",
-      "sizes": "192x192"
+      "sizes": "192x192",
+      "purpose": "any maskable"
     },
     {
       "src": "logo512.png",
       "type": "image/png",
-      "sizes": "512x512"
+      "sizes": "512x512",
+      "purpose": "any maskable"
     }
   ],
-  "start_url": ".",
+  "start_url": "/farmaplus-pwa/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "theme_color": "#ffffff",
   "background_color": "#ffffff",
   "scope": "/farmaplus-pwa/",
-  "lang": "es-ES"
+  "lang": "es-ES",
+  "categories": [
+    "business",
+    "productivity"
+  ],
+  "shortcuts": [
+    {
+      "name": "Importar Inventario",
+      "short_name": "Importar",
+      "description": "Importar archivo de inventario",
+      "url": "/farmaplus-pwa/import",
+      "icons": [
+        {
+          "src": "logo.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Productos",
+      "short_name": "Productos",
+      "description": "Ver base de datos de productos",
+      "url": "/farmaplus-pwa/products",
+      "icons": [
+        {
+          "src": "logo.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Reportes",
+      "short_name": "Reportes",
+      "description": "Ver reportes de inventario",
+      "url": "/farmaplus-pwa/reports",
+      "icons": [
+        {
+          "src": "logo.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
 }

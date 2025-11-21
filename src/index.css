@@ -49,6 +49,14 @@
     --sidebar-accent-foreground: 0 0% 10%;
     --sidebar-border: 0 0% 90%;
     --sidebar-ring: 210 100% 50%;
+
+    /* M3 Elevation System - Light */
+    --elevation-0: none;
+    --elevation-1: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --elevation-2: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    --elevation-3: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --elevation-4: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    --elevation-5: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
   }
 
   .dark {
@@ -95,6 +103,14 @@
     --sidebar-accent-foreground: 0 0% 100%;
     --sidebar-border: 0 0% 18%;
     --sidebar-ring: 210 100% 65%;
+
+    /* M3 Elevation System - Dark (with tonal elevation) */
+    --elevation-0: none;
+    --elevation-1: 0 1px 2px 0 rgb(0 0 0 / 0.3), 0 0 0 1px rgb(255 255 255 / 0.05);
+    --elevation-2: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.4), 0 0 0 1px rgb(255 255 255 / 0.05);
+    --elevation-3: 0 4px 6px -1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.05);
+    --elevation-4: 0 10px 15px -3px rgb(0 0 0 / 0.6), 0 4px 6px -4px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(255 255 255 / 0.05);
+    --elevation-5: 0 20px 25px -5px rgb(0 0 0 / 0.7), 0 8px 10px -6px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.05);
   }
 }
 
@@ -106,6 +122,161 @@
   body {
     @apply bg-background text-foreground;
     transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  /* M3 Typography Scale */
+  .text-display-large {
+    font-size: 3.5625rem;
+    /* 57px */
+    line-height: 4rem;
+    /* 64px */
+    font-weight: 400;
+    letter-spacing: -0.25px;
+  }
+
+  .text-display-medium {
+    font-size: 2.8125rem;
+    /* 45px */
+    line-height: 3.25rem;
+    /* 52px */
+    font-weight: 400;
+  }
+
+  .text-display-small {
+    font-size: 2.25rem;
+    /* 36px */
+    line-height: 2.75rem;
+    /* 44px */
+    font-weight: 400;
+  }
+
+  .text-headline-large {
+    font-size: 2rem;
+    /* 32px */
+    line-height: 2.5rem;
+    /* 40px */
+    font-weight: 400;
+  }
+
+  .text-headline-medium {
+    font-size: 1.75rem;
+    /* 28px */
+    line-height: 2.25rem;
+    /* 36px */
+    font-weight: 400;
+  }
+
+  .text-headline-small {
+    font-size: 1.5rem;
+    /* 24px */
+    line-height: 2rem;
+    /* 32px */
+    font-weight: 400;
+  }
+
+  .text-title-large {
+    font-size: 1.375rem;
+    /* 22px */
+    line-height: 1.75rem;
+    /* 28px */
+    font-weight: 400;
+  }
+
+  .text-title-medium {
+    font-size: 1rem;
+    /* 16px */
+    line-height: 1.5rem;
+    /* 24px */
+    font-weight: 500;
+    letter-spacing: 0.15px;
+  }
+
+  .text-title-small {
+    font-size: 0.875rem;
+    /* 14px */
+    line-height: 1.25rem;
+    /* 20px */
+    font-weight: 500;
+    letter-spacing: 0.1px;
+  }
+
+  .text-body-large {
+    font-size: 1rem;
+    /* 16px */
+    line-height: 1.5rem;
+    /* 24px */
+    font-weight: 400;
+    letter-spacing: 0.5px;
+  }
+
+  .text-body-medium {
+    font-size: 0.875rem;
+    /* 14px */
+    line-height: 1.25rem;
+    /* 20px */
+    font-weight: 400;
+    letter-spacing: 0.25px;
+  }
+
+  .text-body-small {
+    font-size: 0.75rem;
+    /* 12px */
+    line-height: 1rem;
+    /* 16px */
+    font-weight: 400;
+    letter-spacing: 0.4px;
+  }
+
+  .text-label-large {
+    font-size: 0.875rem;
+    /* 14px */
+    line-height: 1.25rem;
+    /* 20px */
+    font-weight: 500;
+    letter-spacing: 0.1px;
+  }
+
+  .text-label-medium {
+    font-size: 0.75rem;
+    /* 12px */
+    line-height: 1rem;
+    /* 16px */
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+
+  .text-label-small {
+    font-size: 0.6875rem;
+    /* 11px */
+    line-height: 1rem;
+    /* 16px */
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+
+  /* M3 Elevation Utilities */
+  .elevation-0 {
+    box-shadow: var(--elevation-0);
+  }
+
+  .elevation-1 {
+    box-shadow: var(--elevation-1);
+  }
+
+  .elevation-2 {
+    box-shadow: var(--elevation-2);
+  }
+
+  .elevation-3 {
+    box-shadow: var(--elevation-3);
+  }
+
+  .elevation-4 {
+    box-shadow: var(--elevation-4);
+  }
+
+  .elevation-5 {
+    box-shadow: var(--elevation-5);
   }
 
   /* M3 Expressive Animations */
@@ -145,6 +316,59 @@
     }
   }
 
+  @keyframes slide-up {
+    from {
+      transform: translateY(100%);
+      opacity: 0;
+    }
+
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes slide-down {
+    from {
+      transform: translateY(-100%);
+      opacity: 0;
+    }
+
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes scale-in {
+    from {
+      transform: scale(0.9);
+      opacity: 0;
+    }
+
+    to {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  @keyframes ripple {
+    to {
+      transform: scale(4);
+      opacity: 0;
+    }
+  }
+
   .animate-shimmer {
     animation: shimmer 2s infinite;
   }
@@ -155,5 +379,21 @@
 
   .animate-bounce-in {
     animation: bounce-in 0.4s cubic-bezier(0.2, 0.0, 0, 1.0);
+  }
+
+  .animate-slide-up {
+    animation: slide-up 0.3s cubic-bezier(0.2, 0.0, 0, 1.0);
+  }
+
+  .animate-slide-down {
+    animation: slide-down 0.3s cubic-bezier(0.2, 0.0, 0, 1.0);
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.2s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scale-in 0.2s cubic-bezier(0.2, 0.0, 0, 1.0);
   }
 }

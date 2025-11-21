@@ -229,6 +229,129 @@ export const listItemVariants: Variants = {
     },
 };
 
+// Bottom Sheet Variants
+export const bottomSheetVariants: Variants = {
+    hidden: {
+        y: "100%",
+    },
+    visible: {
+        y: 0,
+        transition: {
+            type: "spring",
+            stiffness: 400,
+            damping: 40,
+        },
+    },
+    exit: {
+        y: "100%",
+        transition: {
+            type: "spring",
+            stiffness: 400,
+            damping: 40,
+        },
+    },
+};
+
+// Tab Indicator Variants
+export const tabIndicatorVariants: Variants = {
+    initial: { opacity: 0, scale: 0.8 },
+    animate: {
+        opacity: 1,
+        scale: 1,
+        transition: {
+            type: "spring",
+            stiffness: 500,
+            damping: 40,
+        },
+    },
+};
+
+// Chip Variants
+export const chipVariants: Variants = {
+    hidden: { scale: 0, opacity: 0 },
+    visible: {
+        scale: 1,
+        opacity: 1,
+        transition: {
+            type: "spring",
+            stiffness: 500,
+            damping: 30,
+        },
+    },
+    exit: {
+        scale: 0,
+        opacity: 0,
+        transition: {
+            duration: DURATION.fast,
+        },
+    },
+};
+
+// Badge Variants
+export const badgeVariants: Variants = {
+    hidden: { scale: 0 },
+    visible: {
+        scale: 1,
+        transition: {
+            type: "spring",
+            stiffness: 500,
+            damping: 30,
+        },
+    },
+    exit: {
+        scale: 0,
+        transition: {
+            duration: DURATION.fast,
+        },
+    },
+};
+
+// Snackbar Variants
+export const snackbarVariants: Variants = {
+    hidden: { y: 100, opacity: 0 },
+    visible: {
+        y: 0,
+        opacity: 1,
+        transition: {
+            type: "spring",
+            stiffness: 500,
+            damping: 40,
+        },
+    },
+    exit: {
+        y: 100,
+        opacity: 0,
+        transition: {
+            duration: DURATION.fast,
+        },
+    },
+};
+
+// FAB Variants
+export const fabVariants: Variants = {
+    hidden: { scale: 0 },
+    visible: {
+        scale: 1,
+        transition: {
+            type: "spring",
+            stiffness: 500,
+            damping: 30,
+        },
+    },
+    hover: {
+        scale: 1.05,
+        transition: {
+            duration: DURATION.instant,
+        },
+    },
+    tap: {
+        scale: 0.95,
+        transition: {
+            duration: DURATION.instant,
+        },
+    },
+};
+
 // Spring Configuration
 export const springConfig = {
     type: "spring",

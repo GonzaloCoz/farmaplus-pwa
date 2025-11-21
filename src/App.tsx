@@ -9,6 +9,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { PageTransition } from "@/components/PageTransition";
+import { SnackbarProvider } from "@/contexts/SnackbarContext";
 
 import Dashboard from "./pages/Dashboard";
 import Import from "./pages/Import";
@@ -16,6 +17,7 @@ import Cyclic from "./pages/Cyclic";
 import Products from "./pages/Products";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
+import M3ComponentsDemo from "./pages/M3ComponentsDemo";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -48,6 +50,7 @@ const AppRoutes = () => {
           <Route path="/products" element={<PageTransition><Products /></PageTransition>} />
           <Route path="/reports" element={<PageTransition><Reports /></PageTransition>} />
           <Route path="/settings" element={<PageTransition><Settings /></PageTransition>} />
+          <Route path="/m3-demo" element={<PageTransition><M3ComponentsDemo /></PageTransition>} />
         </Route>
         <Route path="*" element={<PageTransition><NotFound /></PageTransition>} />
       </Routes>
@@ -61,12 +64,14 @@ const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <Sonner />
-        <OfflineIndicator />
-        <InstallPrompt />
-        <BrowserRouter basename="/farmaplus-pwa/">
-          <AppRoutes />
-        </BrowserRouter>
+        <SnackbarProvider>
+          <Sonner />
+          <OfflineIndicator />
+          <InstallPrompt />
+          <BrowserRouter basename="/farmaplus-pwa/">
+            <AppRoutes />
+          </BrowserRouter>
+        </SnackbarProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

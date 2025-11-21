@@ -1,56 +1,78 @@
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
 
 interface AnimatedProgressBarProps {
-    value: number;
-    max?: number;
-    className?: string;
-    barClassName?: string;
+    value?: number; // 0-100, undefined for indeterminate
+    variant?: "default" | "primary" | "success" | "warning" | "destructive";
+    size?: "small" | "medium" | "large";
     showLabel?: boolean;
-    duration?: number;
+    className?: string;
 }
+
+const variantColors = {
+    default: "bg-foreground",
+    primary: "bg-primary",
+    success: "bg-success",
+    warning: "bg-warning",
+    destructive: "bg-destructive",
+};
+
+const sizeClasses = {
+    small: "h-1",
+    medium: "h-2",
+    large: "h-3",
+};
 
 export function AnimatedProgressBar({
     value,
-    max = 100,
-    className = "",
-    barClassName = "",
+    variant = "primary",
+    size = "medium",
     showLabel = false,
-    duration = 0.5,
+    className,
 }: AnimatedProgressBarProps) {
-    const [displayValue, setDisplayValue] = useState(0);
-    const percentage = Math.min((value / max) * 100, 100);
-
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            setDisplayValue(percentage);
-        }, 50);
-        return () => clearTimeout(timer);
-    }, [percentage]);
+    const isIndeterminate = value === undefined;
+    const progress = isIndeterminate ? 0 : Math.min(100, Math.max(0, value));
 
     return (
-        <div className={`relative w-full ${className}`}>
-            <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-                <motion.div
-                    className={`h-full bg-primary rounded-full ${barClassName}`}
-                    initial={{ width: "0%" }}
-                    animate={{ width: `${displayValue}%` }}
-                    transition={{
-                        duration,
-                        ease: [0.2, 0.0, 0, 1.0],
-                    }}
-                />
-            </div>
-            {showLabel && (
-                <motion.span
-                    className="absolute right-0 -top-6 text-xs font-medium text-muted-foreground"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.2 }}
-                >
-                    {Math.round(displayValue)}%
-                </motion.span>
+        <div className={cn("w-full", className)}>
+            {showLabel && !isIndeterminate && (
+                <div className="flex justify-between items-center mb-1">
+                    <span className="text-label-small text-muted-foreground">
+                        {Math.round(progress)}%
+                    </span>
+                </div>
             )}
+
+            <div
+                className={cn(
+                    "w-full bg-secondary rounded-full overflow-hidden",
+                    sizeClasses[size]
+                )}
+            >
+                {isIndeterminate ? (
+                    <motion.div
+                        className={cn("h-full rounded-full", variantColors[variant])}
+                        initial={{ x: "-100%" }}
+                        animate={{ x: "100%" }}
+                        transition={{
+                            duration: 1.5,
+                            repeat: Infinity,
+                            ease: "easeInOut",
+                        }}
+                        style={{ width: "40%" }}
+                    />
+                ) : (
+                    <motion.div
+                        className={cn("h-full rounded-full", variantColors[variant])}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${progress}%` }}
+                        transition={{
+                            duration: 0.6,
+                            ease: [0.4, 0.0, 0.2, 1],
+                        }}
+                    />
+                )}
+            </div>
         </div>
     );
 }

@@ -1,4 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { motion } from "framer-motion";
+import { CounterAnimation } from "@/components/CounterAnimation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -44,6 +46,7 @@ export default function Import() {
   const [saveReportOpen, setSaveReportOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [downloadFileName, setDownloadFileName] = useState("Inventario");
+  const resultsRef = useRef<HTMLDivElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -122,6 +125,11 @@ export default function Import() {
       });
 
       toast.success("Análisis completado", { id: "analysis-toast" });
+
+      // Smooth scroll to results
+      setTimeout(() => {
+        resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 300);
     } catch (error) {
       console.error("Error analyzing file:", error);
       toast.error("Hubo un error al analizar el archivo.", { id: "analysis-toast" });
@@ -324,7 +332,12 @@ export default function Import() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <motion.div
+      className="p-6 space-y-6"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+    >
       <div>
         <h1 className="text-3xl font-bold text-foreground mb-2">
           Importar Inventario
@@ -384,94 +397,131 @@ export default function Import() {
       </Card>
 
       {results && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <motion.div
+          ref={resultsRef}
+          className="space-y-6"
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+        >
+          <motion.div
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+            initial="hidden"
+            animate="show"
+            variants={{
+              hidden: { opacity: 0 },
+              show: {
+                opacity: 1,
+                transition: { staggerChildren: 0.1 }
+              }
+            }}
+          >
             {/* Fila Superior */}
-            <Card className="p-6 border-destructive/20">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 bg-destructive/10 rounded-lg">
-                  <TrendingDown className="w-5 h-5 text-destructive" />
+            <motion.div variants={{ hidden: { opacity: 0, scale: 0.9 }, show: { opacity: 1, scale: 1 } }}>
+              <Card className="p-6 border-destructive/20">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2 bg-destructive/10 rounded-lg">
+                    <TrendingDown className="w-5 h-5 text-destructive" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Valor Faltantes</p>
+                    <p className="text-2xl font-bold text-destructive">
+                      <CounterAnimation value={results.totalShortageValue} prefix="$" />
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      <CounterAnimation value={results.totalShortageUnits} suffix=" unidades" />
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Valor Faltantes</p>
-                  <p className="text-2xl font-bold text-destructive">
-                    ${results.totalShortageValue.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{results.totalShortageUnits} unidades</p>
-                </div>
-              </div>
-            </Card>
+              </Card>
+            </motion.div>
 
-            <Card className="p-6 border-warning/20">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 bg-warning/10 rounded-lg">
-                  <AlertCircle className="w-5 h-5 text-warning" />
+            <motion.div variants={{ hidden: { opacity: 0, scale: 0.9 }, show: { opacity: 1, scale: 1 } }}>
+              <Card className="p-6 border-warning/20">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2 bg-warning/10 rounded-lg">
+                    <AlertCircle className="w-5 h-5 text-warning" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Total Discrepancia</p>
+                    <p className="text-2xl font-bold text-warning">
+                      <CounterAnimation value={results.totalShortageValue + results.totalSurplusValue} prefix="$" />
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      <CounterAnimation value={results.totalShortageUnits + results.totalSurplusUnits} suffix=" unidades en total" />
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Discrepancia</p>
-                  <p className="text-2xl font-bold text-warning">
-                    ${(results.totalShortageValue + results.totalSurplusValue).toLocaleString()}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {results.totalShortageUnits + results.totalSurplusUnits} unidades en total
-                  </p>
-                </div>
-              </div>
-            </Card>
+              </Card>
+            </motion.div>
 
-            <Card className="p-6 border-success/20">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 bg-success/10 rounded-lg">
-                  <TrendingUp className="w-5 h-5 text-success" />
+            <motion.div variants={{ hidden: { opacity: 0, scale: 0.9 }, show: { opacity: 1, scale: 1 } }}>
+              <Card className="p-6 border-success/20">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2 bg-success/10 rounded-lg">
+                    <TrendingUp className="w-5 h-5 text-success" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Valor Sobrantes</p>
+                    <p className="text-2xl font-bold text-success">
+                      <CounterAnimation value={results.totalSurplusValue} prefix="$" />
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      +<CounterAnimation value={results.totalSurplusUnits} suffix=" unidades" />
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Valor Sobrantes</p>
-                  <p className="text-2xl font-bold text-success">
-                    ${results.totalSurplusValue.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-muted-foreground">+{results.totalSurplusUnits} unidades</p>
-                </div>
-              </div>
-            </Card>
+              </Card>
+            </motion.div>
 
-            <Card className="p-6">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 bg-muted rounded-lg">
-                  <FileSpreadsheet className="w-5 h-5 text-muted-foreground" />
+            <motion.div variants={{ hidden: { opacity: 0, scale: 0.9 }, show: { opacity: 1, scale: 1 } }}>
+              <Card className="p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2 bg-muted rounded-lg">
+                    <FileSpreadsheet className="w-5 h-5 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Total Productos</p>
+                    <p className="text-2xl font-bold text-foreground">
+                      <CounterAnimation value={results.totalProducts} />
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Productos</p>
-                  <p className="text-2xl font-bold text-foreground">{results.totalProducts}</p>
-                </div>
-              </div>
-            </Card>
+              </Card>
+            </motion.div>
 
-            <Card className="p-6 border-primary/20">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <CheckCircle className="w-5 h-5 text-primary" />
+            <motion.div variants={{ hidden: { opacity: 0, scale: 0.9 }, show: { opacity: 1, scale: 1 } }}>
+              <Card className="p-6 border-primary/20">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2 bg-primary/10 rounded-lg">
+                    <CheckCircle className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Productos sin Diferencia</p>
+                    <p className="text-2xl font-bold text-primary">
+                      <CounterAnimation value={results.totalProductsNoDifference} />
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Productos sin Diferencia</p>
-                  <p className="text-2xl font-bold text-primary">{results.totalProductsNoDifference}</p>
-                </div>
-              </div>
-            </Card>
+              </Card>
+            </motion.div>
 
-            <Card className="p-6 border-primary/20">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <Target className="w-5 h-5 text-primary" />
+            <motion.div variants={{ hidden: { opacity: 0, scale: 0.9 }, show: { opacity: 1, scale: 1 } }}>
+              <Card className="p-6 border-primary/20">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="p-2 bg-primary/10 rounded-lg">
+                    <Target className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Precisión del Inventario</p>
+                    <p className="text-2xl font-bold text-primary">
+                      <CounterAnimation value={results.inventoryAccuracy} decimals={2} suffix="%" />
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Precisión del Inventario</p>
-                  <p className="text-2xl font-bold text-primary">
-                    {results.inventoryAccuracy.toFixed(2)}%
-                  </p>
-                </div>
-              </div>
-            </Card>
-          </div>
+              </Card>
+            </motion.div>
+          </motion.div>
 
           <div className="flex justify-between items-center">
             <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as any)} className="w-fit">
@@ -569,7 +619,7 @@ export default function Import() {
               </div>
             </div>
           </Card>
-        </div>
+        </motion.div>
       )}
 
       <SaveReportModal
@@ -621,6 +671,6 @@ export default function Import() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </motion.div>
   );
 }

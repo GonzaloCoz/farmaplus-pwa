@@ -5,6 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import LogoExpanded from "@/assets/logotxt.svg";
 import LogoCollapsed from "@/assets/logo.svg";
 import { NotificationsMenu, SettingsMenu, UserMenu } from "@/components/HeaderMenus";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 // Usamos marcado simple para el sidebar (evita wrappers que insertan espacio inesperado)
 
@@ -37,7 +38,7 @@ function AppSidebarMenuItem({ item, end }: AppSidebarMenuItemProps) {
     <Tooltip>
       <TooltipTrigger asChild>
         <div className="inline-flex h-12 w-12 items-center justify-center rounded-full">
-            <NavLink
+          <NavLink
             to={item.url}
             end={end}
             aria-label={item.title}
@@ -70,7 +71,7 @@ function AppSidebarMenuItemMobile({ item, end }: AppSidebarMenuItemProps) {
     >
       <item.icon className="h-5 w-5" />
       <span className="flex-1 whitespace-nowrap">{item.title}</span>
-        {/* Sin puntos de notificación aquí para evitar elementos decorativos inesperados */}
+      {/* Sin puntos de notificación aquí para evitar elementos decorativos inesperados */}
     </NavLink>
   );
 }
@@ -87,6 +88,7 @@ export function AppSidebar() {
           {menuItems.map((item) => <AppSidebarMenuItem key={item.title} item={item} end={item.url === '/'} />)}
         </nav>
         <nav className="mt-auto border-t p-3 flex flex-col items-center gap-3">
+          <ThemeToggle />
           <NotificationsMenu />
           <SettingsMenu />
           <UserMenu />

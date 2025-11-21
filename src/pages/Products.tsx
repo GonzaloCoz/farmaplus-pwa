@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import productsData from '../data/products.json';
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -14,6 +15,21 @@ interface Product {
   Codebar: number | string;
   Producto: string;
 }
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.05
+    }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 10 },
+  show: { opacity: 1, y: 0 }
+};
 
 export default function Products() {
   // --- Estados para la lista de productos y búsqueda ---
@@ -82,7 +98,12 @@ export default function Products() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <motion.div
+      className="p-6 space-y-6"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+    >
       <div>
         <h1 className="text-3xl font-bold text-foreground mb-2">Base de Datos de Productos</h1>
         <p className="text-muted-foreground">Busca y consulta los productos existentes.</p>
@@ -109,18 +130,23 @@ export default function Products() {
                 <th className="p-3 font-medium">Producto</th>
               </tr>
             </thead>
-            <tbody>
+            <motion.tbody
+              variants={containerVariants}
+              initial="hidden"
+              animate="show"
+            >
               {filteredProducts.slice(0, 100).map((product, index) => ( // Mostramos solo los primeros 100 para mejor rendimiento
-                <tr
+                <motion.tr
                   key={`${product.Codebar}-${index}`}
+                  variants={itemVariants}
                   className="border-t hover:bg-muted/50 cursor-pointer"
                   onClick={() => handleRowClick(product)}
                 >
                   <td className="p-3 font-mono">{String(product.Codebar)}</td>
                   <td className="p-3">{product.Producto}</td>
-                </tr>
+                </motion.tr>
               ))}
-            </tbody>
+            </motion.tbody>
           </table>
         ) : (
           <p className="text-center p-6">
@@ -221,6 +247,6 @@ export default function Products() {
         </DialogContent>
       </Dialog>
       <Fab onClick={() => setOpen(true)} />
-    </div>
+    </motion.div>
   );
 }

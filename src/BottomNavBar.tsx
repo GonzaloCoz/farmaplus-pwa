@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -27,7 +28,7 @@ export function BottomNavBar() {
             end={to === "/"}
             className={({ isActive }) =>
               cn(
-                "flex flex-col items-center justify-center gap-1 text-muted-foreground transition-all",
+                "flex flex-col items-center justify-center gap-1 text-muted-foreground transition-colors",
                 isActive && "text-primary"
               )
             }
@@ -35,20 +36,39 @@ export function BottomNavBar() {
             {({ isActive }) => (
               <>
                 <div className="relative flex h-8 w-16 items-center justify-center">
-                  <div
-                    className={cn(
-                      "absolute h-8 w-16 scale-0 rounded-full bg-secondary transition-transform",
-                      isActive && "scale-100"
-                    )}
+                  <motion.div
+                    className="absolute h-8 w-16 rounded-full bg-secondary"
+                    initial={{ scale: 0 }}
+                    animate={{ scale: isActive ? 1 : 0 }}
+                    transition={{ duration: 0.2, ease: [0.2, 0.0, 0, 1.0] }}
                   />
-                  <Icon
-                    className={cn(
-                      "relative z-10 h-5 w-5",
-                      isActive && "text-primary"
-                    )}
-                  />
+                  <motion.div
+                    animate={{
+                      scale: isActive ? 1.1 : 1,
+                      rotate: isActive ? [0, -10, 10, 0] : 0,
+                    }}
+                    transition={{
+                      duration: 0.3,
+                      ease: [0.2, 0.0, 0, 1.0],
+                    }}
+                  >
+                    <Icon
+                      className={cn(
+                        "relative z-10 h-5 w-5",
+                        isActive && "text-primary"
+                      )}
+                    />
+                  </motion.div>
                 </div>
-                <span className="font-medium">{label}</span>
+                <motion.span
+                  className="font-medium"
+                  animate={{
+                    scale: isActive ? 1.05 : 1,
+                  }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {label}
+                </motion.span>
               </>
             )}
           </NavLink>

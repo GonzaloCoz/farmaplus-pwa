@@ -1,4 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
+import { motion } from "framer-motion";
+import { CounterAnimation } from "@/components/CounterAnimation";
+import { AnimatedProgressBar } from "@/components/AnimatedProgressBar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -133,6 +136,23 @@ const branches = [
 
 const INITIAL_BRANCHES_TO_SHOW = 5;
 
+
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1
+    }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0 }
+};
+
 export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [showAllBranches, setShowAllBranches] = useState(false);
@@ -242,219 +262,248 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
+    <motion.div
+      className="p-6 space-y-6"
+      variants={containerVariants}
+      initial="hidden"
+      animate="show"
+    >
+      <motion.div variants={itemVariants}>
         <h1 className="text-3xl font-bold text-foreground mb-2">
           Buenos días, Gonzalo 👋
         </h1>
         <p className="text-muted-foreground">
           Aca está el resumen de tus inventarios de hoy
         </p>
-      </div>
+      </motion.div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Valor Total Inventario</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">$120,000</div>
-            <p className="text-xs text-success">+12% del mes anterior</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Productos Activos</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">352</div>
-            <p className="text-xs text-muted-foreground">En stock</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Productos con Faltantes</CardTitle>
-            <TrendingDown className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">24</div>
-            <p className="text-xs text-destructive">+5% más que el mes anterior</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Productos con Sobrantes</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">18</div>
-            <p className="text-xs text-success">+2% más que el mes anterior</p>
-          </CardContent>
-        </Card>
+        <motion.div variants={itemVariants} whileHover={{ scale: 1.02, y: -4 }} whileTap={{ scale: 0.98 }} transition={{ duration: 0.2 }}>
+          <Card className="cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Valor Total Inventario</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                <CounterAnimation value={120000} prefix="$" />
+              </div>
+              <p className="text-xs text-success">+12% del mes anterior</p>
+            </CardContent>
+          </Card>
+        </motion.div>
+        <motion.div variants={itemVariants} whileHover={{ scale: 1.02, y: -4 }} whileTap={{ scale: 0.98 }} transition={{ duration: 0.2 }}>
+          <Card className="cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Productos Activos</CardTitle>
+              <Package className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                <CounterAnimation value={352} />
+              </div>
+              <p className="text-xs text-muted-foreground">En stock</p>
+            </CardContent>
+          </Card>
+        </motion.div>
+        <motion.div variants={itemVariants} whileHover={{ scale: 1.02, y: -4 }} whileTap={{ scale: 0.98 }} transition={{ duration: 0.2 }}>
+          <Card className="cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Productos con Faltantes</CardTitle>
+              <TrendingDown className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                <CounterAnimation value={24} />
+              </div>
+              <p className="text-xs text-destructive">+5% más que el mes anterior</p>
+            </CardContent>
+          </Card>
+        </motion.div>
+        <motion.div variants={itemVariants} whileHover={{ scale: 1.02, y: -4 }} whileTap={{ scale: 0.98 }} transition={{ duration: 0.2 }}>
+          <Card className="cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Productos con Sobrantes</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                <CounterAnimation value={18} />
+              </div>
+              <p className="text-xs text-success">+2% más que el mes anterior</p>
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-foreground">Resumen de Inventario</h2>
-            <button className="text-sm text-muted-foreground hover:text-foreground">
-              Ver detalles
-            </button>
-          </div>
-          
-          <div className="space-y-6">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-muted-foreground">Productos en Stock</span>
-                <span className="text-sm font-medium">85%</span>
-              </div>
-              <Progress value={85} className="h-2" />
+        <motion.div variants={itemVariants} className="h-full">
+          <Card className="p-6 h-full">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-foreground">Resumen de Inventario</h2>
+              <button className="text-sm text-muted-foreground hover:text-foreground">
+                Ver detalles
+              </button>
             </div>
-            
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-muted-foreground">Productos con Bajo Stock</span>
-                <span className="text-sm font-medium text-warning">12%</span>
-              </div>
-              <Progress value={12} className="h-2 [&>div]:bg-warning" />
-            </div>
-            
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-muted-foreground">Productos Agotados</span>
-                <span className="text-sm font-medium text-destructive">3%</span>
-              </div>
-              <Progress value={3} className="h-2 [&>div]:bg-destructive" />
-            </div>
-          </div>
-        </Card>
 
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-foreground">Alertas de Inventario</h2>
-            <span className="px-3 py-1 bg-warning/10 text-warning text-xs font-medium rounded-full">
-              3 Activas
-            </span>
-          </div>
-          
-          <div className="space-y-4">
-            <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
-              <AlertCircle className="w-5 h-5 text-warning mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-foreground">Stock bajo en Sucursal Palermo II</p>
-                <p className="text-xs text-muted-foreground mt-1">15 productos necesitan reabastecimiento</p>
+            <div className="space-y-6">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-muted-foreground">Productos en Stock</span>
+                  <span className="text-sm font-medium">85%</span>
+                </div>
+                <AnimatedProgressBar value={85} />
               </div>
-            </div>
-            
-            <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
-              <AlertCircle className="w-5 h-5 text-warning mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-foreground">Inventario cíclico pendiente</p>
-                <p className="text-xs text-muted-foreground mt-1">Sucursal Microcentro - Vence en 2 días</p>
-              </div>
-            </div>
-            
-            <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
-              <AlertCircle className="w-5 h-5 text-destructive mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-foreground">Diferencia significativa detectada</p>
-                <p className="text-xs text-muted-foreground mt-1">Sucursal Belgrano III - Revisar urgente</p>
-              </div>
-            </div>
-          </div>
-        </Card>
 
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-foreground">Próximos Inventarios</h2>
-            <span className="px-3 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">
-              {upcomingInventories.length} esta semana
-            </span>
-          </div>
-          <div className="space-y-4">
-            {upcomingInventories.map((inv, index) => (
-              <div key={index} className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
-                <CalendarClock className="w-5 h-5 text-primary mt-0.5" />
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-muted-foreground">Productos con Bajo Stock</span>
+                  <span className="text-sm font-medium text-warning">12%</span>
+                </div>
+                <AnimatedProgressBar value={12} barClassName="bg-warning" />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-muted-foreground">Productos Agotados</span>
+                  <span className="text-sm font-medium text-destructive">3%</span>
+                </div>
+                <AnimatedProgressBar value={3} barClassName="bg-destructive" />
+              </div>
+            </div>
+          </Card>
+        </motion.div>
+
+        <motion.div variants={itemVariants} className="h-full">
+          <Card className="p-6 h-full">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-foreground">Alertas de Inventario</h2>
+              <span className="px-3 py-1 bg-warning/10 text-warning text-xs font-medium rounded-full">
+                3 Activas
+              </span>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-warning mt-0.5" />
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-foreground">{inv.branch} - {inv.sector}</p>
-                  <button onClick={() => openCalendarForIso(inv.iso)} className="text-xs text-muted-foreground mt-1 hover:underline">
-                    {inv.date}
-                  </button>
+                  <p className="text-sm font-medium text-foreground">Stock bajo en Sucursal Palermo II</p>
+                  <p className="text-xs text-muted-foreground mt-1">15 productos necesitan reabastecimiento</p>
                 </div>
               </div>
-            ))}
-          </div>
-        </Card>
+
+              <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-warning mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-foreground">Inventario cíclico pendiente</p>
+                  <p className="text-xs text-muted-foreground mt-1">Sucursal Microcentro - Vence en 2 días</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-destructive mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-foreground">Diferencia significativa detectada</p>
+                  <p className="text-xs text-muted-foreground mt-1">Sucursal Belgrano III - Revisar urgente</p>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </motion.div>
+
+        <motion.div variants={itemVariants} className="h-full">
+          <Card className="p-6 h-full">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-foreground">Próximos Inventarios</h2>
+              <span className="px-3 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">
+                {upcomingInventories.length} esta semana
+              </span>
+            </div>
+            <div className="space-y-4">
+              {upcomingInventories.map((inv, index) => (
+                <div key={index} className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
+                  <CalendarClock className="w-5 h-5 text-primary mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-foreground">{inv.branch} - {inv.sector}</p>
+                    <button onClick={() => openCalendarForIso(inv.iso)} className="text-xs text-muted-foreground mt-1 hover:underline">
+                      {inv.date}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </motion.div>
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-          <CardTitle>Sucursales</CardTitle>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Buscar sucursal..."
-              className="pl-8 sm:w-[300px]"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[250px]">
-                  <Button variant="ghost" onClick={() => requestSort('name')} className="group -ml-4">
-                    Sucursal {getSortIndicator('name')}
-                  </Button>
-                </TableHead>
-                <TableHead>
-                  <Button variant="ghost" onClick={() => requestSort('zonal')} className="group -ml-4">
-                    Zonal {getSortIndicator('zonal')}
-                  </Button>
-                </TableHead>
-                <TableHead className="flex-1">
-                  <Button variant="ghost" onClick={() => requestSort('address')} className="group -ml-4">
-                    Dirección {getSortIndicator('address')}
-                  </Button>
-                </TableHead>
-                <TableHead className="text-right">Contacto</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {branchesToShow.map((branch) => (
-                <TableRow key={branch.name}>
-                  <TableCell className="font-medium">{branch.name}</TableCell>
-                  <TableCell>{branch.zonal}</TableCell>
-                  <TableCell>{branch.address}</TableCell>
-                  <TableCell className="text-right">
-                    <Button asChild variant="ghost" size="icon">
-                      <a href={`mailto:${branch.email}`}>
-                        <Mail className="h-4 w-4" />
-                      </a>
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {sortedBranches.length > INITIAL_BRANCHES_TO_SHOW && !showAllBranches && (
-            <div className="pt-4 text-center">
-              <Button
-                variant="ghost"
-                className="w-full"
-                onClick={() => setShowAllBranches(true)}
-              >
-                Mostrar más ({sortedBranches.length - INITIAL_BRANCHES_TO_SHOW} restantes)
-              </Button>
+      <motion.div variants={itemVariants}>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+            <CardTitle>Sucursales</CardTitle>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Buscar sucursal..."
+                className="pl-8 sm:w-[300px]"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[250px]">
+                    <Button variant="ghost" onClick={() => requestSort('name')} className="group -ml-4">
+                      Sucursal {getSortIndicator('name')}
+                    </Button>
+                  </TableHead>
+                  <TableHead>
+                    <Button variant="ghost" onClick={() => requestSort('zonal')} className="group -ml-4">
+                      Zonal {getSortIndicator('zonal')}
+                    </Button>
+                  </TableHead>
+                  <TableHead className="flex-1">
+                    <Button variant="ghost" onClick={() => requestSort('address')} className="group -ml-4">
+                      Dirección {getSortIndicator('address')}
+                    </Button>
+                  </TableHead>
+                  <TableHead className="text-right">Contacto</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {branchesToShow.map((branch) => (
+                  <TableRow key={branch.name}>
+                    <TableCell className="font-medium">{branch.name}</TableCell>
+                    <TableCell>{branch.zonal}</TableCell>
+                    <TableCell>{branch.address}</TableCell>
+                    <TableCell className="text-right">
+                      <Button asChild variant="ghost" size="icon">
+                        <a href={`mailto:${branch.email}`}>
+                          <Mail className="h-4 w-4" />
+                        </a>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {sortedBranches.length > INITIAL_BRANCHES_TO_SHOW && !showAllBranches && (
+              <div className="pt-4 text-center">
+                <Button
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => setShowAllBranches(true)}
+                >
+                  Mostrar más ({sortedBranches.length - INITIAL_BRANCHES_TO_SHOW} restantes)
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
       {/* Modal calendario + eventos */}
       <Dialog open={showCalendar} onOpenChange={setShowCalendar}>
         <DialogContent className="w-[1800px] max-w-[90vw]">
@@ -462,7 +511,7 @@ export default function Dashboard() {
             <DialogTitle>Próximos inventarios</DialogTitle>
           </DialogHeader>
           <div className="flex gap-2 mt-4">
-              <div className="w-2/5">
+            <div className="w-2/5">
               <CustomCalendar
                 events={events}
                 selected={selectedDate}
@@ -520,6 +569,6 @@ export default function Dashboard() {
         </DialogContent>
       </Dialog>
 
-    </div>
+    </motion.div>
   );
 }

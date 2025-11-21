@@ -1,31 +1,26 @@
-import { Suspense, lazy } from "react";
-import { BrowserRouter, Route, Routes, Outlet } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Outlet, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { AnimatePresence } from "framer-motion";
 
 import { AppLayout } from "./components/AppLayout";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { InstallPrompt } from "@/components/InstallPrompt";
+import { PageTransition } from "@/components/PageTransition";
 
-// Lazy load pages
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const Import = lazy(() => import("./pages/Import"));
-const Cyclic = lazy(() => import("./pages/Cyclic"));
-const Products = lazy(() => import("./pages/Products"));
-const Reports = lazy(() => import("./pages/Reports"));
-const Settings = lazy(() => import("./pages/Settings"));
-const NotFound = lazy(() => import("./pages/NotFound"));
-
-// Loading component
-const PageLoader = () => (
-  <div className="flex h-full w-full items-center justify-center">
-    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-  </div>
-);
+import Dashboard from "./pages/Dashboard";
+import Import from "./pages/Import";
+import Cyclic from "./pages/Cyclic";
+import Products from "./pages/Products";
+import Reports from "./pages/Reports";
+import Settings from "./pages/Settings";
+import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+
+// ... existing imports ...
 
 function Layout() {
   return (
@@ -40,35 +35,28 @@ function Layout() {
   );
 }
 
-const App = () => {
-  useEffect(() => {
-    // Register Service Worker
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker
-          .register('/farmaplus-pwa/service-worker.js')
-          .then((registration) => {
-            console.log('✅ Service Worker registrado:', registration.scope);
+const AppRoutes = () => {
+  const location = useLocation();
 
-            // Check for updates
-            registration.addEventListener('updatefound', () => {
-              const newWorker = registration.installing;
-              if (newWorker) {
-                newWorker.addEventListener('statechange', () => {
-                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    // New service worker available, show update notification
-                    console.log('🔄 Nueva versión disponible');
-                  }
-                });
-              }
-            });
-          })
-          .catch((error) => {
-            console.error('❌ Error al registrar Service Worker:', error);
-          });
-      });
-    }
-  }, []);
+  return (
+    <AnimatePresence mode="wait">
+      <Routes location={location} key={location.pathname}>
+        <Route element={<Layout />}>
+          <Route path="/" element={<PageTransition><Dashboard /></PageTransition>} />
+          <Route path="/import" element={<PageTransition><Import /></PageTransition>} />
+          <Route path="/cyclic-inventory" element={<PageTransition><Cyclic /></PageTransition>} />
+          <Route path="/products" element={<PageTransition><Products /></PageTransition>} />
+          <Route path="/reports" element={<PageTransition><Reports /></PageTransition>} />
+          <Route path="/settings" element={<PageTransition><Settings /></PageTransition>} />
+        </Route>
+        <Route path="*" element={<PageTransition><NotFound /></PageTransition>} />
+      </Routes>
+    </AnimatePresence>
+  );
+};
+
+const App = () => {
+  // ... existing useEffect ...
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -77,19 +65,7 @@ const App = () => {
         <OfflineIndicator />
         <InstallPrompt />
         <BrowserRouter basename="/farmaplus-pwa/">
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
-              <Route element={<Layout />}>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/import" element={<Import />} />
-                <Route path="/cyclic-inventory" element={<Cyclic />} />
-                <Route path="/products" element={<Products />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route path="/settings" element={<Settings />} />
-              </Route>
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
+          <AppRoutes />
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>

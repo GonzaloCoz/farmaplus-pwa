@@ -2,10 +2,13 @@ import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FileText, Trash2, Download, Search, Calendar, MapPin, Layers } from "lucide-react";
+import { FileText, Trash2, Download, Search, Calendar, MapPin, Layers, Image as ImageIcon } from "lucide-react";
 import * as XLSX from "xlsx";
+import html2canvas from "html2canvas";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
+import { useRef } from "react";
+import { ReportTemplate } from "@/components/ReportTemplate";
 
 interface Report {
   id: string;
@@ -24,6 +27,10 @@ export default function Reports() {
   const [filterBranch, setFilterBranch] = useState("");
   const [filterSector, setFilterSector] = useState("");
 
+  // Ref for image export
+  const reportTemplateRef = useRef<HTMLDivElement>(null);
+  const [reportToExport, setReportToExport] = useState<Report | null>(null);
+
   useEffect(() => {
     const storedReports = JSON.parse(localStorage.getItem("inventory-reports") || "[]");
     setReports(storedReports);
@@ -34,7 +41,7 @@ export default function Reports() {
     let filtered = reportsToFilter;
 
     if (search) {
-      filtered = filtered.filter(r => 
+      filtered = filtered.filter(r =>
         r.name.toLowerCase().includes(search.toLowerCase()) ||
         r.branch.toLowerCase().includes(search.toLowerCase()) ||
         r.sector.toLowerCase().includes(search.toLowerCase())
@@ -114,6 +121,33 @@ export default function Reports() {
     }
   };
 
+  const handleExportImage = async (report: Report) => {
+    setReportToExport(report);
+    // Wait for state update and render
+    setTimeout(async () => {
+      if (reportTemplateRef.current) {
+        try {
+          const canvas = await html2canvas(reportTemplateRef.current, {
+            scale: 2, // Better quality
+            backgroundColor: "#ffffff",
+          });
+
+          const link = document.createElement("a");
+          link.download = `Reporte_${report.name}_${report.date}.png`;
+          link.href = canvas.toDataURL("image/png");
+          link.click();
+
+          toast.success("Imagen generada correctamente");
+        } catch (error) {
+          console.error("Error generating image:", error);
+          toast.error("Error al generar la imagen");
+        } finally {
+          setReportToExport(null);
+        }
+      }
+    }, 100);
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div>
@@ -154,7 +188,7 @@ export default function Reports() {
             {reports.length === 0 ? "Sin reportes aún" : "Sin resultados"}
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
-            {reports.length === 0 
+            {reports.length === 0
               ? "Los reportes que generes aparecerán aquí"
               : "Intenta con otros filtros de búsqueda"}
           </p>
@@ -174,22 +208,33 @@ export default function Reports() {
                     </div>
                   </div>
                   <div className="flex gap-2" onClick={(e) => e.preventDefault()}>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleExport(report)}
-                    className="hover:bg-success hover:text-success-foreground"
-                  >
-                    <Download className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleDelete(report.id)}
-                    className="hover:bg-destructive hover:text-destructive-foreground"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleExportImage(report)}
+                      className="hover:bg-primary hover:text-primary-foreground"
+                      title="Exportar como Imagen"
+                    >
+                      <ImageIcon className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleExport(report)}
+                      className="hover:bg-success hover:text-success-foreground"
+                      title="Exportar Excel"
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleDelete(report.id)}
+                      className="hover:bg-destructive hover:text-destructive-foreground"
+                      title="Eliminar"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               </Card>
@@ -197,6 +242,10 @@ export default function Reports() {
           ))}
         </div>
       )}
+      {/* Hidden Template for Image Generation */}
+      <div className="fixed left-[-9999px] top-0">
+        <ReportTemplate ref={reportTemplateRef} report={reportToExport} />
+      </div>
     </div>
   );
 }

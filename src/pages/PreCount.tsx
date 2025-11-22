@@ -181,27 +181,28 @@ export default function PreCount() {
 
     return (
         <motion.div
-            className="p-6 space-y-6"
+            className="space-y-6"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
         >
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-start sm:items-center justify-between gap-4 flex-col sm:flex-row">
                 <div className="flex items-center gap-3">
                     <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => step === 'config' ? navigate('/stock') : setStep('config')}
+                        className="flex-shrink-0"
                     >
                         <ArrowLeft className="w-5 h-5" />
                     </Button>
                     <div>
-                        <h1 className="text-3xl font-bold text-foreground">
+                        <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
                             Pre-Conteo Sucursal
                         </h1>
                         {session && (
-                            <p className="text-muted-foreground">
+                            <p className="text-sm text-muted-foreground mt-1">
                                 Sector: <span className="font-semibold text-foreground">{session.sector}</span>
                             </p>
                         )}
@@ -209,16 +210,16 @@ export default function PreCount() {
                 </div>
 
                 {/* Indicador de conexión */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-shrink-0">
                     {isOnline ? (
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-success/10 text-success rounded-full">
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-success/10 text-success rounded-full text-sm">
                             <Wifi className="w-4 h-4" />
-                            <span className="text-sm font-medium">En línea</span>
+                            <span className="font-medium hidden sm:inline">En línea</span>
                         </div>
                     ) : (
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-warning/10 text-warning rounded-full">
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-warning/10 text-warning rounded-full text-sm">
                             <WifiOff className="w-4 h-4" />
-                            <span className="text-sm font-medium">Sin conexión</span>
+                            <span className="font-medium hidden sm:inline">Sin conexión</span>
                         </div>
                     )}
                 </div>
@@ -235,16 +236,16 @@ export default function PreCount() {
                         transition={{ duration: 0.3 }}
                         className="max-w-2xl mx-auto"
                     >
-                        <Card className="p-8">
+                        <Card className="p-6 sm:p-8">
                             <div className="space-y-6">
                                 <div className="text-center">
                                     <div className="inline-flex p-4 bg-primary/10 rounded-2xl mb-4">
                                         <Package className="w-12 h-12 text-primary" />
                                     </div>
-                                    <h2 className="text-2xl font-semibold text-foreground mb-2">
+                                    <h2 className="text-xl sm:text-2xl font-semibold text-foreground mb-2">
                                         Configuración del Pre-Conteo
                                     </h2>
-                                    <p className="text-muted-foreground">
+                                    <p className="text-sm sm:text-base text-muted-foreground">
                                         Ingresa el nombre del sector o estantería que vas a contar
                                     </p>
                                 </div>
@@ -264,7 +265,7 @@ export default function PreCount() {
                                                 }
                                             }}
                                             placeholder="Ej: Bebidas, Perfumería, Góndola 1, etc."
-                                            className="text-lg"
+                                            className="text-base sm:text-lg"
                                             autoFocus
                                         />
                                     </div>
@@ -299,19 +300,19 @@ export default function PreCount() {
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: -20 }}
                         transition={{ duration: 0.3 }}
-                        className="space-y-6"
+                        className="space-y-4 sm:space-y-6"
                     >
                         {/* Contador gigante */}
-                        <Card className="p-8 bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
+                        <Card className="p-6 sm:p-8 bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20 elevation-2">
                             <div className="text-center">
-                                <p className="text-muted-foreground mb-2">Llevas</p>
-                                <div className="text-6xl font-bold text-primary mb-2">
+                                <p className="text-sm text-muted-foreground mb-2">Llevas</p>
+                                <div className="text-5xl sm:text-6xl font-bold text-primary mb-2">
                                     <CounterAnimation value={totalProducts} />
                                 </div>
-                                <p className="text-2xl font-semibold text-foreground">
+                                <p className="text-xl sm:text-2xl font-semibold text-foreground">
                                     {totalProducts === 1 ? 'producto' : 'productos'} pre-contados
                                 </p>
-                                <p className="text-muted-foreground mt-2">
+                                <p className="text-sm text-muted-foreground mt-2">
                                     Total de unidades: <span className="font-semibold text-foreground">
                                         <CounterAnimation value={totalUnits} />
                                     </span>
@@ -320,8 +321,8 @@ export default function PreCount() {
                         </Card>
 
                         {/* Formulario de ingreso */}
-                        <Card className="p-6">
-                            <h3 className="text-lg font-semibold text-foreground mb-4">
+                        <Card className="p-4 sm:p-6 elevation-1">
+                            <h3 className="text-base sm:text-lg font-semibold text-foreground mb-4">
                                 Agregar Producto
                             </h3>
 
@@ -366,8 +367,8 @@ export default function PreCount() {
                                         placeholder="Ingresa el código EAN"
                                     />
                                     {selectedProduct && (
-                                        <p className="text-sm text-success mt-1">
-                                            <CheckCircle2 className="w-4 h-4 inline mr-1" />
+                                        <p className="text-sm text-success mt-1 flex items-center gap-1">
+                                            <CheckCircle2 className="w-4 h-4" />
                                             {selectedProduct.name}
                                         </p>
                                     )}
@@ -401,9 +402,9 @@ export default function PreCount() {
                         </Card>
 
                         {/* Lista de productos */}
-                        <div>
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-lg font-semibold text-foreground">
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between gap-2">
+                                <h3 className="text-base sm:text-lg font-semibold text-foreground">
                                     Productos Agregados ({totalProducts})
                                 </h3>
                                 {unsyncedCount > 0 && (
@@ -412,6 +413,7 @@ export default function PreCount() {
                                         disabled={!isOnline || isSyncing}
                                         variant="outline"
                                         size="sm"
+                                        className="flex-shrink-0"
                                     >
                                         {isSyncing ? 'Sincronizando...' : `Sincronizar (${unsyncedCount})`}
                                     </Button>
@@ -426,12 +428,13 @@ export default function PreCount() {
 
                         {/* Acciones finales */}
                         {items.length > 0 && (
-                            <Card className="p-6 bg-muted/30">
+                            <Card className="p-4 sm:p-6 bg-muted/30 elevation-1">
                                 <div className="flex flex-col sm:flex-row gap-3">
                                     <Button
                                         onClick={handleExport}
                                         variant="outline"
                                         className="flex-1"
+                                        size="lg"
                                     >
                                         <Download className="w-4 h-4 mr-2" />
                                         Exportar a Excel
@@ -439,6 +442,7 @@ export default function PreCount() {
                                     <Button
                                         onClick={handleFinish}
                                         className="flex-1"
+                                        size="lg"
                                     >
                                         <CheckCircle2 className="w-4 h-4 mr-2" />
                                         Finalizar Pre-Conteo

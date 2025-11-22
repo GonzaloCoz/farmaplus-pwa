@@ -29,10 +29,10 @@
   ],
   "shortcuts": [
     {
-      "name": "Importar Inventario",
-      "short_name": "Importar",
-      "description": "Importar archivo de inventario",
-      "url": "/farmaplus-pwa/import",
+      "name": "Stock",
+      "short_name": "Stock",
+      "description": "Gestión de inventario y pre-conteo",
+      "url": "/farmaplus-pwa/stock",
       "icons": [
         {
           "src": "logo.png",

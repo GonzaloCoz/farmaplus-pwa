@@ -11,7 +11,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 
 const menuItems = [
   { title: "Dashboard", url: "/", icon: Home },
-  { title: "Importar Inventario", url: "/import", icon: Upload },
+  { title: "Stock", url: "/stock", icon: Upload },
   { title: "Inventarios Cíclicos", url: "/cyclic", icon: BarChart3 },
   { title: "Productos", url: "/products", icon: Package },
   { title: "Reportes", url: "/reports", icon: FileText },

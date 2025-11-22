@@ -36,7 +36,7 @@ interface AnalysisResults {
   topSurplusesByValue: ProductData[];
 }
 
-export default function Import() {
+export default function StockImport() {
   const [file, setFile] = useState<File | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [results, setResults] = useState<AnalysisResults | null>(null);

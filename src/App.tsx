@@ -12,7 +12,9 @@ import { PageTransition } from "@/components/PageTransition";
 import { SnackbarProvider } from "@/contexts/SnackbarContext";
 
 import Dashboard from "./pages/Dashboard";
-import Import from "./pages/Import";
+import Stock from "./pages/Stock";
+import PreCount from "./pages/PreCount";
+import StockImport from "./pages/StockImport";
 import Cyclic from "./pages/Cyclic";
 import Products from "./pages/Products";
 import Reports from "./pages/Reports";
@@ -45,7 +47,9 @@ const AppRoutes = () => {
       <Routes location={location} key={location.pathname}>
         <Route element={<Layout />}>
           <Route path="/" element={<PageTransition><Dashboard /></PageTransition>} />
-          <Route path="/import" element={<PageTransition><Import /></PageTransition>} />
+          <Route path="/stock" element={<PageTransition><Stock /></PageTransition>} />
+          <Route path="/stock/pre-count" element={<PageTransition><PreCount /></PageTransition>} />
+          <Route path="/stock/import" element={<PageTransition><StockImport /></PageTransition>} />
           <Route path="/cyclic-inventory" element={<PageTransition><Cyclic /></PageTransition>} />
           <Route path="/products" element={<PageTransition><Products /></PageTransition>} />
           <Route path="/reports" element={<PageTransition><Reports /></PageTransition>} />

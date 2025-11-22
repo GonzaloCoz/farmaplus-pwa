@@ -11,7 +11,7 @@ import {
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/import", icon: Upload, label: "Importar" },
+  { to: "/stock", icon: Upload, label: "Stock" },
   { to: "/cyclic-inventory", icon: FileText, label: "Cíclico" },
   { to: "/products", icon: Package, label: "Productos" },
   { to: "/reports", icon: BarChart3, label: "Reportes" },

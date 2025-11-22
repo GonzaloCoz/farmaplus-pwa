@@ -1,6 +1,6 @@
 // Service Worker para Farmaplus PWA
 // Versión del caché - incrementar cuando haya cambios
-const CACHE_VERSION = 'v1.0.0';
+const CACHE_VERSION = 'v1.1.0';
 const CACHE_NAME = `farmaplus-${CACHE_VERSION}`;
 
 // Determine the base URL for the service worker

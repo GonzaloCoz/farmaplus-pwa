@@ -30,8 +30,9 @@ function Layout() {
   return (
     <AppLayout>
       {/* Contenedor principal del contenido que se adapta */}
-      <div className="flex h-screen flex-1 flex-col overflow-hidden lg:pl-24">
-        <main className="flex-1 overflow-y-auto p-4 pb-6 max-h-[calc(100vh-var(--bottom-nav-height)-env(safe-area-inset-bottom))] sm:max-h-screen lg:p-6 lg:pb-6">
+      {/* Contenedor principal del contenido que se adapta */}
+      <div className="flex flex-1 flex-col h-full overflow-hidden lg:pl-24">
+        <main className="flex-1 h-full w-full overflow-y-auto p-4 sm:pb-6 lg:p-6">
           <Outlet />
         </main>
       </div>

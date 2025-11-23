@@ -52,10 +52,21 @@ export function InstallPrompt() {
         }
     }, []);
 
+    // Auto-dismiss después de 10 segundos
+    useEffect(() => {
+        if (showPrompt) {
+            const timer = setTimeout(() => {
+                setShowPrompt(false);
+            }, 10000); // 10 segundos
+
+            return () => clearTimeout(timer);
+        }
+    }, [showPrompt]);
+
     if (!showPrompt) return null;
 
     return (
-        <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 z-50 bg-card border rounded-lg shadow-lg p-4 animate-in slide-in-from-bottom-5">
+        <div className="fixed bottom-[calc(var(--bottom-nav-height)+1rem)] sm:bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 z-40 bg-card border rounded-lg shadow-lg p-4 animate-in slide-in-from-bottom-5">
             <button
                 onClick={handleDismiss}
                 className="absolute top-2 right-2 p-1 rounded-full hover:bg-muted"

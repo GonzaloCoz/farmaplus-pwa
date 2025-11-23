@@ -19,7 +19,7 @@ const navItems = [
 
 export function BottomNavBar() {
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur-sm sm:hidden pb-[env(safe-area-inset-bottom)]">
+    <nav className="w-full border-t bg-background/95 backdrop-blur-sm sm:hidden pb-[env(safe-area-inset-bottom)] flex-none">
       <div className="grid h-20 grid-cols-5 items-center justify-center text-xs">
         {navItems.map(({ to, icon: Icon, label }) => (
           <NavLink

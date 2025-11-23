@@ -8,12 +8,14 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const isMobile = useIsMobile(); // Usar el hook para detectar móvil
-  
+
   return (
-    <div className="relative flex min-h-screen w-full bg-background">
+    <div className="relative flex h-[100dvh] w-full bg-background overflow-hidden">
       <AppSidebar />
-      {children}
-      {isMobile && <BottomNavBar />} {/* Renderizar BottomNavBar solo en móvil */}
+      <div className="flex flex-1 flex-col h-full overflow-hidden relative">
+        {children}
+        {isMobile && <BottomNavBar />}
+      </div>
     </div>
   );
 }

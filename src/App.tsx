@@ -31,7 +31,7 @@ function Layout() {
     <AppLayout>
       {/* Contenedor principal del contenido que se adapta */}
       <div className="flex h-screen flex-1 flex-col overflow-hidden lg:pl-24">
-        <main className="flex-1 overflow-y-auto p-4 pb-[calc(8rem+env(safe-area-inset-bottom))] lg:p-6 lg:pb-6">
+        <main className="flex-1 overflow-y-auto p-4 pb-[calc(var(--bottom-nav-height)+env(safe-area-inset-bottom)+1rem)] lg:p-6 lg:pb-6">
           <Outlet />
         </main>
       </div>

@@ -57,14 +57,8 @@ export default defineConfig({
     // Optimización de chunks
     chunkSizeWarningLimit: 500,
     // Minificación agresiva
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true, // Eliminar console.log en producción
-        drop_debugger: true,
-        pure_funcs: ['console.log', 'console.info', 'console.debug'],
-      },
-    },
+    // Minificación por defecto (esbuild)
+    minify: true,
     // Optimizar CSS
     cssCodeSplit: true,
     // Source maps solo para errores

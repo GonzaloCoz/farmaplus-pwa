@@ -33,7 +33,7 @@ import { CategoryProgressWidget } from "@/components/dashboard/widgets/CategoryP
 import { Button } from "@/components/ui/button";
 import { Edit3, Plus, RotateCcw, LayoutDashboard } from "lucide-react";
 import { cyclicInventoryService } from "@/services/cyclicInventoryService";
-import { getAllProducts } from "@/services/preCountDB";
+import { getAllProducts, getProductCount } from "@/services/preCountDB";
 
 const upcomingInventories = [
   {
@@ -118,10 +118,9 @@ function CalendarContent({
     <div className={isMobile ? "space-y-4" : "flex gap-6"}>
       <div className={isMobile ? "" : "flex-1"}>
         <CustomCalendar
-          selectedDate={selectedDate}
-          onDateSelect={setSelectedDate}
+          selected={selectedDate}
+          onSelect={setSelectedDate}
           events={events}
-          eventsForMonth={eventsForMonth}
         />
       </div>
       <div className={isMobile ? "" : "w-80"}>
@@ -238,12 +237,33 @@ export default function Dashboard() {
 
   useEffect(() => {
     const loadMetrics = async () => {
-      try {
-        // Get all cyclic inventories
-        const allInventories = cyclicInventoryService.getAllCyclicInventories();
-        const products = await getAllProducts();
+      let currentActiveProducts = 0;
 
-        // Aggregate metrics from all inventories
+      try {
+        currentActiveProducts = await getProductCount();
+      } catch (e) {
+        console.error("Error fetching product count:", e);
+      }
+
+      // If no branch assigned (e.g. Admin view without selected branch), keep branch metrics at 0 but show global products
+      if (!user?.branchSheet) {
+        setMetrics({
+          totalStock: 0,
+          activeProducts: currentActiveProducts,
+          negativeStock: 0,
+          positiveStock: 0,
+          negativeUnits: 0,
+          positiveUnits: 0,
+          totalSystemUnits: 0
+        });
+        return;
+      }
+
+      try {
+        // Get cyclic inventories filtered by branch
+        const allInventories = await cyclicInventoryService.getAllCyclicInventories(user.branchSheet);
+
+        // Aggregate metrics (now only for this branch)
         const aggregated = allInventories.reduce((acc, inv) => ({
           negativeStock: acc.negativeStock + inv.negativeValue,
           positiveStock: acc.positiveStock + inv.positiveValue,
@@ -259,7 +279,7 @@ export default function Dashboard() {
 
         setMetrics({
           totalStock: aggregated.totalStock,
-          activeProducts: products.length,
+          activeProducts: currentActiveProducts,
           negativeStock: aggregated.negativeStock,
           positiveStock: aggregated.positiveStock,
           negativeUnits: aggregated.negativeUnits,
@@ -357,7 +377,7 @@ export default function Dashboard() {
       case 'quick-actions':
         return <QuickActionsWidget />;
       case 'countdown':
-        return <CountdownWidget daysRemaining={15} totalDays={30} />;
+        return <CountdownWidget assignedDays={0} daysRemaining={0} totalProgress={0} monthlyProgress={[]} />;
       case 'category-progress':
         return <CategoryProgressWidget />;
       default:

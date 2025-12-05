@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Upload, FileSpreadsheet, Download, Save, Search, Info, ScanBarcode, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Upload, FileSpreadsheet, Download, Save, Search, Info, ScanBarcode, Trash2, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -26,6 +26,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Onboarding } from '@/components/Onboarding';
 import { FabMenu, FabAction } from '@/components/FabMenu';
 import { cn } from '@/lib/utils';
+import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 
 const CATEGORIES = ["Medicamentos", "Perfumería", "Accesorios", "Varios"];
 
@@ -33,6 +34,7 @@ export default function CyclicInventoryDetail() {
     const { id } = useParams(); // This will be the Lab Name
     const navigate = useNavigate();
     const [isLoading, setIsLoading] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [items, setItems] = useState<CyclicItem[]>([]);
     const [labName, setLabName] = useState<string>('');
     const [searchTerm, setSearchTerm] = useState("");
@@ -50,47 +52,24 @@ export default function CyclicInventoryDetail() {
         }
     }, [id]);
 
-    // Load from localStorage on mount
+    // Load from Supabase on mount
     useEffect(() => {
-        if (labName) {
-            const savedItems = localStorage.getItem(`cyclic_inventory_${labName}`);
-            if (savedItems) {
+        const loadData = async () => {
+            if (labName) {
+                setIsLoading(true);
                 try {
-                    const parsed = JSON.parse(savedItems);
-                    if (Array.isArray(parsed)) {
-                        // Validate each item structure
-                        const validItems = parsed.filter((item: any) =>
-                            item &&
-                            typeof item === 'object' &&
-                            typeof item.id === 'string' &&
-                            typeof item.name === 'string' &&
-                            typeof item.systemQuantity === 'number' &&
-                            typeof item.countedQuantity === 'number'
-                        );
-
-                        if (validItems.length !== parsed.length) {
-                            console.warn(`Filtered out ${parsed.length - validItems.length} invalid items.`);
-                        }
-
-                        setItems(validItems);
-                    } else {
-                        console.warn("Invalid inventory data format in localStorage, resetting.");
-                        setItems([]);
-                    }
-                } catch (e) {
-                    console.error("Failed to load saved inventory", e);
-                    setItems([]);
+                    const data = await cyclicInventoryService.getLabInventory(labName);
+                    setItems(data);
+                } catch (error) {
+                    console.error("Failed to load inventory:", error);
+                    toast.error("Error al cargar el inventario desde la nube.");
+                } finally {
+                    setIsLoading(false);
                 }
             }
-        }
+        };
+        loadData();
     }, [labName]);
-
-    // Save to localStorage on items change
-    useEffect(() => {
-        if (labName && items.length > 0) {
-            localStorage.setItem(`cyclic_inventory_${labName}`, JSON.stringify(items));
-        }
-    }, [items, labName]);
 
     const filteredItems = useMemo(() => {
         return items.filter(item => {
@@ -118,7 +97,6 @@ export default function CyclicInventoryDetail() {
     ), [filteredItems, currentCategory]);
 
     // Controlled and Adjusted items are GLOBAL (as per user request "remain in all pages")
-    // Sort logic: Negatives first, then Positives, then Zeros (matches)
     const sortItemsByDifference = (items: CyclicItem[]) => {
         return [...items].sort((a, b) => {
             const diffA = a.countedQuantity - a.systemQuantity;
@@ -132,27 +110,12 @@ export default function CyclicInventoryDetail() {
             if (!isDiffA && isDiffB) return 1;
 
             // 2. If both have differences (or both don't), sort by difference value
-            // This puts Negatives (-10, -5) before Positives (5, 10)
-            // If we want Negatives -> Positives -> Zeros, simple ascending sort of diff works for the diffs
-            // But we already separated zeros.
-            // So for non-zeros: -5 vs 5 -> -5 comes first.
             return diffA - diffB;
         });
     };
 
     const controlledItems = useMemo(() => sortItemsByDifference(filteredItems.filter(i => i.status === 'controlled')), [filteredItems]);
     const adjustedItems = useMemo(() => sortItemsByDifference(filteredItems.filter(i => i.status === 'adjusted')), [filteredItems]);
-
-    const handleCategoryChange = (direction: 'next' | 'prev') => {
-        const currentIndex = CATEGORIES.indexOf(currentCategory);
-        let newIndex;
-        if (direction === 'next') {
-            newIndex = (currentIndex + 1) % CATEGORIES.length;
-        } else {
-            newIndex = (currentIndex - 1 + CATEGORIES.length) % CATEGORIES.length;
-        }
-        setCurrentCategory(CATEGORIES[newIndex]);
-    };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -186,34 +149,21 @@ export default function CyclicInventoryDetail() {
                     const ean = row[2]?.toString().trim();
                     if (!ean) continue;
 
-                    // If we already have this item (any status: pending, controlled, OR adjusted), skip it.
-                    // The user wants to ignore items that are already adjusted ("controlled").
                     if (existingEans.has(ean)) {
                         ignoredCount++;
                         continue;
                     }
 
                     // Parse Category from Column J (Index 9)
-                    // If empty, default to "Varios"
                     let category = row[9]?.toString().trim();
 
                     // Normalize Category
                     if (category) {
                         if (category === "Medicamento") category = "Medicamentos";
-                        if (category === "Perfumeria") category = "Perfumería"; // Normalize unaccented to accented
+                        if (category === "Perfumeria") category = "Perfumería";
                     }
 
-                    if (!category || !CATEGORIES.includes(category)) {
-                        // Try to fuzzy match or default
-                        // For now, if not in list, put in Varios or keep as is if it looks valid?
-                        // User said: "Medicamentos", "Perfumeria", "Accesorios", "Varios"
-                        // If the excel has "Medicamento" (singular), we might want to normalize.
-                        // For now, let's assume exact match or default to Varios.
-                        // Actually, let's just use what is there if it's not empty, otherwise Varios.
-                        // But for the switcher to work, it MUST match one of the CATEGORIES.
-                        // Let's normalize:
-                        if (!CATEGORIES.includes(category)) category = "Varios";
-                    }
+                    if (!category || !CATEGORIES.includes(category)) category = "Varios";
 
                     // Add new item
                     finalItems.push({
@@ -232,6 +182,7 @@ export default function CyclicInventoryDetail() {
                 }
 
                 setItems(finalItems);
+
                 if (ignoredCount > 0) {
                     toast.success(`Procesado. ${addedCount} nuevos, ${ignoredCount} ignorados (ya existentes/ajustados).`);
                 } else {
@@ -254,7 +205,6 @@ export default function CyclicInventoryDetail() {
         setItems(prev => prev.map(item => {
             if (item.id === id) {
                 const diff = quantity - item.systemQuantity;
-                // Vibrate on difference
                 if (diff !== 0 && navigator.vibrate) {
                     navigator.vibrate([50, 50, 50]);
                 } else if (navigator.vibrate) {
@@ -273,9 +223,8 @@ export default function CyclicInventoryDetail() {
 
 
     const handleCheck = useCallback((id: string) => {
-        if (navigator.vibrate) navigator.vibrate(50); // Haptic feedback
+        if (navigator.vibrate) navigator.vibrate(50);
 
-        // Trigger Confetti
         confetti({
             particleCount: 100,
             spread: 70,
@@ -297,7 +246,20 @@ export default function CyclicInventoryDetail() {
         toast.info('Producto devuelto a pendientes');
     }, []);
 
-    const handleSaveInventory = () => {
+    const handleSaveProgress = async () => {
+        setIsSaving(true);
+        try {
+            await cyclicInventoryService.saveInventory(labName, items);
+            toast.success("Progreso guardado en la nube.");
+        } catch (error) {
+            console.error("Error saving progress:", error);
+            toast.error("Error al guardar el progreso.");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleSaveInventory = async () => {
         // Calculate totals for validation
         const shortages = controlledItems.filter(i => i.countedQuantity < i.systemQuantity);
         const surpluses = controlledItems.filter(i => i.countedQuantity > i.systemQuantity);
@@ -315,50 +277,32 @@ export default function CyclicInventoryDetail() {
             return;
         }
 
-        // Update status of controlled items to adjusted, BUT KEEP pending items
-        const updatedItems = items.map(item => {
-            if (item.status === 'controlled') {
-                return { ...item, status: 'adjusted' as const };
-            }
-            return item;
-        });
-
-        setItems(updatedItems);
-
-        // Determine lab status based on remaining pending items
-        const hasPending = updatedItems.some(i => i.status === 'pending');
-        const labStatus = hasPending ? 'por_controlar' : 'controlado';
-
-        // Save status data
-        const statusData = {
-            status: labStatus,
-            lastUpdated: Date.now(),
-            shortageId,
-            surplusId,
-            items: updatedItems
-        };
-
-        localStorage.setItem(`cyclic_inventory_status_${labName}`, JSON.stringify(statusData));
-
-        // Queue for sync
-        import('@/services/OfflineQueue').then(({ OfflineQueue }) => {
-            OfflineQueue.enqueue('SAVE_INVENTORY', {
-                labName,
-                shortageId,
-                surplusId,
-                items: updatedItems
+        setIsSaving(true);
+        try {
+            // Update status of controlled items to adjusted, BUT KEEP pending items
+            const updatedItems = items.map(item => {
+                if (item.status === 'controlled') {
+                    return { ...item, status: 'adjusted' as const };
+                }
+                return item;
             });
 
-            if (!navigator.onLine) {
-                toast.info("Guardado en cola. Se sincronizará cuando recuperes la conexión.");
-            } else {
-                toast.success("Ajustes guardados correctamente.");
-            }
-        });
+            setItems(updatedItems);
 
-        setShowSaveDialog(false);
-        setShortageId("");
-        setSurplusId("");
+            // Save to Cloud
+            await cyclicInventoryService.saveInventory(labName, updatedItems);
+
+            toast.success("Inventario finalizado y guardado en la nube.");
+            setShowSaveDialog(false);
+            setShortageId("");
+            setSurplusId("");
+
+        } catch (error) {
+            console.error("Error saving inventory:", error);
+            toast.error("Error al guardar en la nube.");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     // Calculate values for the dialog
@@ -487,13 +431,17 @@ export default function CyclicInventoryDetail() {
         toast.success('Reporte PDF generado');
     };
 
-    const handleResetData = () => {
-        if (confirm("¿Estás seguro de que quieres reiniciar los datos de este laboratorio? Se perderán los cambios no guardados.")) {
-            localStorage.removeItem(`cyclic_inventory_${labName}`);
-            localStorage.removeItem(`cyclic_inventory_status_${labName}`);
-            setItems([]);
-            toast.success("Datos reiniciados correctamente.");
-            navigate('/cyclic-inventory');
+    const handleResetData = async () => {
+        if (confirm("¿Estás seguro de que quieres reiniciar los datos de este laboratorio? Se borrarán de la nube.")) {
+            try {
+                await cyclicInventoryService.deleteInventory(labName);
+                setItems([]);
+                toast.success("Datos reiniciados correctamente.");
+                navigate('/cyclic-inventory');
+            } catch (error) {
+                console.error("Error resetting data:", error);
+                toast.error("Error al reiniciar datos.");
+            }
         }
     };
 
@@ -516,181 +464,199 @@ export default function CyclicInventoryDetail() {
                 </div>
             </div>
 
-            {/* Upload Section (if empty) */}
-            {items.length === 0 ? (
-                <Card className="p-12 border-dashed border-2 flex flex-col items-center justify-center text-center space-y-4 bg-muted/20">
-                    <div className="p-4 bg-primary/10 rounded-full">
-                        <Upload className="w-8 h-8 text-primary" />
-                    </div>
-                    <div>
-                        <h3 className="text-lg font-semibold">Cargar Archivo de Inventario</h3>
-                        <p className="text-muted-foreground max-w-md mx-auto mt-2">
-                            Sube el archivo Excel (.xlsx) descargado del sistema para comenzar el control de {labName}.
-                        </p>
-                    </div>
-                    <div className="relative">
-                        <Button disabled={isLoading}>
-                            {isLoading ? 'Procesando...' : 'Seleccionar Archivo'}
-                        </Button>
-                        <Input
-                            type="file"
-                            accept=".xlsx, .xls"
-                            className="absolute inset-0 opacity-0 cursor-pointer"
-                            onChange={handleFileUpload}
-                            disabled={isLoading}
-                        />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-4">
-                        Columnas requeridas: C (EAN), D (Producto), E (Cantidad), O (Laboratorio), J (Rubro)
-                    </p>
-                </Card>
-            ) : (
-                /* Inventory Lists */
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Stats Cards */}
-                    <div className="lg:col-span-3 grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {/* Total Items Card REMOVED as per request */}
-
-                        <Card className="p-4 flex flex-col items-center justify-center bg-warning/5 border-warning/20">
-                            <span className="text-muted-foreground text-xs uppercase font-bold">Pendientes</span>
-                            <span className="text-2xl font-bold text-warning">
-                                <CounterAnimation value={items.filter(i => i.status === 'pending').length} />
-                            </span>
-                        </Card>
-                        <Card className="p-4 flex flex-col items-center justify-center bg-success/5 border-success/20">
-                            <span className="text-muted-foreground text-xs uppercase font-bold">Controlados</span>
-                            <span className="text-2xl font-bold text-success">
-                                <CounterAnimation value={items.filter(i => i.status === 'controlled').length} />
-                            </span>
-                        </Card>
-                        <Card className="p-4 flex flex-col items-center justify-center bg-blue-500/5 border-blue-500/20">
-                            <span className="text-muted-foreground text-xs uppercase font-bold">Ajustados</span>
-                            <span className="text-2xl font-bold text-blue-500">
-                                <CounterAnimation value={items.filter(i => i.status === 'adjusted').length} />
-                            </span>
-                        </Card>
-                        <Card className="p-4 flex flex-col items-center justify-center">
-                            <span className="text-muted-foreground text-xs uppercase font-bold">Avance</span>
-                            <span className="text-2xl font-bold">
-                                <CounterAnimation value={Math.round((items.filter(i => i.status === 'controlled' || i.status === 'adjusted').length / items.length) * 100)} />%
-                            </span>
-                        </Card>
-                    </div>
-
-                    {/* Main Content */}
-                    <div className="lg:col-span-3">
-                        <div className="flex flex-col md:flex-row gap-4 mb-4">
-                            <div className="relative flex-1">
-                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                                <Input
-                                    placeholder="Buscar por nombre o EAN..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="pl-9"
-                                />
-                            </div>
-                            <div className="flex items-center space-x-2 bg-card p-2 rounded-lg border">
-                                <Switch
-                                    id="diff-mode"
-                                    checked={showDifferencesOnly}
-                                    onCheckedChange={setShowDifferencesOnly}
-                                />
-                                <Label htmlFor="diff-mode" className="cursor-pointer">Solo Diferencias</Label>
-                            </div>
-                            <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={handleResetData}
-                                className="ml-2"
-                            >
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Reiniciar Datos
-                            </Button>
-                        </div>
-
-                        {/* Category Tabs (Rubros) */}
-                        <div className="mb-6 overflow-x-auto pb-2">
-                            <div className="flex gap-2">
-                                {CATEGORIES.map(cat => (
-                                    <Button
-                                        key={cat}
-                                        variant={currentCategory === cat ? "default" : "outline"}
-                                        onClick={() => setCurrentCategory(cat)}
-                                        className={cn(
-                                            "rounded-full px-6 transition-all",
-                                            currentCategory === cat ? "shadow-md" : "opacity-70 hover:opacity-100"
-                                        )}
-                                    >
-                                        {cat}
-                                    </Button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <Tabs defaultValue="pending" className="w-full">
-                            <TabsList className="grid w-full grid-cols-3 mb-4">
-                                <TabsTrigger value="pending" className="relative">
-                                    Pendientes ({currentCategory})
-                                    {pendingItems.length > 0 && (
-                                        <span className="ml-2 bg-warning text-warning-foreground text-[10px] px-1.5 py-0.5 rounded-full">
-                                            {pendingItems.length}
-                                        </span>
-                                    )}
-                                </TabsTrigger>
-                                <TabsTrigger value="controlled">
-                                    Controlados
-                                    {controlledItems.length > 0 && (
-                                        <span className="ml-2 bg-success text-success-foreground text-[10px] px-1.5 py-0.5 rounded-full">
-                                            {controlledItems.length}
-                                        </span>
-                                    )}
-                                </TabsTrigger>
-                                <TabsTrigger value="adjusted">
-                                    Ajustados
-                                    {adjustedItems.length > 0 && (
-                                        <span className="ml-2 bg-blue-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
-                                            {adjustedItems.length}
-                                        </span>
-                                    )}
-                                </TabsTrigger>
-                            </TabsList>
-
-                            <TabsContent value="pending" className="space-y-4">
-                                <Alert className="bg-muted/50 border-none mb-4">
-                                    <Info className="h-4 w-4" />
-                                    <AlertTitle>Instrucciones</AlertTitle>
-                                    <AlertDescription>
-                                        Desliza a la derecha para confirmar (verde) o a la izquierda para reportar diferencia (naranja).
-                                    </AlertDescription>
-                                </Alert>
-                                <CyclicInventoryList
-                                    items={pendingItems}
-                                    onUpdateQuantity={handleUpdateQuantity}
-                                    onCheck={handleCheck}
-                                />
-                            </TabsContent>
-
-                            <TabsContent value="controlled" className="space-y-4">
-                                <CyclicInventoryList
-                                    items={controlledItems}
-                                    onUpdateQuantity={handleUpdateQuantity}
-                                    onCheck={handleCheck}
-                                    onRevert={handleRevertItem}
-                                    readOnly={false}
-                                />
-                            </TabsContent>
-
-                            <TabsContent value="adjusted" className="space-y-4">
-                                <CyclicInventoryList
-                                    items={adjustedItems}
-                                    onUpdateQuantity={() => { }} // Read only mostly
-                                    onCheck={() => { }}
-                                    readOnly={true}
-                                />
-                            </TabsContent>
-                        </Tabs>
-                    </div>
+            {/* Loading State */}
+            {isLoading ? (
+                <div className="flex flex-col items-center justify-center h-64 space-y-4">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                    <p className="text-muted-foreground">Cargando inventario desde la nube...</p>
                 </div>
+            ) : (
+                <>
+                    {/* Upload Section (if empty) */}
+                    {items.length === 0 ? (
+                        <Card className="p-12 border-dashed border-2 flex flex-col items-center justify-center text-center space-y-4 bg-muted/20">
+                            <div className="p-4 bg-primary/10 rounded-full">
+                                <Upload className="w-8 h-8 text-primary" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-semibold">Cargar Archivo de Inventario</h3>
+                                <p className="text-muted-foreground max-w-md mx-auto mt-2">
+                                    Sube el archivo Excel (.xlsx) descargado del sistema para comenzar el control de {labName}.
+                                </p>
+                            </div>
+                            <div className="relative">
+                                <Button disabled={isLoading}>
+                                    {isLoading ? 'Procesando...' : 'Seleccionar Archivo'}
+                                </Button>
+                                <Input
+                                    type="file"
+                                    accept=".xlsx, .xls"
+                                    className="absolute inset-0 opacity-0 cursor-pointer"
+                                    onChange={handleFileUpload}
+                                    disabled={isLoading}
+                                />
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-4">
+                                Columnas requeridas: C (EAN), D (Producto), E (Cantidad), O (Laboratorio), J (Rubro)
+                            </p>
+                        </Card>
+                    ) : (
+                        /* Inventory Lists */
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* Stats Cards */}
+                            <div className="lg:col-span-3 grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <Card className="p-4 flex flex-col items-center justify-center bg-warning/5 border-warning/20">
+                                    <span className="text-muted-foreground text-xs uppercase font-bold">Pendientes</span>
+                                    <span className="text-2xl font-bold text-warning">
+                                        <CounterAnimation value={items.filter(i => i.status === 'pending').length} />
+                                    </span>
+                                </Card>
+                                <Card className="p-4 flex flex-col items-center justify-center bg-success/5 border-success/20">
+                                    <span className="text-muted-foreground text-xs uppercase font-bold">Controlados</span>
+                                    <span className="text-2xl font-bold text-success">
+                                        <CounterAnimation value={items.filter(i => i.status === 'controlled').length} />
+                                    </span>
+                                </Card>
+                                <Card className="p-4 flex flex-col items-center justify-center bg-blue-500/5 border-blue-500/20">
+                                    <span className="text-muted-foreground text-xs uppercase font-bold">Ajustados</span>
+                                    <span className="text-2xl font-bold text-blue-500">
+                                        <CounterAnimation value={items.filter(i => i.status === 'adjusted').length} />
+                                    </span>
+                                </Card>
+                                <Card className="p-4 flex flex-col items-center justify-center">
+                                    <span className="text-muted-foreground text-xs uppercase font-bold">Avance</span>
+                                    <span className="text-2xl font-bold">
+                                        <CounterAnimation value={Math.round((items.filter(i => i.status === 'controlled' || i.status === 'adjusted').length / items.length) * 100)} />%
+                                    </span>
+                                </Card>
+                            </div>
+
+                            {/* Main Content */}
+                            <div className="lg:col-span-3">
+                                <div className="flex flex-col md:flex-row gap-4 mb-4">
+                                    <div className="relative flex-1">
+                                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                                        <Input
+                                            placeholder="Buscar por nombre o EAN..."
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="pl-9"
+                                        />
+                                    </div>
+                                    <div className="flex items-center space-x-2 bg-card p-2 rounded-lg border">
+                                        <Switch
+                                            id="diff-mode"
+                                            checked={showDifferencesOnly}
+                                            onCheckedChange={setShowDifferencesOnly}
+                                        />
+                                        <Label htmlFor="diff-mode" className="cursor-pointer">Solo Diferencias</Label>
+                                    </div>
+                                    <Button
+                                        variant="destructive"
+                                        size="sm"
+                                        onClick={handleResetData}
+                                        className="ml-2"
+                                    >
+                                        <Trash2 className="w-4 h-4 mr-2" />
+                                        Reiniciar Datos
+                                    </Button>
+                                    <Button
+                                        variant="default"
+                                        size="sm"
+                                        onClick={handleSaveProgress}
+                                        disabled={isSaving}
+                                        className="ml-2"
+                                    >
+                                        {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                                        Guardar Progreso
+                                    </Button>
+                                </div>
+
+                                {/* Category Tabs (Rubros) */}
+                                <div className="mb-6 overflow-x-auto pb-2">
+                                    <div className="flex gap-2">
+                                        {CATEGORIES.map(cat => (
+                                            <Button
+                                                key={cat}
+                                                variant={currentCategory === cat ? "default" : "outline"}
+                                                onClick={() => setCurrentCategory(cat)}
+                                                className={cn(
+                                                    "rounded-full px-6 transition-all",
+                                                    currentCategory === cat ? "shadow-md" : "opacity-70 hover:opacity-100"
+                                                )}
+                                            >
+                                                {cat}
+                                            </Button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <Tabs defaultValue="pending" className="w-full">
+                                    <TabsList className="grid w-full grid-cols-3 mb-4">
+                                        <TabsTrigger value="pending" className="relative">
+                                            Pendientes ({currentCategory})
+                                            {pendingItems.length > 0 && (
+                                                <span className="ml-2 bg-warning text-warning-foreground text-[10px] px-1.5 py-0.5 rounded-full">
+                                                    {pendingItems.length}
+                                                </span>
+                                            )}
+                                        </TabsTrigger>
+                                        <TabsTrigger value="controlled">
+                                            Controlados
+                                            {controlledItems.length > 0 && (
+                                                <span className="ml-2 bg-success text-success-foreground text-[10px] px-1.5 py-0.5 rounded-full">
+                                                    {controlledItems.length}
+                                                </span>
+                                            )}
+                                        </TabsTrigger>
+                                        <TabsTrigger value="adjusted">
+                                            Ajustados
+                                            {adjustedItems.length > 0 && (
+                                                <span className="ml-2 bg-blue-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
+                                                    {adjustedItems.length}
+                                                </span>
+                                            )}
+                                        </TabsTrigger>
+                                    </TabsList>
+
+                                    <TabsContent value="pending" className="space-y-4">
+                                        <Alert className="bg-muted/50 border-none mb-4">
+                                            <Info className="h-4 w-4" />
+                                            <AlertTitle>Instrucciones</AlertTitle>
+                                            <AlertDescription>
+                                                Desliza a la derecha para confirmar (verde) o a la izquierda para reportar diferencia (naranja).
+                                            </AlertDescription>
+                                        </Alert>
+                                        <CyclicInventoryList
+                                            items={pendingItems}
+                                            onUpdateQuantity={handleUpdateQuantity}
+                                            onCheck={handleCheck}
+                                        />
+                                    </TabsContent>
+
+                                    <TabsContent value="controlled" className="space-y-4">
+                                        <CyclicInventoryList
+                                            items={controlledItems}
+                                            onUpdateQuantity={handleUpdateQuantity}
+                                            onCheck={handleCheck}
+                                            onRevert={handleRevertItem}
+                                            readOnly={false}
+                                        />
+                                    </TabsContent>
+
+                                    <TabsContent value="adjusted" className="space-y-4">
+                                        <CyclicInventoryList
+                                            items={adjustedItems}
+                                            onUpdateQuantity={() => { }} // Read only mostly
+                                            onCheck={() => { }}
+                                            readOnly={true}
+                                        />
+                                    </TabsContent>
+                                </Tabs>
+                            </div>
+                        </div>
+                    )}
+                </>
             )}
 
             {/* Save Dialog */}
@@ -735,7 +701,9 @@ export default function CyclicInventoryDetail() {
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setShowSaveDialog(false)}>Cancelar</Button>
-                        <Button onClick={handleSaveInventory}>Guardar y Finalizar</Button>
+                        <Button onClick={handleSaveInventory} disabled={isSaving}>
+                            {isSaving ? 'Guardando...' : 'Guardar y Finalizar'}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -755,6 +723,13 @@ export default function CyclicInventoryDetail() {
                             onClick: () => setShowSaveDialog(true),
                             variant: 'default',
                             color: 'bg-primary text-primary-foreground'
+                        },
+                        {
+                            label: 'Guardar Progreso',
+                            icon: <Save className="w-5 h-5" />,
+                            onClick: handleSaveProgress,
+                            variant: 'secondary',
+                            color: 'text-blue-600'
                         },
                         {
                             label: 'Exportar PDF',

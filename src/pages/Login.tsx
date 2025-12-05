@@ -43,10 +43,10 @@ export default function Login() {
 
         try {
             if (username && password) {
-                const success = await login(username);
+                const success = await login(username, password);
 
                 if (success) {
-                    toast.success(`¡Bienvenido a Farmaplus ${username.charAt(0).toUpperCase() + username.slice(1)}!`);
+                    toast.success(`¡Bienvenido a Farmaplus ${username.replace(/\./g, ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase())}!`);
 
                     // Asegurar que los productos base estén cargados
                     // La lógica de sucursales ahora se maneja en CyclicInventory via lab_sucu.xlsx
@@ -54,7 +54,7 @@ export default function Login() {
 
                     navigate("/");
                 } else {
-                    toast.error("Credenciales inválidas. Prueba con 'barracas' o 'tribunales'.");
+                    toast.error("Credenciales inválidas. Verifique su usuario y contraseña.");
                 }
             } else {
                 toast.error("Por favor ingresa usuario y contraseña");

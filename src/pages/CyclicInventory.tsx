@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Search, ArrowUpDown, BarChart3, CheckCircle2, AlertCircle, DollarSign, TrendingDown, TrendingUp } from "lucide-react";
+import { Search, ArrowUpDown, BarChart3, CheckCircle2, AlertCircle, DollarSign, TrendingDown, TrendingUp, Loader2 } from "lucide-react";
 import { LaboratoryCard, LaboratoryStatus } from "@/components/LaboratoryCard";
 import { CounterAnimation } from "@/components/CounterAnimation";
 import { MetricCarousel } from "@/components/MetricCarousel";
@@ -14,22 +14,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getLaboratoriesForBranch } from "@/services/preCountDB";
-import { cyclicInventoryService } from "@/services/cyclicInventoryService";
+import { cyclicInventoryService, CyclicInventoryStats } from "@/services/cyclicInventoryService";
 import { useUser } from "@/contexts/UserContext";
 
 type SortOption = "name-asc" | "name-desc" | "value-asc" | "value-desc";
 type FilterCategory = "MEDICAMENTOS" | "PERFUMERIA" | "ACCESORIOS" | "VARIOS";
-
-interface LabData {
-  id: number;
-  name: string;
-  category: string;
-  status: LaboratoryStatus;
-  progress: number;
-  negativeValue: number;
-  positiveValue: number;
-  differenceValue: number;
-}
 
 export default function CyclicInventory() {
   const navigate = useNavigate();
@@ -37,33 +26,61 @@ export default function CyclicInventory() {
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<FilterCategory>("MEDICAMENTOS");
   const [sortBy, setSortBy] = useState<SortOption>("name-asc");
-  const [laboratories, setLaboratories] = useState<LabData[]>([]);
+  const [laboratories, setLaboratories] = useState<CyclicInventoryStats[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadLabs = async () => {
-      if (!user?.branchSheet) return;
+      if (!user?.branchSheet) {
+        setIsLoading(false);
+        return;
+      }
+      setIsLoading(true);
 
-      const allowedLabs = await getLaboratoriesForBranch(user.branchSheet);
+      try {
+        // 1. Get Master List of Labs (Allowed for this branch)
+        const allowedLabs = await getLaboratoriesForBranch(user.branchSheet);
 
-      // Construir lista de laboratorios
-      const labsData: LabData[] = allowedLabs.map((labInfo, index) => {
-        // Obtener datos desde el servicio
-        const items = cyclicInventoryService.getLabInventory(labInfo.name);
-        const stats = cyclicInventoryService.calculateStats(items);
+        // 2. Get Current Inventory Status from Supabase (Filtered by branch)
+        const inventoryStats = await cyclicInventoryService.getAllCyclicInventories(user.branchSheet);
+        const statsMap = new Map(inventoryStats.map(s => [s.labName, s]));
 
-        return {
-          id: index,
-          name: labInfo.name,
-          category: labInfo.category,
-          status: stats.status,
-          progress: stats.progress,
-          negativeValue: stats.negative,
-          positiveValue: stats.positive,
-          differenceValue: stats.net
-        };
-      });
+        // 3. Merge Data
+        const mergedData: CyclicInventoryStats[] = allowedLabs.map(labInfo => {
+          const existingStats = statsMap.get(labInfo.name);
 
-      setLaboratories(labsData);
+          if (existingStats) {
+            return {
+              ...existingStats,
+              category: labInfo.category // Ensure category matches master list
+            };
+          }
+
+          // Default empty state for labs not yet started
+          return {
+            labName: labInfo.name,
+            category: labInfo.category,
+            status: 'pendiente',
+            totalItems: 0,
+            controlledItems: 0,
+            progress: 0,
+            negativeValue: 0,
+            positiveValue: 0,
+            netValue: 0,
+            differenceValue: 0,
+            totalSystemUnits: 0,
+            negativeUnits: 0,
+            positiveUnits: 0,
+            netUnits: 0
+          };
+        });
+
+        setLaboratories(mergedData);
+      } catch (error) {
+        console.error("Error loading laboratories:", error);
+      } finally {
+        setIsLoading(false);
+      }
     };
 
     loadLabs();
@@ -81,6 +98,24 @@ export default function CyclicInventory() {
   const totalNegative = currentViewLabs.reduce((acc, curr) => acc + curr.negativeValue, 0);
   const totalPositive = currentViewLabs.reduce((acc, curr) => acc + curr.positiveValue, 0);
 
+  // Calculate Unit Totals for Trend percentages
+  const totalSystemUnits = currentViewLabs.reduce((acc, curr) => acc + curr.totalSystemUnits, 0);
+  const totalNegativeUnits = currentViewLabs.reduce((acc, curr) => acc + curr.negativeUnits, 0);
+  const totalPositiveUnits = currentViewLabs.reduce((acc, curr) => acc + curr.positiveUnits, 0);
+
+  const calculateTrend = (value: number, total: number) => {
+    if (total === 0) return { value: 0, isPositive: true };
+    const percentage = (value / total) * 100;
+    return {
+      value: Math.abs(Number(percentage.toFixed(1))),
+      isPositive: percentage >= 0
+    };
+  };
+
+  const netTrend = calculateTrend(totalNegativeUnits + totalPositiveUnits, totalSystemUnits);
+  const negativeTrend = calculateTrend(totalNegativeUnits, totalSystemUnits);
+  const positiveTrend = calculateTrend(totalPositiveUnits, totalSystemUnits);
+
   const progressPercentage = totalLabs > 0 ? Math.round((controlledLabs / totalLabs) * 100) : 0;
 
   const filteredAndSortedLabs = useMemo(() => {
@@ -89,7 +124,7 @@ export default function CyclicInventory() {
     // Filter by search term
     if (searchTerm) {
       result = result.filter((lab) =>
-        lab.name.toLowerCase().includes(searchTerm.toLowerCase())
+        lab.labName.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -100,9 +135,9 @@ export default function CyclicInventory() {
     result.sort((a, b) => {
       switch (sortBy) {
         case "name-asc":
-          return a.name.localeCompare(b.name);
+          return a.labName.localeCompare(b.labName);
         case "name-desc":
-          return b.name.localeCompare(a.name);
+          return b.labName.localeCompare(a.labName);
         case "value-asc":
           return a.differenceValue - b.differenceValue;
         case "value-desc":
@@ -125,6 +160,14 @@ export default function CyclicInventory() {
   };
 
   const categories: FilterCategory[] = ["MEDICAMENTOS", "PERFUMERIA", "ACCESORIOS", "VARIOS"];
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
@@ -171,7 +214,8 @@ export default function CyclicInventory() {
               value: totalDifference,
               color: totalDifference < 0 ? "text-destructive" : totalDifference > 0 ? "text-success" : "text-foreground",
               icon: DollarSign,
-              prefix: "$"
+              prefix: "$",
+              trend: netTrend
             },
             {
               id: "negative",
@@ -179,7 +223,8 @@ export default function CyclicInventory() {
               value: totalNegative,
               color: "text-destructive",
               icon: TrendingDown,
-              prefix: "$"
+              prefix: "$",
+              trend: negativeTrend
             },
             {
               id: "positive",
@@ -187,7 +232,8 @@ export default function CyclicInventory() {
               value: totalPositive,
               color: "text-success",
               icon: TrendingUp,
-              prefix: "$"
+              prefix: "$",
+              trend: positiveTrend
             }
           ]}
         />
@@ -250,14 +296,14 @@ export default function CyclicInventory() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {filteredAndSortedLabs.map((lab) => (
           <LaboratoryCard
-            key={lab.id}
-            name={lab.name}
+            key={lab.labName}
+            name={lab.labName}
             negativeValue={lab.negativeValue}
             positiveValue={lab.positiveValue}
             differenceValue={lab.differenceValue}
             status={lab.status}
             progress={lab.progress}
-            onClick={() => navigate(`/cyclic-inventory/${encodeURIComponent(lab.name)}`)}
+            onClick={() => navigate(`/cyclic-inventory/${encodeURIComponent(lab.labName)}`)}
           />
         ))}
       </div>

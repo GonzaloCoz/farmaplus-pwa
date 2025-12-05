@@ -92,7 +92,7 @@ export function MetricCarousel({ items, className }: MetricCarouselProps) {
     const highlightPoint = chartPoints[highlightIndex];
 
     return (
-        <Card className={`relative overflow-hidden group ${className} min-h-[160px] flex flex-col`}>
+        <Card className={`relative overflow-hidden group ${className} h-full min-h-[160px] flex flex-col`}>
             {/* Info Overlay */}
             <AnimatePresence>
                 {showInfo && (

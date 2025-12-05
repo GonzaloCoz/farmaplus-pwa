@@ -38,14 +38,17 @@ export function CategoryProgressWidget() {
 
     useEffect(() => {
         const loadData = async () => {
-            if (!user?.branchSheet) return;
+            if (!user?.branchSheet) {
+                setLoading(false);
+                return;
+            }
 
             try {
                 // 1. Get Master List of Labs (Source of Truth for Totals)
                 const allLabs = await getLaboratoriesForBranch(user.branchSheet);
 
                 // 2. Get Current Statuses
-                const inventories = cyclicInventoryService.getAllCyclicInventories();
+                const inventories = await cyclicInventoryService.getAllCyclicInventories(user.branchSheet) || [];
                 const labStatusMap = new Map(inventories.map(i => [i.labName, i.status]));
 
                 // Initialize categories

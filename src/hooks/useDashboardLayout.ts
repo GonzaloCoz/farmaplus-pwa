@@ -228,14 +228,31 @@ const DEFAULT_WIDGETS: Widget[] = [
 ];
 
 export function useDashboardLayout(userId?: string) {
-    const storageKey = `dashboard-layout-${userId || 'default'}`;
+    const storageKey = `dashboard-layout-v2-${userId || 'default'}`;
 
     const [widgets, setWidgets] = useState<Widget[]>(() => {
         try {
             const saved = localStorage.getItem(storageKey);
             if (saved) {
                 const layout: DashboardLayout = JSON.parse(saved);
-                return layout.widgets;
+                // Merge saved state (visibility, order) with default config (icons, titles)
+                // This is crucial because functions (icons) are not preserved in JSON
+                const mergedWidgets = DEFAULT_WIDGETS.map(defaultWidget => {
+                    const savedWidget = layout.widgets.find(w => w.id === defaultWidget.id);
+                    if (savedWidget) {
+                        return {
+                            ...defaultWidget,
+                            visible: savedWidget.visible,
+                            order: savedWidget.order,
+                            // Ensure mandatory widgets are always visible
+                            ...(defaultWidget.mandatory ? { visible: true } : {})
+                        };
+                    }
+                    return defaultWidget;
+                });
+
+                // Sort by order
+                return mergedWidgets.sort((a, b) => a.order - b.order);
             }
         } catch (error) {
             console.error('Error loading dashboard layout:', error);
@@ -246,9 +263,16 @@ export function useDashboardLayout(userId?: string) {
     const [isEditMode, setIsEditMode] = useState(false);
 
     // Guardar en localStorage cuando cambien los widgets
+    // We only need to save the serializable parts (id, visible, order)
     useEffect(() => {
-        const layout: DashboardLayout = {
-            widgets,
+        const serializableWidgets = widgets.map(({ id, visible, order }) => ({
+            id,
+            visible,
+            order
+        }));
+
+        const layout = {
+            widgets: serializableWidgets,
             lastUpdated: Date.now()
         };
         localStorage.setItem(storageKey, JSON.stringify(layout));
@@ -282,6 +306,16 @@ export function useDashboardLayout(userId?: string) {
         setIsEditMode(false);
     };
 
+    // Self-healing: Ensure widgets are valid (have titles and icons)
+    // This handles cases where HMR or bad localStorage data corrupts the state
+    useEffect(() => {
+        const isValid = widgets.every(w => w.title && w.icon);
+        if (!isValid) {
+            console.warn('Detected corrupted widget state, resetting to defaults');
+            setWidgets(DEFAULT_WIDGETS);
+        }
+    }, [widgets]);
+
     // Obtener widgets visibles ordenados
     const visibleWidgets = widgets
         .filter((w) => w.visible)
@@ -290,7 +324,7 @@ export function useDashboardLayout(userId?: string) {
     // Obtener widgets ocultos
     const hiddenWidgets = widgets
         .filter((w) => !w.visible)
-        .sort((a, b) => a.title.localeCompare(b.title));
+        .sort((a, b) => (a.title || '').localeCompare(b.title || ''));
 
     return {
         widgets,

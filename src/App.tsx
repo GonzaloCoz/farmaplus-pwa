@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes, Outlet, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, Outlet, useLocation, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, lazy, Suspense } from "react";
 import { AnimatePresence } from "framer-motion";
@@ -10,7 +10,7 @@ import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { PageTransition } from "@/components/PageTransition";
 import { SnackbarProvider } from "@/contexts/SnackbarContext";
-import { UserProvider } from "@/contexts/UserContext";
+import { UserProvider, useUser } from "@/contexts/UserContext";
 
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 import { loadDefaultData } from "@/services/preCountDB";
@@ -32,10 +32,20 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
 
-// Componente de loading optimizado
+// Componente para proteger rutas
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, isLoading } = useUser();
 
+  if (isLoading) {
+    return <DashboardSkeleton />;
+  }
 
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
 
+  return <>{children}</>;
+};
 
 const AppRoutes = () => {
   const location = useLocation();
@@ -53,7 +63,13 @@ const AppRoutes = () => {
             </Suspense>
           }
         />
-        <Route element={<AppLayout />}>
+        <Route
+          element={
+            <ProtectedRoute>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
           <Route
             path="/"
             element={
@@ -206,9 +222,9 @@ const App = () => {
             <Sonner />
             <OfflineIndicator />
             <InstallPrompt />
-            <BrowserRouter basename="/farmaplus-pwa/">
+            <MemoryRouter>
               <AppRoutes />
-            </BrowserRouter>
+            </MemoryRouter>
           </SnackbarProvider>
         </TooltipProvider>
       </UserProvider>

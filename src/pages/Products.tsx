@@ -7,10 +7,11 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useBarcodeHistory } from "@/hooks/use-barcode-history";
 import { BarcodeDisplay } from "@/components/BarcodeDisplay";
-import { Copy, Printer, Barcode, Search, ArrowLeft, Filter, X } from "lucide-react";
+import { Copy, Printer, Barcode, Search, ArrowLeft, Filter, X, Upload } from "lucide-react";
 import { ProductImageHover } from "@/components/ProductImageHover";
 import { useNavigate } from 'react-router-dom';
-import { getAllProducts, Product } from '@/services/preCountDB';
+import { getAllProducts, Product, addProducts } from '@/services/preCountDB';
+import * as XLSX from 'xlsx';
 import {
   Table,
   TableBody,
@@ -143,6 +144,98 @@ export default function Products() {
     setOpen(true);
   };
 
+  // --- Bulk Upload Logic ---
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setLoading(true);
+      const reader = new FileReader();
+
+      reader.onload = async (evt) => {
+        try {
+          const bstr = evt.target?.result;
+          const wb = XLSX.read(bstr, { type: 'binary' });
+          const wsname = wb.SheetNames[0];
+          const ws = wb.Sheets[wsname];
+          const data = XLSX.utils.sheet_to_json(ws, { header: "A" });
+
+          const newProducts: Product[] = [];
+
+          for (let i = 1; i < data.length; i++) {
+            const row: any = data[i];
+            // Adjust these column keys based on your specific Excel format
+            // Assuming standard format: D=Name, O=Lab, Q=EANs, J=Category, L=Cost
+            const rawName = row["D"];
+            const rawEans = row["Q"];
+
+            if (!rawName || !rawEans) continue;
+
+            const name = String(rawName).trim();
+            const laboratory = row["O"] ? String(row["O"]).trim() : undefined;
+            const category = row["J"] ? String(row["J"]).trim().toUpperCase() : undefined;
+            const cost = row["L"] ? Number(row["L"]) : 0;
+
+            const eanString = String(rawEans).trim();
+            const eanList = eanString.split('-').map(e => e.trim()).filter(e => e.length > 0);
+
+            eanList.forEach(ean => {
+              newProducts.push({
+                ean,
+                name,
+                laboratory,
+                category,
+                cost,
+                salePrice: 0, // Default or map if available
+                stock: 0
+              });
+            });
+          }
+
+          // Deduplicate products by EAN to prevent "ON CONFLICT DO UPDATE command cannot affect row a second time"
+          const uniqueProductsMap = new Map();
+          newProducts.forEach(p => {
+            if (!uniqueProductsMap.has(p.ean)) {
+              uniqueProductsMap.set(p.ean, p);
+            }
+          });
+          const uniqueProducts = Array.from(uniqueProductsMap.values());
+
+          if (uniqueProducts.length > 0) {
+            // Upload in chunks
+            const chunkSize = 1000;
+            for (let i = 0; i < uniqueProducts.length; i += chunkSize) {
+              const chunk = uniqueProducts.slice(i, i + chunkSize);
+              await addProducts(chunk);
+            }
+
+            toast.success(`${uniqueProducts.length} productos actualizados correctamente.`);
+            // Reload products
+            const updatedData = await getAllProducts();
+            setProducts(updatedData);
+          } else {
+            toast.warning("No se encontraron productos válidos en el archivo.");
+          }
+
+        } catch (error: any) {
+          console.error("Error processing file:", error);
+          toast.error(`Error: ${error.message || 'Error desconocido al procesar el archivo'}`);
+        } finally {
+          setLoading(false);
+          // Reset input
+          e.target.value = '';
+        }
+      };
+
+      reader.readAsBinaryString(file);
+
+    } catch (error) {
+      console.error("Upload error:", error);
+      setLoading(false);
+    }
+  };
+
   return (
     <motion.div
       className="flex flex-col h-full"
@@ -150,6 +243,31 @@ export default function Products() {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4 }}
     >
+      {/* Header with Actions */}
+      <div className="flex items-center justify-between p-6 pb-0">
+        <h1 className="text-2xl font-bold tracking-tight">Productos</h1>
+        <div className="flex gap-2">
+          <div className="relative">
+            <Button variant="outline" disabled={loading} onClick={() => document.getElementById('product-upload')?.click()}>
+              <Upload className="w-4 h-4 mr-2" />
+              {loading ? 'Cargando...' : 'Importar Excel'}
+            </Button>
+            <Input
+              id="product-upload"
+              type="file"
+              accept=".xlsx, .xls"
+              className="hidden"
+              onChange={handleFileUpload}
+              disabled={loading}
+            />
+          </div>
+          <Button onClick={() => setOpen(true)}>
+            <Barcode className="w-4 h-4 mr-2" />
+            Generar EAN
+          </Button>
+        </div>
+      </div>
+
       {/* Content */}
       <div className="flex-1 overflow-auto p-6">
         <div className="border rounded-xl overflow-hidden bg-card shadow-sm">

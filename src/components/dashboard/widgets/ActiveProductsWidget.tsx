@@ -32,7 +32,7 @@ export function ActiveProductsWidget({ activeProducts }: ActiveProductsWidgetPro
                         </div>
                     );
                 })()}
-                <p className="text-xs text-muted-foreground">En inventarios cíclicos</p>
+                <p className="text-xs text-muted-foreground">Total en base de datos</p>
             </CardContent>
         </Card>
     );

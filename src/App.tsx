@@ -13,7 +13,7 @@ import { SnackbarProvider } from "@/contexts/SnackbarContext";
 import { UserProvider, useUser } from "@/contexts/UserContext";
 
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
-import { loadDefaultData } from "@/services/preCountDB";
+import { loadDefaultData, initDB } from "@/services/preCountDB";
 
 // Lazy load de todas las páginas para reducir bundle inicial
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -214,12 +214,17 @@ const App = () => {
   useEffect(() => {
     // Intentar cargar datos por defecto al iniciar
     // Deferir la carga para no bloquear el render inicial
-    const timer = setTimeout(() => {
-      loadDefaultData().then(loaded => {
-        if (loaded) {
-          console.log("Base de datos inicializada con archivo por defecto");
-        }
-      });
+    const timer = setTimeout(async () => {
+      try {
+        await initDB(); // Initialize DB first
+        loadDefaultData().then(loaded => {
+          if (loaded) {
+            console.log("Base de datos inicializada con archivo por defecto");
+          }
+        });
+      } catch (error) {
+        console.error("Error initializing DB:", error);
+      }
     }, 1000); // Esperar 1 segundo para asegurar que la UI cargó
 
     return () => clearTimeout(timer);

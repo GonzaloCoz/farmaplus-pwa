@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import {
     ArrowLeft,
@@ -57,6 +58,10 @@ export default function ExpirationControl() {
     const [newBatchNumber, setNewBatchNumber] = useState('');
     const [newBatchExpiry, setNewBatchExpiry] = useState('');
     const [newBatchQuantity, setNewBatchQuantity] = useState('');
+
+    // Finish Modal State
+    const [isFinishModalOpen, setIsFinishModalOpen] = useState(false);
+    const [responsibleName, setResponsibleName] = useState('');
 
     const {
         session,
@@ -159,9 +164,34 @@ export default function ExpirationControl() {
         setNewBatchQuantity('');
     };
 
-    const handleFinish = async () => {
+    const handleFinishClick = () => {
+        setIsFinishModalOpen(true);
+    };
+
+    const handleSaveAndFinish = async () => {
+        if (!responsibleName.trim()) {
+            toast.error("Por favor ingresa el nombre del responsable");
+            return;
+        }
+
+        const reportData = {
+            id: crypto.randomUUID(),
+            sector: session?.sector || sector,
+            date: new Date().toISOString(),
+            responsible: responsibleName,
+            items: items,
+            stats: {
+                totalProducts,
+                totalUnits
+            }
+        };
+
+        const existingReports = JSON.parse(localStorage.getItem('expiration-reports') || '[]');
+        localStorage.setItem('expiration-reports', JSON.stringify([reportData, ...existingReports]));
+
         await finishSession();
-        navigate('/stock');
+        toast.success("Control guardado exitosamente");
+        navigate('/reports');
     };
 
     const formatExpiryDate = (date: string) => {
@@ -363,7 +393,7 @@ export default function ExpirationControl() {
                                 {
                                     label: "Finalizar",
                                     icon: <CheckCircle2 className="w-5 h-5" />,
-                                    onClick: handleFinish,
+                                    onClick: handleFinishClick,
                                     variant: 'default',
                                     color: 'bg-primary text-primary-foreground'
                                 },
@@ -415,12 +445,32 @@ export default function ExpirationControl() {
                                         type="text"
                                         value={newBatchExpiry}
                                         onChange={(e) => {
-                                            // Auto-format MM/AA
-                                            let v = e.target.value.replace(/\D/g, ''); // Remove non-digits
+                                            const input = e.target.value;
+                                            // Allow backspace/deletion seamlessly
+                                            if (input.length < newBatchExpiry.length) {
+                                                setNewBatchExpiry(input);
+                                                return;
+                                            }
+
+                                            let v = input.replace(/\D/g, '');
+
+                                            // Month Validation (01-12)
+                                            if (v.length >= 2) {
+                                                const month = parseInt(v.slice(0, 2));
+                                                if (month === 0 || month > 12) {
+                                                    toast.error("Mes inválido (01-12)");
+                                                    // Don't update state to invalid month part if we want to block
+                                                    // But for UX flow, generally better to let them type but show error, or block.
+                                                    // Blocking 3rd char if month is invalid:
+                                                    v = v.slice(0, 1);
+                                                }
+                                            }
+
                                             if (v.length >= 2) {
                                                 v = v.slice(0, 2) + '/' + v.slice(2, 4);
                                             }
-                                            if (v.length > 5) v = v.slice(0, 5); // Limit to 5 chars (MM/AA)
+
+                                            if (v.length > 5) v = v.slice(0, 5);
                                             setNewBatchExpiry(v);
                                         }}
                                         placeholder="MM/AA"
@@ -496,6 +546,52 @@ export default function ExpirationControl() {
                                 Guardar Todo
                             </Button>
                         </div>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Finish Confirmation Dialog */}
+            <Dialog open={isFinishModalOpen} onOpenChange={setIsFinishModalOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Finalizar Control de Vencimientos</DialogTitle>
+                        <DialogDescription>
+                            Por favor confirma los datos para guardar el reporte.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <Label className="text-xs text-muted-foreground">Fecha</Label>
+                                <div className="font-medium">{new Date().toLocaleDateString()}</div>
+                            </div>
+                            <div>
+                                <Label className="text-xs text-muted-foreground">Hora</Label>
+                                <div className="font-medium">{new Date().toLocaleTimeString()}</div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <Label htmlFor="responsible" className="mb-2 block">Responsable del Control *</Label>
+                            <Input
+                                id="responsible"
+                                value={responsibleName}
+                                onChange={(e) => setResponsibleName(e.target.value)}
+                                placeholder="Nombre y Apellido"
+                                autoFocus
+                            />
+                        </div>
+
+                        <div className="bg-primary/5 p-4 rounded-lg flex justify-between items-center">
+                            <span className="text-sm font-medium">Total Unidades Contadas</span>
+                            <span className="text-2xl font-bold text-primary">{totalUnits}</span>
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsFinishModalOpen(false)}>Cancelar</Button>
+                        <Button onClick={handleSaveAndFinish}>Guardar y Finalizar</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

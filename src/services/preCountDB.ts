@@ -1,5 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import * as XLSX from 'xlsx';
+import { openDB, DBSchema, IDBPDatabase } from 'idb';
+import { BRANCH_NAMES } from '@/config/users';
 
 // Interfaces para los datos
 export interface Product {
@@ -121,8 +123,6 @@ export async function getProductCount(): Promise<number> {
         .from('products')
         .select('*', { count: 'exact', head: true });
 
-    console.log("getProductCount result:", { count, error });
-
     if (error) {
         console.error('Error getting product count:', error);
         return 0;
@@ -213,8 +213,6 @@ export async function loadDefaultData(): Promise<boolean> {
     return false;
 }
 
-import { BRANCH_NAMES } from '@/config/users';
-
 // Helper to parse labs from a worksheet
 function parseSheetLabs(worksheet: XLSX.WorkSheet): { name: string, category: string }[] {
     const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
@@ -243,23 +241,37 @@ function parseSheetLabs(worksheet: XLSX.WorkSheet): { name: string, category: st
     return result;
 }
 
-// Obtener laboratorios permitidos para una sucursal desde lab_sucu.xlsx
-export async function getLaboratoriesForBranch(sheetName: string): Promise<{ name: string, category: string }[]> {
-    try {
-        const response = await fetch('lab_sucu.xlsx');
-        if (!response.ok) return [];
+if (!response.ok) return [];
 
-        const data = await response.arrayBuffer();
-        const workbook = XLSX.read(data);
+const data = await response.arrayBuffer();
+const workbook = XLSX.read(data);
 
-        const targetSheet = workbook.SheetNames.find(s => s.toLowerCase() === sheetName.toLowerCase());
-        if (!targetSheet) return [];
+const targetSheet = workbook.SheetNames.find(s => s.toLowerCase() === sheetName.toLowerCase());
+if (!targetSheet) return [];
+=======
+        const { data, error } = await supabase
+            .from('branch_laboratories')
+            .select('laboratory, category')
+            .eq('branch_name', branchName);
 
-        return parseSheetLabs(workbook.Sheets[targetSheet]).sort((a, b) => a.name.localeCompare(b.name));
+        if (error) {
+            console.error("Error loading laboratories from Supabase:", error);
+            return [];
+        }
+
+        if (!data) return [];
+
+        return data.map(row => ({
+            name: row.laboratory.toUpperCase(),
+            category: (row.category || 'SIN CLASIFICAR').toUpperCase()
+        })).sort((a, b) => a.name.localeCompare(b.name));
+>>>>>>> 9312684 (Fix console errors and improve Expiration Control/Reports)
+
+return parseSheetLabs(workbook.Sheets[targetSheet]).sort((a, b) => a.name.localeCompare(b.name));
     } catch (error) {
-        console.error("Error cargando laboratorios de sucursal:", error);
-        return [];
-    }
+    console.error("Error cargando laboratorios de sucursal:", error);
+    return [];
+}
 }
 
 // Obtener conteo de laboratorios para TODAS las sucursales (Batch)
@@ -277,9 +289,6 @@ export async function getAllBranchLabCounts(): Promise<Record<string, number>> {
         workbook.SheetNames.forEach(s => sheetMap.set(s.toLowerCase().trim(), s));
 
         for (const branch of BRANCH_NAMES) {
-            // Try to find matching sheet
-            // Branch name might differ slightly from sheet name? 
-            // Usually assumes "Tribunales" -> "Tribunales"
             const sheetName = sheetMap.get(branch.toLowerCase().trim());
 
             if (sheetName) {
@@ -297,8 +306,6 @@ export async function getAllBranchLabCounts(): Promise<Record<string, number>> {
 }
 
 // ============ PRE-CONTEO (IndexedDB - Offline First) ============
-
-import { openDB, DBSchema, IDBPDatabase } from 'idb';
 
 interface PreCountDB extends DBSchema {
     sessions: {
@@ -335,26 +342,34 @@ export interface PreCountItem {
 
 let dbPromise: Promise<IDBPDatabase<PreCountDB>>;
 
-export async function initDB() {
-    dbPromise = openDB<PreCountDB>('farmaplus-precount', 1, {
-        upgrade(db) {
-            // Store de Sesiones
-            const sessionStore = db.createObjectStore('sessions', { keyPath: 'id' });
-            sessionStore.createIndex('by-status', 'status');
+// Singleton init
+function getDB() {
+    if (!dbPromise) {
+        dbPromise = openDB<PreCountDB>('farmaplus-precount', 1, {
+            upgrade(db) {
+                // Store de Sesiones
+                const sessionStore = db.createObjectStore('sessions', { keyPath: 'id' });
+                sessionStore.createIndex('by-status', 'status');
 
-            // Store de Items
-            const itemStore = db.createObjectStore('items', { keyPath: 'id' });
-            itemStore.createIndex('by-session', 'sessionId');
-            itemStore.createIndex('by-ean', 'ean');
-        },
-    });
+                // Store de Items
+                const itemStore = db.createObjectStore('items', { keyPath: 'id' });
+                itemStore.createIndex('by-session', 'sessionId');
+                itemStore.createIndex('by-ean', 'ean');
+            },
+        });
+    }
     return dbPromise;
+}
+
+// Ensure initDB is available if explicitly needed, but getDB is preferred
+export async function initDB() {
+    return getDB();
 }
 
 // --- Sesiones ---
 
 export async function createSession(sector: string): Promise<PreCountSession> {
-    const db = await dbPromise;
+    const db = await getDB();
     const session: PreCountSession = {
         id: crypto.randomUUID(),
         sector,
@@ -368,13 +383,13 @@ export async function createSession(sector: string): Promise<PreCountSession> {
 }
 
 export async function getActiveSession(): Promise<PreCountSession | null> {
-    const db = await dbPromise;
+    const db = await getDB();
     const activeSessions = await db.getAllFromIndex('sessions', 'by-status', 'active');
     return activeSessions.length > 0 ? activeSessions[0] : null;
 }
 
 export async function updateSession(id: string, updates: Partial<PreCountSession>): Promise<void> {
-    const db = await dbPromise;
+    const db = await getDB();
     const session = await db.get('sessions', id);
     if (session) {
         await db.put('sessions', { ...session, ...updates });
@@ -388,7 +403,7 @@ export async function endSession(id: string): Promise<void> {
 // --- Items ---
 
 export async function addPreCountItem(item: Omit<PreCountItem, 'id' | 'sessionId' | 'timestamp' | 'synced'> & { sector: string }): Promise<PreCountItem> {
-    const db = await dbPromise;
+    const db = await getDB();
     const activeSession = await getActiveSession();
 
     if (!activeSession) throw new Error("No active session");
@@ -408,7 +423,7 @@ export async function addPreCountItem(item: Omit<PreCountItem, 'id' | 'sessionId
 }
 
 export async function updatePreCountItem(id: string, updates: Partial<PreCountItem>): Promise<void> {
-    const db = await dbPromise;
+    const db = await getDB();
     const item = await db.get('items', id);
     if (item) {
         await db.put('items', { ...item, ...updates });
@@ -416,14 +431,12 @@ export async function updatePreCountItem(id: string, updates: Partial<PreCountIt
 }
 
 export async function deletePreCountItem(id: string): Promise<void> {
-    const db = await dbPromise;
+    const db = await getDB();
     await db.delete('items', id);
 }
 
 export async function getPreCountItemsBySector(sector: string): Promise<PreCountItem[]> {
-    // En este diseño simple, asumimos que la sesión activa define el sector actual.
-    // Buscamos items por sessionId de la sesión activa.
-    const db = await dbPromise;
+    const db = await getDB();
     const activeSession = await getActiveSession();
 
     if (!activeSession || activeSession.sector !== sector) return [];
@@ -432,13 +445,13 @@ export async function getPreCountItemsBySector(sector: string): Promise<PreCount
 }
 
 export async function getUnsyncedItems(): Promise<PreCountItem[]> {
-    const db = await dbPromise;
+    const db = await getDB();
     const allItems = await db.getAll('items');
     return allItems.filter(item => item.synced === 0);
 }
 
 export async function markItemsAsSynced(itemIds: string[]): Promise<void> {
-    const db = await dbPromise;
+    const db = await getDB();
     const tx = db.transaction('items', 'readwrite');
     const store = tx.objectStore('items');
 
@@ -453,15 +466,6 @@ export async function markItemsAsSynced(itemIds: string[]): Promise<void> {
 }
 
 export async function clearProducts(): Promise<void> {
-    const { error } = await supabase
-        .from('products')
-        .delete()
-        .neq('ean', 'placeholder_safety_check');
-
-    // Note: Deleting everything might be restricted by RLS. 
-    // If this fails, we might need a dedicated RPC or administrative rights.
-    // For now, we attempt to delete where 'ean' is not null (effectively all).
-
     // Better approach for "Replace Database" feature:
     // We actually want to delete all products.
     const { error: deleteError } = await supabase
@@ -477,31 +481,22 @@ export async function clearProducts(): Promise<void> {
 
 export async function clearAllData(): Promise<void> {
     try {
-        const db = await dbPromise;
-        if (db) {
-            await db.clear('sessions');
-            await db.clear('items');
-        } else {
-            // Re-init if promise not ready, though unlikely if app is running
-            const newDb = await initDB();
-            await newDb.clear('sessions');
-            await newDb.clear('items');
-        }
+        const db = await getDB();
+        await db.clear('sessions');
+        await db.clear('items');
     } catch (e) {
         console.warn("Error clearing IndexedDB:", e);
     }
 
     localStorage.removeItem('farmaplus_user');
-    // We don't want to clear EVERYTHING from local storage as it might have other preferences
-    // But the user requested "Borrar datos locales", usually implying a reset.
 }
 
 export async function getAllSessions(): Promise<PreCountSession[]> {
-    const db = await dbPromise;
+    const db = await getDB();
     return db.getAll('sessions');
 }
 
 export async function getSessionItems(session: PreCountSession): Promise<PreCountItem[]> {
-    const db = await dbPromise;
+    const db = await getDB();
     return db.getAllFromIndex('items', 'by-session', session.id);
 }

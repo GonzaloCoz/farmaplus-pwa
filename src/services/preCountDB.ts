@@ -241,14 +241,9 @@ function parseSheetLabs(worksheet: XLSX.WorkSheet): { name: string, category: st
     return result;
 }
 
-if (!response.ok) return [];
-
-const data = await response.arrayBuffer();
-const workbook = XLSX.read(data);
-
-const targetSheet = workbook.SheetNames.find(s => s.toLowerCase() === sheetName.toLowerCase());
-if (!targetSheet) return [];
-=======
+// Obtener laboratorios permitidos para una sucursal desde Supabase (branch_laboratories)
+export async function getLaboratoriesForBranch(branchName: string): Promise<{ name: string, category: string }[]> {
+    try {
         const { data, error } = await supabase
             .from('branch_laboratories')
             .select('laboratory, category')
@@ -265,13 +260,11 @@ if (!targetSheet) return [];
             name: row.laboratory.toUpperCase(),
             category: (row.category || 'SIN CLASIFICAR').toUpperCase()
         })).sort((a, b) => a.name.localeCompare(b.name));
->>>>>>> 9312684 (Fix console errors and improve Expiration Control/Reports)
 
-return parseSheetLabs(workbook.Sheets[targetSheet]).sort((a, b) => a.name.localeCompare(b.name));
     } catch (error) {
-    console.error("Error cargando laboratorios de sucursal:", error);
-    return [];
-}
+        console.error("Critical error loading laboratories:", error);
+        return [];
+    }
 }
 
 // Obtener conteo de laboratorios para TODAS las sucursales (Batch)

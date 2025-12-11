@@ -33,6 +33,7 @@ export interface CyclicItem {
     cost: number;
     status: 'pending' | 'controlled' | 'adjusted';
     category?: string;
+    wasReadjusted?: boolean;
 }
 
 export const cyclicInventoryService = {
@@ -46,6 +47,7 @@ export const cyclicInventoryService = {
                     quantity,
                     system_quantity,
                     status,
+                    was_readjusted,
                     products (
                         name,
                         cost,
@@ -69,7 +71,8 @@ export const cyclicInventoryService = {
                 countedQuantity: item.quantity,
                 cost: item.products?.cost || 0,
                 status: item.status as 'pending' | 'controlled' | 'adjusted',
-                category: item.products?.category
+                category: item.products?.category,
+                wasReadjusted: item.was_readjusted
             }));
         } catch (e) {
             console.error(`Error loading inventory for ${labName}`, e);
@@ -90,7 +93,8 @@ export const cyclicInventoryService = {
                 ean: item.ean,
                 quantity: item.countedQuantity,
                 system_quantity: item.systemQuantity,
-                status: item.status
+                status: item.status,
+                was_readjusted: item.wasReadjusted || false
             }));
 
             // Upsert based on branch_name + ean?
@@ -401,7 +405,6 @@ export const cyclicInventoryService = {
 
             // 2. Insert new config
             const { error } = await supabase.from('inventories').insert({
-                branch_name: branchName,
                 laboratory: '_CONFIG_',
                 ean: 'CONFIG_DAYS', // Must match the one created in ensureConfigProduct
                 quantity: days,
@@ -414,5 +417,52 @@ export const cyclicInventoryService = {
             console.error("Error saving branch config:", e);
             throw e;
         }
+    },
+
+    // History System
+    saveAdjustmentHistory: async (
+        branchName: string,
+        labName: string,
+        data: {
+            adjustment_id_shortage: string;
+            adjustment_id_surplus: string;
+            shortage_value: number;
+            surplus_value: number;
+            total_units_adjusted: number;
+            user_name?: string;
+        }
+    ): Promise<void> => {
+        try {
+            const { error } = await supabase.from('inventory_adjustments').insert({
+                branch_name: branchName,
+                laboratory: labName,
+                adjustment_id_shortage: data.adjustment_id_shortage,
+                adjustment_id_surplus: data.adjustment_id_surplus,
+                shortage_value: data.shortage_value,
+                surplus_value: data.surplus_value,
+                total_units_adjusted: data.total_units_adjusted,
+                user_name: data.user_name || 'Desconocido'
+            });
+
+            if (error) throw error;
+        } catch (e) {
+            console.error("Error saving history:", e);
+            throw e;
+        }
+    },
+
+    getAdjustmentHistory: async (branchName: string, labName: string): Promise<any[]> => {
+        const { data, error } = await supabase
+            .from('inventory_adjustments')
+            .select('*')
+            .eq('branch_name', branchName)
+            .eq('laboratory', labName)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error("Error fetching history:", error);
+            return [];
+        }
+        return data;
     }
 };

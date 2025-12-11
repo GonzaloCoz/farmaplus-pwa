@@ -210,29 +210,34 @@ export function MetricCarousel({ items, className }: MetricCarouselProps) {
                         </linearGradient>
                     </defs>
 
-                    {/* Area fill */}
-                    <motion.path
-                        key={`area-${currentIndex}`}
-                        d={`${generatePath(chartPoints)} L 100 50 L 0 50 Z`}
-                        fill={`url(#gradient-${currentIndex})`}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 0.5 }}
-                    />
+                    {/* Render paths only if we have data to prevent invalid 'd' attribute error */}
+                    {chartPoints.length > 0 && (
+                        <>
+                            {/* Area fill */}
+                            <motion.path
+                                key={`area-${currentIndex}`}
+                                d={`${generatePath(chartPoints)} L 100 50 L 0 50 Z`}
+                                fill={`url(#gradient-${currentIndex})`}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ duration: 0.5 }}
+                            />
 
-                    {/* Line stroke */}
-                    <motion.path
-                        key={`line-${currentIndex}`}
-                        d={generatePath(chartPoints)}
-                        fill="none"
-                        stroke={themeColor}
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        initial={{ pathLength: 0 }}
-                        animate={{ pathLength: 1 }}
-                        transition={{ duration: 1.5, ease: "easeInOut" }}
-                    />
+                            {/* Line stroke */}
+                            <motion.path
+                                key={`line-${currentIndex}`}
+                                d={generatePath(chartPoints)}
+                                fill="none"
+                                stroke={themeColor}
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                initial={{ pathLength: 0 }}
+                                animate={{ pathLength: 1 }}
+                                transition={{ duration: 1.5, ease: "easeInOut" }}
+                            />
+                        </>
+                    )}
                 </svg>
 
                 {/* Guide lines and dot */}

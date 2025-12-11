@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Upload, FileSpreadsheet, Download, Save, Search, Info, ScanBarcode, Trash2, ChevronLeft, ChevronRight, Loader2, TrendingUp, TrendingDown, DollarSign, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Upload, Search, Info, Trash2, Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -13,18 +13,15 @@ import { CyclicInventoryList, CyclicItem } from '@/components/CyclicInventoryLis
 import { CounterAnimation } from '@/components/CounterAnimation';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { BarcodeScanner } from '@/components/BarcodeScanner';
 import {
     Dialog,
     DialogContent,
     DialogHeader,
     DialogTitle,
-    DialogFooter,
     DialogDescription,
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Onboarding } from '@/components/Onboarding';
-import { FabMenu, FabAction } from '@/components/FabMenu';
 import { cn } from '@/lib/utils';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { useUser } from '@/contexts/UserContext';
@@ -50,6 +47,16 @@ export default function CyclicInventoryDetail() {
     const [shortageId, setShortageId] = useState("");
     const [surplusId, setSurplusId] = useState("");
 
+    // History State (Moved here as per fix)
+    const [history, setHistory] = useState<any[]>([]);
+
+    // Fetch History
+    useEffect(() => {
+        if (branchName && labName) {
+            cyclicInventoryService.getAdjustmentHistory(branchName, labName).then(setHistory);
+        }
+    }, [branchName, labName]);
+
     useEffect(() => {
         if (id) {
             setLabName(decodeURIComponent(id));
@@ -57,23 +64,42 @@ export default function CyclicInventoryDetail() {
     }, [id]);
 
     // Load from Supabase on mount
+    // Load from Supabase on mount
     useEffect(() => {
-        const loadData = async () => {
-            if (labName) {
+        if (labName && branchName !== 'Sucursal Desconocida') {
+            const loadData = async () => {
                 setIsLoading(true);
                 try {
                     const data = await cyclicInventoryService.getLabInventory(branchName, labName);
-                    setItems(data);
+                    // Only set items if we actually got data to prevent overwriting with empty
+                    if (data && data.length > 0) {
+                        setItems(data);
+                    }
                 } catch (error) {
                     console.error("Failed to load inventory:", error);
                     toast.error("Error al cargar el inventario desde la nube.");
                 } finally {
                     setIsLoading(false);
                 }
-            }
-        };
-        loadData();
-    }, [labName]);
+            };
+            loadData();
+        }
+    }, [labName, branchName]);
+
+    // Auto-Save Effect
+    useEffect(() => {
+        // Don't auto-save if empty or offline/unknown branch
+        if (items.length === 0 || !labName || branchName === 'Sucursal Desconocida') return;
+
+        const timeoutId = setTimeout(() => {
+            // Save quietly
+            cyclicInventoryService.saveInventory(branchName, labName, items)
+                .then(() => console.log('Auto-saved'))
+                .catch(err => console.error('Auto-save error', err));
+        }, 2000);
+
+        return () => clearTimeout(timeoutId);
+    }, [items, branchName, labName]);
 
     const filteredItems = useMemo(() => {
         return items.filter(item => {
@@ -100,7 +126,7 @@ export default function CyclicInventoryDetail() {
         (i.category === currentCategory || (!i.category && currentCategory === "Varios")) // Default to Varios if no category
     ), [filteredItems, currentCategory]);
 
-    // Controlled and Adjusted items are GLOBAL (as per user request "remain in all pages")
+    // Controlled and Adjusted items are GLOBAL
     const sortItemsByDifference = (items: CyclicItem[]) => {
         return [...items].sort((a, b) => {
             const diffA = a.countedQuantity - a.systemQuantity;
@@ -155,61 +181,93 @@ export default function CyclicInventoryDetail() {
                 const ws = wb.Sheets[wsname];
                 const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
-                // Start with existing items to preserve history
+                // Start with existing items
                 const finalItems: CyclicItem[] = [...items];
 
-                // Track EANs that are currently active OR adjusted to avoid duplicates
-                const existingEans = new Set(items.map(i => i.ean));
+                // Create a Map to check existing items
+                const eanMap = new Map();
+                finalItems.forEach((item, index) => {
+                    eanMap.set(String(item.ean).trim(), index);
+                });
 
                 // Process file data
                 let addedCount = 0;
+                let updatedCount = 0;
                 let ignoredCount = 0;
 
                 for (let i = 1; i < data.length; i++) {
                     const row: any = data[i];
+                    // Verify row data
                     if (!row || !row[3]) continue;
 
-                    const ean = row[2]?.toString().trim();
+                    // Parse EAN
+                    const rawEan = row[2];
+                    if (!rawEan) continue;
+
+                    const ean = String(rawEan).trim();
                     if (!ean) continue;
 
-                    if (existingEans.has(ean)) {
-                        ignoredCount++;
-                        continue;
-                    }
-
-                    // Parse Category from Column J (Index 9)
+                    // Parse Category
                     let category = row[9]?.toString().trim();
-
-                    // Normalize Category
                     if (category) {
                         if (category === "Medicamento") category = "Medicamentos";
                         if (category === "Perfumeria") category = "Perfumería";
                     }
-
                     if (!category || !CATEGORIES.includes(category)) category = "Varios";
 
-                    // Add new item
+                    // LOGIC: 
+                    // 1. If item is ADJUSTED -> Ignore (don't overwrite finished work).
+                    // 2. If item is PENDING or CONTROLLED -> Update it (in case Excel has corrections).
+                    // 3. If item is NEW -> Add it.
+
+                    if (eanMap.has(ean)) {
+                        const index = eanMap.get(ean);
+                        const existingItem = finalItems[index];
+
+                        if (existingItem.status === 'adjusted') {
+                            ignoredCount++;
+                        } else {
+                            // Update existing non-adjusted item
+                            // Reset countedQuantity to match the new system quantity to avoid "false" differences
+                            finalItems[index] = {
+                                ...existingItem,
+                                name: row[3],
+                                systemQuantity: Number(row[4]) || 0,
+                                countedQuantity: Number(row[4]) || 0, // Reset to match system
+                                cost: Number(row[12]) || 0,
+                                category: category
+                            };
+                            updatedCount++;
+                        }
+                        continue;
+                    }
+
+                    // Add new item as Pending
                     finalItems.push({
                         id: crypto.randomUUID(),
                         ean: ean,
                         name: row[3],
                         systemQuantity: Number(row[4]) || 0,
-                        countedQuantity: Number(row[4]) || 0,
+                        countedQuantity: Number(row[4]) || 0, // Default to system quantity (no diff)
                         cost: Number(row[12]) || 0,
                         status: 'pending',
-                        category: category
+                        category: category,
+                        wasReadjusted: false
                     });
-
-                    existingEans.add(ean);
                     addedCount++;
                 }
 
                 setItems(finalItems);
 
-                if (ignoredCount > 0) {
-                    toast.success(`Procesado. ${addedCount} nuevos, ${ignoredCount} ignorados (ya existentes/ajustados).`);
+                // Save immediately
+                cyclicInventoryService.saveInventory(branchName, labName, finalItems)
+                    .then(() => console.log("Auto-save after upload success"))
+                    .catch(err => console.error("Auto-save failed", err));
+
+                if (addedCount > 0 || updatedCount > 0) {
+                    toast.success(`Carga exitosa: ${addedCount} nuevos, ${updatedCount} actualizados.`);
                 } else {
-                    toast.success(`Archivo procesado. Se agregaron ${addedCount} items nuevos.`);
+                    toast.info(`Sin cambios: ${ignoredCount} productos ya estaban ajustados.`);
                 }
 
             } catch (error) {
@@ -234,10 +292,17 @@ export default function CyclicInventoryDetail() {
                     navigator.vibrate(50);
                 }
 
+                // Logic: 
+                // If it was ALREADY adjusted (finalized previously), then this is a RE-ADJUSTMENT -> set flag.
+                // If it is just 'controlled' (in process), it's a normal correction -> NO flag.
+                const isReadjustment = item.status === 'adjusted';
+
                 return {
                     ...item,
                     countedQuantity: quantity,
-                    status: 'controlled'
+                    // If it was adjusted, keep it adjusted. If pending, make it controlled.
+                    status: item.status === 'adjusted' ? 'adjusted' : 'controlled',
+                    wasReadjusted: isReadjustment ? true : item.wasReadjusted
                 };
             }
             return item;
@@ -315,6 +380,16 @@ export default function CyclicInventoryDetail() {
             // Save to Cloud
             await cyclicInventoryService.saveInventory(branchName, labName, updatedItems);
 
+            // Save History Log
+            await cyclicInventoryService.saveAdjustmentHistory(branchName, labName, {
+                adjustment_id_shortage: shortageId,
+                adjustment_id_surplus: surplusId,
+                shortage_value: shortageValue,
+                surplus_value: surplusValue,
+                total_units_adjusted: controlledItems.length,
+                user_name: user?.name,
+            });
+
             toast.success("Inventario finalizado y guardado en la nube.");
             setShowSaveDialog(false);
             setShortageId("");
@@ -344,123 +419,6 @@ export default function CyclicInventoryDetail() {
     const surplusValue = controlledItems
         .filter(i => i.countedQuantity > i.systemQuantity)
         .reduce((acc, i) => acc + ((i.countedQuantity - i.systemQuantity) * i.cost), 0);
-
-    const handleExportExcel = () => {
-        const exportData = items.map(item => ({
-            'EAN': item.ean,
-            'Producto': item.name,
-            'Laboratorio': labName,
-            'Rubro': item.category || 'Varios',
-            'Cantidad Sistema': item.systemQuantity,
-            'Cantidad Física': item.countedQuantity,
-            'Diferencia': item.countedQuantity - item.systemQuantity,
-            'Costo': item.cost,
-            'Estado': item.status === 'controlled' ? 'CONTROLADO' : (item.status === 'adjusted' ? 'AJUSTADO' : 'PENDIENTE')
-        }));
-
-        const ws = XLSX.utils.json_to_sheet(exportData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Inventario");
-        XLSX.writeFile(wb, `Inventario_${labName}.xlsx`);
-        toast.success('Excel generado');
-    };
-
-    const [showScanner, setShowScanner] = useState(false);
-
-    const handleScan = useCallback((code: string) => {
-        const item = items.find(i => i.ean === code);
-        if (item) {
-            handleUpdateQuantity(item.id, item.countedQuantity + 1);
-            toast.success(`Producto encontrado: ${item.name}`);
-        } else {
-            toast.error(`Producto no encontrado: ${code}`);
-        }
-    }, [items, handleUpdateQuantity]);
-
-    const handleBatchScan = useCallback((codes: string[]) => {
-        let foundCount = 0;
-        let notFoundCount = 0;
-
-        // Create a map of updates to apply all at once
-        const updates = new Map<string, number>();
-
-        // Pre-fill with current quantities
-        items.forEach(i => updates.set(i.id, i.countedQuantity));
-
-        codes.forEach(code => {
-            const item = items.find(i => i.ean === code);
-            if (item) {
-                const currentQty = updates.get(item.id) || 0;
-                updates.set(item.id, currentQty + 1);
-                foundCount++;
-            } else {
-                notFoundCount++;
-            }
-        });
-
-        if (foundCount > 0) {
-            setItems(prev => prev.map(item => {
-                if (updates.has(item.id)) {
-                    const newQty = updates.get(item.id)!;
-                    if (newQty !== item.countedQuantity) {
-                        return { ...item, countedQuantity: newQty, status: 'controlled' };
-                    }
-                }
-                return item;
-            }));
-            toast.success(`Procesados ${foundCount} items correctamente.`);
-        }
-
-        if (notFoundCount > 0) {
-            toast.warning(`${notFoundCount} códigos no encontrados.`);
-        }
-    }, [items]);
-
-    const handleExportPDF = () => {
-        const doc = new jsPDF();
-        doc.setFontSize(16);
-        doc.text(`Inventario Cíclico: ${labName}`, 10, 10);
-        doc.setFontSize(10);
-        doc.text(`Fecha: ${new Date().toLocaleDateString()}`, 10, 18);
-
-        let y = 30;
-        const lineHeight = 10;
-        const pageHeight = doc.internal.pageSize.height;
-
-        // Headers
-        doc.setFont("helvetica", "bold");
-        doc.text("Producto", 10, y);
-        doc.text("Rubro", 80, y);
-        doc.text("Sistema", 100, y);
-        doc.text("Físico", 130, y);
-        doc.text("Dif", 160, y);
-        doc.text("Estado", 180, y);
-        y += lineHeight;
-        doc.setFont("helvetica", "normal");
-
-        items.forEach(item => {
-            if (y > pageHeight - 20) {
-                doc.addPage();
-                y = 20;
-            }
-
-            const diff = item.countedQuantity - item.systemQuantity;
-            doc.text(item.name.substring(0, 35), 10, y);
-            doc.text((item.category || 'Varios').substring(0, 15), 80, y);
-            doc.text(item.systemQuantity.toString(), 100, y);
-            doc.text(item.countedQuantity.toString(), 130, y);
-
-            doc.setTextColor(diff === 0 ? 0 : 255, 0, 0); // Red if diff
-            doc.text(diff.toString(), 160, y);
-            doc.setTextColor(0);
-
-            doc.text(item.status === 'controlled' ? 'OK' : (item.status === 'adjusted' ? 'Ajust' : 'Pend'), 180, y);
-            y += lineHeight;
-        });
-
-        doc.save(`Inventario_${labName}_${new Date().toISOString().split('T')[0]}.pdf`);
-        toast.success('Reporte PDF generado');
-    };
 
     const handleResetData = async () => {
         if (confirm("¿Estás seguro de que quieres reiniciar los datos de este laboratorio? Se borrarán de la nube.")) {
@@ -583,6 +541,20 @@ export default function CyclicInventoryDetail() {
                                         <Label htmlFor="diff-mode" className="cursor-pointer">Solo Diferencias</Label>
                                     </div>
                                     <div className="flex gap-2 ml-auto">
+                                        <div className="relative">
+                                            <Button variant="outline" size="sm" onClick={() => document.getElementById('header-upload-input')?.click()}>
+                                                <Upload className="w-4 h-4 lg:mr-2" />
+                                                <span className="hidden lg:inline">Cargar Excel</span>
+                                            </Button>
+                                            <input
+                                                id="header-upload-input"
+                                                type="file"
+                                                accept=".xlsx, .xls"
+                                                className="hidden"
+                                                onChange={handleFileUpload}
+                                                disabled={isLoading}
+                                            />
+                                        </div>
                                         <Button
                                             variant="destructive"
                                             size="sm"
@@ -623,7 +595,7 @@ export default function CyclicInventoryDetail() {
                                 </div>
 
                                 <Tabs defaultValue="pending" className="w-full">
-                                    <TabsList className="grid w-full grid-cols-3 mb-4">
+                                    <TabsList className="grid w-full grid-cols-4 mb-4">
                                         <TabsTrigger value="pending" className="relative">
                                             Pendientes ({currentCategory})
                                             {pendingItems.length > 0 && (
@@ -647,6 +619,9 @@ export default function CyclicInventoryDetail() {
                                                     {adjustedItems.length}
                                                 </span>
                                             )}
+                                        </TabsTrigger>
+                                        <TabsTrigger value="history">
+                                            Historial
                                         </TabsTrigger>
                                     </TabsList>
 
@@ -678,10 +653,50 @@ export default function CyclicInventoryDetail() {
                                     <TabsContent value="adjusted" className="space-y-4">
                                         <CyclicInventoryList
                                             items={adjustedItems}
-                                            onUpdateQuantity={() => { }} // Read only mostly
-                                            onCheck={() => { }}
-                                            readOnly={true}
+                                            onUpdateQuantity={handleUpdateQuantity}
+                                            onCheck={() => { }} // No check needed for adjusted
+                                            readOnly={false} // Enable editing for readjustments
                                         />
+                                    </TabsContent>
+
+                                    <TabsContent value="history" className="space-y-4">
+                                        {history.length === 0 ? (
+                                            <div className="text-center py-8 text-muted-foreground bg-muted/20 rounded-lg border-dashed border-2">
+                                                No hay historial de ajustes para este laboratorio.
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                {history.map((h: any) => (
+                                                    <Card key={h.id} className="p-4 flex flex-col gap-2">
+                                                        <div className="flex justify-between items-start">
+                                                            <div>
+                                                                <p className="text-sm font-bold text-primary">
+                                                                    {new Date(h.created_at).toLocaleDateString()} {new Date(h.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                </p>
+                                                                <p className="text-xs text-muted-foreground">Por: {h.user_name || 'Desconocido'}</p>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <div className="text-xs font-mono bg-muted px-2 py-1 rounded">
+                                                                    {h.total_units_adjusted} items
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                                                            <div className="bg-destructive/10 p-2 rounded border border-destructive/20">
+                                                                <span className="font-semibold text-destructive block">Faltantes</span>
+                                                                ID: {h.adjustment_id_shortage || '-'}
+                                                                <div className="font-mono mt-1">${Number(h.shortage_value).toLocaleString()}</div>
+                                                            </div>
+                                                            <div className="bg-success/10 p-2 rounded border border-success/20">
+                                                                <span className="font-semibold text-success block">Sobrantes</span>
+                                                                ID: {h.adjustment_id_surplus || '-'}
+                                                                <div className="font-mono mt-1">${Number(h.surplus_value).toLocaleString()}</div>
+                                                            </div>
+                                                        </div>
+                                                    </Card>
+                                                ))}
+                                            </div>
+                                        )}
                                     </TabsContent>
                                 </Tabs>
                             </div>
@@ -730,68 +745,17 @@ export default function CyclicInventoryDetail() {
                             />
                         </div>
                     </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setShowSaveDialog(false)}>Cancelar</Button>
-                        <Button onClick={handleSaveInventory} disabled={isSaving}>
-                            {isSaving ? 'Guardando...' : 'Guardar y Finalizar'}
+                    <div className="flex justify-end gap-2">
+                        <Button variant="outline" onClick={() => setShowSaveDialog(false)}>
+                            Cancelar
                         </Button>
-                    </DialogFooter>
+                        <Button onClick={handleSaveInventory} disabled={isSaving}>
+                            {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                            Confirmar y Finalizar
+                        </Button>
+                    </div>
                 </DialogContent>
             </Dialog>
-            <BarcodeScanner
-                open={showScanner}
-                onOpenChange={setShowScanner}
-                onScan={handleScan}
-                onBatchScan={handleBatchScan}
-            />
-
-            {items.length > 0 && (
-                <FabMenu
-                    actions={[
-                        {
-                            label: 'Finalizar',
-                            icon: <CheckCircle2 className="w-5 h-5" />,
-                            onClick: handleFinalizeClick,
-                            variant: 'default',
-                            color: 'bg-primary text-primary-foreground'
-                        },
-                        {
-                            label: 'Exportar PDF',
-                            icon: <Download className="w-5 h-5" />,
-                            onClick: handleExportPDF,
-                            variant: 'secondary'
-                        },
-                        {
-                            label: 'Exportar Excel',
-                            icon: <FileSpreadsheet className="w-5 h-5" />,
-                            onClick: handleExportExcel,
-                            variant: 'secondary',
-                            color: 'text-green-600'
-                        },
-                        {
-                            label: 'Escanear',
-                            icon: <ScanBarcode className="w-5 h-5" />,
-                            onClick: () => setShowScanner(true),
-                            variant: 'secondary'
-                        },
-                        {
-                            label: 'Cargar Excel',
-                            icon: <Upload className="w-5 h-5" />,
-                            onClick: () => document.getElementById('fab-upload-input')?.click(),
-                            variant: 'secondary'
-                        }
-                    ]}
-                />
-            )}
-            {/* Hidden Input for FAB Upload */}
-            <input
-                id="fab-upload-input"
-                type="file"
-                accept=".xlsx, .xls"
-                className="hidden"
-                onChange={handleFileUpload}
-                disabled={isLoading}
-            />
         </div>
     );
 }

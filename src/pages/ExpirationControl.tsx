@@ -16,7 +16,9 @@ import {
     Calendar,
     Package,
     AlertTriangle,
-    FileText
+    FileText,
+    Bell,
+    BellRing
 } from 'lucide-react';
 import {
     Dialog,
@@ -36,7 +38,7 @@ import { CounterAnimation } from '@/components/CounterAnimation';
 import { FabMenu } from '@/components/FabMenu';
 import { BatchInfo, ExpirationItem } from '@/services/expirationDB';
 import jsPDF from 'jspdf';
-import JsBarcode from 'jsbarcode';
+import { ExpirationEntryModal } from '@/components/ExpirationEntryModal';
 
 type Step = 'config' | 'counting';
 
@@ -53,11 +55,6 @@ export default function ExpirationControl() {
     // Batch Management State
     const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
     const [currentBatches, setCurrentBatches] = useState<BatchInfo[]>([]);
-
-    // New Batch Inputs
-    const [newBatchNumber, setNewBatchNumber] = useState('');
-    const [newBatchExpiry, setNewBatchExpiry] = useState('');
-    const [newBatchQuantity, setNewBatchQuantity] = useState('');
 
     // Finish Modal State
     const [isFinishModalOpen, setIsFinishModalOpen] = useState(false);
@@ -118,51 +115,7 @@ export default function ExpirationControl() {
         setIsBatchModalOpen(true);
     };
 
-    // 3. Gestión de Lotes
-    const handleAddBatch = () => {
-        if (!newBatchNumber.trim()) return toast.error("Falta número de lote");
-        if (!newBatchExpiry.trim()) return toast.error("Falta fecha de vencimiento");
-        if (!newBatchQuantity || Number(newBatchQuantity) <= 0) return toast.error("Cantidad inválida");
 
-        const newBatch: BatchInfo = {
-            batchNumber: newBatchNumber.toUpperCase(),
-            expirationDate: newBatchExpiry,
-            quantity: Number(newBatchQuantity)
-        };
-
-        setCurrentBatches([...currentBatches, newBatch]);
-
-        // Reset inputs
-        setNewBatchNumber('');
-        setNewBatchQuantity('');
-        // Keep expiry? Usually varies. Reset for safety.
-        setNewBatchExpiry('');
-    };
-
-    const handleRemoveBatch = (index: number) => {
-        const updated = [...currentBatches];
-        updated.splice(index, 1);
-        setCurrentBatches(updated);
-    };
-
-    const handleSaveProduct = async () => {
-        if (!selectedProduct) return;
-        if (currentBatches.length === 0) {
-            toast.warning("Debes agregar al menos un lote");
-            return;
-        }
-
-        await addItem(selectedProduct.ean, selectedProduct.name, currentBatches);
-
-        // Close and reset
-        setIsBatchModalOpen(false);
-        setSelectedProduct(null);
-        setManualEAN('');
-        setCurrentBatches([]);
-        setNewBatchNumber('');
-        setNewBatchExpiry('');
-        setNewBatchQuantity('');
-    };
 
     const handleFinishClick = () => {
         setIsFinishModalOpen(true);
@@ -352,6 +305,13 @@ export default function ExpirationControl() {
                                                             {formatExpiryDate(batch.expirationDate)}
                                                             <span className="mx-1 text-muted-foreground">|</span>
                                                             Lote: {batch.batchNumber}
+                                                            {batch.reminderMonths && (
+                                                                <>
+                                                                    <span className="mx-1 text-muted-foreground">|</span>
+                                                                    <BellRing className="w-3 h-3 mr-0.5 text-orange-500" />
+                                                                    {batch.reminderMonths}m
+                                                                </>
+                                                            )}
                                                             <span className="mx-1 text-muted-foreground">|</span>
                                                             <strong>x{batch.quantity}</strong>
                                                         </Badge>
@@ -409,146 +369,30 @@ export default function ExpirationControl() {
                 )}
             </AnimatePresence>
 
-            {/* Batch Modal */}
-            <Dialog open={isBatchModalOpen} onOpenChange={(open) => {
-                if (!open) {
-                    setIsBatchModalOpen(false);
-                    setManualEAN('');
-                    setSelectedProduct(null);
-                    setCurrentBatches([]); // Discard changes if closed without saving
-                }
-            }}>
-                <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>Gestión de Vencimientos</DialogTitle>
-                        <DialogDescription>
-                            {selectedProduct?.name} <br />
-                            <span className="text-xs">EAN: {selectedProduct?.ean}</span>
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="space-y-4 py-2">
-                        {/* New Batch Input Row */}
-                        <div className="p-3 bg-muted/30 rounded-lg space-y-3 border">
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-xs font-medium mb-1 block">Nro. Lote</label>
-                                    <Input
-                                        value={newBatchNumber}
-                                        onChange={(e) => setNewBatchNumber(e.target.value.toUpperCase())}
-                                        placeholder="Ej: A123"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-xs font-medium mb-1 block">Vencimiento</label>
-                                    <Input
-                                        type="text"
-                                        value={newBatchExpiry}
-                                        onChange={(e) => {
-                                            const input = e.target.value;
-                                            // Allow backspace/deletion seamlessly
-                                            if (input.length < newBatchExpiry.length) {
-                                                setNewBatchExpiry(input);
-                                                return;
-                                            }
-
-                                            let v = input.replace(/\D/g, '');
-
-                                            // Month Validation (01-12)
-                                            if (v.length >= 2) {
-                                                const month = parseInt(v.slice(0, 2));
-                                                if (month === 0 || month > 12) {
-                                                    toast.error("Mes inválido (01-12)");
-                                                    // Don't update state to invalid month part if we want to block
-                                                    // But for UX flow, generally better to let them type but show error, or block.
-                                                    // Blocking 3rd char if month is invalid:
-                                                    v = v.slice(0, 1);
-                                                }
-                                            }
-
-                                            if (v.length >= 2) {
-                                                v = v.slice(0, 2) + '/' + v.slice(2, 4);
-                                            }
-
-                                            if (v.length > 5) v = v.slice(0, 5);
-                                            setNewBatchExpiry(v);
-                                        }}
-                                        placeholder="MM/AA"
-                                        maxLength={5}
-                                    />
-                                </div>
-                            </div>
-                            <div className="flex gap-3 items-end">
-                                <div className="flex-1">
-                                    <label className="text-xs font-medium mb-1 block">Cantidad</label>
-                                    <Input
-                                        type="number"
-                                        value={newBatchQuantity}
-                                        onChange={(e) => setNewBatchQuantity(e.target.value)}
-                                        placeholder="0"
-                                    />
-                                </div>
-                                <Button onClick={handleAddBatch} size="default" variant="secondary">
-                                    <Plus className="w-4 h-4 lg:mr-2" />
-                                    <span className="hidden lg:inline">Agregar</span>
-                                </Button>
-                            </div>
-                        </div>
-
-                        {/* List of batches to be added */}
-                        <div className="max-h-[200px] overflow-y-auto space-y-2">
-                            {currentBatches.length === 0 ? (
-                                <p className="text-sm text-center text-muted-foreground py-4">
-                                    No hay lotes cargados para este producto.
-                                </p>
-                            ) : (
-                                currentBatches.map((batch, idx) => (
-                                    <div key={idx} className="flex justify-between items-center p-2 bg-card border rounded shadow-sm">
-                                        <div className="text-sm">
-                                            <span className="font-mono font-bold bg-muted px-1 rounded">{batch.batchNumber}</span>
-                                            <span className="mx-2 text-muted-foreground">•</span>
-                                            <span>{formatExpiryDate(batch.expirationDate)}</span>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <span className="font-bold">x{batch.quantity}</span>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-6 w-6 text-destructive hover:bg-destructive/10"
-                                                onClick={() => handleRemoveBatch(idx)}
-                                            >
-                                                <Trash2 className="w-3 h-3" />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-
-                    <DialogFooter className="flex-col sm:justify-between gap-2">
-                        <div className="text-sm text-muted-foreground self-center">
-                            Total Unidades: {currentBatches.reduce((acc, b) => acc + b.quantity, 0)}
-                        </div>
-                        <div className="flex gap-2 w-full sm:w-auto">
-                            <Button
-                                variant="outline"
-                                className="flex-1 sm:flex-none"
-                                onClick={() => setIsBatchModalOpen(false)}
-                            >
-                                Cancelar
-                            </Button>
-                            <Button
-                                className="flex-1 sm:flex-none"
-                                onClick={handleSaveProduct}
-                                disabled={currentBatches.length === 0}
-                            >
-                                Guardar Todo
-                            </Button>
-                        </div>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            {/* New Batch Modal - REDESIGNED */}
+            <ExpirationEntryModal
+                open={isBatchModalOpen}
+                onOpenChange={(open) => {
+                    setIsBatchModalOpen(open);
+                    if (!open) {
+                        setManualEAN('');
+                        setSelectedProduct(null);
+                        setCurrentBatches([]);
+                    }
+                }}
+                productName={selectedProduct?.name || ''}
+                ean={selectedProduct?.ean || ''}
+                initialBatches={currentBatches}
+                onSave={async (batches) => {
+                    if (selectedProduct) {
+                        await addItem(selectedProduct.ean, selectedProduct.name, batches);
+                        setIsBatchModalOpen(false);
+                        setSelectedProduct(null);
+                        setManualEAN('');
+                        setCurrentBatches([]);
+                    }
+                }}
+            />
 
             {/* Finish Confirmation Dialog */}
             <Dialog open={isFinishModalOpen} onOpenChange={setIsFinishModalOpen}>

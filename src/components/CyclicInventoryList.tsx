@@ -26,6 +26,7 @@ export interface CyclicItem {
     cost: number;
     status: 'pending' | 'controlled' | 'adjusted';
     category?: string;
+    wasReadjusted?: boolean;
 }
 
 interface CyclicInventoryListProps {
@@ -199,6 +200,15 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                                                             <span className="text-[10px] uppercase text-muted-foreground font-semibold">Diferencia</span>
                                                             <Badge variant={diff > 0 ? "default" : "destructive"} className="h-5 px-1.5 text-[10px]">
                                                                 {diff > 0 ? `+${diff}` : diff}
+                                                            </Badge>
+                                                        </div>
+                                                    )}
+
+                                                    {item.wasReadjusted && (
+                                                        <div className="flex flex-col" title="Este producto fue re-ajustado">
+                                                            <span className="text-[10px] uppercase text-muted-foreground font-semibold">Re-Ajuste</span>
+                                                            <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-purple-100 text-purple-700 border-purple-200">
+                                                                <CalculatorIcon className="w-3 h-3 mr-0.5" /> Modif.
                                                             </Badge>
                                                         </div>
                                                     )}

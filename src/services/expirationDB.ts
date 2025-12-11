@@ -28,6 +28,7 @@ export interface BatchInfo {
     batchNumber: string;
     expirationDate: string; // Guardamos como string DD/MM/AAAA o MM/AAAA para flexibilidad
     quantity: number;
+    reminderMonths?: number; // Meses de anticipación para alerta
 }
 
 export interface ExpirationItem {
@@ -176,6 +177,11 @@ export async function deleteExpirationItem(id: string): Promise<void> {
 export async function getExpirationItemsBySession(sessionId: string): Promise<ExpirationItem[]> {
     const db = await initExpirationDB();
     return db.getAllFromIndex('items', 'by-session', sessionId);
+}
+
+export async function getAllExpirationItems(): Promise<ExpirationItem[]> {
+    const db = await initExpirationDB();
+    return db.getAll('items');
 }
 
 // Helper para actualizar totales de la sesión

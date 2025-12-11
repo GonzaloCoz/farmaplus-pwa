@@ -11,6 +11,7 @@ import { useUser } from "@/contexts/UserContext";
 import { useDashboardLayout } from "@/hooks/useDashboardLayout";
 import { WidgetContainer } from "@/components/dashboard/WidgetContainer";
 import { WidgetGallery } from "@/components/dashboard/WidgetGallery";
+import { SmartAnalystWidget } from "@/components/dashboard/widgets/SmartAnalystWidget";
 import { MetricsCarouselWidget } from "@/components/dashboard/widgets/MetricsCarouselWidget";
 import { ActiveProductsWidget } from "@/components/dashboard/widgets/ActiveProductsWidget";
 import { InventorySummaryWidget } from "@/components/dashboard/widgets/InventorySummaryWidget";
@@ -538,9 +539,14 @@ export default function Dashboard() {
         >
           {/* Primera fila: Widgets pequeños (máximo 4) */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Smart Analyst takes a slot here */}
+            <div className="md:col-span-2 lg:col-span-1">
+              <SmartAnalystWidget />
+            </div>
+
             {displayedWidgets
               .filter(w => w.size === 'small')
-              .slice(0, 4)
+              .slice(0, 3)
               .map((widget) => (
                 <WidgetContainer
                   key={widget.id}
@@ -751,101 +757,100 @@ export default function Dashboard() {
                 };
                 setEvents(prev => [...prev, mappedEvent]);
               }}
-            />    isMobile
-              />
-          </div>
-        </DrawerContent>
+            />
+
+          </DrawerContent>
         </Drawer>
-  )
-}
+      )
+      }
 
-{/* Admin Config Dialog */ }
-<Dialog open={showConfigDialog} onOpenChange={(open) => {
-  setShowConfigDialog(open);
-  if (open) {
-    const currentTotal = assignedDays || 90;
-    const standards = [180, 150, 120, 90];
-    // Find largest standard less than or equal to current
-    const foundBase = standards.find(s => s <= currentTotal) || 90;
-    setConfigBranch(user?.branchName || '');
-    setConfigDays(foundBase);
-    setExtensionDays(Math.max(0, currentTotal - foundBase));
-  }
-}}>
-  <DialogContent className="max-w-md">
-    <DialogHeader>
-      <DialogTitle>Configurar Plazo de Inventario</DialogTitle>
-    </DialogHeader>
-    <div className="space-y-6 py-4">
-      {/* Branch Display (Read Only) */}
-      <div className="space-y-2">
-        <Label className="text-muted-foreground">Sucursal Seleccionada</Label>
-        <div className="text-lg font-semibold border p-3 rounded-md bg-muted/50">
-          {user?.branchName || 'Sin sucursal asignada'}
-        </div>
-      </div>
+      {/* Admin Config Dialog */}
+      <Dialog open={showConfigDialog} onOpenChange={(open) => {
+        setShowConfigDialog(open);
+        if (open) {
+          const currentTotal = assignedDays || 90;
+          const standards = [180, 150, 120, 90];
+          // Find largest standard less than or equal to current
+          const foundBase = standards.find(s => s <= currentTotal) || 90;
+          setConfigBranch(user?.branchName || '');
+          setConfigDays(foundBase);
+          setExtensionDays(Math.max(0, currentTotal - foundBase));
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Configurar Plazo de Inventario</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            {/* Branch Display (Read Only) */}
+            <div className="space-y-2">
+              <Label className="text-muted-foreground">Sucursal Seleccionada</Label>
+              <div className="text-lg font-semibold border p-3 rounded-md bg-muted/50">
+                {user?.branchName || 'Sin sucursal asignada'}
+              </div>
+            </div>
 
-      {/* Standard Days Selection */}
-      <div className="space-y-3">
-        <Label>Días Base</Label>
-        <div className="grid grid-cols-4 gap-3">
-          {[90, 120, 150, 180].map((days) => (
-            <button
-              key={days}
-              onClick={() => setConfigDays(days)}
-              className={cn(
-                "flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all",
-                configDays === days
-                  ? "border-primary bg-primary/10 text-primary font-bold"
-                  : "border-muted hover:border-primary/50 text-muted-foreground"
-              )}
+            {/* Standard Days Selection */}
+            <div className="space-y-3">
+              <Label>Días Base</Label>
+              <div className="grid grid-cols-4 gap-3">
+                {[90, 120, 150, 180].map((days) => (
+                  <button
+                    key={days}
+                    onClick={() => setConfigDays(days)}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all",
+                      configDays === days
+                        ? "border-primary bg-primary/10 text-primary font-bold"
+                        : "border-muted hover:border-primary/50 text-muted-foreground"
+                    )}
+                  >
+                    <span className="text-xl">{days}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Extension Input */}
+            <div className="space-y-2">
+              <Label>Próroga (Días adicionales)</Label>
+              <div className="flex gap-4 items-center">
+                <Input
+                  type="number"
+                  placeholder="0"
+                  className="text-lg font-medium"
+                  value={extensionDays}
+                  onChange={(e) => setExtensionDays(Number(e.target.value))}
+                  min={0}
+                />
+                <div className="text-sm text-muted-foreground text-nowrap">
+                  Total: <span className="font-bold text-foreground mx-1 text-lg">
+                    {configDays + extensionDays}
+                  </span> días
+                </div>
+              </div>
+            </div>
+
+            <Button
+              className="w-full mt-2"
+              onClick={async () => {
+                if (!user?.branchName) return;
+                const total = configDays + extensionDays;
+                try {
+                  await cyclicInventoryService.saveBranchConfig(user.branchName, total);
+                  toast.success(`Plazo actualizado a ${total} días`);
+                  setShowConfigDialog(false);
+                  setAssignedDays(total);
+                } catch (e) {
+                  toast.error("Error al guardar");
+                }
+              }}
             >
-              <span className="text-xl">{days}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Extension Input */}
-      <div className="space-y-2">
-        <Label>Próroga (Días adicionales)</Label>
-        <div className="flex gap-4 items-center">
-          <Input
-            type="number"
-            placeholder="0"
-            className="text-lg font-medium"
-            value={extensionDays}
-            onChange={(e) => setExtensionDays(Number(e.target.value))}
-            min={0}
-          />
-          <div className="text-sm text-muted-foreground text-nowrap">
-            Total: <span className="font-bold text-foreground mx-1 text-lg">
-              {configDays + extensionDays}
-            </span> días
+              Guardar Configuración
+            </Button>
           </div>
-        </div>
-      </div>
-
-      <Button
-        className="w-full mt-2"
-        onClick={async () => {
-          if (!user?.branchName) return;
-          const total = configDays + extensionDays;
-          try {
-            await cyclicInventoryService.saveBranchConfig(user.branchName, total);
-            toast.success(`Plazo actualizado a ${total} días`);
-            setShowConfigDialog(false);
-            setAssignedDays(total);
-          } catch (e) {
-            toast.error("Error al guardar");
-          }
-        }}
-      >
-        Guardar Configuración
-      </Button>
-    </div>
-  </DialogContent>
-</Dialog>
+        </DialogContent>
+      </Dialog>
 
     </motion.div >
   );

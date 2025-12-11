@@ -1,0 +1,1 @@
+import{r as e}from"./react-vendor-ylmX0jv_.js";function o(){return{trigger:e.useCallback((t="light")=>{if(!("vibrate"in navigator))return;const r={light:10,medium:20,heavy:30,selection:[5,10],success:[10,50,10],warning:[20,100,20],error:[30,100,30,100,30]}[t];try{Array.isArray(r),navigator.vibrate(r)}catch(a){console.warn("Haptic feedback failed:",a)}},[])}}export{o as u};

@@ -41,27 +41,13 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { hasPermission } from "@/config/permissions";
+import { AddEventDialog } from '@/components/AddEventDialog';
+import { calendarService } from '@/services/calendarService';
 
-const upcomingInventories = [
-  {
-    branch: "Belgrano IV",
-    sector: "Farmacia",
-    date: "Miércoles, 19 de Noviembre",
-    iso: "2025-11-19",
-  },
-  {
-    branch: "Recoleta",
-    sector: "Farmacia",
-    date: "Viernes, 21 de Noviembre",
-    iso: "2025-11-21",
-  },
-  {
-    branch: "Villa Urquiza II",
-    sector: "Perfumería",
-    date: "Miércoles, 26 de Julio",
-    iso: "2026-07-26",
-  },
-];
+// Helper to format dates for display
+const formatDate = (date: Date) => {
+  return date.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+};
 
 const branches = [
   { name: "Belgrano IV", address: "Av. Cabildo 2040", zonal: "Zona Norte", email: "belgrano4@farmaplus.com" },
@@ -355,9 +341,26 @@ export default function Dashboard() {
     return "Buenas noches";
   };
 
+  // Load events from Supabase
   useEffect(() => {
-    localStorage.setItem("inventory-events", JSON.stringify(events));
-  }, [events]);
+    const loadEvents = async () => {
+      try {
+        const isAdmin = user?.role === 'admin';
+        const dbEvents = await calendarService.getEvents(user?.branchName, isAdmin);
+        const mapped: EventItem[] = dbEvents.map(e => ({
+          id: e.id,
+          title: e.title,
+          branch: e.branch_name,
+          sector: e.sector,
+          date: e.date
+        }));
+        setEvents(mapped);
+      } catch (error) {
+        console.error("Error loading events:", error);
+      }
+    };
+    loadEvents();
+  }, [user]); // Run on user/branch change
 
   const eventsForMonth = (date: Date) => {
     const month = date.getMonth();
@@ -388,7 +391,22 @@ export default function Dashboard() {
     setNewBranch("");
     setNewSector("");
     setNewDate(newDate);
+    toast.success("Evento creado exitosamente");
   };
+
+  const upcomingInventories = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    return events
+      .filter(e => e.date >= todayStr)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, 3)
+      .map(e => ({
+        branch: e.branch,
+        sector: e.sector,
+        date: formatDate(new Date(e.date + 'T12:00:00')),
+        iso: e.date
+      }));
+  }, [events]);
 
   // Render widget content based on type
   const renderWidgetContent = (widgetType: string) => {
@@ -402,7 +420,15 @@ export default function Dashboard() {
       case 'inventory-alerts':
         return <InventoryAlertsWidget />;
       case 'upcoming-inventories':
-        return <UpcomingInventoriesWidget inventories={upcomingInventories} onDateClick={openCalendarForIso} />;
+        return <UpcomingInventoriesWidget
+          inventories={upcomingInventories}
+          onDateClick={openCalendarForIso}
+          onAddClick={() => {
+            setShowCalendar(true);
+            setTimeout(() => setShowAddForm(true), 100);
+          }}
+          onViewCalendar={() => setShowCalendar(true)}
+        />;
       case 'branches-table':
         // Double check permissions (though displayedWidgets filters it)
         if (!hasPermission(user, 'VIEW_BRANCH_MONITOR')) return null;
@@ -465,7 +491,7 @@ export default function Dashboard() {
 
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-medium tracking-tight text-foreground">
-            {getGreeting()}, {user?.branchName || 'Sucursal'} 👋
+            {getGreeting()}, {user?.role === 'admin' ? user?.name.split(' ')[0] : (user?.branchName || 'Sucursal')} 👋
           </h1>
           <div className="flex gap-2">
             {isEditMode && (
@@ -573,26 +599,77 @@ export default function Dashboard() {
         <Dialog open={showCalendar} onOpenChange={setShowCalendar}>
           <DialogContent className="w-[1800px] max-w-[90vw]">
             <DialogHeader>
-              <DialogTitle>Próximos inventarios</DialogTitle>
+              <DialogTitle className="text-2xl font-bold">Calendario de Inventarios</DialogTitle>
+              <div className="text-sm text-muted-foreground">
+                Visualice y gestione los eventos programados.
+              </div>
             </DialogHeader>
-            <CalendarContent
-              events={events}
-              selectedDate={selectedDate}
-              setSelectedDate={setSelectedDate}
-              showAddForm={showAddForm}
-              setShowAddForm={setShowAddForm}
-              newTitle={newTitle}
-              setNewTitle={setNewTitle}
-              newBranch={newBranch}
-              setNewBranch={setNewBranch}
-              newSector={newSector}
-              setNewSector={setNewSector}
-              newDate={newDate}
-              setNewDate={setNewDate}
-              handleAddEvent={handleAddEvent}
-              setEvents={setEvents}
-              eventsForDay={eventsForDay}
-              eventsForMonth={eventsForMonth}
+            {user?.role === 'admin' && (
+              <Button onClick={() => setShowAddForm(true)} className="absolute right-12 top-6">
+                <Plus className="mr-2 h-4 w-4" />
+                Programar Nuevo
+              </Button>
+            )}
+
+            <div className="flex gap-6 mt-4 h-full overflow-hidden">
+              <div className="flex-1 overflow-auto">
+                <CustomCalendar
+                  selected={selectedDate}
+                  onSelect={setSelectedDate}
+                  events={events} // Pass mapped events
+                />
+              </div>
+              <div className="w-80 border-l pl-6 flex flex-col gap-4 overflow-hidden">
+                <h3 className="font-semibold text-lg text-primary">
+                  {selectedDate.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                </h3>
+                <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+                  {eventsForDay(selectedDate).length === 0 ? (
+                    <div className="text-center py-10 text-muted-foreground bg-muted/30 rounded-lg border border-dashed">
+                      <p>No hay inventarios programados para hoy.</p>
+                    </div>
+                  ) : (
+                    eventsForDay(selectedDate).map((event) => (
+                      <div key={event.id} className="p-4 bg-card border rounded-lg shadow-sm hover:shadow-md transition-shadow group relative">
+                        {user?.role === 'admin' && (
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (confirm('¿Eliminar este evento?')) {
+                                await calendarService.deleteEvent(event.id);
+                                setEvents(prev => prev.filter(p => p.id !== event.id));
+                                toast.success("Evento eliminado");
+                              }
+                            }}
+                            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 text-destructive rounded transition-opacity"
+                          >
+                            <span className="sr-only">Eliminar</span>
+                            x
+                          </button>
+                        )}
+                        <div className="font-bold text-lg text-primary mb-1">{event.branch}</div>
+                        <div className="text-sm font-medium text-foreground">{event.title}</div>
+                        <div className="text-xs text-muted-foreground mt-1 capitalize">{event.sector}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <AddEventDialog
+              open={showAddForm}
+              onOpenChange={setShowAddForm}
+              onEventAdded={(newEvent) => {
+                const mappedEvent: EventItem = {
+                  id: newEvent.id,
+                  title: newEvent.title,
+                  branch: newEvent.branch_name,
+                  sector: newEvent.sector,
+                  date: newEvent.date
+                };
+                setEvents(prev => [...prev, mappedEvent]);
+              }}
             />
           </DialogContent>
         </Dialog>
@@ -602,120 +679,174 @@ export default function Dashboard() {
             <DrawerHeader className="text-left">
               <DrawerTitle>Próximos inventarios</DrawerTitle>
             </DrawerHeader>
-            <div className="px-4 pb-4">
-              <CalendarContent
-                events={events}
-                selectedDate={selectedDate}
-                setSelectedDate={setSelectedDate}
-                showAddForm={showAddForm}
-                setShowAddForm={setShowAddForm}
-                newTitle={newTitle}
-                setNewTitle={setNewTitle}
-                newBranch={newBranch}
-                setNewBranch={setNewBranch}
-                newSector={newSector}
-                setNewSector={setNewSector}
-                newDate={newDate}
-                setNewDate={setNewDate}
-                handleAddEvent={handleAddEvent}
-                setEvents={setEvents}
-                eventsForDay={eventsForDay}
-                eventsForMonth={eventsForMonth}
-                isMobile
-              />
-            </div>
-          </DrawerContent>
-        </Drawer>
-      )}
-
-      {/* Admin Config Dialog */}
-      <Dialog open={showConfigDialog} onOpenChange={(open) => {
-        setShowConfigDialog(open);
-        if (open) {
-          const currentTotal = assignedDays || 90;
-          const standards = [180, 150, 120, 90];
-          // Find largest standard less than or equal to current
-          const foundBase = standards.find(s => s <= currentTotal) || 90;
-          setConfigBranch(user?.branchName || '');
-          setConfigDays(foundBase);
-          setExtensionDays(Math.max(0, currentTotal - foundBase));
-        }
-      }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Configurar Plazo de Inventario</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-6 py-4">
-            {/* Branch Display (Read Only) */}
-            <div className="space-y-2">
-              <Label className="text-muted-foreground">Sucursal Seleccionada</Label>
-              <div className="text-lg font-semibold border p-3 rounded-md bg-muted/50">
-                {user?.branchName || 'Sin sucursal asignada'}
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-bold">Calendario de Inventarios</DialogTitle>
+              <div className="text-sm text-muted-foreground">
+                Visualice y gestione los eventos programados.
               </div>
-            </div>
+            </DialogHeader>
+            {user?.role === 'admin' && (
+              <Button onClick={() => setShowAddForm(true)} className="absolute right-12 top-6">
+                <Plus className="mr-2 h-4 w-4" />
+                Programar Nuevo
+              </Button>
+            )}
 
-            {/* Standard Days Selection */}
-            <div className="space-y-3">
-              <Label>Días Base</Label>
-              <div className="grid grid-cols-4 gap-3">
-                {[90, 120, 150, 180].map((days) => (
-                  <button
-                    key={days}
-                    onClick={() => setConfigDays(days)}
-                    className={cn(
-                      "flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all",
-                      configDays === days
-                        ? "border-primary bg-primary/10 text-primary font-bold"
-                        : "border-muted hover:border-primary/50 text-muted-foreground"
-                    )}
-                  >
-                    <span className="text-xl">{days}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Extension Input */}
-            <div className="space-y-2">
-              <Label>Próroga (Días adicionales)</Label>
-              <div className="flex gap-4 items-center">
-                <Input
-                  type="number"
-                  placeholder="0"
-                  className="text-lg font-medium"
-                  value={extensionDays}
-                  onChange={(e) => setExtensionDays(Number(e.target.value))}
-                  min={0}
+            <div className="flex gap-6 mt-4 h-full overflow-hidden">
+              <div className="flex-1 overflow-auto">
+                <CustomCalendar
+                  selected={selectedDate}
+                  onSelect={setSelectedDate}
+                  events={events} // Pass mapped events
                 />
-                <div className="text-sm text-muted-foreground text-nowrap">
-                  Total: <span className="font-bold text-foreground mx-1 text-lg">
-                    {configDays + extensionDays}
-                  </span> días
+              </div>
+              <div className="w-80 border-l pl-6 flex flex-col gap-4 overflow-hidden">
+                <h3 className="font-semibold text-lg text-primary">
+                  {selectedDate.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                </h3>
+                <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+                  {eventsForDay(selectedDate).length === 0 ? (
+                    <div className="text-center py-10 text-muted-foreground bg-muted/30 rounded-lg border border-dashed">
+                      <p>No hay inventarios programados para hoy.</p>
+                    </div>
+                  ) : (
+                    eventsForDay(selectedDate).map((event) => (
+                      <div key={event.id} className="p-4 bg-card border rounded-lg shadow-sm hover:shadow-md transition-shadow group relative">
+                        {user?.role === 'admin' && (
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (confirm('¿Eliminar este evento?')) {
+                                await calendarService.deleteEvent(event.id);
+                                setEvents(prev => prev.filter(p => p.id !== event.id));
+                                toast.success("Evento eliminado");
+                              }
+                            }}
+                            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 text-destructive rounded transition-opacity"
+                          >
+                            <span className="sr-only">Eliminar</span>
+                            x
+                          </button>
+                        )}
+                        <div className="font-bold text-lg text-primary mb-1">{event.branch}</div>
+                        <div className="text-sm font-medium text-foreground">{event.title}</div>
+                        <div className="text-xs text-muted-foreground mt-1 capitalize">{event.sector}</div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
 
-            <Button
-              className="w-full mt-2"
-              onClick={async () => {
-                if (!user?.branchName) return;
-                const total = configDays + extensionDays;
-                try {
-                  await cyclicInventoryService.saveBranchConfig(user.branchName, total);
-                  toast.success(`Plazo actualizado a ${total} días`);
-                  setShowConfigDialog(false);
-                  setAssignedDays(total);
-                } catch (e) {
-                  toast.error("Error al guardar");
-                }
+            <AddEventDialog
+              open={showAddForm}
+              onOpenChange={setShowAddForm}
+              onEventAdded={(newEvent) => {
+                const mappedEvent: EventItem = {
+                  id: newEvent.id,
+                  title: newEvent.title,
+                  branch: newEvent.branch_name,
+                  sector: newEvent.sector,
+                  date: newEvent.date
+                };
+                setEvents(prev => [...prev, mappedEvent]);
               }}
-            >
-              Guardar Configuración
-            </Button>
+            />    isMobile
+              />
           </div>
-        </DialogContent>
-      </Dialog>
+        </DrawerContent>
+        </Drawer>
+  )
+}
 
-    </motion.div>
+{/* Admin Config Dialog */ }
+<Dialog open={showConfigDialog} onOpenChange={(open) => {
+  setShowConfigDialog(open);
+  if (open) {
+    const currentTotal = assignedDays || 90;
+    const standards = [180, 150, 120, 90];
+    // Find largest standard less than or equal to current
+    const foundBase = standards.find(s => s <= currentTotal) || 90;
+    setConfigBranch(user?.branchName || '');
+    setConfigDays(foundBase);
+    setExtensionDays(Math.max(0, currentTotal - foundBase));
+  }
+}}>
+  <DialogContent className="max-w-md">
+    <DialogHeader>
+      <DialogTitle>Configurar Plazo de Inventario</DialogTitle>
+    </DialogHeader>
+    <div className="space-y-6 py-4">
+      {/* Branch Display (Read Only) */}
+      <div className="space-y-2">
+        <Label className="text-muted-foreground">Sucursal Seleccionada</Label>
+        <div className="text-lg font-semibold border p-3 rounded-md bg-muted/50">
+          {user?.branchName || 'Sin sucursal asignada'}
+        </div>
+      </div>
+
+      {/* Standard Days Selection */}
+      <div className="space-y-3">
+        <Label>Días Base</Label>
+        <div className="grid grid-cols-4 gap-3">
+          {[90, 120, 150, 180].map((days) => (
+            <button
+              key={days}
+              onClick={() => setConfigDays(days)}
+              className={cn(
+                "flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all",
+                configDays === days
+                  ? "border-primary bg-primary/10 text-primary font-bold"
+                  : "border-muted hover:border-primary/50 text-muted-foreground"
+              )}
+            >
+              <span className="text-xl">{days}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Extension Input */}
+      <div className="space-y-2">
+        <Label>Próroga (Días adicionales)</Label>
+        <div className="flex gap-4 items-center">
+          <Input
+            type="number"
+            placeholder="0"
+            className="text-lg font-medium"
+            value={extensionDays}
+            onChange={(e) => setExtensionDays(Number(e.target.value))}
+            min={0}
+          />
+          <div className="text-sm text-muted-foreground text-nowrap">
+            Total: <span className="font-bold text-foreground mx-1 text-lg">
+              {configDays + extensionDays}
+            </span> días
+          </div>
+        </div>
+      </div>
+
+      <Button
+        className="w-full mt-2"
+        onClick={async () => {
+          if (!user?.branchName) return;
+          const total = configDays + extensionDays;
+          try {
+            await cyclicInventoryService.saveBranchConfig(user.branchName, total);
+            toast.success(`Plazo actualizado a ${total} días`);
+            setShowConfigDialog(false);
+            setAssignedDays(total);
+          } catch (e) {
+            toast.error("Error al guardar");
+          }
+        }}
+      >
+        Guardar Configuración
+      </Button>
+    </div>
+  </DialogContent>
+</Dialog>
+
+    </motion.div >
   );
 }

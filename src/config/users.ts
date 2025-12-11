@@ -11,14 +11,8 @@ export interface AdminUser {
     role: 'admin';
 }
 
-export const ADMIN_USERS: AdminUser[] = [
-    { username: 'admin1', name: 'Administrador 1', role: 'admin' },
-    { username: 'admin2', name: 'Administrador 2', role: 'admin' },
-    { username: 'admin3', name: 'Administrador 3', role: 'admin' },
-    { username: 'admin4', name: 'Administrador 4', role: 'admin' },
-    { username: 'admin5', name: 'Administrador 5', role: 'admin' },
-    { username: 'admin6', name: 'Administrador 6', role: 'admin' },
-];
+export const ADMIN_USERS: AdminUser[] = [];
+
 
 export const BRANCH_NAMES = [
     "Belgrano VI",

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { ADMIN_USERS, BRANCH_NAMES, DEFAULT_PASSWORD } from '@/config/users';
+import { BRANCH_NAMES } from '@/config/users';
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface User {
     id: string;
@@ -37,32 +38,37 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     const login = async (username: string, password?: string): Promise<boolean> => {
         // Validación de contraseña simple (si no se envía password, asumimos dev mode o bypass previo, pero idealmente requerimos password)
         // Por compatibilidad con llamadas existentes que quizás no pasen password, lo hacemos opcional pero lo validamos si viene
-        if (password && password !== DEFAULT_PASSWORD) {
-            // En un entorno real, esto sería un rechazo. Para facilitar pruebas con usuarios existentes en caché,
-            // podríamos ser más laxos, pero el plan es "DEFAULT_PASSWORD".
-            // Dejaremos que si password es provisto, debe coincidir.
+        if (password && password !== 'farmaplus') { // Use constant or env var in real app
             return false;
         }
 
         const normalizedInput = username.toLowerCase().trim().replace(/\s+/g, '');
 
-        // 1. Buscar en Admins
-        const adminMatch = ADMIN_USERS.find(admin => admin.username.toLowerCase() === normalizedInput);
-        if (adminMatch) {
-            const newUser: User = {
-                id: `admin_${adminMatch.username}`,
-                username: adminMatch.username,
-                name: adminMatch.name,
-                role: 'admin',
-                branchName: 'Casa Central', // Valor por defecto para admins
-            };
-            persistUser(newUser);
-            return true;
+        // 1. Try to find in Supabase PROFILES first (The "Connected" way)
+        try {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .ilike('username', normalizedInput) // Case insensitive match
+                .maybeSingle();
+
+            if (data && !error) {
+                const newUser: User = {
+                    id: data.id,
+                    username: data.username,
+                    name: data.full_name || data.username,
+                    role: (data.role as 'admin' | 'branch') || 'admin',
+                    branchName: data.branch_name || 'Casa Central',
+                };
+                persistUser(newUser);
+                return true;
+            }
+        } catch (e) {
+            console.error("Error fetching user from Supabase:", e);
+            // Fallback to local logic if DB fails
         }
 
-        // 2. Buscar en Sucursales
-        // Buscamos coincidencia "fuzzy" o directa con la lista de nombres
-        // Convertimos el nombre de la sucursal al formato username para comparar
+        // 2. Buscar en Sucursales (Fallback / Legacy)
         const branchMatch = BRANCH_NAMES.find(branchName => {
             const normalizedBranchName = branchName.toLowerCase().replace(/\s+/g, '');
             return normalizedBranchName === normalizedInput;

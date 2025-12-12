@@ -50,7 +50,7 @@ const DEFAULT_WIDGETS: Widget[] = [
         title: 'Resumen de Inventario',
         description: 'Progreso de productos en stock',
         icon: BarChart3,
-        visible: true,
+        visible: false,
         order: 2,
         size: 'large'
     },
@@ -141,7 +141,7 @@ const DEFAULT_WIDGETS: Widget[] = [
         title: 'Gráfico de Tendencias',
         description: 'Evolución de diferencias en el tiempo',
         icon: LineChart,
-        visible: false,
+        visible: true,
         order: 11,
         size: 'large'
     },
@@ -228,7 +228,7 @@ const DEFAULT_WIDGETS: Widget[] = [
 ];
 
 export function useDashboardLayout(userId?: string) {
-    const storageKey = `dashboard-layout-v2-${userId || 'default'}`;
+    const storageKey = `dashboard-layout-v4-${userId || 'default'}`;
 
     const [widgets, setWidgets] = useState<Widget[]>(() => {
         try {

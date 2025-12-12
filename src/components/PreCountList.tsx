@@ -102,17 +102,18 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
                                             {item.productName}
                                         </h4>
                                         <div className="flex flex-col items-end gap-1">
-                                            <div className="text-xs font-bold bg-secondary/50 px-1.5 py-0.5 rounded text-foreground/70 text-right">
-                                                #{items.length - index}
-                                            </div>
+                                            {/* Index removed */}
                                         </div>
                                     </div>
 
                                     {/* Meta: EAN */}
                                     <div className="flex items-center gap-2 mt-auto">
-                                        <Badge variant="outline" className="text-[10px] h-5 font-mono text-muted-foreground border-border/50 px-1.5 font-normal">
-                                            {item.ean}
-                                        </Badge>
+                                        <div className="flex items-center gap-1.5 text-muted-foreground bg-muted/40 px-2 py-1 rounded-md border border-border/40">
+                                            <span className="text-[10px] font-bold opacity-70 uppercase tracking-widest">EAN</span>
+                                            <span className="text-xs sm:text-sm font-mono tracking-wide font-medium border-l border-border/30 pl-1.5 ml-0.5">
+                                                {item.ean}
+                                            </span>
+                                        </div>
                                         {item.synced === 0 && (
                                             <span className="text-[10px] text-warning flex items-center gap-1 font-medium bg-warning/5 px-1.5 rounded">
                                                 <span className="w-1.5 h-1.5 rounded-full bg-warning animate-pulse" />
@@ -156,10 +157,11 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
                         </motion.div>
                     ))}
                 </AnimatePresence>
-            </div>
+            </div >
 
             {/* Dialog de edición */}
-            <Dialog open={editingId !== null} onOpenChange={(open) => !open && handleCancelEdit()}>
+            < Dialog open={editingId !== null
+            } onOpenChange={(open) => !open && handleCancelEdit()}>
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Editar Cantidad</DialogTitle>
@@ -193,10 +195,10 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
                         </Button>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog>
+            </Dialog >
 
             {/* Dialog de confirmación de eliminación */}
-            <AlertDialog open={deletingId !== null} onOpenChange={(open) => !open && setDeletingId(null)}>
+            < AlertDialog open={deletingId !== null} onOpenChange={(open) => !open && setDeletingId(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>¿Eliminar producto?</AlertDialogTitle>
@@ -211,7 +213,7 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
-            </AlertDialog>
+            </AlertDialog >
         </>
     );
 }

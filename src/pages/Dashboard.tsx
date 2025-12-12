@@ -39,7 +39,7 @@ import { CalendarModal } from "@/components/dashboard/CalendarModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Edit3, Plus, RotateCcw } from "lucide-react";
+import { Edit3, Plus, RotateCcw, Calendar } from "lucide-react";
 import { cyclicInventoryService } from "@/services/cyclicInventoryService";
 import { getProductCount } from "@/services/preCountDB";
 import { toast } from "sonner";

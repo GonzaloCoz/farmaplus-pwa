@@ -108,6 +108,21 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
         inputRef.current?.focus();
     };
 
+    const listRef = useRef<HTMLDivElement>(null);
+
+    // Auto-scroll to selected item
+    useEffect(() => {
+        if (isOpen && listRef.current) {
+            const selectedElement = listRef.current.children[selectedIndex] as HTMLElement;
+            if (selectedElement) {
+                selectedElement.scrollIntoView({
+                    block: 'nearest',
+                    behavior: 'smooth'
+                });
+            }
+        }
+    }, [selectedIndex, isOpen]);
+
     return (
         <div className={cn("relative w-full", className)} ref={containerRef}>
             <div className="relative group">
@@ -147,7 +162,7 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
                         exit={{ opacity: 0, y: -10 }}
                         className="absolute top-full left-0 right-0 z-[100] mt-1 bg-popover text-popover-foreground rounded-lg border shadow-xl overflow-hidden max-h-[300px] overflow-y-auto ring-1 ring-border/50"
                     >
-                        <div className="p-1.5 space-y-0.5">
+                        <div className="p-1.5 space-y-0.5" ref={listRef}>
                             {results.map((product, index) => (
                                 <button
                                     key={product.ean}

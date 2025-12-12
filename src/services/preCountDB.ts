@@ -257,7 +257,7 @@ export async function getLaboratoriesForBranch(branchName: string): Promise<{ na
 
         if (!data) return [];
 
-        return data.map(row => ({
+        return (data as any[]).map(row => ({
             name: row.laboratory.toUpperCase(),
             category: (row.category || 'SIN CLASIFICAR').toUpperCase()
         })).sort((a, b) => a.name.localeCompare(b.name));

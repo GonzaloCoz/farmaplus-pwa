@@ -86,13 +86,33 @@ export async function createExpirationSession(sector: string, branchName: string
     return session;
 }
 
-export async function getActiveExpirationSession(branchName: string): Promise<ExpirationSession | null> {
+
+export async function getActiveExpirationSessions(branchName: string): Promise<ExpirationSession[]> {
     const db = await initExpirationDB();
     const activeSessions = await db.getAllFromIndex('sessions', 'by-status', 'active');
-    // Filter by branch
-    const branchSession = activeSessions.find(s => s.branchName === branchName);
-    return branchSession || null;
+    return activeSessions.filter(s => s.branchName === branchName).sort((a, b) => b.startTime - a.startTime);
 }
+
+export async function deleteExpirationSession(id: string): Promise<void> {
+    const db = await initExpirationDB();
+    const tx = db.transaction(['sessions', 'items'], 'readwrite');
+
+    await tx.objectStore('sessions').delete(id);
+
+    const itemStore = tx.objectStore('items');
+    const items = await itemStore.index('by-session').getAllKeys(id);
+    for (const itemId of items) {
+        await itemStore.delete(itemId);
+    }
+
+    await tx.done;
+}
+
+export async function getActiveExpirationSession(branchName: string): Promise<ExpirationSession | null> {
+    const sessions = await getActiveExpirationSessions(branchName);
+    return sessions.length > 0 ? sessions[0] : null;
+}
+
 
 export async function updateExpirationSession(id: string, updates: Partial<ExpirationSession>): Promise<void> {
     const db = await initExpirationDB();

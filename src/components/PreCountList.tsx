@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Pencil, Trash2, Package, Hash } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { PreCountItem } from '@/services/preCountDB';
 import {
     AlertDialog,
@@ -79,76 +80,79 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
 
     return (
         <>
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 <AnimatePresence mode="popLayout">
                     {items.map((item, index) => (
                         <motion.div
                             key={item.id}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, x: -100 }}
-                            transition={{ delay: index * 0.05 }}
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
+                            transition={{ duration: 0.2 }}
                             layout
                         >
-                            <SwipeableItem
-                                className="mb-3"
-                                onEdit={() => handleStartEdit(item)}
-                                onDelete={() => setDeletingId(item.id)}
-                            >
-                                <Card className="p-4 hover:shadow-md transition-shadow border-0 rounded-none sm:rounded-xl sm:border">
-                                    <div className="flex items-start gap-3">
-                                        {/* Icono */}
-                                        <div className="p-2 bg-primary/10 rounded-lg flex-shrink-0">
-                                            <Package className="w-5 h-5 text-primary" />
-                                        </div>
+                            <Card className="h-full relative overflow-hidden group border-muted/60 shadow-sm hover:shadow-md transition-all">
+                                {/* Status Indicator Strip */}
+                                <div className={`absolute top-0 left-0 w-1 h-full ${item.synced === 0 ? 'bg-warning/50' : 'bg-primary/20 group-hover:bg-primary transition-colors'}`} />
 
-                                        {/* Información del producto */}
-                                        <div className="flex-1 min-w-0">
-                                            <h4 className="font-medium text-foreground truncate">
-                                                {item.productName}
-                                            </h4>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <span className="text-xs text-muted-foreground font-mono">
-                                                    EAN: {item.ean}
-                                                </span>
-                                                <span className="text-xs text-muted-foreground">•</span>
-                                                <div className="flex items-center gap-1">
-                                                    <Hash className="w-3 h-3 text-muted-foreground" />
-                                                    <span className="text-sm font-semibold text-primary">
-                                                        {item.quantity} uds.
-                                                    </span>
-                                                </div>
+                                <div className="p-3 pl-4 flex flex-col h-full gap-2">
+                                    {/* Header: Name & Menu */}
+                                    <div className="flex justify-between items-start gap-2">
+                                        <h4 className="font-medium text-sm leading-tight line-clamp-2 text-foreground/90" title={item.productName}>
+                                            {item.productName}
+                                        </h4>
+                                        <div className="flex flex-col items-end gap-1">
+                                            <div className="text-xs font-bold bg-secondary/50 px-1.5 py-0.5 rounded text-foreground/70 text-right">
+                                                #{items.length - index}
                                             </div>
-                                            {item.synced === 0 && (
-                                                <span className="inline-flex items-center gap-1 mt-2 px-2 py-0.5 bg-warning/10 text-warning text-xs rounded-full">
-                                                    <span className="w-1.5 h-1.5 bg-warning rounded-full" />
-                                                    Pendiente de sincronizar
-                                                </span>
-                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Meta: EAN */}
+                                    <div className="flex items-center gap-2 mt-auto">
+                                        <Badge variant="outline" className="text-[10px] h-5 font-mono text-muted-foreground border-border/50 px-1.5 font-normal">
+                                            {item.ean}
+                                        </Badge>
+                                        {item.synced === 0 && (
+                                            <span className="text-[10px] text-warning flex items-center gap-1 font-medium bg-warning/5 px-1.5 rounded">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-warning animate-pulse" />
+                                                Sin sinc.
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {/* Footer: Qty & Actions */}
+                                    <div className="flex items-center justify-between pt-2 mt-1 border-t border-border/30">
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="text-2xl font-bold tracking-tight text-foreground">
+                                                {item.quantity}
+                                            </span>
+                                            <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                                                unid.
+                                            </span>
                                         </div>
 
-                                        {/* Acciones (Desktop fallback / Visual hint) */}
-                                        <div className="hidden sm:flex items-center gap-2 flex-shrink-0">
+                                        <div className="flex items-center gap-1">
                                             <Button
-                                                size="sm"
+                                                size="icon"
                                                 variant="ghost"
+                                                className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/5"
                                                 onClick={() => handleStartEdit(item)}
-                                                className="hover:bg-primary hover:text-primary-foreground"
                                             >
                                                 <Pencil className="w-4 h-4" />
                                             </Button>
                                             <Button
-                                                size="sm"
+                                                size="icon"
                                                 variant="ghost"
+                                                className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/5"
                                                 onClick={() => setDeletingId(item.id)}
-                                                className="hover:bg-destructive hover:text-destructive-foreground"
                                             >
                                                 <Trash2 className="w-4 h-4" />
                                             </Button>
                                         </div>
                                     </div>
-                                </Card>
-                            </SwipeableItem>
+                                </div>
+                            </Card>
                         </motion.div>
                     ))}
                 </AnimatePresence>

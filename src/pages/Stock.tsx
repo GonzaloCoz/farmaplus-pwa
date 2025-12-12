@@ -2,6 +2,8 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { ClipboardList, Upload, ArrowRight, Clock } from 'lucide-react';
+import { PageLayout } from '@/components/layout/PageLayout';
+import { PageHeader } from '@/components/layout/PageHeader';
 
 export default function Stock() {
     const navigate = useNavigate();
@@ -34,12 +36,8 @@ export default function Stock() {
     ];
 
     return (
-        <motion.div
-            className="p-6 space-y-6"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-        >
+        <PageLayout>
+
             {/* Opciones */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {options.map((option, index) => (
@@ -103,6 +101,6 @@ export default function Stock() {
                     </div>
                 </div>
             </Card>
-        </motion.div>
+        </PageLayout>
     );
 }

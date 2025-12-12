@@ -48,17 +48,25 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         try {
             const { data, error } = await supabase
                 .from('profiles')
-                .select('*')
+                .select(`
+                    *,
+                    branches (
+                        name
+                    )
+                `)
                 .ilike('username', normalizedInput) // Case insensitive match
                 .maybeSingle();
 
             if (data && !error) {
+                const branchName = data.branches?.name || undefined;
+
                 const newUser: User = {
                     id: data.id,
                     username: data.username,
                     name: data.full_name || data.username,
                     role: (data.role as 'admin' | 'branch') || 'admin',
-                    branchName: data.branch_name || 'Casa Central',
+                    branchName: branchName || 'Casa Central',
+                    branchSheet: branchName || 'Casa Central' // Maintain compatibility
                 };
                 persistUser(newUser);
                 return true;

@@ -1,27 +1,41 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
+    Barcode,
+    Search,
+    Trash2,
+    Save,
+    Upload,
     ArrowLeft,
-    Camera,
     Plus,
+    History,
+    Play,
+    Calendar,
+    ArrowRight,
+    Camera,
     CheckCircle2,
     Wifi,
     WifiOff,
     Package,
     FileText,
+    Calculator as CalculatorIcon
 } from 'lucide-react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
-import { ProductSearchInput } from '@/components/ProductSearchInput';
+// import { ProductSearchInput } from '@/components/ProductSearchInput'; // Replaced by SmartProductSearch
+import { SmartProductSearch } from '@/components/SmartProductSearch';
 import { PreCountList } from '@/components/PreCountList';
 import { usePreCount } from '@/hooks/usePreCount';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { Product, getProductByEAN, addProducts } from '@/services/preCountDB';
 import { toast } from 'sonner';
-import { CounterAnimation } from '@/components/CounterAnimation';
+import { AnimatedCounter } from '@/components/AnimatedCounter';
+import { Calculator } from '@/components/Calculator';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import JsBarcode from 'jsbarcode';
@@ -37,6 +51,12 @@ export default function PreCount() {
     const [manualEAN, setManualEAN] = useState('');
     const [quantity, setQuantity] = useState('1');
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+    const [showCalculator, setShowCalculator] = useState(false);
+
+    const handleCalculatorResult = (result: number) => {
+        setQuantity(Math.floor(result).toString());
+        // setShowCalculator(false); // Optional: close on result
+    };
 
     const {
         items,
@@ -49,6 +69,9 @@ export default function PreCount() {
         updateItem,
         removeItem,
         finishSession,
+        availableSessions, // Added for new config view
+        deleteSession,    // Added for new config view
+        resumeSession,    // Added for new config view
     } = usePreCount();
 
     const { isOnline, isSyncing, unsyncedCount, syncNow } = useOfflineSync();
@@ -125,10 +148,15 @@ export default function PreCount() {
 
         await addItem(manualEAN, productName, qty);
 
-        // Limpiar formulario
+        // Limpiar formulario y devolver foco al buscador
         setManualEAN('');
         setQuantity('1');
         setSelectedProduct(null);
+
+        // Timeout breve para asegurar que el renderizado limpie el estado antes de enfocar
+        setTimeout(() => {
+            document.getElementById('smart-search-input')?.focus();
+        }, 10);
     };
 
     // Finalizar sesión
@@ -280,21 +308,140 @@ export default function PreCount() {
     // Cargar productos de ejemplo (para testing)
     const loadSampleProducts = async () => {
         const sampleProducts: Product[] = [
-            { ean: '7790001234567', name: 'Shampoo Dove 400ml', cost: 850, salePrice: 1200 },
-            { ean: '7790002345678', name: 'Acondicionador Pantene 300ml', cost: 920, salePrice: 1350 },
-            { ean: '7790003456789', name: 'Jabón Dove 90g', cost: 180, salePrice: 280 },
-            { ean: '7790004567890', name: 'Desodorante Rexona 150ml', cost: 650, salePrice: 950 },
-            { ean: '7790005678901', name: 'Crema Dental Colgate 90g', cost: 420, salePrice: 620 },
-            { ean: '7790006789012', name: 'Enjuague Bucal Listerine 500ml', cost: 1100, salePrice: 1580 },
-            { ean: '7790007890123', name: 'Papel Higiénico Elite x4', cost: 890, salePrice: 1250 },
-            { ean: '7790008901234', name: 'Toallas Femeninas Always x8', cost: 520, salePrice: 780 },
-            { ean: '7790009012345', name: 'Pañales Pampers M x30', cost: 3200, salePrice: 4500 },
-            { ean: '7790010123456', name: 'Algodón Estrella 100g', cost: 280, salePrice: 420 },
+            { ean: '7790001234567', name: 'Shampoo Dove 400ml', cost: 850, salePrice: 1200, stock: 0 },
+            { ean: '7790002345678', name: 'Acondicionador Pantene 300ml', cost: 920, salePrice: 1350, stock: 0 },
+            { ean: '7790003456789', name: 'Jabón Dove 90g', cost: 180, salePrice: 280, stock: 0 },
+            { ean: '7790004567890', name: 'Desodorante Rexona 150ml', cost: 650, salePrice: 950, stock: 0 },
+            { ean: '7790005678901', name: 'Crema Dental Colgate 90g', cost: 420, salePrice: 620, stock: 0 },
+            { ean: '7790006789012', name: 'Enjuague Bucal Listerine 500ml', cost: 1100, salePrice: 1580, stock: 0 },
+            { ean: '7790007890123', name: 'Papel Higiénico Elite x4', cost: 890, salePrice: 1250, stock: 0 },
+            { ean: '7790008901234', name: 'Toallas Femeninas Always x8', cost: 520, salePrice: 780, stock: 0 },
+            { ean: '7790009012345', name: 'Pañales Pampers M x30', cost: 3200, salePrice: 4500, stock: 0 },
+            { ean: '7790010123456', name: 'Algodón Estrella 100g', cost: 280, salePrice: 420, stock: 0 },
         ];
 
         await addProducts(sampleProducts);
         toast.success('Productos de ejemplo cargados');
     };
+
+    // Vista de Configuración (Nueva Sesión / Seleccionar)
+    const renderConfig = () => (
+        <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500">
+            {/* Header removed as per user request */}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                {/* Nueva Sesión */}
+                <Card className="border-muted/50 shadow-lg overflow-hidden relative group">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-primary/20 group-hover:bg-primary transition-colors" />
+                    <CardContent className="p-6 md:p-8 space-y-6">
+                        <div className="flex items-center gap-4 text-primary">
+                            <div className="p-3 bg-primary/10 rounded-xl">
+                                <Plus className="w-6 h-6" />
+                            </div>
+                            <h2 className="text-xl font-semibold">Nueva Sesión</h2>
+                        </div>
+
+                        <p className="text-sm text-muted-foreground">
+                            Crea un nuevo espacio de trabajo para comenzar a escanear productos en un sector específico.
+                        </p>
+
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-muted-foreground ml-1">
+                                    Nombre del Sector
+                                </label>
+                                <Input
+                                    value={sector}
+                                    onChange={(e) => setSector(e.target.value)}
+                                    placeholder="Ej: Estantería A1 - Farmacia"
+                                    className="h-12 text-lg bg-muted/30 border-muted-foreground/20 focus:border-primary transition-all"
+                                    autoFocus
+                                    onKeyDown={(e) => e.key === 'Enter' && handleStartSession()}
+                                />
+                            </div>
+
+                            <Button
+                                className="w-full h-12 text-lg font-medium shadow-md hover:shadow-lg transition-all"
+                                onClick={handleStartSession}
+                                disabled={!sector.trim() || isLoading}
+                            >
+                                {isLoading ? 'Iniciando...' : 'Comenzar Control'}
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Sesiones Abiertas */}
+                <Card className="border-muted/50 shadow-lg h-full">
+                    <CardHeader className="pb-4 border-b border-border/50">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-secondary rounded-lg text-secondary-foreground">
+                                <History className="w-5 h-5" />
+                            </div>
+                            <CardTitle className="text-lg">Sesiones Abiertas</CardTitle>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        {availableSessions.length === 0 ? (
+                            <div className="p-8 text-center text-muted-foreground">
+                                <p>No hay sesiones activas</p>
+                            </div>
+                        ) : (
+                            <div className="divide-y divide-border/50 max-h-[400px] overflow-y-auto">
+                                {availableSessions.map((s) => (
+                                    <div key={s.id} className="p-4 hover:bg-muted/30 transition-colors flex items-center justify-between group">
+                                        <div className="space-y-1">
+                                            <h3 className="font-medium text-lg leading-none group-hover:text-primary transition-colors">
+                                                {s.sector}
+                                            </h3>
+                                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                <Calendar className="w-3 h-3" />
+                                                <span>
+                                                    {format(new Date(s.startTime), "d MMM yyyy, HH:mm", { locale: es })}
+                                                </span>
+                                            </div>
+                                            <div className="flex gap-3 text-xs text-muted-foreground mt-1">
+                                                <span className="bg-primary/5 px-2 py-0.5 rounded text-primary font-medium">
+                                                    {s.totalProducts || 0} prod.
+                                                </span>
+                                                <span className="bg-secondary px-2 py-0.5 rounded text-secondary-foreground font-medium">
+                                                    {s.totalUnits || 0} unid.
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                                onClick={() => deleteSession(s.id)}
+                                                title="Eliminar sesión"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </Button>
+                                            <Button
+                                                variant="secondary"
+                                                size="sm"
+                                                className="gap-2 shadow-sm"
+                                                onClick={() => {
+                                                    resumeSession(s);
+                                                    setStep('counting');
+                                                }}
+                                            >
+                                                Retomar
+                                                <ArrowRight className="w-4 h-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            </div>
+        </div>
+    );
 
     if (isLoading) {
         return (
@@ -315,238 +462,207 @@ export default function PreCount() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4 }}
             >
-                {/* Header */}
-                <div className="flex items-start sm:items-center justify-between gap-4 flex-col sm:flex-row">
-                    <div className="flex items-center gap-3">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => step === 'config' ? navigate('/stock') : setStep('config')}
-                            className="flex-shrink-0"
-                        >
-                            <ArrowLeft className="w-5 h-5" />
-                        </Button>
-                        <div>
-                            <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
-                                Pre-Conteo Sucursal
-                            </h1>
-                            {session && (
-                                <p className="text-sm text-muted-foreground mt-1">
-                                    Sector: <span className="font-semibold text-foreground">{session.sector}</span>
-                                </p>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Indicador de conexión */}
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                        {isOnline ? (
-                            <div className="flex items-center gap-2 px-3 py-1.5 bg-success/10 text-success rounded-full text-sm">
-                                <Wifi className="w-4 h-4" />
-                                <span className="font-medium hidden sm:inline">En línea</span>
-                            </div>
-                        ) : (
-                            <div className="flex items-center gap-2 px-3 py-1.5 bg-warning/10 text-warning rounded-full text-sm">
-                                <WifiOff className="w-4 h-4" />
-                                <span className="font-medium hidden sm:inline">Sin conexión</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
                 <AnimatePresence mode="wait">
                     {step === 'config' ? (
-                        /* PASO 1: CONFIGURACIÓN */
                         <motion.div
                             key="config"
                             initial={{ opacity: 0, x: -20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: 20 }}
                             transition={{ duration: 0.3 }}
-                            className="max-w-2xl mx-auto"
+                            className="p-4 md:p-6 max-w-7xl mx-auto"
                         >
-                            <Card className="p-6 sm:p-8">
-                                <div className="space-y-6">
-                                    <div className="text-center">
-                                        <div className="inline-flex p-4 bg-primary/10 rounded-2xl mb-4">
-                                            <Package className="w-12 h-12 text-primary" />
-                                        </div>
-                                        <h2 className="text-xl sm:text-2xl font-semibold text-foreground mb-2">
-                                            Configuración del Pre-Conteo
-                                        </h2>
-                                        <p className="text-sm sm:text-base text-muted-foreground">
-                                            Ingresa el nombre del sector o estantería que vas a contar
-                                        </p>
+                            <div className="flex justify-end mb-4">
+                                {isOnline ? (
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-success/10 text-success rounded-full text-sm">
+                                        <Wifi className="w-4 h-4" />
+                                        <span className="font-medium">En línea</span>
                                     </div>
-
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-foreground mb-2">
-                                                Nombre del Sector / Estantería *
-                                            </label>
-                                            <Input
-                                                type="text"
-                                                value={sector}
-                                                onChange={(e) => setSector(e.target.value)}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                        handleStartSession();
-                                                    }
-                                                }}
-                                                placeholder="Ej: Bebidas, Perfumería, Góndola 1, etc."
-                                                className="text-base sm:text-lg"
-                                                autoFocus
-                                            />
-                                        </div>
-
-                                        <Button
-                                            onClick={handleStartSession}
-                                            disabled={!sector.trim()}
-                                            className="w-full"
-                                            size="lg"
-                                        >
-                                            Comenzar Pre-Conteo
-                                        </Button>
-
-                                        {/* Botón para cargar productos de ejemplo (solo para testing) */}
-                                        <Button
-                                            onClick={loadSampleProducts}
-                                            variant="outline"
-                                            className="w-full"
-                                            size="sm"
-                                        >
-                                            Cargar productos de ejemplo
-                                        </Button>
+                                ) : (
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-warning/10 text-warning rounded-full text-sm">
+                                        <WifiOff className="w-4 h-4" />
+                                        <span className="font-medium">Sin conexión</span>
                                     </div>
-                                </div>
-                            </Card>
+                                )}
+                            </div>
+                            {renderConfig()}
                         </motion.div>
                     ) : (
-                        /* PASO 2: CONTEO */
                         <motion.div
                             key="counting"
                             initial={{ opacity: 0, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
                             transition={{ duration: 0.3 }}
-                            className="space-y-4 sm:space-y-6"
+                            className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto"
                         >
-                            {/* Contador gigante */}
-                            <Card className="p-6 sm:p-8 bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20 elevation-2">
-                                <div className="text-center">
-                                    <p className="text-sm text-muted-foreground mb-2">Llevas</p>
-                                    <div className="text-5xl sm:text-6xl font-bold text-primary mb-2">
-                                        <CounterAnimation value={totalProducts} />
+                            {/* 1. Enhanced Status Bar - Full Width Single Row */}
+                            <Card className="min-h-[120px] flex flex-col justify-center px-6 sm:px-8 bg-gradient-to-br from-secondary/40 to-secondary/20 border-muted/50 shadow-sm">
+                                <div className="flex items-center justify-between gap-4 w-full">
+                                    {/* Left: Sector Label + Name */}
+                                    <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                                        <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap">Sector</span>
+                                        <span className="font-bold text-foreground text-lg sm:text-xl truncate">{session?.sector}</span>
                                     </div>
-                                    <p className="text-xl sm:text-2xl font-semibold text-foreground">
-                                        {totalProducts === 1 ? 'producto' : 'productos'} pre-contados
-                                    </p>
-                                    <p className="text-sm text-muted-foreground mt-2">
-                                        Total de unidades: <span className="font-semibold text-foreground">
-                                            <CounterAnimation value={totalUnits} />
-                                        </span>
-                                    </p>
-                                </div>
-                            </Card>
 
-                            {/* Formulario de ingreso */}
-                            <Card className="p-4 sm:p-6 elevation-1">
-                                <h3 className="text-base sm:text-lg font-semibold text-foreground mb-4">
-                                    Agregar Producto
-                                </h3>
+                                    <div className="h-10 sm:h-12 w-px bg-border/40 flex-shrink-0" />
 
-                                <div className="space-y-4">
-                                    {/* Botón de escaneo */}
-                                    <Button
-                                        onClick={() => setScannerOpen(true)}
-                                        className="w-full"
-                                        size="lg"
-                                        variant="default"
-                                    >
-                                        <Camera className="w-5 h-5 mr-2" />
-                                        Escanear Código de Barras
-                                    </Button>
-
-                                    <div className="relative">
-                                        <div className="absolute inset-0 flex items-center">
-                                            <span className="w-full border-t" />
+                                    {/* Center: Counters - Horizontal Layout */}
+                                    <div className="flex items-center gap-8 sm:gap-12 flex-1 justify-center">
+                                        <div className="flex items-center gap-3 sm:gap-4">
+                                            <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap">Productos</span>
+                                            <div className="text-2xl sm:text-3xl font-bold text-primary">
+                                                <AnimatedCounter value={totalProducts} digits={4} />
+                                            </div>
                                         </div>
-                                        <div className="relative flex justify-center text-xs uppercase">
-                                            <span className="bg-card px-2 text-muted-foreground">
-                                                O busca manualmente
-                                            </span>
+                                        <div className="flex items-center gap-3 sm:gap-4">
+                                            <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap">Unidades</span>
+                                            <div className="text-2xl sm:text-3xl font-bold text-foreground">
+                                                <AnimatedCounter value={totalUnits} digits={4} />
+                                            </div>
                                         </div>
                                     </div>
 
-                                    {/* Búsqueda predictiva */}
-                                    <ProductSearchInput
-                                        onSelect={handleProductSelect}
-                                        placeholder="Buscar producto por nombre o EAN..."
-                                    />
-
-                                    {/* EAN manual */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-foreground mb-2">
-                                            Código EAN
-                                        </label>
-                                        <Input
-                                            type="text"
-                                            value={manualEAN}
-                                            onChange={(e) => setManualEAN(e.target.value)}
-                                            placeholder="Ingresa el código EAN"
-                                        />
-                                        {selectedProduct && (
-                                            <p className="text-sm text-success mt-1 flex items-center gap-1">
-                                                <CheckCircle2 className="w-4 h-4" />
-                                                {selectedProduct.name}
-                                            </p>
+                                    {/* Right: Status Icons */}
+                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                        {unsyncedCount > 0 && (
+                                            <Button
+                                                onClick={syncNow}
+                                                disabled={!isOnline || isSyncing}
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-8 px-2 text-xs gap-1.5 text-warning hover:text-warning hover:bg-warning/10"
+                                            >
+                                                <div className="w-2 h-2 rounded-full bg-warning animate-pulse" />
+                                                {isSyncing ? 'Sincronizando' : `${unsyncedCount} Pend.`}
+                                            </Button>
                                         )}
+                                        <div
+                                            className={`p-2 rounded-full ${isOnline ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}`}
+                                            title={isOnline ? "En línea" : "Sin conexión"}
+                                        >
+                                            {isOnline ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
+                                        </div>
                                     </div>
-
-                                    {/* Cantidad */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-foreground mb-2">
-                                            Cantidad
-                                        </label>
-                                        <Input
-                                            type="number"
-                                            min="1"
-                                            value={quantity}
-                                            onChange={(e) => setQuantity(e.target.value)}
-                                            placeholder="Cantidad"
-                                        />
-                                    </div>
-
-                                    {/* Botón agregar */}
-                                    <Button
-                                        onClick={handleAddProduct}
-                                        disabled={!manualEAN.trim() || !quantity}
-                                        className="w-full"
-                                        size="lg"
-                                    >
-                                        <Plus className="w-5 h-5 mr-2" />
-                                        Guardar y Siguiente
-                                    </Button>
                                 </div>
                             </Card>
 
-                            {/* Lista de productos */}
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between gap-2">
-                                    <h3 className="text-base sm:text-lg font-semibold text-foreground">
-                                        Productos Agregados ({totalProducts})
+                            {/* 2. Compact Hero Input Section */}
+                            <Card className="p-2 sm:p-3 shadow-md border-primary/20 bg-card/80 backdrop-blur-sm relative z-50">
+                                <div className="space-y-2">
+                                    <div className="flex flex-col sm:flex-row gap-2">
+                                        <div className="flex-1 relative z-20">
+                                            <SmartProductSearch
+                                                onSelect={(p) => {
+                                                    // Set EAN and Name
+                                                    setManualEAN(p.ean);
+                                                    setSelectedProduct({ ...p, stock: 0, salePrice: 0, cost: 0 }); // partial product
+
+                                                    // Auto-focus quantity input after short delay to allow state update
+                                                    setTimeout(() => {
+                                                        document.getElementById('quantity-input')?.focus();
+                                                        // Select all text in quantity input for easy overwrite
+                                                        (document.getElementById('quantity-input') as HTMLInputElement)?.select();
+                                                    }, 50);
+                                                }}
+                                                autoFocus={true}
+                                                className="w-full"
+                                            />
+                                        </div>
+
+                                        <div className="flex gap-2">
+                                            <div className="flex items-center gap-1">
+                                                <div className="w-20">
+                                                    <Input
+                                                        id="quantity-input"
+                                                        type="number"
+                                                        className="h-12 text-center text-lg font-medium bg-muted/30 border-muted-foreground/20 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+                                                        min="1"
+                                                        value={quantity}
+                                                        onChange={(e) => setQuantity(e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') handleAddProduct();
+                                                        }}
+                                                        placeholder="#"
+                                                    />
+                                                </div>
+                                                <Button
+                                                    variant={showCalculator ? "secondary" : "outline"}
+                                                    size="icon"
+                                                    className="h-12 w-12 border-dashed border-border/60 hover:border-primary/50"
+                                                    onClick={() => setShowCalculator(!showCalculator)}
+                                                    title="Calculadora"
+                                                >
+                                                    <CalculatorIcon className="w-5 h-5 opacity-70" />
+                                                </Button>
+                                            </div>
+
+                                            <Button
+                                                onClick={handleAddProduct}
+                                                size="lg"
+                                                className="h-12 px-6 text-lg shadow-sm font-bold tracking-wide"
+                                                disabled={!manualEAN.trim()}
+                                            >
+                                                <Plus className="w-6 h-6" />
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    <AnimatePresence>
+                                        {showCalculator && (
+                                            <motion.div
+                                                initial={{ height: 0, opacity: 0 }}
+                                                animate={{ height: 'auto', opacity: 1 }}
+                                                exit={{ height: 0, opacity: 0 }}
+                                                className="overflow-hidden border rounded-lg bg-muted/20"
+                                            >
+                                                <Calculator
+                                                    onResult={handleCalculatorResult}
+                                                    onClose={() => setShowCalculator(false)}
+                                                />
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+
+                                    {/* Product Feedback / Selection - Ultra Compact */}
+                                    <AnimatePresence>
+                                        {selectedProduct && (
+                                            <motion.div
+                                                initial={{ opacity: 0, height: 0, scale: 0.95 }}
+                                                animate={{ opacity: 1, height: 'auto', scale: 1 }}
+                                                exit={{ opacity: 0, height: 0 }}
+                                                className="bg-primary/5 rounded border border-primary/10 flex items-center justify-between p-2 overflow-hidden"
+                                            >
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                                                    <div className="min-w-0 flex flex-col sm:flex-row sm:items-baseline gap-1">
+                                                        <span className="font-semibold text-foreground text-sm truncate">{selectedProduct.name}</span>
+                                                        <span className="text-[10px] text-muted-foreground font-mono truncate">{selectedProduct.ean}</span>
+                                                    </div>
+                                                </div>
+                                                <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-6 text-[10px] px-2 text-muted-foreground hover:text-destructive"
+                                                    onClick={() => {
+                                                        setSelectedProduct(null);
+                                                        setManualEAN('');
+                                                    }}
+                                                >
+                                                    Limpiar
+                                                </Button>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </div>
+                            </Card>
+
+                            {/* 3. Dense List */}
+                            <div className="space-y-2 relative z-10">
+                                <div className="flex items-center justify-between px-1">
+                                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+                                        Historial ({totalProducts})
                                     </h3>
-                                    {unsyncedCount > 0 && (
-                                        <Button
-                                            onClick={syncNow}
-                                            disabled={!isOnline || isSyncing}
-                                            variant="outline"
-                                            size="sm"
-                                            className="flex-shrink-0"
-                                        >
-                                            {isSyncing ? 'Sincronizando...' : `Sincronizar (${unsyncedCount})`}
-                                        </Button>
-                                    )}
                                 </div>
                                 <PreCountList
                                     items={items}
@@ -554,7 +670,6 @@ export default function PreCount() {
                                     onDelete={removeItem}
                                 />
                             </div>
-
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -562,25 +677,27 @@ export default function PreCount() {
 
             {/* Acciones flotantes (FAB) */}
 
-            {items.length > 0 && step === 'counting' && (
-                <FabMenu
-                    actions={[
-                        {
-                            label: "Finalizar",
-                            icon: <CheckCircle2 className="w-5 h-5" />,
-                            onClick: handleFinish,
-                            variant: 'default',
-                            color: 'bg-primary text-primary-foreground'
-                        },
-                        {
-                            label: "Exportar PDF",
-                            icon: <FileText className="w-5 h-5" />,
-                            onClick: handleExportPDF,
-                            variant: 'secondary'
-                        }
-                    ]}
-                />
-            )}
+            {
+                items.length > 0 && step === 'counting' && (
+                    <FabMenu
+                        actions={[
+                            {
+                                label: "Finalizar",
+                                icon: <CheckCircle2 className="w-5 h-5" />,
+                                onClick: handleFinish,
+                                variant: 'default',
+                                color: 'bg-primary text-primary-foreground'
+                            },
+                            {
+                                label: "Exportar PDF",
+                                icon: <FileText className="w-5 h-5" />,
+                                onClick: handleExportPDF,
+                                variant: 'secondary'
+                            }
+                        ]}
+                    />
+                )
+            }
 
             {/* Scanner Modal */}
             <BarcodeScanner

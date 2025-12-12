@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import * as XLSX from 'xlsx';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
@@ -245,7 +246,7 @@ function parseSheetLabs(worksheet: XLSX.WorkSheet): { name: string, category: st
 export async function getLaboratoriesForBranch(branchName: string): Promise<{ name: string, category: string }[]> {
     try {
         const { data, error } = await supabase
-            .from('branch_laboratories')
+            .from('branch_laboratories' as any)
             .select('laboratory, category')
             .eq('branch_name', branchName);
 
@@ -375,11 +376,34 @@ export async function createSession(sector: string): Promise<PreCountSession> {
     return session;
 }
 
-export async function getActiveSession(): Promise<PreCountSession | null> {
+
+export async function getActiveSessions(): Promise<PreCountSession[]> {
     const db = await getDB();
-    const activeSessions = await db.getAllFromIndex('sessions', 'by-status', 'active');
-    return activeSessions.length > 0 ? activeSessions[0] : null;
+    return db.getAllFromIndex('sessions', 'by-status', 'active');
 }
+
+export async function deleteSession(id: string): Promise<void> {
+    const db = await getDB();
+    const tx = db.transaction(['sessions', 'items'], 'readwrite');
+
+    // Delete session
+    await tx.objectStore('sessions').delete(id);
+
+    // Delete all items for this session
+    const itemStore = tx.objectStore('items');
+    const items = await itemStore.index('by-session').getAllKeys(id);
+    for (const itemId of items) {
+        await itemStore.delete(itemId);
+    }
+
+    await tx.done;
+}
+
+export async function getActiveSession(): Promise<PreCountSession | null> {
+    const sessions = await getActiveSessions();
+    return sessions.length > 0 ? sessions[0] : null;
+}
+
 
 export async function updateSession(id: string, updates: Partial<PreCountSession>): Promise<void> {
     const db = await getDB();

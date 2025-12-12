@@ -13,15 +13,25 @@ import { SyncStatusBottomSheet } from "@/components/SyncStatusBottomSheet";
 import { Input } from "@/components/ui/input";
 import * as XLSX from 'xlsx';
 
-export default function Settings() {
+import { PageLayout } from "@/components/layout/PageLayout";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { useNavigate } from "react-router-dom";
+import { useUser } from "@/contexts/UserContext";
 
+export default function Settings() {
+  const navigate = useNavigate();
+  const { user } = useUser();
+
+  // ... (state hooks remain)
   const [haptics, setHaptics] = useState(true);
   const [sounds, setSounds] = useState(false);
   const [autoSync, setAutoSync] = useState(true);
   const [scannerSensitivity, setScannerSensitivity] = useState([50]);
   const [isImporting, setIsImporting] = useState(false);
 
+  // ... (handlers remain)
   const handleClearCache = async () => {
+    // ...
     if (confirm("¿Estás seguro de que deseas borrar todos los datos locales? Esta acción no se puede deshacer.")) {
       try {
         await clearAllData();
@@ -34,6 +44,7 @@ export default function Settings() {
   };
 
   const handleImportProducts = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    // ... (keep existing implementation)
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -44,20 +55,13 @@ export default function Settings() {
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
 
-      // Usar header: "A" para obtener columnas por letra (A, B, C...)
       const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: "A" });
-
       const products: Product[] = [];
 
-      // Empezar desde la fila 2 (asumiendo encabezados en fila 1)
       for (let i = 1; i < jsonData.length; i++) {
         const row: any = jsonData[i];
-
-        // Columna D: Producto
         const rawName = row["D"];
-        // Columna O: Laboratorio
         const rawLab = row["O"];
-        // Columna Q: Códigos de Barra
         const rawEans = row["Q"];
 
         if (!rawName || !rawEans) continue;
@@ -66,7 +70,6 @@ export default function Settings() {
         const laboratory = rawLab ? String(rawLab).trim() : undefined;
         const eanString = String(rawEans).trim();
 
-        // Separar múltiples EANs (ej: "30707387007387-990000263526")
         const eanList = eanString.split('-').map(e => e.trim()).filter(e => e.length > 0);
 
         eanList.forEach(ean => {
@@ -76,7 +79,8 @@ export default function Settings() {
             cost: 0,
             salePrice: 0,
             laboratory: laboratory,
-            category: ''
+            category: '',
+            stock: 0
           });
         });
       }
@@ -91,10 +95,7 @@ export default function Settings() {
         await addProducts(products);
         toast.success(`${products.length} productos importados correctamente.`);
       }
-
-      // Clear input
       event.target.value = '';
-
     } catch (error) {
       console.error("Error importing products:", error);
       toast.error("Error al importar el archivo. Asegúrate de que sea un Excel válido.");
@@ -103,18 +104,9 @@ export default function Settings() {
     }
   };
 
-
-
-
-
   return (
-    <div className="max-w-4xl mx-auto space-y-8 p-6 pb-24">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Configuración</h1>
-        <p className="text-muted-foreground mt-2">
-          Personaliza tu experiencia en Farmaplus PWA.
-        </p>
-      </div>
+    <PageLayout>
+
 
       <div className="grid gap-6">
         {/* Personalización */}
@@ -249,6 +241,28 @@ export default function Settings() {
           </CardContent>
         </Card>
 
+        {/* Administración (Solo para Admins) */}
+        {user?.role === 'admin' && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Database className="w-5 h-5 text-primary" />
+                <CardTitle>Administración</CardTitle>
+              </div>
+              <CardDescription>Gestión de sucursales y configuraciones globales (solo administradores).</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => navigate('/admin/branches')}
+              >
+                Administrar Sucursales
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Sistema */}
         <Card>
           <CardHeader>
@@ -271,6 +285,6 @@ export default function Settings() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageLayout>
   );
 }

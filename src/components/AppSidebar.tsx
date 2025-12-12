@@ -81,13 +81,25 @@ export function AppSidebar() {
     <>
       {/* Se muestra solo en pantallas 'lg' y mayores */}
       <aside className="hidden lg:flex flex-col w-[72px] fixed inset-y-0 left-0 z-20 bg-transparent pt-6 pb-6">
-        <div className="flex h-16 items-center justify-center">
+        <div className="flex h-16 items-center justify-center pl-2">
           <img src={LogoCollapsed} alt="Logo Farmaplus" className="h-10 w-10" />
         </div>
-        <nav className="flex-1 overflow-auto py-4 flex flex-col items-center gap-3">
+
+        {/* Separator Top */}
+        <div className="flex w-full justify-center pl-2 my-2">
+          <div className="h-px w-8 bg-border/40" />
+        </div>
+
+        <nav className="flex-1 overflow-auto py-2 flex flex-col items-center gap-3 pl-2">
           {menuItems.map((item) => <AppSidebarMenuItem key={item.title} item={item} end={item.url === '/'} />)}
         </nav>
-        <nav className="mt-auto border-t border-border/40 p-3 flex flex-col items-center gap-3">
+
+        {/* Separator Bottom */}
+        <div className="flex w-full justify-center pl-2 my-2 mt-auto">
+          <div className="h-px w-8 bg-border/40" />
+        </div>
+
+        <nav className="py-3 flex flex-col items-center gap-3 pl-2">
           <ThemeToggle />
           <NotificationsMenu />
           <Tooltip>

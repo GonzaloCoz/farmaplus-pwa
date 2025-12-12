@@ -5,7 +5,8 @@ import {
     ExpirationItem,
     ExpirationSession,
     createExpirationSession,
-    getActiveExpirationSession,
+    getActiveExpirationSessions,
+    deleteExpirationSession,
     endExpirationSession,
     addExpirationItem,
     updateExpirationItem,
@@ -17,6 +18,7 @@ import {
 export function useExpirationControl() {
     const { user } = useUser(); // Get user for branch info
     const [session, setSession] = useState<ExpirationSession | null>(null);
+    const [availableSessions, setAvailableSessions] = useState<ExpirationSession[]>([]);
     const [items, setItems] = useState<ExpirationItem[]>([]);
     const [totalProducts, setTotalProducts] = useState(0);
     const [totalUnits, setTotalUnits] = useState(0);
@@ -36,15 +38,9 @@ export function useExpirationControl() {
     const loadSession = async (branchName: string) => {
         try {
             setIsLoading(true);
-            const activeSession = await getActiveExpirationSession(branchName);
-            setSession(activeSession);
-            if (activeSession) {
-                await loadItems(activeSession.id);
-            } else {
-                setItems([]);
-                setTotalProducts(0);
-                setTotalUnits(0);
-            }
+            const sessions = await getActiveExpirationSessions(branchName);
+            setAvailableSessions(sessions);
+            // Don't auto-set session
         } catch (error) {
             console.error("Error loading expiration session:", error);
             toast.error("Error al cargar la sesión");
@@ -70,17 +66,48 @@ export function useExpirationControl() {
                 toast.error("No hay sucursal seleccionada");
                 return;
             }
-            if (session) {
-                toast.error("Ya existe una sesión activa");
+            // Allow starting new session even if one exists in list, just not same name
+            const existing = availableSessions.find(s => s.sector === sector);
+            if (existing) {
+                toast.error("Ya existe una sesión para este sector");
                 return;
             }
+
             const newSession = await createExpirationSession(sector, user.branchName);
             setSession(newSession);
+            setAvailableSessions(prev => [newSession, ...prev]);
             setItems([]);
             // toast.success(`Sesión iniciada: ${sector}`);
         } catch (error) {
             console.error("Error starting session:", error);
             toast.error("Error al iniciar sesión");
+        }
+    };
+
+    const resumeSession = async (sessionToResume: ExpirationSession) => {
+        try {
+            setSession(sessionToResume);
+            await loadItems(sessionToResume.id);
+            toast.success(`Sesión retomada: ${sessionToResume.sector}`);
+        } catch (error) {
+            console.error("Error resuming:", error);
+            toast.error("Error al retomar");
+        }
+    };
+
+    const deleteSession = async (id: string) => {
+        if (!confirm("¿Eliminar sesión?")) return;
+        try {
+            await deleteExpirationSession(id);
+            setAvailableSessions(prev => prev.filter(s => s.id !== id));
+            if (session?.id === id) {
+                setSession(null);
+                setItems([]);
+            }
+            toast.success("Sesión eliminada");
+        } catch (error) {
+            console.error("Error deleting:", error);
+            toast.error("Error al eliminar");
         }
     };
 
@@ -134,6 +161,7 @@ export function useExpirationControl() {
 
         try {
             await endExpirationSession(session.id);
+            setAvailableSessions(prev => prev.filter(s => s.id !== session.id));
             setSession(null);
             setItems([]);
             toast.success("Control finalizado correctamente");
@@ -149,7 +177,10 @@ export function useExpirationControl() {
         totalProducts,
         totalUnits,
         isLoading,
+        availableSessions,
         startSession,
+        resumeSession,
+        deleteSession,
         addItem,
         deleteItem,
         finishSession

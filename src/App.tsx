@@ -8,11 +8,12 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { InstallPrompt } from "@/components/InstallPrompt";
-import { PageTransition } from "@/components/PageTransition";
+import { PageTransition } from "./components/PageTransition";
 import { SnackbarProvider } from "@/contexts/SnackbarContext";
-import { UserProvider, useUser } from "@/contexts/UserContext";
+import { UserProvider, useUser } from "./contexts/UserContext";
 
-import { DashboardSkeleton } from "@/components/DashboardSkeleton";
+import { DashboardSkeleton } from "./components/DashboardSkeleton";
+import { PageSkeleton } from "./components/skeletons/PageSkeleton";
 import { loadDefaultData, initDB } from "@/services/preCountDB";
 
 // Lazy load de todas las páginas para reducir bundle inicial
@@ -30,6 +31,8 @@ const Profile = lazy(() => import("./pages/Profile"));
 const M3ComponentsDemo = lazy(() => import("./pages/M3ComponentsDemo"));
 const Login = lazy(() => import("./pages/Login"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const AdminBranches = lazy(() => import("./pages/AdminBranches"));
+
 
 const queryClient = new QueryClient();
 
@@ -43,6 +46,20 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+const AdminRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, isLoading } = useUser();
+
+  if (isLoading) {
+    return <DashboardSkeleton />;
+  }
+
+  if (!user || user.role !== 'admin') {
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
@@ -144,7 +161,7 @@ const AppRoutes = () => {
           <Route
             path="/products"
             element={
-              <Suspense fallback={<DashboardSkeleton />}>
+              <Suspense fallback={<PageSkeleton />}>
                 <PageTransition>
                   <Products />
                 </PageTransition>
@@ -154,7 +171,7 @@ const AppRoutes = () => {
           <Route
             path="/reports"
             element={
-              <Suspense fallback={<DashboardSkeleton />}>
+              <Suspense fallback={<PageSkeleton />}>
                 <PageTransition>
                   <Reports />
                 </PageTransition>
@@ -164,7 +181,7 @@ const AppRoutes = () => {
           <Route
             path="/settings"
             element={
-              <Suspense fallback={<DashboardSkeleton />}>
+              <Suspense fallback={<PageSkeleton />}>
                 <PageTransition>
                   <Settings />
                 </PageTransition>
@@ -174,7 +191,7 @@ const AppRoutes = () => {
           <Route
             path="/profile"
             element={
-              <Suspense fallback={<DashboardSkeleton />}>
+              <Suspense fallback={<PageSkeleton />}>
                 <PageTransition>
                   <Profile />
                 </PageTransition>
@@ -189,6 +206,18 @@ const AppRoutes = () => {
                   <M3ComponentsDemo />
                 </PageTransition>
               </Suspense>
+            }
+          />
+          <Route
+            path="/admin/branches"
+            element={
+              <AdminRoute>
+                <Suspense fallback={<PageSkeleton />}>
+                  <PageTransition>
+                    <AdminBranches />
+                  </PageTransition>
+                </Suspense>
+              </AdminRoute>
             }
           />
         </Route>

@@ -9,7 +9,8 @@ import {
     createSession,
     updateSession,
     endSession,
-    getActiveSession,
+    getActiveSessions,
+    deleteSession as deleteSessionDB,
     initDB,
 } from '@/services/preCountDB';
 import { toast } from 'sonner';
@@ -20,7 +21,10 @@ interface UsePreCountReturn {
     totalProducts: number;
     totalUnits: number;
     isLoading: boolean;
+    availableSessions: PreCountSession[];
     startSession: (sector: string) => Promise<void>;
+    resumeSession: (session: PreCountSession) => Promise<void>;
+    deleteSession: (id: string) => Promise<void>;
     addItem: (ean: string, productName: string, quantity: number) => Promise<void>;
     updateItem: (id: string, quantity: number) => Promise<void>;
     removeItem: (id: string) => Promise<void>;
@@ -31,20 +35,16 @@ interface UsePreCountReturn {
 export function usePreCount(): UsePreCountReturn {
     const [items, setItems] = useState<PreCountItem[]>([]);
     const [session, setSession] = useState<PreCountSession | null>(null);
+    const [availableSessions, setAvailableSessions] = useState<PreCountSession[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    // Inicializar DB y cargar sesión activa
+    // Inicializar DB y cargar sesiones activas
     useEffect(() => {
         const init = async () => {
             try {
                 await initDB();
-                const activeSession = await getActiveSession();
-
-                if (activeSession) {
-                    setSession(activeSession);
-                    const sessionItems = await getPreCountItemsBySector(activeSession.sector);
-                    setItems(sessionItems);
-                }
+                const sessions = await getActiveSessions();
+                setAvailableSessions(sessions);
             } catch (error) {
                 console.error('Error initializing pre-count:', error);
                 toast.error('Error al inicializar el sistema de pre-conteo');
@@ -53,7 +53,8 @@ export function usePreCount(): UsePreCountReturn {
             }
         };
 
-        init();
+        const timer = setTimeout(init, 100); // Pequeño delay para asegurar que DB esté lista
+        return () => clearTimeout(timer);
     }, []);
 
     // Calcular totales
@@ -73,29 +74,60 @@ export function usePreCount(): UsePreCountReturn {
     }, [session, totalProducts, totalUnits]);
 
     // Iniciar nueva sesión
-    const startSession = useCallback(async (sector: string) => {
+    const startSession = async (sector: string) => {
         try {
             setIsLoading(true);
 
-            // Verificar si ya hay una sesión activa
-            const activeSession = await getActiveSession();
-            if (activeSession) {
-                toast.error('Ya existe una sesión activa. Por favor, finalízala primero.');
+            // Verificar si ya existe una sesión con ese nombre
+            const existing = availableSessions.find(s => s.sector === sector);
+            if (existing) {
+                toast.error('Ya existe una sesión abierta para este sector');
                 return;
             }
 
             const newSession = await createSession(sector);
             setSession(newSession);
             setItems([]);
-
-            toast.success(`Sesión iniciada para el sector: ${sector}`);
+            setAvailableSessions(prev => [newSession, ...prev]);
+            toast.success(`Sesión iniciada: ${sector}`);
         } catch (error) {
             console.error('Error starting session:', error);
             toast.error('Error al iniciar la sesión');
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    };
+
+    // Resume session
+    const resumeSession = async (sessionToResume: PreCountSession) => {
+        try {
+            setSession(sessionToResume);
+            const sessionItems = await getPreCountItemsBySector(sessionToResume.sector);
+            setItems(sessionItems);
+            toast.success(`Sesión retomada: ${sessionToResume.sector}`);
+        } catch (error) {
+            console.error('Error resuming session:', error);
+            toast.error('Error al retomar la sesión');
+        }
+    };
+
+    // Delete session
+    const deleteSession = async (id: string) => {
+        if (!confirm('¿Estás seguro de eliminar esta sesión? Se perderán todos los datos escaneados.')) return;
+        try {
+            await deleteSessionDB(id);
+            setAvailableSessions(prev => prev.filter(s => s.id !== id));
+            // If deleting current session
+            if (session?.id === id) {
+                setSession(null);
+                setItems([]);
+            }
+            toast.success('Sesión eliminada');
+        } catch (error) {
+            console.error('Error deleting session:', error);
+            toast.error('Error al eliminar la sesión');
+        }
+    };
 
     // Agregar item
     const addItem = useCallback(async (ean: string, productName: string, quantity: number) => {
@@ -179,23 +211,21 @@ export function usePreCount(): UsePreCountReturn {
     }, []);
 
     // Finalizar sesión
-    const finishSession = useCallback(async () => {
-        if (!session) {
-            toast.error('No hay una sesión activa');
-            return;
-        }
+    const finishSession = async () => {
+        if (!session) return;
+        if (!confirm('¿Finalizar sesión de conteo?')) return;
 
         try {
             await endSession(session.id);
             setSession(null);
             setItems([]);
-
+            setAvailableSessions(prev => prev.filter(s => s.id !== session.id));
             toast.success('Sesión finalizada correctamente');
         } catch (error) {
             console.error('Error finishing session:', error);
             toast.error('Error al finalizar la sesión');
         }
-    }, [session]);
+    };
 
     // Refrescar items
     const refreshItems = useCallback(async () => {
@@ -216,7 +246,10 @@ export function usePreCount(): UsePreCountReturn {
         totalProducts,
         totalUnits,
         isLoading,
+        availableSessions,
         startSession,
+        resumeSession,
+        deleteSession,
         addItem,
         updateItem,
         removeItem,

@@ -51,7 +51,7 @@ export const calendarService = {
         }
 
         // The RPC returns { id, title, branch_name, ... } directly
-        return data as CalendarEvent;
+        return data as unknown as CalendarEvent;
     },
 
     async deleteEvent(id: string): Promise<boolean> {

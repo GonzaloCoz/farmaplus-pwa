@@ -345,14 +345,7 @@ export default function StockImport() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
     >
-      <div>
-        <h1 className="text-3xl font-bold text-foreground mb-2">
-          Importar Inventario
-        </h1>
-        <p className="text-muted-foreground">
-          Carga el archivo Excel de tu conteo físico para analizar discrepancias
-        </p>
-      </div>
+
 
       <Card className="p-8">
         <div className="space-y-6">

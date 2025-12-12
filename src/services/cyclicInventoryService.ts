@@ -1,3 +1,4 @@
+
 import { LaboratoryStatus } from "@/components/LaboratoryCard";
 import { supabase } from "@/integrations/supabase/client";
 import { getAllBranchLabCounts } from './preCountDB';
@@ -43,6 +44,7 @@ export const cyclicInventoryService = {
             const { data, error } = await supabase
                 .from('inventories')
                 .select(`
+                    id,
                     ean,
                     quantity,
                     system_quantity,
@@ -128,10 +130,15 @@ export const cyclicInventoryService = {
 
     // Delete inventory
     deleteInventory: async (branchName: string, labName: string) => {
-        await supabase.from('inventories')
+        const { error } = await supabase.from('inventories')
             .delete()
             .eq('branch_name', branchName)
             .eq('laboratory', labName);
+
+        if (error) {
+            console.error("Error deleting inventory:", error);
+            throw error;
+        }
     },
 
     calculateStats: (items: CyclicItem[]): {
@@ -293,8 +300,23 @@ export const cyclicInventoryService = {
             return [];
         }
 
-        // Fetch Total Lab Counts from Excel (Source of Truth for Goals)
-        const labCounts = await getAllBranchLabCounts();
+        // --- NEW LOGIC: Fetch Goals from Supabase instead of Excel ---
+        let labCounts: Record<string, number> = {};
+
+        // Try fetching from Supabase first
+        const { data: goalsData, error: goalsError } = await supabase
+            .from('branch_goals')
+            .select('branch_name, total_labs_goal');
+
+        if (!goalsError && goalsData && goalsData.length > 0) {
+            goalsData.forEach(g => {
+                labCounts[g.branch_name] = g.total_labs_goal;
+            });
+        } else {
+            console.warn("No goals found in Supabase, falling back to Excel or 0.");
+            // Fallback to Excel if DB is empty (Migration phase)
+            labCounts = await getAllBranchLabCounts();
+        }
 
         // Initialize with ALL valid branches to ensure they appear
         const groupedByBranch: Record<string, {
@@ -346,13 +368,9 @@ export const cyclicInventoryService = {
 
         const summaries = BRANCH_NAMES.map(branchName => {
             const group = groupedByBranch[branchName];
-            const totalLabsGoal = labCounts[branchName] || 0; // The Real Goal from Excel
+            // If goal is missing in DB (0), try Excel map, else 0.
+            const totalLabsGoal = labCounts[branchName] || 0;
             const controlledCount = group.controlledLabs.size;
-
-            // Progress = Controlled Labs / Total Labs Goal
-            // If goal is 0 (missing excel), fallback to DB count? No, stick to 0 or 100?
-            // User wants strict logic. If no goal, progress is undefined? 
-            // Let's assume if 0 goal, progress is 0.
 
             const rawProgress = totalLabsGoal > 0 ? (controlledCount / totalLabsGoal) * 100 : 0;
             const progress = totalLabsGoal > 0 ? Number(rawProgress.toFixed(1)) : 0;
@@ -366,10 +384,10 @@ export const cyclicInventoryService = {
                 branchName,
                 deploymentDate: '01/12/2025',
                 cyclicRound: 1,
-                monthlyGoal: totalLabsGoal, // Goal is Total Labs from Excel
+                monthlyGoal: totalLabsGoal, // Goal is Total Labs from Excel/DB
                 elapsedDays: 12,
                 progress: progress,
-                inventoryUnits: group.totalSystemUnits, // Showing System Units or Physical? Logic suggests System.
+                inventoryUnits: group.totalSystemUnits,
                 differenceUnits: group.netUnits,
                 adjustmentsValue: group.netValue,
                 status: status
@@ -378,6 +396,8 @@ export const cyclicInventoryService = {
 
         return summaries.sort((a, b) => b.progress - a.progress);
     },
+
+
 
     // Configuration System
     getBranchConfig: async (branchName: string): Promise<number> => {
@@ -406,11 +426,12 @@ export const cyclicInventoryService = {
             // 2. Insert new config
             const { error } = await supabase.from('inventories').insert({
                 laboratory: '_CONFIG_',
+                branch_name: branchName, // Added branch_name to fix missing prop error if I missed it in TS
                 ean: 'CONFIG_DAYS', // Must match the one created in ensureConfigProduct
                 quantity: days,
                 system_quantity: 0,
                 status: 'pending' // Important: 'pending' so it doesn't count as controlled
-            });
+            } as any);
 
             if (error) throw error;
         } catch (e) {
@@ -430,10 +451,13 @@ export const cyclicInventoryService = {
             surplus_value: number;
             total_units_adjusted: number;
             user_name?: string;
+            // Optional: Pass full items snapshot if available
+            items_snapshot?: CyclicItem[];
         }
     ): Promise<void> => {
         try {
-            const { error } = await supabase.from('inventory_adjustments').insert({
+            // 1. Save to legacy adjustment table (for backward compat or simple history)
+            const { error: error1 } = await supabase.from('inventory_adjustments').insert({
                 branch_name: branchName,
                 laboratory: labName,
                 adjustment_id_shortage: data.adjustment_id_shortage,
@@ -444,7 +468,31 @@ export const cyclicInventoryService = {
                 user_name: data.user_name || 'Desconocido'
             });
 
-            if (error) throw error;
+            if (error1) throw error1;
+
+            // 2. Save to NEW Full Report Table (Immutable Snapshot)
+            if (data.items_snapshot) {
+                const financialSummary = {
+                    net_value: data.adjustment_id_surplus ? data.surplus_value : -data.shortage_value, // Simplification
+                    shortage_value: data.shortage_value,
+                    surplus_value: data.surplus_value,
+                    adjustment_ids: {
+                        shortage: data.adjustment_id_shortage,
+                        surplus: data.adjustment_id_surplus
+                    }
+                };
+
+                const { error: error2 } = await supabase.from('inventory_reports').insert({
+                    branch_name: branchName,
+                    laboratory: labName,
+                    snapshot_data: data.items_snapshot, // Guarda todo el JSON
+                    financial_summary: financialSummary,
+                    user_name: data.user_name || 'Desconocido'
+                } as any);
+
+                if (error2) console.error("Error saving advanced report snapshot:", error2);
+            }
+
         } catch (e) {
             console.error("Error saving history:", e);
             throw e;
@@ -464,5 +512,28 @@ export const cyclicInventoryService = {
             return [];
         }
         return data;
+    },
+
+    // Migration Tool
+    migrateGoalsFromExcel: async (): Promise<void> => {
+        try {
+            console.log("Starting migration...");
+            const counts = await getAllBranchLabCounts();
+            const updates = Object.entries(counts).map(([branch, count]) => ({
+                branch_name: branch,
+                total_labs_goal: count,
+                updated_at: new Date().toISOString()
+            }));
+
+            if (updates.length > 0) {
+                // @ts-ignore
+                const { error } = await supabase.from('branch_goals').upsert(updates, { onConflict: 'branch_name' });
+                if (error) throw error;
+                console.log(`Migrated ${updates.length} branch goals to Supabase.`);
+            }
+        } catch (error) {
+            console.error("Migration failed:", error);
+            throw error;
+        }
     }
 };

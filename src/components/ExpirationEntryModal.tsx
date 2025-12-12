@@ -10,10 +10,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { BatchInfo } from "@/services/expirationDB";
-import { Plus, Trash2, Calendar, BellRing, Package, X } from "lucide-react";
+import { Plus, Trash2, Calendar, BellRing, Package, X, Calculator as CalculatorIcon } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { Calculator } from "@/components/Calculator";
 
 interface ExpirationEntryModalProps {
     open: boolean;
@@ -39,6 +40,12 @@ export function ExpirationEntryModal({
     const [expiry, setExpiry] = useState("");
     const [quantity, setQuantity] = useState("");
     const [reminder, setReminder] = useState<number | string>(1);
+    const [showCalculator, setShowCalculator] = useState(false);
+
+    const handleCalculatorResult = (result: number) => {
+        setQuantity(Math.floor(result).toString());
+        // setShowCalculator(false); 
+    };
 
     // Load initial batches when opening
     useEffect(() => {
@@ -168,49 +175,44 @@ export function ExpirationEntryModal({
                                 <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block ml-1">
                                     Cant.
                                 </label>
-                                <Input
-                                    type="number"
-                                    value={quantity}
-                                    onChange={e => setQuantity(e.target.value)}
-                                    className="text-center font-bold text-lg bg-muted/30 border-muted-foreground/20 focus-visible:ring-primary/20"
-                                    placeholder="0"
-                                />
-                            </div>
-                        </div>
-
-                        {/* Reminder Pills */}
-                        <div>
-                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2 block flex items-center gap-1.5">
-                                <BellRing className="w-3 h-3 text-orange-500" /> Recordatorio (Meses antes)
-                            </label>
-                            <div className="flex gap-2 w-full">
-                                {[1, 3, 6, 9].map(m => (
-                                    <button
-                                        key={m}
-                                        onClick={() => setReminder(m)}
-                                        className={`
-                                    flex-1 py-1.5 text-xs font-medium rounded-full transition-all border
-                                    ${reminder === m
-                                                ? 'bg-orange-500 text-white border-orange-500 shadow-sm scale-105'
-                                                : 'bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30'}
-                                `}
-                                    >
-                                        {m} Mes{m > 1 && 'es'}
-                                    </button>
-                                ))}
-                                <div className="w-16">
+                                <div className="flex gap-1">
                                     <Input
-                                        value={typeof reminder === 'number' && [1, 3, 6, 9].includes(reminder) ? '' : reminder}
-                                        onChange={e => {
-                                            const val = parseInt(e.target.value);
-                                            setReminder(isNaN(val) ? '' : val);
-                                        }}
-                                        placeholder="#"
-                                        className="h-[30px] text-center px-1 text-xs rounded-full border-border bg-background focus-visible:ring-1 focus-visible:ring-orange-500"
+                                        type="number"
+                                        value={quantity}
+                                        onChange={e => setQuantity(e.target.value)}
+                                        className="text-center font-bold text-lg bg-muted/30 border-muted-foreground/20 focus-visible:ring-primary/20"
+                                        placeholder="0"
                                     />
+                                    <Button
+                                        variant={showCalculator ? "secondary" : "outline"}
+                                        size="icon"
+                                        className="h-10 w-10 shrink-0"
+                                        onClick={() => setShowCalculator(!showCalculator)}
+                                        title="Calculadora"
+                                    >
+                                        <CalculatorIcon className="w-4 h-4" />
+                                    </Button>
                                 </div>
                             </div>
                         </div>
+
+                        <AnimatePresence>
+                            {showCalculator && (
+                                <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    className="overflow-hidden border rounded-lg bg-muted/20"
+                                >
+                                    <Calculator
+                                        onResult={handleCalculatorResult}
+                                        onClose={() => setShowCalculator(false)}
+                                    />
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
+
 
                         {/* Add Button - Full Width for mobile ergonomics */}
                         <Button onClick={handleAddBatch} className="w-full text-sm h-11 shadow-lg shadow-primary/20" size="lg">
@@ -251,12 +253,7 @@ export function ExpirationEntryModal({
                                                         Vence: {batch.expirationDate}
                                                     </Badge>
                                                 </div>
-                                                {batch.reminderMonths && (
-                                                    <div className="flex items-center text-[10px] text-orange-600/80 mt-0.5 font-medium">
-                                                        <BellRing className="w-3 h-3 mr-1" />
-                                                        Avisar {batch.reminderMonths} meses antes
-                                                    </div>
-                                                )}
+
                                             </div>
                                         </div>
 

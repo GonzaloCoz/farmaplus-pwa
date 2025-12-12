@@ -1,38 +1,64 @@
+
 import { useState } from "react";
-import { useLocation } from "react-router-dom";
-import { Search } from "lucide-react";
+import { useLocation, Link } from "react-router-dom";
+import { Search, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlobalSearchCommand } from "@/components/GlobalSearchCommand";
 import { SyncStatusButton } from "@/components/SyncStatusButton";
 
-// Mapping de rutas a títulos
-const routeTitles: Record<string, string> = {
-    "/": "Dashboard",
-    "/stock": "Gestión de Stock",
-    "/stock/pre-count": "Pre-Conteo Sucursal",
-    "/stock/expiration-control": "Control de Vencimientos",
-    "/stock/import": "Importar Inventario",
-    "/cyclic-inventory": "Inventarios Cíclicos",
-    "/products": "Productos",
-    "/reports": "Reportes",
-    "/settings": "Configuración",
-    "/profile": "Perfil",
+// Mapping de segmentos a títulos
+const pathTitles: Record<string, string> = {
+    "dashboard": "Dashboard",
+    "stock": "Gestión de Stock",
+    "pre-count": "Pre-Conteo Sucursal",
+    "expiration-control": "Control de Vencimientos",
+    "import": "Importar Inventario",
+    "cyclic-inventory": "Inventarios Cíclicos",
+    "products": "Productos",
+    "reports": "Reportes",
+    "settings": "Configuración",
+    "profile": "Perfil",
+    "admin": "Admin",
+    "branches": "Sucursales"
 };
 
 export function DesktopHeader() {
     const [searchOpen, setSearchOpen] = useState(false);
     const location = useLocation();
 
-    // Obtener el título basado en la ruta actual
-    const pageTitle = routeTitles[location.pathname] || "Dashboard";
+    // Generar breadcrumbs
+    const pathSegments = location.pathname.split('/').filter(Boolean);
+
+    // Si estamos en root
+    const breadcrumbs = pathSegments.length > 0
+        ? pathSegments.map((segment, index) => {
+            const path = `/${pathSegments.slice(0, index + 1).join('/')}`;
+            const title = pathTitles[segment] || segment.charAt(0).toUpperCase() + segment.slice(1).replace('-', ' ');
+            return { title, path, isLast: index === pathSegments.length - 1 };
+        })
+        : [{ title: 'Dashboard', path: '/', isLast: true }];
 
     return (
         <>
             <header className="h-16 border-b border-border/40 bg-background/50 backdrop-blur-sm sticky top-0 z-30">
                 <div className="max-w-7xl mx-auto w-full h-full px-6 flex items-center justify-between">
-                    {/* Left: Title/Breadcrumb */}
-                    <div className="text-foreground">
-                        <span className="text-sm font-semibold">{pageTitle}</span>
+                    {/* Left: Breadcrumbs */}
+                    <div className="flex items-center text-foreground">
+                        {breadcrumbs.map((crumb, index) => (
+                            <div key={crumb.path} className="flex items-center">
+                                {index > 0 && <ChevronRight className="h-4 w-4 mx-2 text-muted-foreground" />}
+                                {crumb.isLast ? (
+                                    <span className="text-sm font-semibold">{crumb.title}</span>
+                                ) : (
+                                    <Link
+                                        to={crumb.path}
+                                        className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                                    >
+                                        {crumb.title}
+                                    </Link>
+                                )}
+                            </div>
+                        ))}
                     </div>
 
                     {/* Right: Actions */}

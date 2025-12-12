@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,8 +18,16 @@ import {
     AlertTriangle,
     FileText,
     Bell,
-    BellRing
+    BellRing,
+    ArrowRight,
+    Play,
+    History,
+    Wifi,
+    WifiOff,
+    Search
 } from 'lucide-react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 import {
     Dialog,
     DialogContent,
@@ -30,11 +38,13 @@ import {
 } from "@/components/ui/dialog";
 
 import { BarcodeScanner } from '@/components/BarcodeScanner';
-import { ProductSearchInput } from '@/components/ProductSearchInput';
+// import { ProductSearchInput } from '@/components/ProductSearchInput'; // Replaced
+import { SmartProductSearch } from '@/components/SmartProductSearch';
 import { useExpirationControl } from '@/hooks/useExpirationControl';
+import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { getProductByEAN } from '@/services/preCountDB'; // Reuse product info service
 import { toast } from 'sonner';
-import { CounterAnimation } from '@/components/CounterAnimation';
+import { AnimatedCounter } from '@/components/AnimatedCounter';
 import { FabMenu } from '@/components/FabMenu';
 import { BatchInfo, ExpirationItem } from '@/services/expirationDB';
 import jsPDF from 'jspdf';
@@ -65,11 +75,17 @@ export default function ExpirationControl() {
         items,
         totalProducts,
         totalUnits,
+        isLoading,
         startSession,
         addItem,
         deleteItem,
-        finishSession
+        finishSession,
+        availableSessions,
+        resumeSession,
+        deleteSession
     } = useExpirationControl();
+
+    const { isOnline } = useOfflineSync();
 
     // 1. Configurar Sesión
     const handleStartSession = async () => {
@@ -201,171 +217,328 @@ export default function ExpirationControl() {
     };
 
     return (
-        <div className="space-y-6 max-w-4xl mx-auto pb-20">
-            {/* Header */}
-            <div className="flex items-center gap-3">
-                <Button variant="ghost" size="icon" onClick={() => navigate('/stock')}>
-                    <ArrowLeft className="w-5 h-5" />
-                </Button>
-                <div>
-                    <h1 className="text-2xl font-bold">Control de Vencimientos</h1>
-                    {session && <p className="text-muted-foreground text-sm">Sector: {session.sector}</p>}
-                </div>
-            </div>
-
+        <div className="space-y-6 max-w-5xl mx-auto pb-20">
             <AnimatePresence mode="wait">
                 {step === 'config' ? (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                        <Card className="p-6">
-                            <h2 className="text-lg font-semibold mb-4">Configurar Sesión</h2>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="text-sm font-medium">Nombre del Sector</label>
-                                    <Input
-                                        value={sector}
-                                        onChange={(e) => setSector(e.target.value)}
-                                        placeholder="Ej: Estantería A1"
-                                        autoFocus
-                                    />
-                                </div>
-                                <Button onClick={handleStartSession} className="w-full" size="lg">
-                                    Comenzar Control
-                                </Button>
-                            </div>
-                        </Card>
-                    </motion.div>
-                ) : (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-                        {/* Summary Cards */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <Card className="p-4 bg-primary/5 border-primary/20">
-                                <div className="text-center">
-                                    <span className="text-sm text-muted-foreground">Productos</span>
-                                    <div className="text-3xl font-bold text-primary">
-                                        <CounterAnimation value={totalProducts} />
-                                    </div>
-                                </div>
-                            </Card>
-                            <Card className="p-4 bg-secondary/5 border-secondary/20">
-                                <div className="text-center">
-                                    <span className="text-sm text-muted-foreground">Unidades Totales</span>
-                                    <div className="text-3xl font-bold text-foreground">
-                                        <CounterAnimation value={totalUnits} />
-                                    </div>
-                                </div>
-                            </Card>
-                        </div>
-
-                        {/* Input Action */}
-                        <Card className="p-6">
-                            <div className="space-y-4">
-                                <Button
-                                    size="lg"
-                                    className="w-full"
-                                    onClick={() => setScannerOpen(true)}
-                                >
-                                    <Camera className="mr-2 h-5 w-5" />
-                                    Escanear Producto
-                                </Button>
-
-                                <div className="relative">
-                                    <div className="absolute inset-0 flex items-center"><span className="w-full border-t"></span></div>
-                                    <div className="relative flex justify-center text-xs uppercase">
-                                        <span className="bg-card px-2 text-muted-foreground">O buscar manualmente</span>
-                                    </div>
-                                </div>
-
-                                <ProductSearchInput
-                                    onSelect={handleProductSelect}
-                                    placeholder="Buscar por nombre o EAN..."
-                                />
-                            </div>
-                        </Card>
-
-                        {/* List */}
-                        <div className="space-y-3">
-                            <h3 className="font-semibold text-lg">Registros ({items.length})</h3>
-                            {items.length === 0 ? (
-                                <div className="text-center py-10 text-muted-foreground bg-muted/20 rounded-lg border-dashed border-2">
-                                    <Package className="w-10 h-10 mx-auto mb-2 opacity-20" />
-                                    <p>No hay productos registrados aún</p>
+                    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+                        {/* Online Status Indicator */}
+                        <div className="flex justify-end">
+                            {isOnline ? (
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-success/10 text-success rounded-full text-sm">
+                                    <Wifi className="w-4 h-4" />
+                                    <span className="font-medium">En línea</span>
                                 </div>
                             ) : (
-                                items.map((item) => (
-                                    <Card key={item.id} className="p-4 group relative overflow-hidden">
-                                        <div className="flex justify-between items-start">
-                                            <div>
-                                                <h4 className="font-medium text-base">{item.productName}</h4>
-                                                <p className="text-xs text-muted-foreground mb-2">EAN: {item.ean}</p>
-
-                                                <div className="flex flex-wrap gap-2">
-                                                    {item.batches.map((batch, idx) => (
-                                                        <Badge key={idx} variant="secondary" className="text-xs font-normal">
-                                                            <Clock className="w-3 h-3 mr-1 opacity-50" />
-                                                            {formatExpiryDate(batch.expirationDate)}
-                                                            <span className="mx-1 text-muted-foreground">|</span>
-                                                            Lote: {batch.batchNumber}
-                                                            {batch.reminderMonths && (
-                                                                <>
-                                                                    <span className="mx-1 text-muted-foreground">|</span>
-                                                                    <BellRing className="w-3 h-3 mr-0.5 text-orange-500" />
-                                                                    {batch.reminderMonths}m
-                                                                </>
-                                                            )}
-                                                            <span className="mx-1 text-muted-foreground">|</span>
-                                                            <strong>x{batch.quantity}</strong>
-                                                        </Badge>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <div className="text-2xl font-bold">{item.totalQuantity}</div>
-                                                <span className="text-xs text-muted-foreground">Total</span>
-                                            </div>
-                                        </div>
-
-                                        {/* Actions */}
-                                        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 backdrop-blur rounded-lg p-1">
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8 hover:text-blue-500"
-                                                onClick={() => processProductSelection(item.ean, item.productName)}
-                                            >
-                                                <Plus className="w-4 h-4" />
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8 hover:text-destructive"
-                                                onClick={() => deleteItem(item.id)}
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </Button>
-                                        </div>
-                                    </Card>
-                                ))
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-warning/10 text-warning rounded-full text-sm">
+                                    <WifiOff className="w-4 h-4" />
+                                    <span className="font-medium">Sin conexión</span>
+                                </div>
                             )}
                         </div>
 
-                        <FabMenu
-                            actions={[
-                                {
-                                    label: "Finalizar",
-                                    icon: <CheckCircle2 className="w-5 h-5" />,
-                                    onClick: handleFinishClick,
-                                    variant: 'default',
-                                    color: 'bg-primary text-primary-foreground'
-                                },
-                                {
-                                    label: "Exportar PDF",
-                                    icon: <FileText className="w-5 h-5" />,
-                                    onClick: handleExportPDF,
-                                    variant: 'secondary'
-                                }
-                            ]}
-                        />
-                    </motion.div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                            {/* Nueva Sesión */}
+                            <Card className="border-muted/50 shadow-lg overflow-hidden relative group">
+                                <div className="absolute top-0 left-0 w-1 h-full bg-primary/20 group-hover:bg-primary transition-colors" />
+                                <CardContent className="p-6 md:p-8 space-y-6">
+                                    <div className="flex items-center gap-4 text-primary">
+                                        <div className="p-3 bg-primary/10 rounded-xl">
+                                            <Plus className="w-6 h-6" />
+                                        </div>
+                                        <h2 className="text-xl font-semibold">Nueva Sesión</h2>
+                                    </div>
+
+                                    <p className="text-sm text-muted-foreground">
+                                        Genera un reporte de control de fechas de vencimiento para un sector o estantería.
+                                    </p>
+
+                                    <div className="space-y-4">
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium text-muted-foreground ml-1">
+                                                Nombre del Sector
+                                            </label>
+                                            <Input
+                                                value={sector}
+                                                onChange={(e) => setSector(e.target.value)}
+                                                placeholder="Ej: Estantería A1"
+                                                className="h-12 text-lg bg-muted/30 border-muted-foreground/20 focus:border-primary transition-all"
+                                                autoFocus
+                                                onKeyDown={(e) => e.key === 'Enter' && handleStartSession()}
+                                            />
+                                        </div>
+
+                                        <Button
+                                            className="w-full h-12 text-lg font-medium shadow-md hover:shadow-lg transition-all"
+                                            onClick={handleStartSession}
+                                            disabled={!sector.trim() || isLoading}
+                                        >
+                                            {isLoading ? 'Iniciando...' : 'Comenzar Control'}
+                                        </Button>
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            {/* Sesiones Abiertas */}
+                            <Card className="border-muted/50 shadow-lg h-full">
+                                <CardHeader className="pb-4 border-b border-border/50">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-secondary rounded-lg text-secondary-foreground">
+                                            <History className="w-5 h-5" />
+                                        </div>
+                                        <CardTitle className="text-lg">Sesiones Abiertas</CardTitle>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="p-0">
+                                    {availableSessions.length === 0 ? (
+                                        <div className="p-8 text-center text-muted-foreground">
+                                            <p>No hay sesiones activas</p>
+                                        </div>
+                                    ) : (
+                                        <div className="divide-y divide-border/50 max-h-[400px] overflow-y-auto">
+                                            {availableSessions.map((s) => (
+                                                <div key={s.id} className="p-4 hover:bg-muted/30 transition-colors flex items-center justify-between group">
+                                                    <div className="space-y-1">
+                                                        <h3 className="font-medium text-lg leading-none group-hover:text-primary transition-colors">
+                                                            {s.sector}
+                                                        </h3>
+                                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                                            <Calendar className="w-3 h-3" />
+                                                            <span>
+                                                                {format(new Date(s.startTime), "d MMM yyyy, HH:mm", { locale: es })}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex gap-3 text-xs text-muted-foreground mt-1">
+                                                            <span className="bg-primary/5 px-2 py-0.5 rounded text-primary font-medium">
+                                                                {s.totalProducts || 0} prod.
+                                                            </span>
+                                                            <span className="bg-secondary px-2 py-0.5 rounded text-secondary-foreground font-medium">
+                                                                {s.totalUnits || 0} unid.
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                                            onClick={() => deleteSession(s.id)}
+                                                            title="Eliminar sesión"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="secondary"
+                                                            size="sm"
+                                                            className="gap-2 shadow-sm"
+                                                            onClick={() => {
+                                                                resumeSession(s);
+                                                                setStep('counting'); // Assuming ExpirationControl also uses 'counting' step, checking line 237 implies step switch logic is managed or I need to explicitly set it? 
+                                                                // Wait, ExpirationControl has setStep. I should check if resumeSession in hook handles step or if I need to do it here.
+                                                                // In PreCount I did setStep('counting'). Detailed check: ExpirationControl.tsx uses 'step' state.
+                                                            }}
+                                                        >
+                                                            Retomar
+                                                            <ArrowRight className="w-4 h-4" />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </div>
+                    </div>
+
+                ) : (
+                    <>
+                        <motion.div
+                            key="counting"
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            transition={{ duration: 0.3 }}
+                            className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto"
+                        >
+                            {/* 1. Enhanced Status Bar - Full Width Single Row */}
+                            <Card className="min-h-[120px] flex flex-col justify-center px-6 sm:px-8 bg-gradient-to-br from-secondary/40 to-secondary/20 border-muted/50 shadow-sm">
+                                <div className="flex items-center justify-between gap-4 w-full">
+                                    {/* Left: Sector Label + Name */}
+                                    <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                                        <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap">Sector</span>
+                                        <span className="font-bold text-foreground text-lg sm:text-xl truncate">{session?.sector}</span>
+                                    </div>
+
+                                    <div className="h-10 sm:h-12 w-px bg-border/40 flex-shrink-0" />
+
+                                    {/* Center: Counters - Horizontal Layout */}
+                                    <div className="flex items-center gap-8 sm:gap-12 flex-1 justify-center">
+                                        <div className="flex items-center gap-3 sm:gap-4">
+                                            <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap">Productos</span>
+                                            <div className="text-2xl sm:text-3xl font-bold text-primary">
+                                                <AnimatedCounter value={totalProducts} digits={4} />
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3 sm:gap-4">
+                                            <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap">Unidades</span>
+                                            <div className="text-2xl sm:text-3xl font-bold text-foreground">
+                                                <AnimatedCounter value={totalUnits} digits={4} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Right: Status Icons */}
+                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                        <div
+                                            className={`p-2 rounded-full ${isOnline ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}`}
+                                            title={isOnline ? "En línea" : "Sin conexión"}
+                                        >
+                                            {isOnline ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
+                                        </div>
+                                    </div>
+                                </div>
+                            </Card>
+
+                            {/* 2. Compact Hero Input Section */}
+                            <Card className="p-2 sm:p-3 shadow-md border-primary/20 bg-card/80 backdrop-blur-sm relative z-50">
+                                <div className="space-y-4">
+                                    <div className="flex gap-4">
+                                        <div className="flex-1 relative z-20">
+                                            <SmartProductSearch
+                                                onSelect={(p) => processProductSelection(p.ean, p.name)}
+                                                autoFocus={true}
+                                                className="w-full"
+                                            />
+                                        </div>
+                                    </div>
+                                    {/* Removed ProductSearchInput as it is integrated now */}
+                                </div>
+                            </Card>
+
+                            {/* 3. Dense List */}
+                            <div className="space-y-2 relative z-10">
+                                <div className="flex items-center justify-between px-1">
+                                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+                                        Registros ({items.length})
+                                    </h3>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    <AnimatePresence mode="popLayout">
+                                        {items.length === 0 ? (
+                                            <div className="col-span-full p-8 text-center text-muted-foreground border rounded-lg border-dashed bg-muted/20">
+                                                <Package className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                                                <p>No hay productos registrados aún</p>
+                                            </div>
+                                        ) : (
+                                            items.map((item, index) => (
+                                                <motion.div
+                                                    key={item.id}
+                                                    initial={{ opacity: 0, scale: 0.9 }}
+                                                    animate={{ opacity: 1, scale: 1 }}
+                                                    exit={{ opacity: 0, scale: 0.9 }}
+                                                    transition={{ duration: 0.2 }}
+                                                    layout
+                                                >
+                                                    <Card className="h-full relative overflow-hidden group border-muted/60 shadow-sm hover:shadow-md transition-all">
+                                                        {/* Selection indicator on hover */}
+                                                        <div className="absolute top-0 left-0 w-1 h-full bg-primary/20 group-hover:bg-primary transition-colors" />
+
+                                                        <div className="p-3 pl-4 flex flex-col h-full gap-2">
+                                                            {/* Header */}
+                                                            <div className="flex justify-between items-start gap-2">
+                                                                <h4 className="font-medium text-sm leading-tight line-clamp-2 text-foreground/90" title={item.productName}>
+                                                                    {item.productName}
+                                                                </h4>
+                                                                <div className="text-xs font-bold bg-secondary/50 px-1.5 py-0.5 rounded text-foreground/70 text-right flex-shrink-0">
+                                                                    #{items.length - index}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* EAN */}
+                                                            <div>
+                                                                <Badge variant="outline" className="text-[10px] h-5 font-mono text-muted-foreground border-border/50 px-1.5 font-normal">
+                                                                    {item.ean}
+                                                                </Badge>
+                                                            </div>
+
+                                                            {/* Batches (Compact) */}
+                                                            <div className="flex flex-wrap gap-1 content-start flex-1 min-h-[1.5rem]">
+                                                                {item.batches.slice(0, 3).map((batch, idx) => (
+                                                                    <span key={idx} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-secondary text-secondary-foreground border border-secondary-foreground/10" title={`Lote: ${batch.batchNumber}`}>
+                                                                        <Clock className="w-2.5 h-2.5 mr-1 opacity-70" />
+                                                                        {formatExpiryDate(batch.expirationDate)}
+                                                                        <span className="mx-1 opacity-50">|</span>
+                                                                        x{batch.quantity}
+                                                                    </span>
+                                                                ))}
+                                                                {item.batches.length > 3 && (
+                                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-muted text-muted-foreground">
+                                                                        +{item.batches.length - 3}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Footer: Totals & Actions */}
+                                                            <div className="flex items-center justify-between pt-2 mt-auto border-t border-border/30">
+                                                                <div className="flex items-baseline gap-1">
+                                                                    <span className="text-xl font-bold tracking-tight text-foreground">
+                                                                        {item.totalQuantity}
+                                                                    </span>
+                                                                    <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                                                                        total
+                                                                    </span>
+                                                                </div>
+
+                                                                <div className="flex items-center gap-1">
+                                                                    <Button
+                                                                        size="icon"
+                                                                        variant="ghost"
+                                                                        className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/5"
+                                                                        onClick={() => processProductSelection(item.ean, item.productName)}
+                                                                        title="Editar / Agregar lote"
+                                                                    >
+                                                                        <Plus className="w-4 h-4" />
+                                                                    </Button>
+                                                                    <Button
+                                                                        size="icon"
+                                                                        variant="ghost"
+                                                                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/5"
+                                                                        onClick={() => deleteItem(item.id)}
+                                                                        title="Eliminar"
+                                                                    >
+                                                                        <Trash2 className="w-4 h-4" />
+                                                                    </Button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </Card>
+                                                </motion.div>
+                                            ))
+                                        )}
+                                    </AnimatePresence>
+                                </div>
+                            </div>
+
+                            <FabMenu
+                                actions={[
+                                    {
+                                        label: "Finalizar",
+                                        icon: <CheckCircle2 className="w-5 h-5" />,
+                                        onClick: handleFinishClick,
+                                        variant: 'default',
+                                        color: 'bg-primary text-primary-foreground'
+                                    },
+                                    {
+                                        label: "Exportar PDF",
+                                        icon: <FileText className="w-5 h-5" />,
+                                        onClick: handleExportPDF,
+                                        variant: 'secondary'
+                                    }
+                                ]}
+                            />
+                        </motion.div>
+                    </>
                 )}
             </AnimatePresence>
 
@@ -390,6 +563,9 @@ export default function ExpirationControl() {
                         setSelectedProduct(null);
                         setManualEAN('');
                         setCurrentBatches([]);
+                        setTimeout(() => {
+                            document.getElementById('smart-search-input')?.focus();
+                        }, 50);
                     }
                 }}
             />

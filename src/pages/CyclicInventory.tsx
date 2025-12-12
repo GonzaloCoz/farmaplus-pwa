@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect } from "react";
+import { toast } from 'sonner';
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Search, ArrowUpDown, BarChart3, CheckCircle2, AlertCircle, DollarSign, TrendingDown, TrendingUp, Loader2 } from "lucide-react";
+import { Search, ArrowUpDown, BarChart3, CheckCircle2, AlertCircle, DollarSign, TrendingDown, TrendingUp, Loader2, Database } from "lucide-react";
 import { LaboratoryCard, LaboratoryStatus } from "@/components/LaboratoryCard";
 import { CounterAnimation } from "@/components/CounterAnimation";
 import { MetricCarousel } from "@/components/MetricCarousel";
@@ -252,28 +253,51 @@ export default function CyclicInventory() {
             />
           </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="whitespace-nowrap">
-                <ArrowUpDown className="w-4 h-4 mr-2" />
-                {getSortLabel(sortBy)}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setSortBy("name-asc")}>
-                Nombre (A-Z)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortBy("name-desc")}>
-                Nombre (Z-A)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortBy("value-asc")}>
-                Valor (Menor a Mayor)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortBy("value-desc")}>
-                Valor (Mayor a Menor)
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex gap-2">
+            {/* Migration Button (Admin Only likely, but public for now as requested) */}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={async () => {
+                if (!confirm("¿Sincronizar metas desde el Excel maestro a la base de datos?")) return;
+                const toastId = toast.loading("Sincronizando metas...");
+                try {
+                  await cyclicInventoryService.migrateGoalsFromExcel();
+                  toast.success("Metas sincronizadas con éxito.", { id: toastId });
+                  // Reload to reflect changes
+                  window.location.reload();
+                } catch (e) {
+                  toast.error("Error al sincronizar metas.", { id: toastId });
+                }
+              }}
+            >
+              <Database className="w-4 h-4 mr-2" />
+              Sincronizar Metas
+            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="whitespace-nowrap">
+                  <ArrowUpDown className="w-4 h-4 mr-2" />
+                  {getSortLabel(sortBy)}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setSortBy("name-asc")}>
+                  Nombre (A-Z)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSortBy("name-desc")}>
+                  Nombre (Z-A)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSortBy("value-asc")}>
+                  Valor (Menor a Mayor)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setSortBy("value-desc")}>
+                  Valor (Mayor a Menor)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
         {/* Category Filters */}

@@ -28,6 +28,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { PageLayout } from '@/components/layout/PageLayout';
+import { PageHeader } from '@/components/layout/PageHeader';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -237,39 +239,29 @@ export default function Products() {
   };
 
   return (
-    <motion.div
-      className="flex flex-col h-full"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.4 }}
-    >
-      {/* Header with Actions */}
-      <div className="flex items-center justify-between p-6 pb-0">
-        <h1 className="text-2xl font-bold tracking-tight">Productos</h1>
-        <div className="flex gap-2">
-          <div className="relative">
-            <Button variant="outline" disabled={loading} onClick={() => document.getElementById('product-upload')?.click()}>
-              <Upload className="w-4 h-4 mr-2" />
-              {loading ? 'Cargando...' : 'Importar Excel'}
-            </Button>
-            <Input
-              id="product-upload"
-              type="file"
-              accept=".xlsx, .xls"
-              className="hidden"
-              onChange={handleFileUpload}
-              disabled={loading}
-            />
-          </div>
-          <Button onClick={() => setOpen(true)}>
-            <Barcode className="w-4 h-4 mr-2" />
-            Generar EAN
+    <PageLayout>
+      <div className="flex justify-end gap-2 mb-4">
+        <div className="relative">
+          <Button variant="outline" disabled={loading} onClick={() => document.getElementById('product-upload')?.click()}>
+            <Upload className="w-4 h-4 mr-2" />
+            {loading ? 'Cargando...' : 'Importar Excel'}
           </Button>
+          <Input
+            id="product-upload"
+            type="file"
+            accept=".xlsx, .xls"
+            className="hidden"
+            onChange={handleFileUpload}
+            disabled={loading}
+          />
         </div>
+        <Button onClick={() => setOpen(true)}>
+          <Barcode className="w-4 h-4 mr-2" />
+          Generar EAN
+        </Button>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto">
         <div className="border rounded-xl overflow-hidden bg-card shadow-sm">
           {loading ? (
             <div className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground">
@@ -460,6 +452,6 @@ export default function Products() {
           </div>
         </DialogContent>
       </Dialog>
-    </motion.div>
+    </PageLayout>
   );
 }

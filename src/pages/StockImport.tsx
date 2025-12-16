@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Input } from "@/components/ui/input";
 import { Upload, FileSpreadsheet, AlertCircle, TrendingDown, TrendingUp, Download, CheckCircle, Target, Save, Calculator, Package } from "lucide-react";
 import * as XLSX from "xlsx";
-import { toast } from "sonner";
+import { notify } from "@/lib/notifications";
 import { SaveReportModal } from "@/components/SaveReportModal";
 import { FabMenu } from "@/components/FabMenu";
 
@@ -60,21 +60,21 @@ export default function StockImport() {
         setFile(selectedFile);
         setResults(null); // Limpiar resultados anteriores al cargar un nuevo archivo
         setOriginalData({ headers: [], rows: [] });
-        toast.success("Archivo cargado correctamente");
+        notify.success("Operación exitosa", "Archivo cargado correctamente");
       } else {
-        toast.error("Por favor, selecciona un archivo Excel válido");
+        notify.error("Error", "Por favor, selecciona un archivo Excel válido");
       }
     }
   };
 
   const handleAnalyze = async () => {
     if (!file) {
-      toast.error("Por favor, selecciona un archivo primero");
+      notify.error("Error", "Por favor, selecciona un archivo primero");
       return;
     }
 
     setAnalyzing(true);
-    toast.info("Analizando archivo...", { id: "analysis-toast" });
+    notify.info("Información", "Analizando archivo...", { id: "analysis-toast" });
 
     try {
       const data = await file.arrayBuffer();
@@ -131,7 +131,7 @@ export default function StockImport() {
         totalScannedUnits: products.reduce((acc, curr) => acc + curr.physicalCount, 0),
       });
 
-      toast.success("Análisis completado", { id: "analysis-toast" });
+      notify.success("Operación exitosa", "Análisis completado", { id: "analysis-toast" });
 
       // Smooth scroll to results
       setTimeout(() => {
@@ -139,7 +139,7 @@ export default function StockImport() {
       }, 300);
     } catch (error) {
       console.error("Error analyzing file:", error);
-      toast.error("Hubo un error al analizar el archivo.", { id: "analysis-toast" });
+      notify.error("Error", "Hubo un error al analizar el archivo.", { id: "analysis-toast" });
     } finally {
       setAnalyzing(false);
     }
@@ -147,11 +147,11 @@ export default function StockImport() {
 
   const handleExportSummary = () => {
     if (!results) {
-      toast.error("No hay resultados para exportar.");
+      notify.error("Error", "No hay resultados para exportar.");
       return;
     }
 
-    toast.info("Generando resumen en Excel...");
+    notify.info("Información", "Generando resumen en Excel...");
 
     const formatForSheet = (data: ProductData[]) => data.map(item => ({
       'Código de Barras': item.codebar,
@@ -176,13 +176,13 @@ export default function StockImport() {
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(formatForSheet(surplusesByValue)), "Sobrantes por Valor");
 
     XLSX.writeFile(workbook, "Resumen_Diferencias.xlsx");
-    toast.success("Resumen Excel generado correctamente.");
+    notify.success("Operación exitosa", "Resumen Excel generado correctamente.");
   };
 
 
   const handleExportForAdjustment = () => {
     if (!results || originalData.rows.length === 0) {
-      toast.error("No hay resultados para exportar.");
+      notify.error("Error", "No hay resultados para exportar.");
       return;
     }
 
@@ -192,11 +192,11 @@ export default function StockImport() {
 
   const handleDownloadExport = () => {
     if (!results || originalData.rows.length === 0) {
-      toast.error("No hay resultados para exportar.");
+      notify.error("Error", "No hay resultados para exportar.");
       return;
     }
 
-    toast.info("Generando archivo Excel...");
+    notify.info("Información", "Generando archivo Excel...");
 
     // Preparamos los nuevos encabezados
     const newHeaders = [...originalData.headers];
@@ -267,7 +267,7 @@ export default function StockImport() {
     XLSX.utils.book_append_sheet(workbook, worksheet, "Hoja de Ajuste");
     const finalFileName = `${downloadFileName}.xlsx`;
     XLSX.writeFile(workbook, finalFileName);
-    toast.success("Archivo Excel generado correctamente.");
+    notify.success("Operación exitosa", "Archivo Excel generado correctamente.");
     setHasExported(true);
     setExportDialogOpen(false);
     setDownloadFileName("Inventario"); // Reset
@@ -317,7 +317,7 @@ export default function StockImport() {
 
   const handleSaveReport = (data: { name: string; branch: string; sector: string; date: string }) => {
     if (!results) {
-      toast.error("No hay resultados para guardar");
+      notify.error("Error", "No hay resultados para guardar");
       return;
     }
 

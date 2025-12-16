@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BRANCH_NAMES } from "@/config/users";
 import { calendarService, CalendarEvent } from "@/services/calendarService";
-import { toast } from "sonner";
+import { notify } from "@/lib/notifications";
 import { Loader2 } from "lucide-react";
 
 interface AddEventDialogProps {
@@ -25,7 +25,7 @@ export function AddEventDialog({ open, onOpenChange, onEventAdded }: AddEventDia
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!branch || !date) {
-            toast.error("Sucursal y fecha son requeridas");
+            notify.error("Datos incompletos", "Sucursal y fecha son requeridas");
             return;
         }
 
@@ -39,7 +39,7 @@ export function AddEventDialog({ open, onOpenChange, onEventAdded }: AddEventDia
             });
 
             if (newEvent) {
-                toast.success("Evento agregado correctamente");
+                notify.success("Evento agregado", "El evento se creó correctamente");
                 onEventAdded(newEvent);
                 onOpenChange(false);
                 // Reset form
@@ -47,11 +47,11 @@ export function AddEventDialog({ open, onOpenChange, onEventAdded }: AddEventDia
                 setBranch("");
                 setSector("Farmacia");
             } else {
-                toast.error("Error al crear el evento");
+                notify.error("Error", "No se pudo crear el evento");
             }
         } catch (error) {
             console.error(error);
-            toast.error("Error inesperado");
+            notify.error("Error inesperado", "Ocurrió un error al procesar la solicitud");
         } finally {
             setIsLoading(false);
         }

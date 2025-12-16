@@ -32,7 +32,7 @@ interface BranchesTableWidgetProps {
 }
 
 export function BranchesTableWidget({ branches: initialBranches }: BranchesTableWidgetProps) {
-    const { selectBranch, user } = useUser();
+    const { selectBranch, clearBranchSelection, user } = useUser();
     const [searchTerm, setSearchTerm] = useState("");
     const [showAllBranches, setShowAllBranches] = useState(false);
     const [branchSummaries, setBranchSummaries] = useState<BranchSummary[]>([]);
@@ -106,7 +106,9 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
     };
 
     const handleBranchClick = (branchName: string) => {
-        if (selectBranch) {
+        if (user?.branchName === branchName) {
+            clearBranchSelection?.();
+        } else if (selectBranch) {
             selectBranch(branchName);
             // Optional: Scroll to top smoothly
             window.scrollTo({ top: 0, behavior: 'smooth' });

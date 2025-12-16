@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FileText, Search, Calendar, Layers, Eye, ArrowLeft, Download, Trash2, MapPin, Image as ImageIcon, CheckCircle2, User } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notifications";
 import { useNavigate, Link } from "react-router-dom";
 import {
   getAllSessions,
@@ -102,7 +102,7 @@ export default function Reports() {
       setSessions(finishedSessions);
     } catch (error) {
       console.error("Error loading sessions:", error);
-      toast.error("Error al cargar el historial de pre-conteos");
+      notify.error("Error", "Error al cargar el historial de pre-conteos");
     } finally {
       setLoadingSessions(false);
     }
@@ -117,7 +117,7 @@ export default function Reports() {
       setSessionItems(items);
     } catch (error) {
       console.error("Error loading session items:", error);
-      toast.error("Error al cargar los detalles");
+      notify.error("Error", "Error al cargar los detalles");
     } finally {
       setLoadingItems(false);
     }
@@ -129,7 +129,7 @@ export default function Reports() {
 
   const handleExportPDF = (session: PreCountSession, items: PreCountItem[]) => {
     if (items.length === 0) {
-      toast.error('No hay productos para exportar');
+      notify.error("Error", 'No hay productos para exportar');
       return;
     }
 
@@ -181,8 +181,10 @@ export default function Reports() {
 
         const canvas = document.createElement('canvas');
         try {
+          // Use CODE128 to avoid automatic check digit calculation
+          // EAN13 format adds an extra digit which causes scanner issues
           JsBarcode(canvas, item.ean, {
-            format: "EAN13",
+            format: "CODE128",
             displayValue: true,
             fontSize: 14,
             fontOptions: "bold",
@@ -196,7 +198,7 @@ export default function Reports() {
           const barcodeData = canvas.toDataURL("image/png");
           doc.addImage(barcodeData, 'PNG', barcodeX, barcodeY, barcodeWidth, barcodeHeight);
         } catch (e) {
-          // Fallback for non-EAN13
+          // Fallback for any barcode generation error
           doc.setFontSize(8);
           doc.text(item.ean, barcodeX, barcodeY + 10);
         }
@@ -224,11 +226,11 @@ export default function Reports() {
 
       const fileName = `PreConteo_${session.sector}_${new Date(session.startTime).toISOString().split('T')[0]}.pdf`;
       doc.save(fileName);
-      toast.success('PDF generado correctamente');
+      notify.success("Operación exitosa", 'PDF generado correctamente');
 
     } catch (error) {
       console.error('Error generating PDF:', error);
-      toast.error('Error al generar el PDF');
+      notify.error("Error", 'Error al generar el PDF');
     }
   };
 
@@ -281,12 +283,12 @@ export default function Reports() {
     setReports(updated);
     localStorage.setItem("inventory-reports", JSON.stringify(updated));
     applyReportFilters(updated, searchReportTerm, filterBranch, filterSector);
-    toast.success("Reporte eliminado");
+    notify.success("Operación exitosa", "Reporte eliminado");
   };
 
   const handleExportExcel = (report: InventoryReport) => {
     // Logic from provided original file... (omitted for brevity, assume standard export)
-    toast.info("Función de exportar excel...");
+    notify.info("Información", "Función de exportar excel...");
   };
   // --- Re-implementing handleExportExcel properly as it was truncated above by me logically ---
   const doExportExcel = (report: InventoryReport) => {
@@ -322,9 +324,9 @@ export default function Reports() {
       );
 
       XLSX.writeFile(workbook, `Reporte_${report.name}_${report.date}.xlsx`);
-      toast.success("Reporte exportado correctamente");
+      notify.success("Operación exitosa", "Reporte exportado correctamente");
     } catch (error) {
-      toast.error("Error al exportar el reporte");
+      notify.error("Error", "Error al exportar el reporte");
     }
   };
 
@@ -344,10 +346,10 @@ export default function Reports() {
           link.href = canvas.toDataURL("image/png");
           link.click();
 
-          toast.success("Imagen generada correctamente");
+          notify.success("Operación exitosa", "Imagen generada correctamente");
         } catch (error) {
           console.error("Error generating image:", error);
-          toast.error("Error al generar la imagen");
+          notify.error("Error", "Error al generar la imagen");
         } finally {
           setReportToExport(null);
         }
@@ -365,7 +367,7 @@ export default function Reports() {
     const updated = expReports.filter(r => r.id !== id);
     setExpReports(updated);
     localStorage.setItem('expiration-reports', JSON.stringify(updated));
-    toast.success("Reporte eliminado");
+    notify.success("Operación exitosa", "Reporte eliminado");
   };
 
   const exportExpPDF = (report: ExpirationReport) => {
@@ -407,7 +409,7 @@ export default function Reports() {
     });
 
     doc.save(`Vencimientos_${report.sector}.pdf`);
-    toast.success("PDF Generado");
+    notify.success("Operación exitosa", "PDF Generado");
   };
 
   return (

@@ -68,7 +68,7 @@ export default function CustomCalendar({
       </div>
 
       <div className="grid grid-cols-7 gap-1 px-1 text-xs text-muted-foreground mb-1">
-        {['LU','MA','MI','JU','VI','SA','DO'].map((lab, i) => (
+        {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map((lab, i) => (
           <div key={i} className="flex items-center justify-center">
             <div className="h-10 w-10 flex items-center justify-center font-medium uppercase">{lab}</div>
           </div>
@@ -94,8 +94,8 @@ export default function CustomCalendar({
               const outerClasses = selectedDay
                 ? 'bg-primary text-primary-foreground'
                 : isNear
-                ? 'hover:bg-primary/10 ring-2 ring-accent'
-                : 'hover:bg-primary/10';
+                  ? 'hover:bg-primary/10 ring-2 ring-accent'
+                  : 'hover:bg-primary/10';
 
               const dayButton = (
                 <button
@@ -106,7 +106,7 @@ export default function CustomCalendar({
                   <div className="relative flex items-center justify-center w-full h-full">
                     <span className="text-sm font-medium">{format(d, 'd', { locale: es })}</span>
                     {hasEvents && (
-                      <span className={`absolute -bottom-2 h-1.5 w-1.5 rounded-full ${isNear ? 'bg-primary' : 'bg-accent'}`} />
+                      <span className="absolute bottom-1.5 h-1.5 w-1.5 rounded-full bg-blue-500" />
                     )}
                   </div>
                 </button>

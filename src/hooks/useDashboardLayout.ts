@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { arrayMove } from '@dnd-kit/sortable';
-import type { Widget, DashboardLayout } from '@/types/dashboard';
+import type { Widget, DashboardLayout, WidgetSize, WidgetSpan } from '@/types/dashboard';
 import {
     DollarSign,
     Activity,
@@ -19,10 +19,23 @@ import {
     Target,
     Wifi,
     Zap,
-    Calendar
+    Calendar,
+    Brain
 } from 'lucide-react';
 
 const DEFAULT_WIDGETS: Widget[] = [
+    {
+        id: 'smart-analyst',
+        type: 'smart-analyst',
+        title: 'Analista Inteligente',
+        description: 'Análisis automático de inventario',
+        icon: Brain,
+        visible: true,
+        order: 0,
+        size: 'small',
+        span: 2,
+        row: 'top'
+    },
     {
         id: 'metrics-carousel',
         type: 'metrics-carousel',
@@ -30,8 +43,10 @@ const DEFAULT_WIDGETS: Widget[] = [
         description: 'Diferencia neta, negativos y positivos',
         icon: DollarSign,
         visible: true,
-        order: 0,
+        order: 1,
         size: 'small',
+        span: 1,
+        row: 'top',
         mandatory: true
     },
     {
@@ -41,8 +56,10 @@ const DEFAULT_WIDGETS: Widget[] = [
         description: 'Total de productos en inventarios',
         icon: Activity,
         visible: true,
-        order: 1,
-        size: 'small'
+        order: 2,
+        size: 'small',
+        span: 1,
+        row: 'top'
     },
     {
         id: 'inventory-summary',
@@ -51,8 +68,10 @@ const DEFAULT_WIDGETS: Widget[] = [
         description: 'Progreso de productos en stock',
         icon: BarChart3,
         visible: false,
-        order: 2,
-        size: 'large'
+        order: 10,
+        size: 'large',
+        span: 1,
+        row: 'middle'
     },
     {
         id: 'inventory-alerts',
@@ -61,8 +80,10 @@ const DEFAULT_WIDGETS: Widget[] = [
         description: 'Notificaciones importantes',
         icon: AlertCircleIcon,
         visible: true,
-        order: 3,
-        size: 'large'
+        order: 6,
+        size: 'large',
+        span: 1,
+        row: 'middle'
     },
     {
         id: 'upcoming-inventories',
@@ -71,8 +92,10 @@ const DEFAULT_WIDGETS: Widget[] = [
         description: 'Inventarios programados',
         icon: CalendarClock,
         visible: true,
-        order: 4,
-        size: 'large'
+        order: 5,
+        size: 'large',
+        span: 1,
+        row: 'middle'
     },
     {
         id: 'branches-table',
@@ -81,8 +104,10 @@ const DEFAULT_WIDGETS: Widget[] = [
         description: 'Listado completo de sucursales',
         icon: Building2,
         visible: true,
-        order: 5,
-        size: 'full'
+        order: 7,
+        size: 'full',
+        span: 1,
+        row: 'bottom'
     },
     // New widgets - available in gallery
     {
@@ -93,7 +118,9 @@ const DEFAULT_WIDGETS: Widget[] = [
         icon: TrendingUp,
         visible: false,
         order: 6,
-        size: 'small'
+        size: 'small',
+        span: 1,
+        row: 'top'
     },
     {
         id: 'critical-products',
@@ -103,7 +130,9 @@ const DEFAULT_WIDGETS: Widget[] = [
         icon: AlertTriangle,
         visible: false,
         order: 7,
-        size: 'small'
+        size: 'small',
+        span: 1,
+        row: 'top'
     },
     {
         id: 'total-stock-value',
@@ -113,7 +142,9 @@ const DEFAULT_WIDGETS: Widget[] = [
         icon: DollarSign,
         visible: false,
         order: 8,
-        size: 'small'
+        size: 'small',
+        span: 1,
+        row: 'top'
     },
     {
         id: 'active-users',
@@ -123,7 +154,9 @@ const DEFAULT_WIDGETS: Widget[] = [
         icon: Users,
         visible: false,
         order: 9,
-        size: 'small'
+        size: 'small',
+        span: 1,
+        row: 'top'
     },
     {
         id: 'pending-inventories',
@@ -133,7 +166,9 @@ const DEFAULT_WIDGETS: Widget[] = [
         icon: Clock,
         visible: false,
         order: 10,
-        size: 'small'
+        size: 'small',
+        span: 1,
+        row: 'top'
     },
     {
         id: 'trends-chart',
@@ -143,7 +178,9 @@ const DEFAULT_WIDGETS: Widget[] = [
         icon: LineChart,
         visible: true,
         order: 11,
-        size: 'large'
+        size: 'large',
+        span: 1,
+        row: 'middle'
     },
     {
         id: 'top-products',
@@ -153,7 +190,9 @@ const DEFAULT_WIDGETS: Widget[] = [
         icon: Trophy,
         visible: false,
         order: 12,
-        size: 'large'
+        size: 'large',
+        span: 1,
+        row: 'middle'
     },
     {
         id: 'activity-timeline',
@@ -163,7 +202,9 @@ const DEFAULT_WIDGETS: Widget[] = [
         icon: History,
         visible: false,
         order: 13,
-        size: 'large'
+        size: 'large',
+        span: 1,
+        row: 'middle'
     },
     {
         id: 'category-distribution',
@@ -173,7 +214,9 @@ const DEFAULT_WIDGETS: Widget[] = [
         icon: PieChart,
         visible: false,
         order: 14,
-        size: 'large'
+        size: 'large',
+        span: 1,
+        row: 'middle'
     },
     {
         id: 'monthly-goals',
@@ -183,7 +226,9 @@ const DEFAULT_WIDGETS: Widget[] = [
         icon: Target,
         visible: false,
         order: 15,
-        size: 'large'
+        size: 'large',
+        span: 1,
+        row: 'middle'
     },
     {
         id: 'sync-status',
@@ -193,7 +238,9 @@ const DEFAULT_WIDGETS: Widget[] = [
         icon: Wifi,
         visible: false,
         order: 16,
-        size: 'large'
+        size: 'large',
+        span: 1,
+        row: 'middle'
     },
     {
         id: 'quick-actions',
@@ -203,7 +250,9 @@ const DEFAULT_WIDGETS: Widget[] = [
         icon: Zap,
         visible: false,
         order: 17,
-        size: 'large'
+        size: 'large',
+        span: 1,
+        row: 'middle'
     },
     {
         id: 'countdown',
@@ -212,8 +261,10 @@ const DEFAULT_WIDGETS: Widget[] = [
         description: 'Días restantes para finalizar conteo cíclico',
         icon: Calendar,
         visible: true,
-        order: 6,
-        size: 'small'
+        order: 3,
+        size: 'small',
+        span: 1,
+        row: 'top'
     },
     {
         id: 'category-progress',
@@ -222,13 +273,15 @@ const DEFAULT_WIDGETS: Widget[] = [
         description: 'Avance de inventario por categoría',
         icon: PieChart,
         visible: true,
-        order: 7,
-        size: 'large'
+        order: 4,
+        size: 'large',
+        span: 1,
+        row: 'middle'
     }
 ];
 
 export function useDashboardLayout(userId?: string) {
-    const storageKey = `dashboard-layout-v4-${userId || 'default'}`;
+    const storageKey = `dashboard - layout - v5 - ${userId || 'default'} `; // v5 para forzar reset con nuevo grid
 
     const [widgets, setWidgets] = useState<Widget[]>(() => {
         try {
@@ -306,6 +359,34 @@ export function useDashboardLayout(userId?: string) {
         setIsEditMode(false);
     };
 
+    // Actualizar tamaño de widget
+    const updateWidgetSize = (widgetId: string, newSize: WidgetSize) => {
+        setWidgets((items) =>
+            items.map((item) =>
+                item.id === widgetId ? { ...item, size: newSize } : item
+            )
+        );
+    };
+
+    // Actualizar span de widget (expansión horizontal)
+    const updateWidgetSpan = (widgetId: string, newSpan: WidgetSpan) => {
+        setWidgets((items) =>
+            items.map((item) =>
+                item.id === widgetId ? { ...item, span: newSpan } : item
+            )
+        );
+    };
+
+    // Aplicar preset de layout
+    const applyPreset = (widgetIds: string[]) => {
+        setWidgets((items) =>
+            items.map((item) => ({
+                ...item,
+                visible: item.mandatory || widgetIds.includes(item.id),
+            }))
+        );
+    };
+
     // Self-healing: Ensure widgets are valid (have titles and icons)
     // This handles cases where HMR or bad localStorage data corrupts the state
     useEffect(() => {
@@ -334,6 +415,10 @@ export function useDashboardLayout(userId?: string) {
         setIsEditMode,
         reorderWidgets,
         toggleWidgetVisibility,
+        updateWidgetSize,
+        updateWidgetSpan,
+        applyPreset,
         resetLayout
     };
 }
+

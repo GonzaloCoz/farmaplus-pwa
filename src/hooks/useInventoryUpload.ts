@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import * as XLSX from 'xlsx';
-import { toast } from 'sonner';
+import { notify } from '@/lib/notifications';
 import { CyclicItem } from '@/services/cyclicInventoryService';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 
@@ -44,7 +44,7 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 }
 
                 if (!fileLabName) {
-                    toast.error("No se pudo identificar el laboratorio en el archivo (Columna O).");
+                    notify.error("Archivo inválido", "No se pudo identificar el laboratorio en el archivo (Columna O)");
                     setIsUploading(false);
                     return;
                 }
@@ -55,7 +55,7 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
 
                 if (currentLab !== uploadLab) {
                     if (!uploadLab.includes(currentLab) && !currentLab.includes(uploadLab)) {
-                        toast.error(`El archivo pertenece al laboratorio "${fileLabName}", pero estás en "${labName}".`);
+                        notify.error("Laboratorio incorrecto", `El archivo pertenece a "${fileLabName}", pero estás en "${labName}"`);
                         setIsUploading(false);
                         return;
                     }
@@ -134,14 +134,14 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                     .catch(err => console.error("Auto-save failed", err));
 
                 if (addedCount > 0 || updatedCount > 0) {
-                    toast.success(`Carga exitosa: ${addedCount} nuevos, ${updatedCount} actualizados.`);
+                    notify.success("Carga exitosa", `${addedCount} nuevos, ${updatedCount} actualizados`);
                 } else {
-                    toast.info(`Sin cambios importantes: ${ignoredCount} productos ya estaban procesados.`);
+                    notify.info("Sin cambios", `${ignoredCount} productos ya estaban procesados`);
                 }
 
             } catch (error) {
                 console.error("Error reading file:", error);
-                toast.error('Error al procesar el archivo Excel.');
+                notify.error("Error de archivo", "No se pudo procesar el archivo Excel");
             } finally {
                 setIsUploading(false);
                 e.target.value = ''; // Reset input

@@ -6,8 +6,8 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 
-import { Smartphone, Wifi, Trash2, Info, Cloud, Database } from "lucide-react";
-import { toast } from "sonner";
+import { Smartphone, Wifi, Trash2, Info, Cloud, Database, Bell } from "lucide-react";
+// import { toast } from "sonner"; // Removed
 import { clearAllData, clearProducts, addProducts, Product } from "@/services/preCountDB";
 import { SyncStatusBottomSheet } from "@/components/SyncStatusBottomSheet";
 import { Input } from "@/components/ui/input";
@@ -17,10 +17,15 @@ import { PageLayout } from "@/components/layout/PageLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "@/contexts/UserContext";
+import { useNotificationPreferences } from "@/contexts/NotificationPreferencesContext";
+import { NotificationPositionSelector } from "@/components/settings/NotificationPositionSelector";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { notify } from "@/lib/notifications";
 
 export default function Settings() {
   const navigate = useNavigate();
   const { user } = useUser();
+  const { preferences, setPosition, setReminderType } = useNotificationPreferences();
 
   // ... (state hooks remain)
   const [haptics, setHaptics] = useState(true);
@@ -29,16 +34,16 @@ export default function Settings() {
   const [scannerSensitivity, setScannerSensitivity] = useState([50]);
   const [isImporting, setIsImporting] = useState(false);
 
-  // ... (handlers remain)
+  // ... (handlers remain - keep existing implementation)
   const handleClearCache = async () => {
     // ...
     if (confirm("¿Estás seguro de que deseas borrar todos los datos locales? Esta acción no se puede deshacer.")) {
       try {
         await clearAllData();
-        toast.success("Datos locales eliminados correctamente");
+        notify.success("Operación exitosa", "Datos locales eliminados correctamente");
         window.location.reload();
       } catch (e) {
-        toast.error("Error al eliminar datos");
+        notify.error("Error", "Error al eliminar datos");
       }
     }
   };
@@ -86,19 +91,19 @@ export default function Settings() {
       }
 
       if (products.length === 0) {
-        toast.error("No se encontraron productos válidos. Verifica las columnas (D=Producto, Q=EAN).");
+        notify.error("Error", "No se encontraron productos válidos. Verifica las columnas (D=Producto, Q=EAN).");
         return;
       }
 
       if (confirm(`Se encontraron ${products.length} códigos EAN (de ${jsonData.length - 1} filas). ¿Deseas reemplazar la base de datos actual?`)) {
         await clearProducts();
         await addProducts(products);
-        toast.success(`${products.length} productos importados correctamente.`);
+        notify.success("Operación exitosa", `${products.length} productos importados correctamente.`);
       }
       event.target.value = '';
     } catch (error) {
       console.error("Error importing products:", error);
-      toast.error("Error al importar el archivo. Asegúrate de que sea un Excel válido.");
+      notify.error("Error", "Error al importar el archivo. Asegúrate de que sea un Excel válido.");
     } finally {
       setIsImporting(false);
     }
@@ -109,6 +114,67 @@ export default function Settings() {
 
 
       <div className="grid gap-6">
+        {/* Notificaciones */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Bell className="w-5 h-5 text-primary" />
+              <CardTitle>Notificaciones</CardTitle>
+            </div>
+            <CardDescription>Personaliza cómo y dónde aparecen las notificaciones.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Reminder Type */}
+            <div className="space-y-4">
+              <div>
+                <Label className="text-base">Recordatorios</Label>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Estas son notificaciones para recordarte actividad que has perdido o citas próximas.
+                </p>
+              </div>
+
+              <RadioGroup value={preferences.reminderType} onValueChange={(value) => setReminderType(value as any)}>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="center-only" id="center-only" />
+                  <Label htmlFor="center-only" className="font-normal cursor-pointer">
+                    Mostrar nuevos recordatorios en el centro de notificaciones pero no como banners.
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="all" id="all" />
+                  <Label htmlFor="all" className="font-normal cursor-pointer">
+                    Notificarme para todos los recordatorios
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="none" id="none" />
+                  <Label htmlFor="none" className="font-normal cursor-pointer">
+                    No notificarme.
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {/* Position Selector */}
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-base">Posición de notificación</Label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => notify.info("Notificación de prueba", "Esta es una vista previa de cómo aparecerán tus notificaciones.")}
+                >
+                  Probar
+                </Button>
+              </div>
+              <NotificationPositionSelector
+                value={preferences.position}
+                onChange={setPosition}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Personalización */}
 
 

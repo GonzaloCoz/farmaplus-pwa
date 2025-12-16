@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { toast } from "sonner";
+import { notify } from "@/lib/notifications";
 import { Loader2, Plus, Save, Trash2 } from "lucide-react";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -39,7 +39,7 @@ export default function AdminBranches() {
             .order('name');
 
         if (error) {
-            toast.error("Error al cargar sucursales");
+            notify.error("Error de carga", "No se pudieron cargar las sucursales");
             console.error(error);
         } else {
             setBranches(data || []);
@@ -49,7 +49,7 @@ export default function AdminBranches() {
 
     const handleCreate = async () => {
         if (!newName || !newSlug) {
-            toast.error("Nombre y Slug son requeridos");
+            notify.error("Datos incompletos", "Nombre y Slug son requeridos");
             return;
         }
 
@@ -60,9 +60,9 @@ export default function AdminBranches() {
         });
 
         if (error) {
-            toast.error("Error al crear sucursal: " + error.message);
+            notify.error("Error al crear", "No se pudo crear la sucursal: " + error.message);
         } else {
-            toast.success("Sucursal creada exitosamente");
+            notify.success("Sucursal creada", "La sucursal se creó exitosamente");
             setNewName("");
             setNewSlug("");
             setNewAddress("");

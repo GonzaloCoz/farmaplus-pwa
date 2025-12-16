@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { toast } from 'sonner';
+import { notify } from '@/lib/notifications';
 import { CyclicItem, cyclicInventoryService } from '@/services/cyclicInventoryService';
 
 interface UseInventorySyncProps {
@@ -25,7 +25,7 @@ export function useInventorySync({ branchName, labName, items, onItemsLoaded }: 
                     }
                 } catch (error) {
                     console.error("Failed to load inventory:", error);
-                    toast.error("Error al cargar el inventario desde la nube.");
+                    notify.error("Error de carga", "No se pudo cargar el inventario desde la nube");
                 } finally {
                     setIsLoading(false);
                 }
@@ -54,10 +54,10 @@ export function useInventorySync({ branchName, labName, items, onItemsLoaded }: 
         setIsSaving(true);
         try {
             await cyclicInventoryService.saveInventory(branchName, labName, items);
-            toast.success("Progreso guardado en la nube.");
+            notify.success("Progreso guardado", "Los datos se guardaron en la nube");
         } catch (error) {
             console.error("Error saving progress:", error);
-            toast.error("Error al guardar el progreso.");
+            notify.error("Error al guardar", "No se pudo guardar el progreso");
         } finally {
             setIsSaving(false);
         }

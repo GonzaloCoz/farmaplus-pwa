@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AnimatedProgressBar } from "@/components/AnimatedProgressBar";
 import { Package, TrendingUp, ShieldCheck, ArrowRight, Lock, User, HelpCircle, AlertTriangle } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notifications";
 import { useUser } from "@/contexts/UserContext";
 import { loadDefaultData } from "@/services/preCountDB";
 
@@ -217,7 +217,7 @@ export default function Login() {
                 const success = await login(username, password);
 
                 if (success) {
-                    toast.success(`¡Bienvenido a Farmaplus ${username.replace(/\./g, ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase())}!`);
+                    notify.success("¡Bienvenido a Farmaplus!", `Sesión iniciada como ${username.replace(/\./g, ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase())}`);
 
                     // Asegurar que los productos base estén cargados
                     // La lógica de sucursales ahora se maneja en CyclicInventory via lab_sucu.xlsx
@@ -225,14 +225,14 @@ export default function Login() {
 
                     navigate("/");
                 } else {
-                    toast.error("Credenciales inválidas. Verifique su usuario y contraseña.");
+                    notify.error("Credenciales inválidas", "Verifique su usuario y contraseña.");
                 }
             } else {
-                toast.error("Por favor ingresa usuario y contraseña");
+                notify.error("Datos incompletos", "Por favor ingresa usuario y contraseña");
             }
         } catch (error) {
             console.error(error);
-            toast.error("Ocurrió un error al iniciar sesión");
+            notify.error("Error de conexión", "Ocurrió un error al iniciar sesión");
         } finally {
             setIsLoading(false);
         }

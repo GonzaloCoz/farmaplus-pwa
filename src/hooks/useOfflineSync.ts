@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getUnsyncedItems, markItemsAsSynced } from '@/services/preCountDB';
-import { toast } from 'sonner';
+import { notify } from '@/lib/notifications';
 
 interface UseOfflineSyncReturn {
     isOnline: boolean;
@@ -18,18 +18,14 @@ export function useOfflineSync(): UseOfflineSyncReturn {
     useEffect(() => {
         const handleOnline = () => {
             setIsOnline(true);
-            toast.success('Conexión restaurada', {
-                description: 'Los datos se sincronizarán automáticamente',
-            });
+            notify.success("Conexión restaurada", "Los datos se sincronizarán automáticamente");
             // Auto-sync cuando vuelva la conexión
             syncNow();
         };
 
         const handleOffline = () => {
             setIsOnline(false);
-            toast.warning('Sin conexión', {
-                description: 'Los datos se guardarán localmente',
-            });
+            notify.warning("Sin conexión", "Los datos se guardarán localmente");
         };
 
         window.addEventListener('online', handleOnline);
@@ -63,7 +59,7 @@ export function useOfflineSync(): UseOfflineSyncReturn {
     // Sincronizar datos
     const syncNow = useCallback(async () => {
         if (!isOnline) {
-            toast.error('No hay conexión a internet');
+            notify.error("Sin conexión", "No hay conexión a internet");
             return;
         }
 
@@ -77,7 +73,7 @@ export function useOfflineSync(): UseOfflineSyncReturn {
             const unsyncedItems = await getUnsyncedItems();
 
             if (unsyncedItems.length === 0) {
-                toast.info('No hay datos pendientes de sincronización');
+                notify.info("Sin datos pendientes", "No hay datos pendientes de sincronización");
                 return;
             }
 
@@ -94,14 +90,10 @@ export function useOfflineSync(): UseOfflineSyncReturn {
 
             await updateUnsyncedCount();
 
-            toast.success('Sincronización completada', {
-                description: `${unsyncedItems.length} productos sincronizados`,
-            });
+            notify.success("Sincronización completada", `${unsyncedItems.length} productos sincronizados`);
         } catch (error) {
             console.error('Error syncing data:', error);
-            toast.error('Error al sincronizar datos', {
-                description: 'Se reintentará automáticamente',
-            });
+            notify.error("Error al sincronizar", "Se reintentará automáticamente");
         } finally {
             setIsSyncing(false);
         }

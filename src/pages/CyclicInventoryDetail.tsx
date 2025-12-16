@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Upload, Search, Info, Trash2, Loader2, CheckCircle2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { notify } from '@/lib/notifications';
 import { CyclicInventoryList, CyclicItem } from '@/components/CyclicInventoryList';
 import { CounterAnimation } from '@/components/CounterAnimation';
 import { Switch } from "@/components/ui/switch";
@@ -129,14 +129,14 @@ export default function CyclicInventoryDetail() {
                 ? { ...item, status: 'controlled', countedQuantity: item.systemQuantity }
                 : item
         ));
-        toast.success('Producto controlado');
+        notify.success("Operación exitosa", 'Producto controlado');
     }, []);
 
     const handleRevertItem = useCallback((id: string) => {
         setItems(prev => prev.map(item =>
             item.id === id ? { ...item, status: 'pending' } : item
         ));
-        toast.info('Producto devuelto a pendientes');
+        notify.info("Información", 'Producto devuelto a pendientes');
     }, []);
 
 
@@ -150,12 +150,12 @@ export default function CyclicInventoryDetail() {
         const hasSurpluses = surpluses.length > 0;
 
         if (hasShortages && !shortageId.trim()) {
-            toast.error("Por favor ingresa el ID de ajuste para Faltantes");
+            notify.error("Error", "Por favor ingresa el ID de ajuste para Faltantes");
             return;
         }
 
         if (hasSurpluses && !surplusId.trim()) {
-            toast.error("Por favor ingresa el ID de ajuste para Sobrantes");
+            notify.error("Error", "Por favor ingresa el ID de ajuste para Sobrantes");
             return;
         }
 
@@ -185,7 +185,7 @@ export default function CyclicInventoryDetail() {
                 items_snapshot: updatedItems // Send full snapshot
             });
 
-            toast.success("Inventario finalizado y guardado en la nube.");
+            notify.success("Operación exitosa", "Inventario finalizado y guardado en la nube.");
             setShowSaveDialog(false);
             setShortageId("");
             setSurplusId("");
@@ -193,7 +193,7 @@ export default function CyclicInventoryDetail() {
 
         } catch (error) {
             console.error("Error saving inventory:", error);
-            toast.error("Error al guardar en la nube.");
+            notify.error("Error", "Error al guardar en la nube.");
         } finally {
             setIsSaving(false);
         }
@@ -226,11 +226,11 @@ export default function CyclicInventoryDetail() {
             // 3. Delete from server
             try {
                 await cyclicInventoryService.deleteInventory(branchName, labName);
-                toast.success("Datos reiniciados correctamente.");
+                notify.success("Operación exitosa", "Datos reiniciados correctamente.");
                 navigate('/cyclic-inventory');
             } catch (error) {
                 console.error("Error resetting data:", error);
-                toast.error("Error al reiniciar datos. Intente de nuevo.");
+                notify.error("Error", "Error al reiniciar datos. Intente de nuevo.");
             }
         }
     };

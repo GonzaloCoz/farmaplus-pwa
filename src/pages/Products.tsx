@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { toast } from "sonner";
+import { notify } from "@/lib/notifications";
 import { useBarcodeHistory } from "@/hooks/use-barcode-history";
 import { BarcodeDisplay } from "@/components/BarcodeDisplay";
 import { Copy, Printer, Barcode, Search, ArrowLeft, Filter, X, Upload } from "lucide-react";
@@ -72,7 +72,7 @@ export default function Products() {
         setProducts(data);
       } catch (error) {
         console.error("Error loading products:", error);
-        toast.error("Error al cargar los productos");
+        notify.error("Error", "Error al cargar los productos");
       } finally {
         setLoading(false);
       }
@@ -106,7 +106,7 @@ export default function Products() {
   const findAndDisplayCode = (code: string) => {
     const trimmed = code.trim();
     if (!trimmed || !/^\d+$/.test(trimmed)) {
-      toast.error("Por favor, ingresa un código numérico válido.");
+      notify.error("Error", "Por favor, ingresa un código numérico válido.");
       return;
     }
 
@@ -120,12 +120,12 @@ export default function Products() {
   const handleGenerateFromInput = () => {
     const trimmed = eanCode.trim();
     if (!trimmed) {
-      toast.error("El campo de código está vacío.");
+      notify.error("Error", "El campo de código está vacío.");
       return;
     }
     findAndDisplayCode(trimmed);
     addToHistory(trimmed);
-    toast.success("Código de barras generado correctamente");
+    notify.success("Operación exitosa", "Código de barras generado correctamente");
   };
 
   const handleGenerateFromHistory = (code: string) => {
@@ -212,17 +212,17 @@ export default function Products() {
               await addProducts(chunk);
             }
 
-            toast.success(`${uniqueProducts.length} productos actualizados correctamente.`);
+            notify.success("Operación exitosa", `${uniqueProducts.length} productos actualizados correctamente.`);
             // Reload products
             const updatedData = await getAllProducts();
             setProducts(updatedData);
           } else {
-            toast.warning("No se encontraron productos válidos en el archivo.");
+            notify.warning("Advertencia", "No se encontraron productos válidos en el archivo.");
           }
 
         } catch (error: any) {
           console.error("Error processing file:", error);
-          toast.error(`Error: ${error.message || 'Error desconocido al procesar el archivo'}`);
+          notify.error("Error", `Error: ${error.message || 'Error desconocido al procesar el archivo'}`);
         } finally {
           setLoading(false);
           // Reset input
@@ -370,7 +370,7 @@ export default function Products() {
                     <BarcodeDisplay value={generatedCode} />
                   </div>
                   <div className="flex justify-center gap-2">
-                    <Button size="sm" variant="outline" onClick={async () => { await navigator.clipboard.writeText(generatedCode); toast.success("Código copiado"); }}>
+                    <Button size="sm" variant="outline" onClick={async () => { await navigator.clipboard.writeText(generatedCode); notify.success("Operación exitosa", "Código copiado"); }}>
                       <Copy className="w-4 h-4 mr-2" /> Copiar
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => window.print()}>

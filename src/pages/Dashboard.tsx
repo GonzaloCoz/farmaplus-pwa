@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, rectSortingStrategy } from '@dnd-kit/sortable';
@@ -39,11 +39,15 @@ import { CalendarModal } from "@/components/dashboard/CalendarModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Edit3, Plus, RotateCcw, Calendar } from "lucide-react";
+import { Edit3, Plus, RotateCcw, Calendar, Grid3x3, Check } from "lucide-react";
 import { cyclicInventoryService } from "@/services/cyclicInventoryService";
 import { getProductCount } from "@/services/preCountDB";
-import { toast } from "sonner";
+import { notify } from '@/lib/notifications';
 import { hasPermission } from "@/config/permissions";
+import { AnimatedCard } from "@/components/ui/AnimatedCard";
+import { LayoutPresetsDialog } from "@/components/dashboard/LayoutPresetsDialog";
+import { LAYOUT_PRESETS } from "@/config/widgetPresets";
+
 
 const branches = [
   { name: "Belgrano IV", address: "Av. Cabildo 2040", zonal: "Zona Norte", email: "belgrano4@farmaplus.com" },
@@ -80,10 +84,13 @@ export default function Dashboard() {
     setIsEditMode,
     reorderWidgets,
     toggleWidgetVisibility,
+    updateWidgetSize,
+    applyPreset,
     resetLayout
   } = useDashboardLayout(user?.branchName);
 
   const [showWidgetGallery, setShowWidgetGallery] = useState(false);
+  const [showPresetsDialog, setShowPresetsDialog] = useState(false);
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -160,14 +167,14 @@ export default function Dashboard() {
     if (!configBranch || !configDays) return;
     try {
       await cyclicInventoryService.saveBranchConfig(configBranch, Number(configDays));
-      toast.success(`Plazo actualizado para ${configBranch}`);
+      notify.success("Operación exitosa", `Plazo actualizado para ${configBranch}`);
       setShowConfigDialog(false);
       // Refresh if we edited our own branch
       if (user?.branchName === configBranch) {
         setAssignedDays(Number(configDays));
       }
     } catch (e) {
-      toast.error("Error al guardar configuración");
+      notify.error("Error", "Error al guardar configuración");
     }
   };
 
@@ -241,6 +248,8 @@ export default function Dashboard() {
   // Render widget content based on type
   const renderWidgetContent = (widgetType: string) => {
     switch (widgetType) {
+      case 'smart-analyst':
+        return <SmartAnalystWidget />;
       case 'metrics-carousel':
         return <MetricsCarouselWidget metrics={metrics} />;
       case 'active-products':
@@ -306,7 +315,7 @@ export default function Dashboard() {
       initial="hidden"
       animate="show"
     >
-      {/* ... (Header) */}
+      {/* Header */}
       <motion.div variants={itemVariants} className="space-y-1">
         {/* Date */}
         <div className="text-muted-foreground text-xs font-normal">
@@ -317,9 +326,18 @@ export default function Dashboard() {
           <h1 className="text-2xl font-medium tracking-tight text-foreground">
             {getGreeting()}, {user?.role === 'admin' ? user?.name.split(' ')[0] : (user?.branchName || 'Sucursal')} 👋
           </h1>
+
           <div className="flex gap-2">
             {isEditMode && (
               <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowPresetsDialog(true)}
+                >
+                  <Grid3x3 className="h-4 w-4 mr-2" />
+                  Presets
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -339,14 +357,49 @@ export default function Dashboard() {
                 </Button>
               </>
             )}
-            <Button
-              variant={isEditMode ? "default" : "outline"}
-              size="sm"
-              onClick={() => setIsEditMode(!isEditMode)}
+
+            {/* Animated Edit Button */}
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
             >
-              <Edit3 className="h-4 w-4 mr-2" />
-              {isEditMode ? 'Guardar' : 'Editar Dashboard'}
-            </Button>
+              <Button
+                variant={isEditMode ? "default" : "outline"}
+                size="sm"
+                onClick={() => setIsEditMode(!isEditMode)}
+                className={cn(
+                  "relative overflow-hidden transition-all duration-300",
+                  isEditMode && "bg-green-600 hover:bg-green-700"
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <AnimatePresence mode="wait">
+                    {isEditMode ? (
+                      <motion.div
+                        key="check"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <Check className="h-4 w-4" />
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="edit"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <Edit3 className="h-4 w-4" />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  <span>{isEditMode ? 'Guardar' : 'Editar Dashboard'}</span>
+                </div>
+              </Button>
+            </motion.div>
           </div>
         </div>
       </motion.div>
@@ -360,61 +413,42 @@ export default function Dashboard() {
           items={displayedWidgets.map(w => w.id)}
           strategy={rectSortingStrategy}
         >
-          {/* Primera fila: Widgets pequeños (máximo 4) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Smart Analyst takes a slot here */}
-            <div className="md:col-span-2 lg:col-span-1">
-              <SmartAnalystWidget />
-            </div>
-
-            {displayedWidgets
-              .filter(w => w.size === 'small')
-              .slice(0, 3)
-              .map((widget) => (
+          {/* Unified Grid - All widgets in one flexible grid */}
+          <div className="grid grid-cols-12 gap-6 auto-rows-auto">
+            {displayedWidgets.map((widget) => (
+              <div
+                key={widget.id}
+                className={cn(
+                  // Responsive column spans based on widget size
+                  widget.size === 'small' && 'col-span-12 md:col-span-6 lg:col-span-3',
+                  widget.size === 'large' && 'col-span-12 md:col-span-6 lg:col-span-4',
+                  widget.size === 'full' && 'col-span-12'
+                )}
+              >
                 <WidgetContainer
-                  key={widget.id}
                   widget={widget}
                   isEditMode={isEditMode}
                   onRemove={() => toggleWidgetVisibility(widget.id)}
+                  onSizeChange={(newSize) => updateWidgetSize(widget.id, newSize)}
                 >
                   {renderWidgetContent(widget.type)}
                 </WidgetContainer>
-              ))}
-          </div>
-
-          {/* Segunda fila: Widgets grandes (Resumen, Alertas, Próximos) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {displayedWidgets
-              .filter(w => w.size === 'large')
-              .map((widget) => (
-                <WidgetContainer
-                  key={widget.id}
-                  widget={widget}
-                  isEditMode={isEditMode}
-                  onRemove={() => toggleWidgetVisibility(widget.id)}
-                >
-                  {renderWidgetContent(widget.type)}
-                </WidgetContainer>
-              ))}
-          </div>
-
-          {/* Widgets full-width (Tabla de Sucursales) */}
-          <div className="space-y-6">
-            {displayedWidgets
-              .filter(w => w.size === 'full')
-              .map((widget) => (
-                <WidgetContainer
-                  key={widget.id}
-                  widget={widget}
-                  isEditMode={isEditMode}
-                  onRemove={() => toggleWidgetVisibility(widget.id)}
-                >
-                  {renderWidgetContent(widget.type)}
-                </WidgetContainer>
-              ))}
+              </div>
+            ))}
           </div>
         </SortableContext>
       </DndContext>
+
+      <LayoutPresetsDialog
+        open={showPresetsDialog}
+        onOpenChange={setShowPresetsDialog}
+        onApplyPreset={(presetId) => {
+          const preset = LAYOUT_PRESETS.find(p => p.id === presetId);
+          if (preset) {
+            applyPreset(preset.widgetIds);
+          }
+        }}
+      />
 
       <WidgetGallery
         open={showWidgetGallery}
@@ -497,11 +531,11 @@ export default function Dashboard() {
                 const total = configDays + extensionDays;
                 try {
                   await cyclicInventoryService.saveBranchConfig(user.branchName, total);
-                  toast.success(`Plazo actualizado a ${total} días`);
+                  notify.success("Operación exitosa", `Plazo actualizado a ${total} días`);
                   setShowConfigDialog(false);
                   setAssignedDays(total);
                 } catch (e) {
-                  toast.error("Error al guardar");
+                  notify.error("Error", "Error al guardar");
                 }
               }}
             >

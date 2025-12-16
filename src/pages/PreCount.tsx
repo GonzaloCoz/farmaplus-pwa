@@ -33,7 +33,7 @@ import { PreCountList } from '@/components/PreCountList';
 import { usePreCount } from '@/hooks/usePreCount';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { Product, getProductByEAN, addProducts } from '@/services/preCountDB';
-import { toast } from 'sonner';
+import { notify } from '@/lib/notifications';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
 import { Calculator } from '@/components/Calculator';
 import * as XLSX from 'xlsx';
@@ -72,6 +72,8 @@ export default function PreCount() {
         availableSessions, // Added for new config view
         deleteSession,    // Added for new config view
         resumeSession,    // Added for new config view
+        errorCount,
+        registerError,
     } = usePreCount();
 
     const { isOnline, isSyncing, unsyncedCount, syncNow } = useOfflineSync();
@@ -79,7 +81,7 @@ export default function PreCount() {
     // Paso 1: Configuración
     const handleStartSession = async () => {
         if (!sector.trim()) {
-            toast.error('Por favor, ingresa el nombre del sector');
+            notify.error("Error", 'Por favor, ingresa el nombre del sector');
             return;
         }
 
@@ -95,16 +97,17 @@ export default function PreCount() {
             if (product) {
                 setSelectedProduct(product);
                 setManualEAN(code);
-                toast.success(`Producto encontrado: ${product.name}`);
+                notify.success("Operación exitosa", `Producto encontrado: ${product.name}`);
             } else {
                 setManualEAN(code);
-                toast.warning('Producto no encontrado en la base de datos', {
+                notify.warning("Advertencia", 'Producto no encontrado en la base de datos', {
                     description: 'Puedes agregarlo manualmente',
                 });
+                registerError();
             }
         } catch (error) {
             console.error('Error fetching product:', error);
-            toast.error('Error al buscar el producto');
+            notify.error("Error", 'Error al buscar el producto');
         }
     };
 
@@ -117,13 +120,13 @@ export default function PreCount() {
     // Agregar producto al pre-conteo
     const handleAddProduct = async () => {
         if (!manualEAN.trim()) {
-            toast.error('Por favor, ingresa o escanea un código EAN');
+            notify.error("Error", 'Por favor, ingresa o escanea un código EAN');
             return;
         }
 
         const qty = parseInt(quantity, 10);
         if (isNaN(qty) || qty <= 0) {
-            toast.error('Por favor, ingresa una cantidad válida');
+            notify.error("Error", 'Por favor, ingresa una cantidad válida');
             return;
         }
 
@@ -162,7 +165,7 @@ export default function PreCount() {
     // Finalizar sesión
     const handleFinish = async () => {
         if (items.length === 0) {
-            toast.error('No hay productos para finalizar');
+            notify.error("Error", 'No hay productos para finalizar');
             return;
         }
 
@@ -175,7 +178,7 @@ export default function PreCount() {
     // Exportar a PDF
     const handleExportPDF = () => {
         if (items.length === 0) {
-            toast.error('No hay productos para exportar');
+            notify.error("Error", 'No hay productos para exportar');
             return;
         }
 
@@ -249,17 +252,12 @@ export default function PreCount() {
                         textMargin: 0,
                     };
 
-                    try {
-                        JsBarcode(canvas, item.ean, {
-                            ...barcodeOptions,
-                            format: "EAN13",
-                        });
-                    } catch (eanError) {
-                        JsBarcode(canvas, item.ean, {
-                            ...barcodeOptions,
-                            format: "CODE128",
-                        });
-                    }
+                    // Use CODE128 to avoid automatic check digit calculation
+                    // EAN13 format adds an extra digit which causes scanner issues
+                    JsBarcode(canvas, item.ean, {
+                        ...barcodeOptions,
+                        format: "CODE128",
+                    });
 
                     const barcodeData = canvas.toDataURL("image/png");
                     doc.addImage(barcodeData, 'PNG', barcodeX, barcodeY, barcodeWidth, barcodeHeight);
@@ -297,11 +295,11 @@ export default function PreCount() {
 
             const fileName = `PreConteo_${sector}_${new Date().toISOString().split('T')[0]}.pdf`;
             doc.save(fileName);
-            toast.success('PDF generado correctamente');
+            notify.success("Operación exitosa", 'PDF generado correctamente');
 
         } catch (error) {
             console.error('Error generating PDF:', error);
-            toast.error('Error al generar el PDF');
+            notify.error("Error", 'Error al generar el PDF');
         }
     };
 
@@ -321,7 +319,7 @@ export default function PreCount() {
         ];
 
         await addProducts(sampleProducts);
-        toast.success('Productos de ejemplo cargados');
+        notify.success("Operación exitosa", 'Productos de ejemplo cargados');
     };
 
     // Vista de Configuración (Nueva Sesión / Seleccionar)
@@ -521,6 +519,12 @@ export default function PreCount() {
                                                 <AnimatedCounter value={totalUnits} digits={4} />
                                             </div>
                                         </div>
+                                        <div className="flex items-center gap-3 sm:gap-4">
+                                            <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap">Desconocidos</span>
+                                            <div className="text-2xl sm:text-3xl font-bold text-amber-500">
+                                                <AnimatedCounter value={errorCount} digits={3} />
+                                            </div>
+                                        </div>
                                     </div>
 
                                     {/* Right: Status Icons */}
@@ -554,6 +558,16 @@ export default function PreCount() {
                                         <div className="flex-1 relative z-20">
                                             <SmartProductSearch
                                                 onSelect={(p) => {
+                                                    // Logic for unknown product (empty name or explicit check)
+                                                    if (!p.name) {
+                                                        notify.warning("Advertencia", 'Producto no encontrado en la base de datos', {
+                                                            description: 'Puedes agregarlo manualmente',
+                                                        });
+                                                        registerError();
+                                                    } else {
+                                                        notify.success("Operación exitosa", `Producto encontrado: ${p.name}`);
+                                                    }
+
                                                     // Set EAN and Name
                                                     setManualEAN(p.ean);
                                                     setSelectedProduct({ ...p, stock: 0, salePrice: 0, cost: 0 }); // partial product

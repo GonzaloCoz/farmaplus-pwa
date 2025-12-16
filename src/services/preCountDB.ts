@@ -322,6 +322,7 @@ export interface PreCountSession {
     status: 'active' | 'completed';
     totalProducts: number;
     totalUnits: number;
+    errorCount: number;
 }
 
 export interface PreCountItem {
@@ -371,6 +372,7 @@ export async function createSession(sector: string): Promise<PreCountSession> {
         status: 'active',
         totalProducts: 0,
         totalUnits: 0,
+        errorCount: 0,
     };
     await db.put('sessions', session);
     return session;

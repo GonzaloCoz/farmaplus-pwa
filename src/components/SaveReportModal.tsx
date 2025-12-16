@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { toast } from "sonner";
+import { notify } from "@/lib/notifications";
 import { Search, Check } from "lucide-react";
 
 const BRANCHES = [
@@ -42,26 +42,26 @@ export function SaveReportModal({ open, onOpenChange, onSave }: SaveReportModalP
 
   const handleSave = () => {
     if (!name.trim()) {
-      toast.error("Por favor, ingresa un nombre para el reporte");
+      notify.error("Datos incompletos", "Por favor, ingresa un nombre para el reporte");
       return;
     }
     if (!branch) {
-      toast.error("Por favor, selecciona una sucursal");
+      notify.error("Datos incompletos", "Por favor, selecciona una sucursal");
       return;
     }
     if (!sector.trim()) {
-      toast.error("Por favor, ingresa el sector");
+      notify.error("Datos incompletos", "Por favor, ingresa el sector");
       return;
     }
     if (!date) {
-      toast.error("Por favor, selecciona una fecha");
+      notify.error("Datos incompletos", "Por favor, selecciona una fecha");
       return;
     }
 
     setSaving(true);
     try {
       onSave({ name, branch, sector, date });
-      toast.success("Reporte guardado correctamente");
+      notify.success("Reporte guardado", "El reporte se guardó correctamente");
       setName("");
       setBranch("");
       setBranchSearch("");
@@ -69,7 +69,7 @@ export function SaveReportModal({ open, onOpenChange, onSave }: SaveReportModalP
       setDate(new Date().toISOString().split("T")[0]);
       onOpenChange(false);
     } catch (error) {
-      toast.error("Error al guardar el reporte");
+      notify.error("Error al guardar", "No se pudo guardar el reporte");
     } finally {
       setSaving(false);
     }

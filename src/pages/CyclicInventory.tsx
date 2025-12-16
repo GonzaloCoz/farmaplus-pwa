@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { toast } from 'sonner';
+import { notify } from '@/lib/notifications';
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -260,14 +260,14 @@ export default function CyclicInventory() {
               size="sm"
               onClick={async () => {
                 if (!confirm("¿Sincronizar metas desde el Excel maestro a la base de datos?")) return;
-                const toastId = toast.loading("Sincronizando metas...");
+                const toastId = notify.info("Información", "Sincronizando metas...");
                 try {
                   await cyclicInventoryService.migrateGoalsFromExcel();
-                  toast.success("Metas sincronizadas con éxito.", { id: toastId });
+                  notify.success("Operación exitosa", "Metas sincronizadas con éxito.");
                   // Reload to reflect changes
                   window.location.reload();
                 } catch (e) {
-                  toast.error("Error al sincronizar metas.", { id: toastId });
+                  notify.error("Error", "Error al sincronizar metas.");
                 }
               }}
             >

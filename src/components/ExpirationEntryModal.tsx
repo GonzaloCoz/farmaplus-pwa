@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { BatchInfo } from "@/services/expirationDB";
 import { Plus, Trash2, Calendar, BellRing, Package, X, Calculator as CalculatorIcon } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { toast } from "sonner";
+import { notify } from "@/lib/notifications";
 import { Badge } from "@/components/ui/badge";
 import { Calculator } from "@/components/Calculator";
 
@@ -81,9 +81,9 @@ export function ExpirationEntryModal({
     };
 
     const handleAddBatch = () => {
-        if (!batchNumber.trim()) return toast.error("Falta el Lote");
-        if (expiry.length < 5) return toast.error("Fecha incompleta (MM/AA)");
-        if (!quantity || Number(quantity) <= 0) return toast.error("Cantidad inválida");
+        if (!batchNumber.trim()) return notify.error("Datos incompletos", "Falta el número de lote");
+        if (expiry.length < 5) return notify.error("Fecha incompleta", "Ingresa la fecha en formato MM/AA");
+        if (!quantity || Number(quantity) <= 0) return notify.error("Cantidad inválida", "La cantidad debe ser mayor a 0");
 
         const newBatch: BatchInfo = {
             batchNumber: batchNumber.toUpperCase(),
@@ -93,7 +93,7 @@ export function ExpirationEntryModal({
         };
 
         setBatches((prev) => [...prev, newBatch]);
-        toast.success("Lote agregado", { position: "top-center" }); // Center toast for focus
+        notify.success("Lote agregado", "El lote se agregó correctamente");
         resetInputs();
 
         // Optional: Focus back on Lote input? Needs ref.
@@ -105,7 +105,7 @@ export function ExpirationEntryModal({
     };
 
     const handleSaveAll = () => {
-        if (batches.length === 0) return toast.warning("Debes agregar al menos un lote");
+        if (batches.length === 0) return notify.warning("Sin lotes", "Debes agregar al menos un lote");
         onSave(batches);
         onOpenChange(false);
     };

@@ -43,7 +43,7 @@ import { SmartProductSearch } from '@/components/SmartProductSearch';
 import { useExpirationControl } from '@/hooks/useExpirationControl';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { getProductByEAN } from '@/services/preCountDB'; // Reuse product info service
-import { toast } from 'sonner';
+import { notify } from '@/lib/notifications';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
 import { FabMenu } from '@/components/FabMenu';
 import { BatchInfo, ExpirationItem } from '@/services/expirationDB';
@@ -90,7 +90,7 @@ export default function ExpirationControl() {
     // 1. Configurar Sesión
     const handleStartSession = async () => {
         if (!sector.trim()) {
-            toast.error('Ingresa el nombre del sector');
+            notify.error("Error", 'Ingresa el nombre del sector');
             return;
         }
         await startSession(sector.trim());
@@ -122,7 +122,7 @@ export default function ExpirationControl() {
         const existingItem = items.find(i => i.ean === ean);
         if (existingItem) {
             setCurrentBatches([...existingItem.batches]);
-            toast.info("Producto ya contado. Editando lotes existentes.");
+            notify.info("Información", "Producto ya contado. Editando lotes existentes.");
         } else {
             setCurrentBatches([]);
         }
@@ -139,7 +139,7 @@ export default function ExpirationControl() {
 
     const handleSaveAndFinish = async () => {
         if (!responsibleName.trim()) {
-            toast.error("Por favor ingresa el nombre del responsable");
+            notify.error("Error", "Por favor ingresa el nombre del responsable");
             return;
         }
 
@@ -159,7 +159,7 @@ export default function ExpirationControl() {
         localStorage.setItem('expiration-reports', JSON.stringify([reportData, ...existingReports]));
 
         await finishSession();
-        toast.success("Control guardado exitosamente");
+        notify.success("Operación exitosa", "Control guardado exitosamente");
         navigate('/reports');
     };
 
@@ -175,7 +175,7 @@ export default function ExpirationControl() {
 
     // Export PDF (Similar structure to PreCount but with Batches)
     const handleExportPDF = () => {
-        if (items.length === 0) return toast.error('No hay datos');
+        if (items.length === 0) return notify.error("Error", 'No hay datos');
 
         const doc = new jsPDF();
         let y = 20;
@@ -213,7 +213,7 @@ export default function ExpirationControl() {
         });
 
         doc.save(`Vencimientos_${session?.sector}.pdf`);
-        toast.success("PDF Generado");
+        notify.success("Operación exitosa", "PDF Generado");
     };
 
     return (

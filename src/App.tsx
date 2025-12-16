@@ -11,7 +11,11 @@ import { InstallPrompt } from "@/components/InstallPrompt";
 import { PageTransition } from "./components/PageTransition";
 import { SnackbarProvider } from "@/contexts/SnackbarContext";
 import { UserProvider, useUser } from "./contexts/UserContext";
+import { NotificationPreferencesProvider } from "./contexts/NotificationPreferencesContext";
 
+import { LayoutPresetsDialog } from "@/components/dashboard/LayoutPresetsDialog";
+import { LAYOUT_PRESETS } from "@/config/widgetPresets";
+import { OfflineBanner } from "@/components/offline/OfflineBanner";
 import { DashboardSkeleton } from "./components/DashboardSkeleton";
 import { PageSkeleton } from "./components/skeletons/PageSkeleton";
 import { loadDefaultData, initDB } from "@/services/preCountDB";
@@ -29,6 +33,7 @@ const Reports = lazy(() => import("./pages/Reports"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Profile = lazy(() => import("./pages/Profile"));
 const M3ComponentsDemo = lazy(() => import("./pages/M3ComponentsDemo"));
+const AnimationsDemo = lazy(() => import("./pages/AnimationsDemo"));
 const Login = lazy(() => import("./pages/Login"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const AdminBranches = lazy(() => import("./pages/AdminBranches"));
@@ -209,6 +214,16 @@ const AppRoutes = () => {
             }
           />
           <Route
+            path="/animations-demo"
+            element={
+              <Suspense fallback={<DashboardSkeleton />}>
+                <PageTransition>
+                  <AnimationsDemo />
+                </PageTransition>
+              </Suspense>
+            }
+          />
+          <Route
             path="/admin/branches"
             element={
               <AdminRoute>
@@ -261,18 +276,20 @@ const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <UserProvider>
-        <TooltipProvider>
-          <SnackbarProvider>
-            <Sonner />
-            <OfflineIndicator />
-            <InstallPrompt />
-            <MemoryRouter>
-              <AppRoutes />
-            </MemoryRouter>
-          </SnackbarProvider>
-        </TooltipProvider>
-      </UserProvider>
+      <TooltipProvider>
+        <SnackbarProvider>
+          <NotificationPreferencesProvider>
+            <UserProvider>
+              <Sonner />
+              <OfflineIndicator />
+              <InstallPrompt />
+              <MemoryRouter>
+                <AppRoutes />
+              </MemoryRouter>
+            </UserProvider>
+          </NotificationPreferencesProvider>
+        </SnackbarProvider>
+      </TooltipProvider>
     </QueryClientProvider>
   );
 };

@@ -5,6 +5,7 @@ import { Moon, Sun, Settings, LogOut, User } from "lucide-react";
 import { useTheme } from "@/hooks/useTheme";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
+import DefaultAvatar from "@/assets/default-avatar.svg";
 
 interface UserProfileSheetProps {
     trigger: React.ReactNode;
@@ -29,9 +30,10 @@ export function UserProfileSheet({ trigger }: UserProfileSheetProps) {
                 <div className="mx-auto w-full max-w-sm">
                     <DrawerHeader className="flex flex-col items-center gap-4 pt-6 pb-6">
                         <div className="relative">
-                            <Avatar className="h-20 w-20 border-4 border-background shadow-xl">
-                                <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
-                                <AvatarFallback>GC</AvatarFallback>
+                            <Avatar className="h-20 w-20 border-4 border-background shadow-xl bg-card">
+                                <div className="flex h-full w-full items-center justify-center bg-muted text-muted-foreground">
+                                    <img src={DefaultAvatar} alt="User" className="h-10 w-10 opacity-70" />
+                                </div>
                             </Avatar>
                             <div className="absolute bottom-0 right-0 rounded-full bg-background p-1 shadow-sm">
                                 <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">

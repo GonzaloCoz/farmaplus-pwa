@@ -7,7 +7,7 @@ import CustomCalendar from "@/components/CustomCalendar";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { calendarService, CalendarEvent } from "@/services/calendarService";
 import { useUser } from "@/contexts/UserContext";
-import { toast } from "sonner";
+import { notify } from "@/lib/notifications";
 import { Input } from "@/components/ui/input";
 import { Plus, X, Trash2 } from "lucide-react";
 
@@ -30,7 +30,7 @@ export function CalendarModal({ open, onOpenChange, initialDate }: CalendarModal
     const [newTitle, setNewTitle] = useState("");
     const [newBranch, setNewBranch] = useState("");
     const [newSector, setNewSector] = useState("");
-    const [newDate, setNewDate] = useState<string>(new Date().toISOString().slice(0, 10));
+    const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10));
 
     useEffect(() => {
         if (open) {
@@ -53,7 +53,7 @@ export function CalendarModal({ open, onOpenChange, initialDate }: CalendarModal
 
     const handleAddEvent = async () => {
         if (!newTitle || !newBranch || !newSector || !newDate) {
-            toast.error("Completa todos los campos");
+            notify.error("Error", "Completa todos los campos");
             return;
         }
 
@@ -66,7 +66,7 @@ export function CalendarModal({ open, onOpenChange, initialDate }: CalendarModal
             });
 
             if (added) {
-                toast.success("Evento creado");
+                notify.success("Operación exitosa", "Evento creado");
                 setEvents(prev => [...prev, added]);
                 setShowAddForm(false);
                 setNewTitle("");
@@ -74,7 +74,7 @@ export function CalendarModal({ open, onOpenChange, initialDate }: CalendarModal
                 setNewSector("");
             }
         } catch (e) {
-            toast.error("Error al crear evento");
+            notify.error("Error", "Error al crear evento");
         }
     };
 

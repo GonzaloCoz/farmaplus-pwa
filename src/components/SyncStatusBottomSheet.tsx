@@ -3,7 +3,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Button } from "@/components/ui/button";
 import { Cloud, CloudOff, RefreshCw, CheckCircle2, Wifi, WifiOff } from "lucide-react";
 import { getUnsyncedItems, PreCountItem } from "@/services/preCountDB";
-import { toast } from "sonner";
+import { notify } from '@/lib/notifications';
 import { cn } from "@/lib/utils";
 
 export function SyncStatusBottomSheet({ children }: { children?: React.ReactNode }) {
@@ -41,7 +41,7 @@ export function SyncStatusBottomSheet({ children }: { children?: React.ReactNode
 
     const handleSync = async () => {
         if (!isOnline) {
-            toast.error("No hay conexión a internet");
+            notify.error("Error", "No hay conexión a internet");
             return;
         }
 
@@ -54,12 +54,12 @@ export function SyncStatusBottomSheet({ children }: { children?: React.ReactNode
             // await syncService.upload(unsyncedItems);
 
             // For now, we'll just show a success message
-            toast.success("Sincronización completada (Simulada)");
+            notify.success("Operación exitosa", "Sincronización completada (Simulada)");
 
             // Refresh list (in real app, items would be marked as synced)
             await loadUnsyncedItems();
         } catch (e) {
-            toast.error("Error al sincronizar");
+            notify.error("Error", "Error al sincronizar");
         } finally {
             setIsSyncing(false);
         }

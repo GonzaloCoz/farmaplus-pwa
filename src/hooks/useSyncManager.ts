@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { OfflineQueue, QueueItem } from '../services/OfflineQueue';
-import { toast } from 'sonner';
+import { notify } from '@/lib/notifications';
 
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
 
@@ -56,11 +56,11 @@ export function useSyncManager() {
 
         if (errorCount > 0) {
             setStatus('error');
-            toast.error(`Sincronización completada con ${errorCount} errores.`);
+            notify.error("Error de sincronización", `Completada con ${errorCount} errores`);
         } else {
             setStatus('idle');
             if (successCount > 0) {
-                toast.success(`${successCount} elementos sincronizados correctamente.`);
+                notify.success("Sincronización exitosa", `${successCount} elementos sincronizados`);
             }
         }
     }, [updateQueueLength]);

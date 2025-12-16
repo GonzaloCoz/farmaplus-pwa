@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { parseISO, differenceInCalendarDays, format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+import { notify } from "@/lib/notifications";
 import { notificationService } from "@/services/NotificationService";
 
 const DUMMY_NOTIFICATIONS: Array<{ id: string; text: string; date: string }> = [];
@@ -70,7 +70,7 @@ export function NotificationsMenu() {
     setNotifs([]);
     setNearCount(0);
     setOpen(false);
-    toast.success("Notificaciones limpiadas.");
+    notify.success("Notificaciones limpiadas", "Todas las notificaciones fueron eliminadas");
   };
 
   const handleEnableNotifications = async () => {
@@ -78,14 +78,14 @@ export function NotificationsMenu() {
     setNotificationPermission(permission);
 
     if (permission === 'granted') {
-      toast.success("Notificaciones habilitadas correctamente");
+      notify.success("Notificaciones habilitadas", "Ahora recibirás alertas de eventos próximos");
       // Mostrar notificación de prueba
       await notificationService.showNotification({
         title: "¡Notificaciones activadas!",
         body: "Ahora recibirás alertas de eventos próximos",
       });
     } else {
-      toast.error("Permiso de notificaciones denegado");
+      notify.error("Permiso denegado", "No se pudo habilitar las notificaciones");
     }
   };
 

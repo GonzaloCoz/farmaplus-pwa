@@ -13,13 +13,14 @@ import {
     deleteSession as deleteSessionDB,
     initDB,
 } from '@/services/preCountDB';
-import { toast } from 'sonner';
+import { notify } from '@/lib/notifications';
 
 interface UsePreCountReturn {
     items: PreCountItem[];
     session: PreCountSession | null;
     totalProducts: number;
     totalUnits: number;
+    errorCount: number;
     isLoading: boolean;
     availableSessions: PreCountSession[];
     startSession: (sector: string) => Promise<void>;
@@ -30,11 +31,13 @@ interface UsePreCountReturn {
     removeItem: (id: string) => Promise<void>;
     finishSession: () => Promise<void>;
     refreshItems: () => Promise<void>;
+    registerError: () => void;
 }
 
 export function usePreCount(): UsePreCountReturn {
     const [items, setItems] = useState<PreCountItem[]>([]);
     const [session, setSession] = useState<PreCountSession | null>(null);
+    const [errorCount, setErrorCount] = useState(0);
     const [availableSessions, setAvailableSessions] = useState<PreCountSession[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -47,7 +50,7 @@ export function usePreCount(): UsePreCountReturn {
                 setAvailableSessions(sessions);
             } catch (error) {
                 console.error('Error initializing pre-count:', error);
-                toast.error('Error al inicializar el sistema de pre-conteo');
+                notify.error("Error de inicialización", "No se pudo inicializar el sistema de pre-conteo");
             } finally {
                 setIsLoading(false);
             }
@@ -61,17 +64,18 @@ export function usePreCount(): UsePreCountReturn {
     const totalProducts = items.length;
     const totalUnits = items.reduce((sum, item) => sum + item.quantity, 0);
 
-    // Actualizar sesión con totales
+    // Actualizar sesión con totales y errores
     useEffect(() => {
         if (session && !session.endTime) {
             updateSession(session.id, {
                 totalProducts,
                 totalUnits,
+                errorCount
             }).catch(error => {
                 console.error('Error updating session:', error);
             });
         }
-    }, [session, totalProducts, totalUnits]);
+    }, [session, totalProducts, totalUnits, errorCount]);
 
     // Iniciar nueva sesión
     const startSession = async (sector: string) => {
@@ -81,18 +85,19 @@ export function usePreCount(): UsePreCountReturn {
             // Verificar si ya existe una sesión con ese nombre
             const existing = availableSessions.find(s => s.sector === sector);
             if (existing) {
-                toast.error('Ya existe una sesión abierta para este sector');
+                notify.error("Sesión duplicada", "Ya existe una sesión abierta para este sector");
                 return;
             }
 
             const newSession = await createSession(sector);
             setSession(newSession);
             setItems([]);
+            setErrorCount(0);
             setAvailableSessions(prev => [newSession, ...prev]);
-            toast.success(`Sesión iniciada: ${sector}`);
+            notify.success("Sesión iniciada", `Pre-conteo de ${sector} comenzado`);
         } catch (error) {
             console.error('Error starting session:', error);
-            toast.error('Error al iniciar la sesión');
+            notify.error("Error", "No se pudo iniciar la sesión");
         } finally {
             setIsLoading(false);
         }
@@ -104,10 +109,11 @@ export function usePreCount(): UsePreCountReturn {
             setSession(sessionToResume);
             const sessionItems = await getPreCountItemsBySector(sessionToResume.sector);
             setItems(sessionItems);
-            toast.success(`Sesión retomada: ${sessionToResume.sector}`);
+            setErrorCount(sessionToResume.errorCount || 0);
+            notify.success("Sesión retomada", `Continuando pre-conteo de ${sessionToResume.sector}`);
         } catch (error) {
             console.error('Error resuming session:', error);
-            toast.error('Error al retomar la sesión');
+            notify.error("Error", "No se pudo retomar la sesión");
         }
     };
 
@@ -122,22 +128,22 @@ export function usePreCount(): UsePreCountReturn {
                 setSession(null);
                 setItems([]);
             }
-            toast.success('Sesión eliminada');
+            notify.success("Sesión eliminada", "La sesión se eliminó correctamente");
         } catch (error) {
             console.error('Error deleting session:', error);
-            toast.error('Error al eliminar la sesión');
+            notify.error("Error", "No se pudo eliminar la sesión");
         }
     };
 
     // Agregar item
     const addItem = useCallback(async (ean: string, productName: string, quantity: number) => {
         if (!session) {
-            toast.error('No hay una sesión activa');
+            notify.error("Sesión requerida", "No hay una sesión activa");
             return;
         }
 
         if (quantity <= 0) {
-            toast.error('La cantidad debe ser mayor a 0');
+            notify.error("Cantidad inválida", "La cantidad debe ser mayor a 0");
             return;
         }
 
@@ -156,7 +162,7 @@ export function usePreCount(): UsePreCountReturn {
                         : item
                 ));
 
-                toast.success(`Cantidad actualizada: ${productName} (+${quantity})`);
+                notify.success("Cantidad actualizada", `${productName} (+${quantity})`);
             } else {
                 // Agregar nuevo item
                 const newItem = await addPreCountItem({
@@ -167,18 +173,18 @@ export function usePreCount(): UsePreCountReturn {
                 });
 
                 setItems(prev => [...prev, newItem]);
-                toast.success(`Producto agregado: ${productName}`);
+                notify.success("Producto agregado", `${productName} - ${quantity} unidades`);
             }
         } catch (error) {
             console.error('Error adding item:', error);
-            toast.error('Error al agregar el producto');
+            notify.error("Error", "No se pudo agregar el producto");
         }
     }, [session, items]);
 
     // Actualizar item
     const updateItem = useCallback(async (id: string, quantity: number) => {
         if (quantity <= 0) {
-            toast.error('La cantidad debe ser mayor a 0');
+            notify.error("Cantidad inválida", "La cantidad debe ser mayor a 0");
             return;
         }
 
@@ -191,10 +197,10 @@ export function usePreCount(): UsePreCountReturn {
                     : item
             ));
 
-            toast.success('Cantidad actualizada');
+            notify.success("Cantidad actualizada", "La cantidad del producto se actualizó correctamente");
         } catch (error) {
             console.error('Error updating item:', error);
-            toast.error('Error al actualizar el producto');
+            notify.error("Error", "No se pudo actualizar el producto");
         }
     }, []);
 
@@ -203,10 +209,10 @@ export function usePreCount(): UsePreCountReturn {
         try {
             await deletePreCountItem(id);
             setItems(prev => prev.filter(item => item.id !== id));
-            toast.success('Producto eliminado');
+            notify.success("Producto eliminado", "El producto se eliminó del conteo");
         } catch (error) {
             console.error('Error removing item:', error);
-            toast.error('Error al eliminar el producto');
+            notify.error("Error", "No se pudo eliminar el producto");
         }
     }, []);
 
@@ -220,10 +226,10 @@ export function usePreCount(): UsePreCountReturn {
             setSession(null);
             setItems([]);
             setAvailableSessions(prev => prev.filter(s => s.id !== session.id));
-            toast.success('Sesión finalizada correctamente');
+            notify.success("Sesión finalizada", "El pre-conteo se finalizó correctamente");
         } catch (error) {
             console.error('Error finishing session:', error);
-            toast.error('Error al finalizar la sesión');
+            notify.error("Error", "No se pudo finalizar la sesión");
         }
     };
 
@@ -236,7 +242,13 @@ export function usePreCount(): UsePreCountReturn {
             setItems(sessionItems);
         } catch (error) {
             console.error('Error refreshing items:', error);
-            toast.error('Error al actualizar los productos');
+            notify.error("Error", "No se pudieron actualizar los productos");
+        }
+    }, [session]);
+
+    const registerError = useCallback(() => {
+        if (session) {
+            setErrorCount(prev => prev + 1);
         }
     }, [session]);
 
@@ -245,6 +257,7 @@ export function usePreCount(): UsePreCountReturn {
         session,
         totalProducts,
         totalUnits,
+        errorCount,
         isLoading,
         availableSessions,
         startSession,
@@ -255,5 +268,6 @@ export function usePreCount(): UsePreCountReturn {
         removeItem,
         finishSession,
         refreshItems,
+        registerError
     };
 }

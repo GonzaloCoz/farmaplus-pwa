@@ -9,6 +9,7 @@ import { PageLayout } from "@/components/layout/PageLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "@/contexts/UserContext";
+import DefaultAvatar from "@/assets/default-avatar.svg";
 
 export default function Profile() {
     const navigate = useNavigate();
@@ -28,9 +29,10 @@ export default function Profile() {
 
             <div className="space-y-8 pb-24">
                 <div className="flex flex-col sm:flex-row items-center gap-6">
-                    <Avatar className="w-24 h-24 sm:w-32 sm:h-32 border-4 border-background shadow-xl">
-                        <AvatarImage src="https://github.com/shadcn.png" alt="@shadcn" />
-                        <AvatarFallback>{user.name.substring(0, 2).toUpperCase()}</AvatarFallback>
+                    <Avatar className="w-24 h-24 sm:w-32 sm:h-32 border-4 border-background shadow-xl bg-card">
+                        <div className="flex h-full w-full items-center justify-center bg-muted text-muted-foreground">
+                            <img src={DefaultAvatar} alt="User" className="h-12 w-12 sm:h-16 sm:w-16 opacity-70" />
+                        </div>
                     </Avatar>
                     <div className="text-center sm:text-left space-y-2">
                         <h1 className="text-3xl font-bold">{user.name}</h1>

@@ -5,7 +5,7 @@ import { Calendar as CalendarIcon, Plus } from 'lucide-react';
 import CustomCalendar from "@/components/CustomCalendar";
 import { useUser } from "@/contexts/UserContext";
 import { calendarService } from '@/services/calendarService';
-import { toast } from "sonner";
+import { notify } from "@/lib/notifications";
 import { Input } from "@/components/ui/input";
 
 type EventItem = {
@@ -57,7 +57,7 @@ export function CalendarWidget() {
 
     const handleAddEvent = async () => {
         if (!newTitle || !newBranch || !newSector || !newDate) {
-            toast.error("Por favor completa todos los campos");
+            notify.error("Error", "Por favor completa todos los campos");
             return;
         }
 
@@ -69,7 +69,7 @@ export function CalendarWidget() {
                 date: newDate
             });
 
-            toast.success("Evento agregado");
+            notify.success("Operación exitosa", "Evento agregado");
             setShowAddForm(false);
 
             // Reset form
@@ -80,7 +80,7 @@ export function CalendarWidget() {
 
             loadEvents();
         } catch (error) {
-            toast.error("Error al crear evento");
+            notify.error("Error", "Error al crear evento");
         }
     };
 

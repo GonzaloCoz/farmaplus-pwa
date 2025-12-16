@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { toast } from 'sonner';
+import { notify } from '@/lib/notifications';
 import { useUser } from '@/contexts/UserContext'; // Import useUser
 import {
     ExpirationItem,
@@ -43,7 +43,7 @@ export function useExpirationControl() {
             // Don't auto-set session
         } catch (error) {
             console.error("Error loading expiration session:", error);
-            toast.error("Error al cargar la sesión");
+            notify.error("Error", "No se pudo cargar la sesión");
         } finally {
             setIsLoading(false);
         }
@@ -63,13 +63,13 @@ export function useExpirationControl() {
     const startSession = async (sector: string) => {
         try {
             if (!user?.branchName) {
-                toast.error("No hay sucursal seleccionada");
+                notify.error("Error", "No hay sucursal seleccionada");
                 return;
             }
             // Allow starting new session even if one exists in list, just not same name
             const existing = availableSessions.find(s => s.sector === sector);
             if (existing) {
-                toast.error("Ya existe una sesión para este sector");
+                notify.error("Sesión duplicada", "Ya existe una sesión para este sector");
                 return;
             }
 
@@ -80,7 +80,7 @@ export function useExpirationControl() {
             // toast.success(`Sesión iniciada: ${sector}`);
         } catch (error) {
             console.error("Error starting session:", error);
-            toast.error("Error al iniciar sesión");
+            notify.error("Error", "No se pudo iniciar la sesión");
         }
     };
 
@@ -88,10 +88,10 @@ export function useExpirationControl() {
         try {
             setSession(sessionToResume);
             await loadItems(sessionToResume.id);
-            toast.success(`Sesión retomada: ${sessionToResume.sector}`);
+            notify.success("Sesión retomada", `Continuando control de ${sessionToResume.sector}`);
         } catch (error) {
             console.error("Error resuming:", error);
-            toast.error("Error al retomar");
+            notify.error("Error", "No se pudo retomar la sesión");
         }
     };
 
@@ -104,10 +104,10 @@ export function useExpirationControl() {
                 setSession(null);
                 setItems([]);
             }
-            toast.success("Sesión eliminada");
+            notify.success("Sesión eliminada", "La sesión se eliminó correctamente");
         } catch (error) {
             console.error("Error deleting:", error);
-            toast.error("Error al eliminar");
+            notify.error("Error", "No se pudo eliminar la sesión");
         }
     };
 
@@ -122,7 +122,7 @@ export function useExpirationControl() {
                     batches: batches, // We replace batches with new state from UI
                     timestamp: Date.now()
                 });
-                toast.success("Producto actualizado");
+                notify.success("Producto actualizado", "Los datos del producto se actualizaron correctamente");
             } else {
                 if (!user?.branchName) throw new Error("No branch selected");
                 // Add new
@@ -132,14 +132,14 @@ export function useExpirationControl() {
                     batches,
                     totalQuantity: batches.reduce((acc, b) => acc + b.quantity, 0)
                 }, user.branchName);
-                toast.success("Producto agregado");
+                notify.success("Producto agregado", `${productName} agregado al control`);
             }
 
             if (session) await loadItems(session.id);
 
         } catch (error) {
             console.error("Error adding/updating item:", error);
-            toast.error("Error al guardar producto");
+            notify.error("Error", "No se pudo guardar el producto");
         }
     };
 
@@ -147,11 +147,11 @@ export function useExpirationControl() {
         if (!confirm("¿Estás seguro de eliminar este producto?")) return;
         try {
             await deleteExpirationItem(id);
-            toast.success("Producto eliminado");
+            notify.success("Producto eliminado", "El producto se eliminó del control");
             if (session) await loadItems(session.id);
         } catch (error) {
             console.error("Error deleting item:", error);
-            toast.error("Error al eliminar");
+            notify.error("Error", "No se pudo eliminar el producto");
         }
     };
 
@@ -164,10 +164,10 @@ export function useExpirationControl() {
             setAvailableSessions(prev => prev.filter(s => s.id !== session.id));
             setSession(null);
             setItems([]);
-            toast.success("Control finalizado correctamente");
+            notify.success("Control finalizado", "El control de vencimientos se finalizó correctamente");
         } catch (error) {
             console.error("Error finishing session:", error);
-            toast.error("Error al finalizar");
+            notify.error("Error", "No se pudo finalizar el control");
         }
     };
 

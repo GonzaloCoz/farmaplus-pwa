@@ -1,0 +1,6 @@
+import{j as e}from"./ui-vendor-CsPCkCQp.js";import{c as o,B as c}from"./index-DUrnJgle.js";import{u as l}from"./react-vendor-ylmX0jv_.js";import{m as a}from"./animation-D9hY-91t.js";/**
+ * @license lucide-react v0.462.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const m=o("ArrowLeft",[["path",{d:"m12 19-7-7 7-7",key:"1l729n"}],["path",{d:"M19 12H5",key:"x3x0zl"}]]);function h({title:i,subtitle:s,showBackButton:r,actions:t}){const n=l();return e.jsxs("div",{className:"flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pb-6",children:[e.jsxs("div",{className:"flex items-center gap-4",children:[r&&e.jsxs(c,{variant:"ghost",size:"icon",onClick:()=>n(-1),className:"shrink-0 -ml-2",children:[e.jsx(m,{className:"h-5 w-5"}),e.jsx("span",{className:"sr-only",children:"Volver"})]}),e.jsxs("div",{className:"space-y-1",children:[e.jsx(a.h1,{initial:{opacity:0,x:-10},animate:{opacity:1,x:0},className:"text-2xl font-bold tracking-tight text-foreground sm:text-3xl",children:i}),s&&e.jsx(a.p,{initial:{opacity:0},animate:{opacity:1},transition:{delay:.1},className:"text-sm text-muted-foreground",children:s})]})]}),t&&e.jsx("div",{className:"flex items-center gap-2",children:t})]})}export{h as P};

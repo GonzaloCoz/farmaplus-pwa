@@ -15,7 +15,10 @@ interface AlertItem {
     daysUntilExpiry: number;
 }
 
+import { useUser } from '@/contexts/UserContext';
+
 export function SmartAnalystWidget() {
+    const { user } = useUser();
     const [alerts, setAlerts] = useState<AlertItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -26,7 +29,7 @@ export function SmartAnalystWidget() {
         analyzeData();
         const dataInterval = setInterval(analyzeData, 5000);
         return () => clearInterval(dataInterval);
-    }, []);
+    }, [user?.branchName]);
 
     // Carousel Timer
     useEffect(() => {
@@ -39,7 +42,8 @@ export function SmartAnalystWidget() {
 
     const analyzeData = async () => {
         try {
-            const allItems = await getAllExpirationItems();
+            // Pass the current branch name to filter items
+            const allItems = await getAllExpirationItems(user?.branchName);
             const now = new Date();
             const currentMonth = now.getMonth() + 1; // 1-12
             const currentYear = now.getFullYear(); // 2024
@@ -49,8 +53,22 @@ export function SmartAnalystWidget() {
 
             const identifiedAlerts: AlertItem[] = [];
 
+            // 1. Filter for the LATEST version of each product (by EAN)
+            // This prevents duplicate alerts from multiple sessions and ensures we use the most recent data
+            const latestItemsMap = new Map<string, typeof allItems[0]>();
             allItems.forEach(item => {
+                const existing = latestItemsMap.get(item.ean);
+                if (!existing || item.timestamp > existing.timestamp) {
+                    latestItemsMap.set(item.ean, item);
+                }
+            });
+
+            latestItemsMap.forEach(item => {
                 item.batches.forEach(batch => {
+                    // Ignore batches with 0 quantity or non-active status (sold, transferred, etc.)
+                    if (batch.quantity <= 0) return;
+                    if (batch.status && batch.status !== 'active') return;
+
                     const reminder = batch.reminderMonths;
                     if (!reminder) return; // No reminder set
 
@@ -120,86 +138,83 @@ export function SmartAnalystWidget() {
             transition={{ duration: 0.5 }}
             className="h-full"
         >
-            <Card className="h-full flex flex-col relative overflow-hidden shadow-none border">
-                <CardHeader className="pb-2">
+            <Card
+                className="flex flex-col h-full bg-card border-border/50 shadow-sm relative overflow-hidden group hover:shadow-md transition-all cursor-pointer"
+                onClick={() => navigate('/smart-analyst')}
+                role="button"
+                tabIndex={0}
+            >
+                {/* Header Background Accent */}
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/20 to-transparent opacity-50" />
+
+                <CardHeader className="pb-2 pt-4 px-4">
                     <div className="flex justify-between items-start">
-                        <div>
-                            <div className="flex items-center gap-2 mb-1">
-                                <div className={`p-1.5 rounded-lg ${isClean ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
-                                    {isClean ? <CheckCircle2 className="w-4 h-4" /> : <BrainCircuit className="w-4 h-4" />}
-                                </div>
-                                <CardTitle className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
-                                    Analista Inteligente
-                                </CardTitle>
-                            </div>
-                            <div className="flex items-baseline gap-2">
-                                <span className={`text-3xl font-black ${isClean ? 'text-green-600' : 'text-indigo-600'}`}>
-                                    {isClean ? 'Todo en Orden' : `${alertCount} Alertas`}
-                                </span>
-                            </div>
-                        </div>
+                        <CardTitle className="text-sm font-medium text-muted-foreground">
+                            Control de Vencimientos
+                        </CardTitle>
+                        {isClean ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <BrainCircuit className="w-4 h-4 text-primary" />}
                     </div>
                 </CardHeader>
 
-                <CardContent className="flex-1 flex flex-col justify-between">
-                    <p className="text-xs text-muted-foreground mb-4 line-clamp-2">
-                        {isClean
-                            ? "No detectamos productos próximos a vencer según tus recordatorios configurados."
-                            : `Hemos detectado ${alertCount} lotes que requieren tu atención inmediata.`
-                        }
-                    </p>
+                <CardContent className="flex-1 flex flex-col px-4 pb-4 pt-0 min-h-0">
+                    <div className="flex items-baseline gap-2 mb-2">
+                        <span className={`text-3xl font-bold ${isClean ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'}`}>
+                            {isClean ? 'Todo en Orden' : `${alertCount}`}
+                        </span>
+                        {!isClean && <span className="text-sm text-muted-foreground">Alertas</span>}
+                    </div>
+
+                    {isClean && (
+                        <p className="text-xs text-muted-foreground line-clamp-3">
+                            No detectamos productos próximos a vencer según tus recordatorios configurados.
+                        </p>
+                    )}
 
                     {!isClean && currentAlert && (
-                        <div className="relative h-20 mb-2">
+                        <div className="flex-1 relative min-h-0 mb-2">
                             <AnimatePresence mode="wait">
                                 <motion.div
                                     key={`${currentAlert.productName}-${currentAlert.batchNumber}`}
-                                    initial={{ opacity: 0, x: 20 }}
+                                    initial={{ opacity: 0, x: 10 }}
                                     animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -20 }}
-                                    transition={{ duration: 0.3 }}
-                                    className="absolute inset-0 flex items-center justify-between p-3 bg-muted/40 rounded border shadow-sm"
+                                    exit={{ opacity: 0, x: -10 }}
+                                    transition={{ duration: 0.2 }}
+                                    className="absolute inset-0 flex flex-col justify-center border-l-2 border-primary/50 pl-3 py-1"
                                 >
-                                    <div className="overflow-hidden pr-2">
-                                        <p className="font-bold text-sm truncate text-foreground">{currentAlert.productName}</p>
-                                        <p className="text-xs text-muted-foreground mt-1">
-                                            Lote: <span className="font-mono">{currentAlert.batchNumber}</span>
-                                        </p>
-                                        <p className="text-[10px] text-muted-foreground">
+                                    <p className="font-medium text-sm truncate text-foreground leading-tight mb-1" title={currentAlert.productName}>
+                                        {currentAlert.productName}
+                                    </p>
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground/80">
+                                        <span className="font-mono bg-muted/50 px-1 rounded text-[10px]">Lote: {currentAlert.batchNumber}</span>
+                                        <span>•</span>
+                                        <span className={currentAlert.daysUntilExpiry <= 30 ? "text-red-500 font-medium" : "text-amber-500"}>
                                             Vence: {currentAlert.expirationDate}
-                                        </p>
-                                    </div>
-                                    <Badge variant="secondary" className="bg-orange-100 text-orange-700 border-orange-200 shrink-0 flex flex-col items-center gap-0.5 py-1">
-                                        <AlertTriangle className="w-3 h-3" />
-                                        <span className="text-[10px] font-bold">
-                                            {currentAlert.daysUntilExpiry <= 0 ? '¡VENCIDO!' : `${Math.floor(currentAlert.daysUntilExpiry / 30) || '<1'} Meses`}
                                         </span>
-                                    </Badge>
+                                    </div>
                                 </motion.div>
                             </AnimatePresence>
                         </div>
                     )}
 
-                    {/* Dots Indicator */}
                     {!isClean && alerts.length > 1 && (
-                        <div className="flex justify-center gap-1 mb-3">
+                        <div className="flex gap-1 mb-2">
                             {alerts.slice(0, 5).map((_, idx) => (
                                 <div
                                     key={idx}
-                                    className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentIndex % 5 ? 'w-4 bg-indigo-500' : 'w-1.5 bg-indigo-200'}`}
+                                    className={`h-1 rounded-full transition-all duration-300 ${idx === currentIndex % 5 ? 'w-4 bg-primary' : 'w-1.5 bg-primary/20'}`}
                                 />
                             ))}
-                            {alerts.length > 5 && <div className="h-1.5 w-1.5 rounded-full bg-indigo-100" />}
                         </div>
                     )}
 
                     {!isClean && (
                         <Button
-                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white mt-auto"
+                            className="w-full h-8 text-xs mt-auto"
                             size="sm"
-                            onClick={() => navigate('/vencimientos')}
+                            variant="outline"
+                            onClick={() => navigate('/smart-analyst')}
                         >
-                            Revisar Vencimientos <ArrowRight className="w-4 h-4 ml-2" />
+                            Ver Detalles <ArrowRight className="w-3 h-3 ml-2" />
                         </Button>
                     )}
                 </CardContent>

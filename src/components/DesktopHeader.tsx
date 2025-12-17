@@ -19,7 +19,8 @@ const pathTitles: Record<string, string> = {
     "settings": "Configuración",
     "profile": "Perfil",
     "admin": "Admin",
-    "branches": "Sucursales"
+    "branches": "Sucursales",
+    "smart-analyst": "Analista Inteligente"
 };
 
 export function DesktopHeader() {

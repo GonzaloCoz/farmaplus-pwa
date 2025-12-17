@@ -37,6 +37,7 @@ const AnimationsDemo = lazy(() => import("./pages/AnimationsDemo"));
 const Login = lazy(() => import("./pages/Login"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const AdminBranches = lazy(() => import("./pages/AdminBranches"));
+const SmartAnalystPage = lazy(() => import("./pages/SmartAnalystPage"));
 
 
 const queryClient = new QueryClient();
@@ -233,6 +234,16 @@ const AppRoutes = () => {
                   </PageTransition>
                 </Suspense>
               </AdminRoute>
+            }
+          />
+          <Route
+            path="/smart-analyst"
+            element={
+              <Suspense fallback={<PageSkeleton />}>
+                <PageTransition>
+                  <SmartAnalystPage />
+                </PageTransition>
+              </Suspense>
             }
           />
         </Route>

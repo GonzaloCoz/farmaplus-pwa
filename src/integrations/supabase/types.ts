@@ -310,6 +310,82 @@ export interface Database {
                 }
                 Relationships: []
             }
+            expiration_sessions: {
+                Row: {
+                    id: string
+                    sector: string
+                    branch_name: string
+                    start_time: number
+                    end_time: number | null
+                    status: string
+                    total_products: number
+                    total_units: number
+                }
+                Insert: {
+                    id?: string
+                    sector: string
+                    branch_name: string
+                    start_time: number
+                    end_time?: number | null
+                    status: string
+                    total_products?: number
+                    total_units?: number
+                }
+                Update: {
+                    id?: string
+                    sector?: string
+                    branch_name?: string
+                    start_time?: number
+                    end_time?: number | null
+                    status?: string
+                    total_products?: number
+                    total_units?: number
+                }
+                Relationships: []
+            }
+            expiration_items: {
+                Row: {
+                    id: string
+                    session_id: string
+                    ean: string
+                    product_name: string
+                    batches: Json
+                    total_quantity: number
+                    timestamp: number
+                    synced: number
+                    branch_name: string
+                }
+                Insert: {
+                    id?: string
+                    session_id: string
+                    ean: string
+                    product_name: string
+                    batches: Json
+                    total_quantity?: number
+                    timestamp: number
+                    synced?: number
+                    branch_name: string
+                }
+                Update: {
+                    id?: string
+                    session_id?: string
+                    ean?: string
+                    product_name?: string
+                    batches?: Json
+                    total_quantity?: number
+                    timestamp?: number
+                    synced?: number
+                    branch_name?: string
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "expiration_items_session_id_fkey"
+                        columns: ["session_id"]
+                        referencedRelation: "expiration_sessions"
+                        referencedColumns: ["id"]
+                    }
+                ]
+            }
         }
         Views: {
             [_ in never]: never

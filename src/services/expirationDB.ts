@@ -1,34 +1,25 @@
-import { openDB, DBSchema, IDBPDatabase } from 'idb';
-
-interface ExpirationDB extends DBSchema {
-    sessions: {
-        key: string;
-        value: ExpirationSession;
-        indexes: { 'by-status': string; 'by-branch': string };
-    };
-    items: {
-        key: string; // ID único del item
-        value: ExpirationItem;
-        indexes: { 'by-session': string; 'by-ean': string };
-    };
-}
+import { supabase } from '@/integrations/supabase/client';
 
 export interface ExpirationSession {
     id: string;
     sector: string;
-    branchName: string; // Sucursal propietaria de la sesión
+    branchName: string;
     startTime: number;
     endTime?: number;
     status: 'active' | 'completed';
-    totalProducts: number; // Cantidad de SKUs distintos
-    totalUnits: number; // Cantidad total de unidades (suma de batches)
+    totalProducts: number;
+    totalUnits: number;
 }
 
 export interface BatchInfo {
     batchNumber: string;
-    expirationDate: string; // Guardamos como string DD/MM/AAAA o MM/AAAA para flexibilidad
+    expirationDate: string;
     quantity: number;
-    reminderMonths?: number; // Meses de anticipación para alerta
+    reminderMonths?: number;
+    status?: 'active' | 'sold' | 'transfer' | 'return' | 'destroyed';
+    actionDate?: number;
+    destinationBranch?: string;
+    plexShipmentNumber?: string;
 }
 
 export interface ExpirationItem {
@@ -39,73 +30,59 @@ export interface ExpirationItem {
     batches: BatchInfo[];
     totalQuantity: number;
     timestamp: number;
-    synced: number; // 0: no, 1: yes (para futuro sync)
-}
-
-let dbPromise: Promise<IDBPDatabase<ExpirationDB>>;
-
-export async function initExpirationDB() {
-    dbPromise = openDB<ExpirationDB>('farmaplus-expiration', 2, {
-        upgrade(db, oldVersion, newVersion, transaction) {
-            // Version 1 setup
-            if (oldVersion < 1) {
-                const sessionStore = db.createObjectStore('sessions', { keyPath: 'id' });
-                sessionStore.createIndex('by-status', 'status');
-
-                const itemStore = db.createObjectStore('items', { keyPath: 'id' });
-                itemStore.createIndex('by-session', 'sessionId');
-                itemStore.createIndex('by-ean', 'ean');
-            }
-
-            // Version 2 upgrade: Add branch index to sessions
-            if (oldVersion < 2) {
-                const sessionStore = transaction.objectStore('sessions');
-                if (!sessionStore.indexNames.contains('by-branch')) {
-                    sessionStore.createIndex('by-branch', 'branchName');
-                }
-            }
-        },
-    });
-    return dbPromise;
+    synced: number;
+    branchName: string;
 }
 
 // --- Sesiones ---
 
 export async function createExpirationSession(sector: string, branchName: string): Promise<ExpirationSession> {
-    const db = await initExpirationDB();
-    const session: ExpirationSession = {
-        id: crypto.randomUUID(),
+    const newSession = {
         sector,
-        branchName,
-        startTime: Date.now(),
+        branch_name: branchName,
+        start_time: Date.now(),
         status: 'active',
-        totalProducts: 0,
-        totalUnits: 0,
+        total_products: 0,
+        total_units: 0
     };
-    await db.put('sessions', session);
-    return session;
+
+    const { data, error } = await supabase
+        .from('expiration_sessions')
+        .insert(newSession)
+        .select()
+        .single();
+
+    if (error) throw error;
+
+    return mapSessionFromDB(data);
 }
 
-
 export async function getActiveExpirationSessions(branchName: string): Promise<ExpirationSession[]> {
-    const db = await initExpirationDB();
-    const activeSessions = await db.getAllFromIndex('sessions', 'by-status', 'active');
-    return activeSessions.filter(s => s.branchName === branchName).sort((a, b) => b.startTime - a.startTime);
+    let query = supabase
+        .from('expiration_sessions')
+        .select('*')
+        .eq('status', 'active');
+
+    if (branchName) {
+        query = query.eq('branch_name', branchName);
+    }
+
+    const { data, error } = await query.order('start_time', { ascending: false });
+
+    if (error) throw error;
+
+    return data.map(mapSessionFromDB);
 }
 
 export async function deleteExpirationSession(id: string): Promise<void> {
-    const db = await initExpirationDB();
-    const tx = db.transaction(['sessions', 'items'], 'readwrite');
+    // Cascade delete in DB handles items, but let's be safe and rely on cascade or delete explicitly if needed.
+    // My SQL defined ON DELETE CASCADE for items, so just deleting session is enough.
+    const { error } = await supabase
+        .from('expiration_sessions')
+        .delete()
+        .eq('id', id);
 
-    await tx.objectStore('sessions').delete(id);
-
-    const itemStore = tx.objectStore('items');
-    const items = await itemStore.index('by-session').getAllKeys(id);
-    for (const itemId of items) {
-        await itemStore.delete(itemId);
-    }
-
-    await tx.done;
+    if (error) throw error;
 }
 
 export async function getActiveExpirationSession(branchName: string): Promise<ExpirationSession | null> {
@@ -113,13 +90,20 @@ export async function getActiveExpirationSession(branchName: string): Promise<Ex
     return sessions.length > 0 ? sessions[0] : null;
 }
 
-
 export async function updateExpirationSession(id: string, updates: Partial<ExpirationSession>): Promise<void> {
-    const db = await initExpirationDB();
-    const session = await db.get('sessions', id);
-    if (session) {
-        await db.put('sessions', { ...session, ...updates });
-    }
+    const dbUpdates: any = {};
+    if (updates.sector) dbUpdates.sector = updates.sector;
+    if (updates.status) dbUpdates.status = updates.status;
+    if (updates.endTime) dbUpdates.end_time = updates.endTime;
+    if (updates.totalProducts !== undefined) dbUpdates.total_products = updates.totalProducts;
+    if (updates.totalUnits !== undefined) dbUpdates.total_units = updates.totalUnits;
+
+    const { error } = await supabase
+        .from('expiration_sessions')
+        .update(dbUpdates)
+        .eq('id', id);
+
+    if (error) throw error;
 }
 
 export async function endExpirationSession(id: string): Promise<void> {
@@ -129,95 +113,153 @@ export async function endExpirationSession(id: string): Promise<void> {
 // --- Items ---
 
 export async function addExpirationItem(
-    itemData: Omit<ExpirationItem, 'id' | 'sessionId' | 'timestamp' | 'synced'>,
+    itemData: Omit<ExpirationItem, 'id' | 'sessionId' | 'timestamp' | 'synced' | 'branchName'>,
     branchName: string
 ): Promise<ExpirationItem> {
-    const db = await initExpirationDB();
     const activeSession = await getActiveExpirationSession(branchName);
-
     if (!activeSession) throw new Error("No active expiration session");
 
-    // Verificar si ya existe este EAN en la sesión actual
-    const existingItems = await db.getAllFromIndex('items', 'by-session', activeSession.id);
-    const existingItem = existingItems.find(i => i.ean === itemData.ean);
+    // Check if exists
+    const { data: existing } = await supabase
+        .from('expiration_items')
+        .select('id')
+        .eq('session_id', activeSession.id)
+        .eq('ean', itemData.ean)
+        .single();
 
-    if (existingItem) {
-        // Si existe, actualizamos agregando los nuevos lotes (aunque la UI probablemente maneje edición)
-        // Por simplicidad del "Add", reemplazaremos lógica o sumaremos batches?
-        // Asumiremos que la UI pasa el estado final de los batches para este producto si ya existe.
-        // Pero para ser robustos: Si Add se llama de nuevo, es un nuevo registro?
-        // En Pre-Conteo, cada escaneo es una línea. Aquí, agrupamos por lotes.
-        // Mejor estrategia: La UI carga el item existente, edita batches, y llama update.
-        // Esta función 'add' crea uno NUEVO.
+    if (existing) {
         throw new Error("Item already exists in session. Use update.");
     }
 
-    const newItem: ExpirationItem = {
-        id: crypto.randomUUID(),
-        sessionId: activeSession.id,
+    const newItem = {
+        session_id: activeSession.id,
         ean: itemData.ean,
-        productName: itemData.productName,
-        batches: itemData.batches,
-        totalQuantity: itemData.batches.reduce((acc, b) => acc + b.quantity, 0),
+        product_name: itemData.productName,
+        batches: itemData.batches as any, // Supabase client handles JSON stringify
+        total_quantity: itemData.batches.reduce((acc, b) => acc + b.quantity, 0),
         timestamp: Date.now(),
-        synced: 0
+        branch_name: branchName,
+        synced: 1
     };
 
-    await db.put('items', newItem);
+    const { data, error } = await supabase
+        .from('expiration_items')
+        .insert(newItem)
+        .select()
+        .single();
 
-    // Actualizar totales de sesión
+    if (error) throw error;
+
     await updateSessionTotals(activeSession.id);
 
-    return newItem;
+    return mapItemFromDB(data);
 }
 
 export async function updateExpirationItem(id: string, updates: Partial<ExpirationItem>): Promise<void> {
-    const db = await initExpirationDB();
-    const item = await db.get('items', id);
-    if (item) {
-        const updatedItem = { ...item, ...updates };
-        // Recalcular total si cambiaron los batches
-        if (updates.batches) {
-            updatedItem.totalQuantity = updates.batches.reduce((acc, b) => acc + b.quantity, 0);
-        }
-        await db.put('items', updatedItem);
-        await updateSessionTotals(item.sessionId);
+    const dbUpdates: any = {};
+    if (updates.batches) {
+        dbUpdates.batches = updates.batches as any;
+        dbUpdates.total_quantity = updates.batches.reduce((acc, b) => acc + b.quantity, 0);
+    }
+    if (updates.timestamp) dbUpdates.timestamp = updates.timestamp;
+
+    const { data, error } = await supabase
+        .from('expiration_items')
+        .update(dbUpdates)
+        .eq('id', id)
+        .select('session_id') // Get session_id to update totals
+        .single();
+
+    if (error) throw error;
+
+    if (data) {
+        await updateSessionTotals(data.session_id);
     }
 }
 
 export async function deleteExpirationItem(id: string): Promise<void> {
-    const db = await initExpirationDB();
-    const item = await db.get('items', id);
+    // Get session_id first to update totals
+    const { data: item } = await supabase
+        .from('expiration_items')
+        .select('session_id')
+        .eq('id', id)
+        .single();
+
+    const { error } = await supabase
+        .from('expiration_items')
+        .delete()
+        .eq('id', id);
+
+    if (error) throw error;
+
     if (item) {
-        await db.delete('items', id);
-        await updateSessionTotals(item.sessionId);
+        await updateSessionTotals(item.session_id);
     }
 }
 
 export async function getExpirationItemsBySession(sessionId: string): Promise<ExpirationItem[]> {
-    const db = await initExpirationDB();
-    return db.getAllFromIndex('items', 'by-session', sessionId);
+    const { data, error } = await supabase
+        .from('expiration_items')
+        .select('*')
+        .eq('session_id', sessionId);
+
+    if (error) throw error;
+
+    return data.map(mapItemFromDB);
 }
 
-export async function getAllExpirationItems(): Promise<ExpirationItem[]> {
-    const db = await initExpirationDB();
-    return db.getAll('items');
+// Updated to optionally filter by branch (for SmartAnalystWidget)
+export async function getAllExpirationItems(branchName?: string): Promise<ExpirationItem[]> {
+    let query = supabase.from('expiration_items').select('*');
+
+    if (branchName) {
+        query = query.eq('branch_name', branchName);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    return data.map(mapItemFromDB);
 }
 
-// Helper para actualizar totales de la sesión
+// Helper to update totals
 async function updateSessionTotals(sessionId: string) {
     const items = await getExpirationItemsBySession(sessionId);
-    const db = await initExpirationDB();
-
     const totalProducts = items.length;
     const totalUnits = items.reduce((acc, item) => acc + item.totalQuantity, 0);
 
-    const session = await db.get('sessions', sessionId);
-    if (session) {
-        await db.put('sessions', {
-            ...session,
-            totalProducts,
-            totalUnits
-        });
-    }
+    await updateExpirationSession(sessionId, {
+        totalProducts,
+        totalUnits
+    });
 }
+
+// Mappers
+function mapSessionFromDB(dbSession: any): ExpirationSession {
+    return {
+        id: dbSession.id,
+        sector: dbSession.sector,
+        branchName: dbSession.branch_name,
+        startTime: Number(dbSession.start_time),
+        endTime: dbSession.end_time ? Number(dbSession.end_time) : undefined,
+        status: dbSession.status,
+        totalProducts: dbSession.total_products,
+        totalUnits: dbSession.total_units
+    };
+}
+
+function mapItemFromDB(dbItem: any): ExpirationItem {
+    return {
+        id: dbItem.id,
+        sessionId: dbItem.session_id,
+        ean: dbItem.ean,
+        productName: dbItem.product_name,
+        batches: dbItem.batches,
+        totalQuantity: dbItem.total_quantity,
+        timestamp: Number(dbItem.timestamp),
+        synced: dbItem.synced,
+        branchName: dbItem.branch_name
+    };
+}
+

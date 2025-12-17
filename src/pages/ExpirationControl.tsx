@@ -24,7 +24,8 @@ import {
     History,
     Wifi,
     WifiOff,
-    Search
+    Search,
+    Pencil
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -101,6 +102,13 @@ export default function ExpirationControl() {
     const handleBarcodeScan = async (code: string) => {
         await processProductSelection(code);
         setScannerOpen(false);
+    };
+
+    const handleEditItem = (item: ExpirationItem) => {
+        setManualEAN(item.ean);
+        setSelectedProduct({ name: item.productName, ean: item.ean });
+        setCurrentBatches(item.batches);
+        setIsBatchModalOpen(true);
     };
 
     const handleProductSelect = async (product: any) => {
@@ -463,20 +471,55 @@ export default function ExpirationControl() {
                                                             </div>
 
                                                             {/* Batches (Compact) */}
-                                                            <div className="flex flex-wrap gap-1 content-start flex-1 min-h-[1.5rem]">
+                                                            <div className="flex flex-wrap gap-1.5 mt-2 content-start min-h-[1.5rem]">
                                                                 {item.batches.slice(0, 3).map((batch, idx) => (
-                                                                    <span key={idx} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-secondary text-secondary-foreground border border-secondary-foreground/10" title={`Lote: ${batch.batchNumber}`}>
-                                                                        <Clock className="w-2.5 h-2.5 mr-1 opacity-70" />
-                                                                        {formatExpiryDate(batch.expirationDate)}
-                                                                        <span className="mx-1 opacity-50">|</span>
-                                                                        x{batch.quantity}
-                                                                    </span>
+                                                                    <div key={idx} className="inline-flex items-center gap-2 text-xs bg-secondary/50 rounded px-2 py-1 border border-secondary-foreground/10">
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <Badge variant="outline" className="text-[10px] h-4 px-1 font-normal text-muted-foreground border-border/50">
+                                                                                {formatExpiryDate(batch.expirationDate)}
+                                                                            </Badge>
+                                                                            <span className="font-bold tabular-nums text-[10px]">x{batch.quantity}</span>
+                                                                        </div>
+
+                                                                        {batch.reminderMonths && (
+                                                                            <div className="flex items-center gap-0.5 text-[9px] text-muted-foreground border-l pl-1.5 border-border/50" title={`${batch.reminderMonths} meses de alerta`}>
+                                                                                <Clock className="w-2.5 h-2.5" />
+                                                                                <span className="sr-only sm:not-sr-only">{batch.reminderMonths}m</span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
                                                                 ))}
                                                                 {item.batches.length > 3 && (
                                                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] bg-muted text-muted-foreground">
                                                                         +{item.batches.length - 3}
                                                                     </span>
                                                                 )}
+                                                            </div>
+
+                                                            {/* Edit Action Overlay (Entire Card acts as edit trigger usually, but let's add specific button if needed) */}
+                                                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <Button
+                                                                    variant="secondary"
+                                                                    size="icon"
+                                                                    className="h-6 w-6 shadow-sm mr-1"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleEditItem(item); // Needs implementation or reuse existing
+                                                                    }}
+                                                                >
+                                                                    <Pencil className="w-3 h-3" />
+                                                                </Button>
+                                                                <Button
+                                                                    variant="destructive"
+                                                                    size="icon"
+                                                                    className="h-6 w-6 shadow-sm"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        deleteItem(item.id);
+                                                                    }}
+                                                                >
+                                                                    <Trash2 className="w-3 h-3" />
+                                                                </Button>
                                                             </div>
 
                                                             {/* Footer: Totals & Actions */}

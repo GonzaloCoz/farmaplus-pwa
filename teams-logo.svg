@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-users">
+  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="white" fill="none"/>
+  <circle cx="9" cy="7" r="4" stroke="white" fill="none"/>
+  <polyline points="16 11 18 11 18 21" stroke="white" opacity="0.7"/>
+  <rect x="2" y="5" width="12" height="12" rx="1" fill="#464EB8" stroke="none"/>
+  <text x="5" y="14" font-family="sans-serif" font-size="9" font-weight="bold" fill="white">T</text>
+</svg>

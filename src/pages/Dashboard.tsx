@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, sortableKeyboardCoordinates, rectSortingStrategy } from '@dnd-kit/sortable';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useUser } from "@/contexts/UserContext";
 import { useDashboardLayout } from "@/hooks/useDashboardLayout";
@@ -15,7 +15,9 @@ import { SmartAnalystWidget } from "@/components/dashboard/widgets/SmartAnalystW
 import { MetricsCarouselWidget } from "@/components/dashboard/widgets/MetricsCarouselWidget";
 import { ActiveProductsWidget } from "@/components/dashboard/widgets/ActiveProductsWidget";
 import { InventorySummaryWidget } from "@/components/dashboard/widgets/InventorySummaryWidget";
-import { InventoryAlertsWidget } from "@/components/dashboard/widgets/InventoryAlertsWidget";
+import { TeamsChatWidget } from "@/components/dashboard/widgets/TeamsChatWidget";
+
+
 import { UpcomingInventoriesWidget } from "@/components/dashboard/widgets/UpcomingInventoriesWidget";
 import { BranchesTableWidget } from "@/components/dashboard/widgets/BranchesTableWidget";
 import { InventoryProgressWidget } from "@/components/dashboard/widgets/InventoryProgressWidget";
@@ -134,9 +136,12 @@ export default function Dashboard() {
 
   // Configuration State for Admin
   const [assignedDays, setAssignedDays] = useState(0);
+  const [cycleStartDate, setCycleStartDate] = useState<string | null>(null);
+  const [globalProgress, setGlobalProgress] = useState(0);
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [configBranch, setConfigBranch] = useState("");
   const [configDays, setConfigDays] = useState(90);
+  const [configStartDate, setConfigStartDate] = useState(new Date().toISOString().split('T')[0]);
 
   const [extensionDays, setExtensionDays] = useState(0);
 
@@ -156,8 +161,9 @@ export default function Dashboard() {
   useEffect(() => {
     const loadConfig = async () => {
       if (user?.branchName) {
-        const days = await cyclicInventoryService.getBranchConfig(user.branchName);
-        setAssignedDays(days);
+        const config = await cyclicInventoryService.getBranchConfig(user.branchName);
+        setAssignedDays(config.days);
+        setCycleStartDate(config.startDate);
       }
     };
     loadConfig();
@@ -214,11 +220,16 @@ export default function Dashboard() {
           // Units
           negativeUnits: acc.negativeUnits + inv.negativeUnits,
           positiveUnits: acc.positiveUnits + inv.positiveUnits,
-          totalSystemUnits: acc.totalSystemUnits + inv.totalSystemUnits
+          totalSystemUnits: acc.totalSystemUnits + inv.totalSystemUnits,
+          controlledCount: acc.controlledCount + (inv.status === 'controlado' ? 1 : 0)
         }), {
           negativeStock: 0, positiveStock: 0, totalStock: 0,
-          negativeUnits: 0, positiveUnits: 0, totalSystemUnits: 0
+          negativeUnits: 0, positiveUnits: 0, totalSystemUnits: 0,
+          controlledCount: 0
         });
+
+        const progress = allInventories.length > 0 ? Math.round((aggregated.controlledCount / allInventories.length) * 100) : 0;
+        setGlobalProgress(progress);
 
         setMetrics({
           totalStock: aggregated.totalStock,
@@ -257,7 +268,7 @@ export default function Dashboard() {
       case 'inventory-summary':
         return <InventorySummaryWidget />;
       case 'inventory-alerts':
-        return <InventoryAlertsWidget />;
+        return <TeamsChatWidget />;
       case 'upcoming-inventories':
         return <UpcomingInventoriesWidget onDateClick={openCalendarForIso} />;
       case 'branches-table':
@@ -265,7 +276,7 @@ export default function Dashboard() {
         if (!hasPermission(user, 'VIEW_BRANCH_MONITOR')) return null;
         return <BranchesTableWidget branches={branches} />;
       case 'inventory-progress':
-        return <InventoryProgressWidget completedCount={3} totalCount={10} />;
+        return <InventoryProgressWidget completedCount={globalProgress} totalCount={100} />;
       case 'critical-products':
         return <CriticalProductsWidget criticalCount={15} outOfStockCount={3} />;
       case 'total-stock-value':
@@ -294,9 +305,8 @@ export default function Dashboard() {
         return (
           <CountdownWidget
             assignedDays={assignedDays}
-            daysRemaining={assignedDays} // Simple fallback logic for now
-            totalProgress={0}
-            monthlyProgress={[]}
+            startDate={cycleStartDate}
+            totalProgress={globalProgress}
             isEditable={hasPermission(user, 'MANAGE_INVENTORY_CONFIG')}
             onEdit={() => setShowConfigDialog(true)}
           />
@@ -468,11 +478,15 @@ export default function Dashboard() {
           setConfigBranch(user?.branchName || '');
           setConfigDays(foundBase);
           setExtensionDays(Math.max(0, currentTotal - foundBase));
+          setConfigStartDate(cycleStartDate ? cycleStartDate.split('T')[0] : new Date().toISOString().split('T')[0]);
         }
       }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Configurar Plazo de Inventario</DialogTitle>
+            <DialogDescription>
+              Ajusta los parámetros del ciclo de inventario para esta sucursal.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-6 py-4">
             {/* Branch Display (Read Only) */}
@@ -524,16 +538,29 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* Start Date Selection */}
+            <div className="space-y-2">
+              <Label>Fecha de Inicio del Ciclo</Label>
+              <Input
+                type="date"
+                value={configStartDate}
+                onChange={(e) => setConfigStartDate(e.target.value)}
+                className="bg-background"
+              />
+              <p className="text-[10px] text-muted-foreground">Esta fecha se usa para calcular los días restantes y el ritmo de avance.</p>
+            </div>
+
             <Button
               className="w-full mt-2"
               onClick={async () => {
                 if (!user?.branchName) return;
                 const total = configDays + extensionDays;
                 try {
-                  await cyclicInventoryService.saveBranchConfig(user.branchName, total);
+                  await cyclicInventoryService.saveBranchConfig(user.branchName, total, configStartDate);
                   notify.success("Operación exitosa", `Plazo actualizado a ${total} días`);
                   setShowConfigDialog(false);
                   setAssignedDays(total);
+                  setCycleStartDate(configStartDate);
                 } catch (e) {
                   notify.error("Error", "Error al guardar");
                 }

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useLocation, Link } from "react-router-dom";
 import { Search, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { GlobalSearchCommand } from "@/components/GlobalSearchCommand";
+import { SuperSearch } from "@/components/SuperSearch";
 import { SyncStatusButton } from "@/components/SyncStatusButton";
 
 // Mapping de segmentos a títulos
@@ -84,7 +84,7 @@ export function DesktopHeader() {
             </header>
 
             {/* Global Search Command Palette */}
-            <GlobalSearchCommand open={searchOpen} onOpenChange={setSearchOpen} />
+            <SuperSearch open={searchOpen} onOpenChange={setSearchOpen} />
         </>
     );
 }

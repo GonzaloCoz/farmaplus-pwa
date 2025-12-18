@@ -43,12 +43,12 @@ import { BarcodeScanner } from '@/components/BarcodeScanner';
 import { SmartProductSearch } from '@/components/SmartProductSearch';
 import { useExpirationControl } from '@/hooks/useExpirationControl';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
-import { getProductByEAN } from '@/services/preCountDB'; // Reuse product info service
 import { notify } from '@/lib/notifications';
+import { getProductByEAN } from '@/services/preCountDB';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
 import { FabMenu } from '@/components/FabMenu';
-import { BatchInfo, ExpirationItem } from '@/services/expirationDB';
 import jsPDF from 'jspdf';
+import { BatchInfo, ExpirationItem } from '@/services/expirationDB';
 import { ExpirationEntryModal } from '@/components/ExpirationEntryModal';
 
 type Step = 'config' | 'counting';
@@ -181,9 +181,12 @@ export default function ExpirationControl() {
         return date;
     };
 
-    // Export PDF (Similar structure to PreCount but with Batches)
+    // Export PDF (Original Function)
     const handleExportPDF = () => {
-        if (items.length === 0) return notify.error("Error", 'No hay datos');
+        if (items.length === 0) {
+            notify.error("Error", 'No hay datos');
+            return;
+        }
 
         const doc = new jsPDF();
         let y = 20;
@@ -537,15 +540,6 @@ export default function ExpirationControl() {
                                                                     <Button
                                                                         size="icon"
                                                                         variant="ghost"
-                                                                        className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/5"
-                                                                        onClick={() => processProductSelection(item.ean, item.productName)}
-                                                                        title="Editar / Agregar lote"
-                                                                    >
-                                                                        <Plus className="w-4 h-4" />
-                                                                    </Button>
-                                                                    <Button
-                                                                        size="icon"
-                                                                        variant="ghost"
                                                                         className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/5"
                                                                         onClick={() => deleteItem(item.id)}
                                                                         title="Eliminar"
@@ -664,6 +658,6 @@ export default function ExpirationControl() {
                 onOpenChange={setScannerOpen}
                 onScan={handleBarcodeScan}
             />
-        </div>
+        </div >
     );
 }

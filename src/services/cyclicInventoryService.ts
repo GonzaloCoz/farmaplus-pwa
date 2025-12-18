@@ -400,39 +400,73 @@ export const cyclicInventoryService = {
 
 
     // Configuration System
-    getBranchConfig: async (branchName: string): Promise<number> => {
+    getBranchConfig: async (branchName: string): Promise<{ days: number, startDate: string | null }> => {
         const { data } = await supabase
             .from('inventories')
-            .select('quantity')
+            .select('ean, quantity')
             .eq('branch_name', branchName)
-            .eq('laboratory', '_CONFIG_')
-            .limit(1)
-            .maybeSingle();
+            .eq('laboratory', '_CONFIG_');
 
-        return data ? data.quantity : 0; // Default to 0 if not set
+        if (!data || (data as any).length === 0) return { days: 0, startDate: null };
+
+        const configData = data as any[];
+        const daysRecord = configData.find(r => r.ean === 'CONFIG_DAYS');
+        const startDateRecord = configData.find(r => r.ean === 'CONFIG_START_DATE');
+
+        // If it's the old format (only one record with ean 'CONFIG_DAYS' or generic)
+        const days = daysRecord ? daysRecord.quantity : (configData[0]?.ean === 'CONFIG_DAYS' ? configData[0].quantity : 0);
+
+        let startDate = null;
+        if (startDateRecord && startDateRecord.quantity) {
+            // Convert back to ms (stored as seconds to fit in 32-bit integer)
+            startDate = new Date(startDateRecord.quantity * 1000).toISOString();
+        }
+
+        return { days, startDate };
     },
 
-    saveBranchConfig: async (branchName: string, days: number): Promise<void> => {
+    saveBranchConfig: async (branchName: string, days: number, startDate?: string): Promise<void> => {
+        const cleanBranch = branchName.trim();
         try {
-            // Ensure the special product exists
             await import('./preCountDB').then(m => m.ensureConfigProduct());
 
-            // 1. Delete previous config
-            await supabase.from('inventories')
+            // 1. Delete previous config records for this branch
+            const { error: deleteError } = await supabase.from('inventories')
                 .delete()
-                .eq('branch_name', branchName)
+                .eq('branch_name', cleanBranch)
                 .eq('laboratory', '_CONFIG_');
 
-            // 2. Insert new config
-            const { error } = await supabase.from('inventories').insert({
-                laboratory: '_CONFIG_',
-                branch_name: branchName, // Added branch_name to fix missing prop error if I missed it in TS
-                ean: 'CONFIG_DAYS', // Must match the one created in ensureConfigProduct
-                quantity: days,
-                system_quantity: 0,
-                status: 'pending' // Important: 'pending' so it doesn't count as controlled
-            } as any);
+            if (deleteError) {
+                console.error("Error deleting old config:", deleteError);
+            }
 
+            // 2. Prepare new records
+            const insertData = [
+                {
+                    laboratory: '_CONFIG_',
+                    branch_name: cleanBranch,
+                    ean: 'CONFIG_DAYS',
+                    quantity: days,
+                    system_quantity: 0,
+                    status: 'pending' as const
+                }
+            ];
+
+            if (startDate) {
+                // Store as seconds to fit in Postgres integer column (32-bit)
+                const seconds = Math.floor(new Date(startDate).getTime() / 1000);
+                insertData.push({
+                    laboratory: '_CONFIG_',
+                    branch_name: cleanBranch,
+                    ean: 'CONFIG_START_DATE',
+                    quantity: seconds,
+                    system_quantity: 0,
+                    status: 'pending' as const
+                });
+            }
+
+            // 3. Insert and check for error
+            const { error } = await supabase.from('inventories').insert(insertData);
             if (error) throw error;
         } catch (e) {
             console.error("Error saving branch config:", e);
@@ -512,6 +546,53 @@ export const cyclicInventoryService = {
             return [];
         }
         return data;
+    },
+
+    // Closure System (Snapshots for UI Visualization)
+    saveCycleClosure: async (branchName: string, period: number, categories: { name: string, percentage: number }[]): Promise<void> => {
+        try {
+            await import('./preCountDB').then(m => m.ensureConfigProduct());
+
+            const insertData = categories.map(cat => ({
+                laboratory: '_CONFIG_',
+                branch_name: branchName,
+                ean: `CLOSURE_${period}_${cat.name.toUpperCase()}`,
+                quantity: Math.round(cat.percentage),
+                system_quantity: 0,
+                status: 'pending' as const
+            }));
+
+            // Delete previous closures for this period and branch to avoid duplicates
+            await supabase.from('inventories')
+                .delete()
+                .eq('branch_name', branchName)
+                .eq('laboratory', '_CONFIG_')
+                .ilike('ean', `CLOSURE_${period}_%`);
+
+            const { error } = await supabase.from('inventories').insert(insertData);
+            if (error) throw error;
+        } catch (e) {
+            console.error(`Error saving closure for period ${period}:`, e);
+            throw e;
+        }
+    },
+
+    getCycleClosures: async (branchName: string, period: number = 1): Promise<Record<string, number>> => {
+        const { data, error } = await supabase
+            .from('inventories')
+            .select('ean, quantity')
+            .eq('branch_name', branchName)
+            .eq('laboratory', '_CONFIG_')
+            .ilike('ean', `CLOSURE_${period}_%`);
+
+        if (error || !data) return {};
+
+        const result: Record<string, number> = {};
+        data.forEach((row: any) => {
+            const catName = row.ean.replace(`CLOSURE_${period}_`, '');
+            result[catName] = row.quantity;
+        });
+        return result;
     },
 
     // Migration Tool

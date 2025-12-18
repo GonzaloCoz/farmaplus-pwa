@@ -37,15 +37,19 @@ export async function addProducts(products: Product[]): Promise<void> {
 }
 
 export async function ensureConfigProduct(): Promise<void> {
-    const { data } = await supabase.from('products').select("id").eq('ean', 'CONFIG_DAYS').single();
-    if (!data) {
-        await addProducts([{
-            ean: 'CONFIG_DAYS',
-            name: 'Configuración de Días',
-            laboratory: '_CONFIG_',
-            category: 'SYSTEM',
-            cost: 0, salePrice: 0, stock: 0
-        }]);
+    const configEans = ['CONFIG_DAYS', 'CONFIG_START_DATE'];
+
+    for (const ean of configEans) {
+        const { data } = await supabase.from('products').select("id").eq('ean', ean).maybeSingle();
+        if (!data) {
+            await addProducts([{
+                ean: ean,
+                name: ean === 'CONFIG_DAYS' ? 'Configuración de Días' : 'Configuración de Fecha Inicio',
+                laboratory: '_CONFIG_',
+                category: 'SYSTEM',
+                cost: 0, salePrice: 0, stock: 0
+            }]);
+        }
     }
 }
 

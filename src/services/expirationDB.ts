@@ -263,3 +263,92 @@ function mapItemFromDB(dbItem: any): ExpirationItem {
     };
 }
 
+// Transfer Logic
+export async function processTransfer(
+    item: ExpirationItem,
+    batch: BatchInfo,
+    destinationBranch: string,
+    plexShipmentNumber: string
+): Promise<void> {
+    // 1. Update SOURCE item (Mark as transferred)
+    const updatedBatches = item.batches.map(b => {
+        if (b.batchNumber === batch.batchNumber && b.expirationDate === batch.expirationDate) {
+            return {
+                ...b,
+                status: 'transfer',
+                actionDate: Date.now(),
+                destinationBranch,
+                plexShipmentNumber
+            } as BatchInfo;
+        }
+        return b;
+    });
+
+    await updateExpirationItem(item.id, { batches: updatedBatches });
+
+    // 2. Handle DESTINATION item (Create/Update in destination branch)
+
+    // Find active session for destination branch
+    let destSession = await getActiveExpirationSession(destinationBranch);
+
+    // If no active session, create a specific one for Transfers/Receptions
+    if (!destSession) {
+        destSession = await createExpirationSession("Recepción Transferencias", destinationBranch);
+    }
+
+    // Check if the item already exists in the destination session
+    const { data: existingDestItem } = await supabase
+        .from('expiration_items')
+        .select('*')
+        .eq('session_id', destSession.id)
+        .eq('ean', item.ean)
+        .single();
+
+    if (existingDestItem) {
+        // Update existing item in destination
+        // We need to add this batch to the existing list, avoiding duplicates
+        const currentBatches = existingDestItem.batches as BatchInfo[];
+        const batchExists = currentBatches.some(b => b.batchNumber === batch.batchNumber && b.expirationDate === batch.expirationDate);
+
+        if (!batchExists) {
+            const newBatch: BatchInfo = {
+                ...batch,
+                status: 'active', // Reset status for the receiver
+                actionDate: undefined,
+                destinationBranch: undefined,
+                plexShipmentNumber: undefined
+            };
+
+            const newBatches = [...currentBatches, newBatch];
+
+            await supabase
+                .from('expiration_items')
+                .update({
+                    batches: newBatches as any, // suppressed for supabase json type
+                    total_quantity: newBatches.reduce((acc, b) => acc + b.quantity, 0),
+                    timestamp: Date.now()
+                })
+                .eq('id', existingDestItem.id);
+
+            await updateSessionTotals(destSession.id);
+        }
+
+    } else {
+        // Create new item in destination
+        const newBatch: BatchInfo = {
+            ...batch,
+            status: 'active', // Reset status for the receiver
+            actionDate: undefined,
+            destinationBranch: undefined,
+            plexShipmentNumber: undefined
+        };
+
+        await addExpirationItem({
+            ean: item.ean,
+            productName: item.productName,
+            batches: [newBatch],
+            totalQuantity: newBatch.quantity
+        }, destinationBranch);
+    }
+}
+

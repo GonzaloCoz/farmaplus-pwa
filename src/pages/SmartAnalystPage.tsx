@@ -17,9 +17,15 @@ import {
     Trash2,
     Calendar,
     Filter,
-    ArrowUpRight
+    ArrowUpRight,
+    FileText
 } from 'lucide-react';
-import { getAllExpirationItems, updateExpirationItem, ExpirationItem, BatchInfo } from '@/services/expirationDB';
+import { FabMenu } from '@/components/FabMenu';
+import { ExportOptionsModal, ExportOptions } from '@/components/modals/ExportOptionsModal';
+import { generateExport } from '@/services/ExportService';
+import { useExpirationControl } from '@/hooks/useExpirationControl';
+import { SmartFilters, FilterState } from '@/components/SmartFilters';
+import { getAllExpirationItems, updateExpirationItem, processTransfer, ExpirationItem, BatchInfo } from '@/services/expirationDB';
 import { notify } from '@/lib/notifications';
 import { format, parse, differenceInDays, differenceInMonths, addMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -40,13 +46,37 @@ import { useUser } from '@/contexts/UserContext';
 export default function SmartAnalystPage() {
     const { user } = useUser();
     const navigate = useNavigate();
+    const { session, isLoading: isControlLoading } = useExpirationControl(); // Assuming useExpirationControl exists
     const [items, setItems] = useState<ExpirationItem[]>([]);
-    const [analyzedBatches, setAnalyzedBatches] = useState<AnalyzedBatch[]>([]);
-    const [filterQuery, setFilterQuery] = useState('');
+    const [batches, setBatches] = useState<AnalyzedBatch[]>([]); // Renamed from analyzedBatches
+    const [searchTerm, setSearchTerm] = useState(''); // Renamed from filterQuery
     const [activeTab, setActiveTab] = useState<'pending' | 'resolved'>('pending');
     const [isLoading, setIsLoading] = useState(true);
     const [transferModalOpen, setTransferModalOpen] = useState(false);
     const [batchToTransfer, setBatchToTransfer] = useState<AnalyzedBatch | null>(null);
+
+    // Export Logic
+    const [exportModalOpen, setExportModalOpen] = useState(false);
+
+    // Smart Filters State
+    const [filterState, setFilterState] = useState<FilterState>({
+        status: [],
+        date: undefined
+    });
+
+    const handleExportConfirm = (options: ExportOptions) => {
+        if (user?.branchName) {
+            generateExport(items, options, user.branchName);
+        }
+    };
+
+    const fabActions = [
+        {
+            icon: <FileText className="h-5 w-5" />,
+            label: "Exportar Reporte",
+            onClick: () => setExportModalOpen(true)
+        }
+    ];
 
     useEffect(() => {
         loadData();
@@ -103,7 +133,7 @@ export default function SmartAnalystPage() {
 
         // Sort by urgency (lowest days first)
         batchList.sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
-        setAnalyzedBatches(batchList);
+        setBatches(batchList);
     };
 
     const handleAction = async (batch: AnalyzedBatch, action: 'sold' | 'transfer' | 'return' | 'destroyed') => {
@@ -118,10 +148,21 @@ export default function SmartAnalystPage() {
     const confirmTransfer = async (destinationBranch: string, plexShipmentNumber: string) => {
         if (!batchToTransfer) return;
 
-        await processAction(batchToTransfer, 'transfer', {
-            destinationBranch,
-            plexShipmentNumber
-        });
+        try {
+            const parentItem = items.find(i => i.id === batchToTransfer.itemId);
+            if (!parentItem) return;
+
+            // Use the new service that handles both source and destination updates
+            await processTransfer(parentItem, batchToTransfer, destinationBranch, plexShipmentNumber);
+
+            notify.success("Transferencia Exitosa", `Producto transferido a ${destinationBranch}`);
+
+            // Reload to reflect changes
+            loadData();
+        } catch (error) {
+            console.error("Error processing transfer:", error);
+            notify.error("Error", "Falló la transferencia");
+        }
 
         setTransferModalOpen(false);
         setBatchToTransfer(null);
@@ -165,9 +206,9 @@ export default function SmartAnalystPage() {
         }
     };
 
-    const filteredBatches = analyzedBatches.filter(b => {
-        const matchesQuery = b.productName.toLowerCase().includes(filterQuery.toLowerCase()) ||
-            b.batchNumber.toLowerCase().includes(filterQuery.toLowerCase());
+    const filteredBatches = batches.filter(b => {
+        const matchesQuery = b.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            b.batchNumber.toLowerCase().includes(searchTerm.toLowerCase());
 
         if (activeTab === 'pending') {
             return matchesQuery && (!b.status || b.status === 'active');
@@ -214,7 +255,7 @@ export default function SmartAnalystPage() {
                         <div>
                             <p className="text-xs font-medium text-muted-foreground">Críticos ({"<"}30d)</p>
                             <h3 className="text-xl font-bold text-destructive">
-                                {analyzedBatches.filter(b => (!b.status || b.status === 'active') && b.daysUntilExpiry < 30).length}
+                                {batches.filter(b => (!b.status || b.status === 'active') && b.daysUntilExpiry < 30).length}
                             </h3>
                         </div>
                         <div className="p-2 bg-destructive/10 rounded-full">
@@ -227,7 +268,7 @@ export default function SmartAnalystPage() {
                         <div>
                             <p className="text-xs font-medium text-muted-foreground">Próximos (30-60d)</p>
                             <h3 className="text-xl font-bold text-warning">
-                                {analyzedBatches.filter(b => (!b.status || b.status === 'active') && b.daysUntilExpiry >= 30 && b.daysUntilExpiry < 60).length}
+                                {batches.filter(b => (!b.status || b.status === 'active') && b.daysUntilExpiry >= 30 && b.daysUntilExpiry < 60).length}
                             </h3>
                         </div>
                         <div className="p-2 bg-warning/10 rounded-full">
@@ -246,7 +287,7 @@ export default function SmartAnalystPage() {
                             <AlertTriangle className="w-3.5 h-3.5" />
                             Pendientes
                             <Badge variant="secondary" className="ml-1 h-4 px-1 min-w-[18px] justify-center text-[10px]">
-                                {analyzedBatches.filter(b => !b.status || b.status === 'active').length}
+                                {batches.filter(b => !b.status || b.status === 'active').length}
                             </Badge>
                         </TabsTrigger>
                         <TabsTrigger value="resolved" className="gap-2 h-9 text-xs">
@@ -255,14 +296,20 @@ export default function SmartAnalystPage() {
                         </TabsTrigger>
                     </TabsList>
 
-                    <div className="relative w-full sm:w-auto min-w-[300px]">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input
-                            placeholder="Buscar producto o lote..."
-                            value={filterQuery}
-                            onChange={(e) => setFilterQuery(e.target.value)}
-                            className="pl-9 h-9 w-full text-sm"
+                    <div className="flex items-center gap-2 w-full md:w-auto">
+                        <SmartFilters
+                            activeFilters={filterState}
+                            onFilterChange={setFilterState}
                         />
+                        <div className="relative flex-1 md:w-64">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Buscar producto o lote..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="pl-9 h-9 bg-muted/50 border-muted-foreground/20"
+                            />
+                        </div>
                     </div>
                 </div>
 
@@ -451,6 +498,24 @@ export default function SmartAnalystPage() {
                 onConfirm={confirmTransfer}
                 batch={batchToTransfer}
                 branches={BRANCH_NAMES}
+            />
+
+            {/* <ScrollHideFAB actions={fabActions} /> Replaced with FabMenu */}
+            <FabMenu
+                actions={[
+                    {
+                        label: "Exportar Reporte",
+                        icon: <FileText className="w-5 h-5" />,
+                        onClick: () => setExportModalOpen(true),
+                        variant: 'secondary'
+                    }
+                ]}
+            />
+
+            <ExportOptionsModal
+                isOpen={exportModalOpen}
+                onClose={() => setExportModalOpen(false)}
+                onConfirm={handleExportConfirm}
             />
         </div>
     );

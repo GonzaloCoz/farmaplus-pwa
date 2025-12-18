@@ -96,6 +96,20 @@ export function ExpirationEntryModal({
         const reminderVal = manualReminder ? parseInt(manualReminder) : reminder;
         if (isNaN(reminderVal) || reminderVal <= 0) return notify.error("Alerta inválida", "Meses de alerta inválidos");
 
+        // Date Validation
+        const [monthStr, yearStr] = expiry.split('/');
+        const month = parseInt(monthStr);
+        const year = 2000 + parseInt(yearStr);
+
+        // Create date for the LAST day of the expiry month
+        const expiryDate = new Date(year, month, 0);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // Start of today
+
+        if (expiryDate < today) {
+            return notify.error("Fecha inválida", "El producto ya está vencido. No se puede ingresar.");
+        }
+
 
         const newBatch: BatchInfo = {
             batchNumber: batchNumber.toUpperCase(),

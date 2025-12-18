@@ -64,14 +64,21 @@ export function NotificationToast({
     const [expanded, setExpanded] = useState(false);
     const [isPaused, setIsPaused] = useState(false);
     const [remaining, setRemaining] = useState(duration);
+    const [isVisible, setIsVisible] = useState(true);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
     const Icon = icons[type];
     const style = colors[type];
 
+    const handleDismiss = () => {
+        setIsVisible(false); // Visually hide immediately
+        // Small delay to allow animation if we added one, checking removal
+        setTimeout(() => onDismiss(id), 300);
+    };
+
     // Logic to handle timer and pause
     useEffect(() => {
-        if (isPaused) {
+        if (isPaused || !isVisible) {
             if (timerRef.current) clearInterval(timerRef.current);
             return;
         }
@@ -85,7 +92,7 @@ export function NotificationToast({
 
             if (newRemaining <= 0) {
                 setRemaining(0);
-                onDismiss(id);
+                handleDismiss(); // Use local handler
                 if (timerRef.current) clearInterval(timerRef.current);
             } else {
                 setRemaining(newRemaining);
@@ -95,17 +102,32 @@ export function NotificationToast({
         return () => {
             if (timerRef.current) clearInterval(timerRef.current);
         }
-    }, [isPaused, id, onDismiss]); // 'remaining' is captured in closure, correct for resume logic? 
-    // Wait, if I pause and resume, 'remaining' in state is updated. The effect re-runs with new 'remaining'. Correct.
+    }, [isPaused, isVisible]); // Removed id/onDismiss to prevent re-runs
 
     const secondsLeft = Math.ceil(remaining / 1000);
     const progressPercent = (remaining / duration) * 100;
 
+    // Use motion.div for smoother entrance/exit animations
     return (
-        <div
+        <motion.div
+            layout
+            initial={{ opacity: 0, x: 50, scale: 0.95 }}
+            animate={{
+                opacity: isVisible ? 1 : 0,
+                x: isVisible ? 0 : 20,
+                scale: isVisible ? 1 : 0.95,
+                height: isVisible ? "auto" : 0,
+                marginBottom: isVisible ? 0 : -10 // Pull up subsequent toasts
+            }}
+            transition={{
+                type: "spring",
+                stiffness: 400,
+                damping: 30,
+                opacity: { duration: 0.2 },
+                height: { duration: 0.3, delay: isVisible ? 0 : 0.1 } // Delay height collapse on exit
+            }}
             className={cn(
                 "pointer-events-auto relative flex flex-col overflow-hidden rounded-xl border bg-background shadow-lg",
-                // Fixed width to prevent horizontal expansion
                 "w-[360px]"
             )}
         >
@@ -166,7 +188,7 @@ export function NotificationToast({
                                 </button>
                             )}
                             <button
-                                onClick={() => onDismiss(id)}
+                                onClick={handleDismiss}
                                 className="rounded-full p-1.5 hover:bg-muted/80 text-muted-foreground transition-colors"
                                 aria-label="Cerrar notificación"
                             >
@@ -205,6 +227,6 @@ export function NotificationToast({
                     />
                 </div>
             </div>
-        </div>
+        </motion.div>
     );
 }

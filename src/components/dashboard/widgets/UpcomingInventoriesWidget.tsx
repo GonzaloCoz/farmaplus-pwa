@@ -39,7 +39,7 @@ export function UpcomingInventoriesWidget({ onDateClick }: Props) {
             const upcoming = events
                 .filter((e: any) => e.date >= todayStr)
                 .sort((a: any, b: any) => a.date.localeCompare(b.date))
-                .slice(0, 3)
+                .slice(0, 5)
                 .map((e: any) => ({
                     id: e.id,
                     branch: e.branch_name || e.branchId, // Fallback
@@ -75,6 +75,8 @@ export function UpcomingInventoriesWidget({ onDateClick }: Props) {
             <div className="space-y-4 flex-1">
                 {isLoading ? (
                     <div className="space-y-3">
+                        <div className="h-12 bg-muted/20 animate-pulse rounded-lg" />
+                        <div className="h-12 bg-muted/20 animate-pulse rounded-lg" />
                         <div className="h-12 bg-muted/20 animate-pulse rounded-lg" />
                         <div className="h-12 bg-muted/20 animate-pulse rounded-lg" />
                         <div className="h-12 bg-muted/20 animate-pulse rounded-lg" />

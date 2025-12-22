@@ -374,7 +374,7 @@ export default function StockImport() {
     } else if (activeTab === "zero_stock") {
       // Stock 0 -> >0 (System Stock 0, Physical > 0)
       // These are a subset of surpluses
-      items = results.allSurpluses.filter(p => p.systemStock === 0 && p.physicalCount > 0);
+      items = results.allSurpluses.filter(p => p.systemStock === 0 && Number(p.physicalCount) > 0);
     }
 
     // Filter by Search

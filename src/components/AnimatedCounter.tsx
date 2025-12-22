@@ -51,7 +51,7 @@ function DigitSlot({ digit, isZero }: DigitSlotProps) {
                         damping: 30,
                         mass: 0.8
                     }}
-                    className={`absolute inset-0 flex items-center justify-center font-bold tabular-nums ${isZero ? 'text-white/20' : 'text-white'}`}
+                    className={`absolute inset-0 flex items-center justify-center font-bold tabular-nums ${isZero ? 'opacity-20' : ''}`}
                 >
                     {digit}
                 </motion.span>

@@ -128,7 +128,7 @@ export function TeamsChatWidget() {
     // Teams Deep Link Generator
     const openTeamsChat = (text: string) => {
         const encodedMessage = encodeURIComponent(text);
-        const targetEmail = user?.email || "gcoz@farmaplus.com"; // Reemplaza con tu mail de Teams o el del destinatario
+        const targetEmail = "GHCoz@farmaplus.com.ar"; // Tu mail de Teams configurado manualmente
         const url = `https://teams.microsoft.com/l/chat/0/0?users=${targetEmail}&message=${encodedMessage}`;
         window.open(url, '_blank');
         setMessage("");

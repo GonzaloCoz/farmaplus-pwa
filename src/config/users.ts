@@ -11,7 +11,22 @@ export interface AdminUser {
     role: 'admin';
 }
 
+export interface ZonalUser {
+    username: string;
+    name: string;
+    role: 'mod';
+}
+
 export const ADMIN_USERS: AdminUser[] = [];
+
+export const ZONAL_USERS: ZonalUser[] = [
+    { username: 'azanovello', name: 'Andres Zanovello', role: 'mod' },
+    { username: 'cmcgarva', name: 'Christian Mac Garva', role: 'mod' },
+    { username: 'druiz', name: 'Diego Ruiz', role: 'mod' },
+    { username: 'emendoza', name: 'Javier Mendoza', role: 'mod' },
+    { username: 'jparedes', name: 'Javier Paredes', role: 'mod' },
+    { username: 'jarredondo', name: 'Jorge Arredondo', role: 'mod' },
+];
 
 
 export const BRANCH_NAMES = [

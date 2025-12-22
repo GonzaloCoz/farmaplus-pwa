@@ -21,6 +21,8 @@ import { useNotificationPreferences } from "@/contexts/NotificationPreferencesCo
 import { NotificationPositionSelector } from "@/components/settings/NotificationPositionSelector";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { notify } from "@/lib/notifications";
+import { UserManagement } from "@/components/settings/UserManagement";
+import { hasPermission } from "@/config/permissions";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -327,6 +329,11 @@ export default function Settings() {
               </Button>
             </CardContent>
           </Card>
+        )}
+
+        {/* Únicamente para Super User (gcoz) */}
+        {hasPermission(user, 'MANAGE_USERS') && (
+          <UserManagement />
         )}
 
         {/* Sistema */}

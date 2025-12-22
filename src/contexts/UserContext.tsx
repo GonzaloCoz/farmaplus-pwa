@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { BRANCH_NAMES } from '@/config/users';
+import { BRANCH_NAMES, ZONAL_USERS } from '@/config/users';
 import { notify } from "@/lib/notifications";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -7,9 +7,10 @@ export interface User {
     id: string;
     username: string;
     name: string;
-    role: 'admin' | 'branch';
-    branchName?: string; // Optional for admins
-    branchSheet?: string; // Optional for admins
+    role: 'admin' | 'branch' | 'mod';
+    branchName?: string; // Optional for admins/mods
+    branchSheet?: string; // Optional for admins/mods
+    permissions?: string[];
 }
 
 interface UserContextType {
@@ -59,15 +60,25 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                 .maybeSingle();
 
             if (data && !error) {
+                // Bypass active check for gcoz to prevent total lockout
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const profile = data as any;
+
+                if (profile.active === false && profile.username.toLowerCase() !== 'gcoz') {
+                    notify.error("Acceso Denegado", "Tu cuenta se encuentra inactiva. Contacta al administrador (gcoz).");
+                    return false;
+                }
+
                 const branchName = data.branches?.name || undefined;
 
                 const newUser: User = {
                     id: data.id,
                     username: data.username,
                     name: data.full_name || data.username,
-                    role: (data.role as 'admin' | 'branch') || 'admin',
+                    role: (data.role as 'admin' | 'branch' | 'mod') || 'admin',
                     branchName: branchName || 'Casa Central',
-                    branchSheet: branchName || 'Casa Central' // Maintain compatibility
+                    branchSheet: branchName || 'Casa Central', // Maintain compatibility
+                    permissions: profile.permissions || []
                 };
                 persistUser(newUser);
                 return true;
@@ -77,7 +88,23 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
             // Fallback to local logic if DB fails
         }
 
-        // 2. Buscar en Sucursales (Fallback / Legacy)
+        // 2. Buscar en Zonales (Mods)
+        const zonalMatch = ZONAL_USERS.find(u => u.username === normalizedInput);
+        if (zonalMatch) {
+            const newUser: User = {
+                id: `mod_${normalizedInput}`,
+                username: normalizedInput,
+                name: zonalMatch.name,
+                role: 'mod',
+                branchName: 'Zona No Asignada', // Default until they select or admin assigns
+                branchSheet: 'Zona No Asignada',
+                permissions: []
+            };
+            persistUser(newUser);
+            return true;
+        }
+
+        // 3. Buscar en Sucursales (Fallback / Legacy)
         const branchMatch = BRANCH_NAMES.find(branchName => {
             const normalizedBranchName = branchName.toLowerCase().replace(/\s+/g, '');
             return normalizedBranchName === normalizedInput;
@@ -90,7 +117,8 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                 name: `Farmacia ${branchMatch}`,
                 role: 'branch',
                 branchName: branchMatch,
-                branchSheet: branchMatch
+                branchSheet: branchMatch,
+                permissions: []
             };
             persistUser(newUser);
             return true;
@@ -139,3 +167,4 @@ export function useUser() {
     }
     return context;
 }
+

@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/card';
 import { CalendarClock, Plus, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/contexts/UserContext';
+import { hasPermission } from '@/config/permissions';
 import { calendarService } from '@/services/calendarService';
 import { toast } from "sonner";
 import { AddEventDialog } from '@/components/AddEventDialog'; // Assuming this exists or will use inline
@@ -61,14 +62,11 @@ export function UpcomingInventoriesWidget({ onDateClick }: Props) {
             <div className="flex items-center justify-between mb-4">
                 <h2 className="text-sm font-medium text-muted-foreground">Próximos Inventarios</h2>
                 <div className="flex gap-1">
-                    {/* Temporarily disabled Add button until AddEventDialog is fully ready/integrated */}
-                    {/* 
-                    {isAdmin && (
+                    {hasPermission(user, 'MANAGE_CALENDAR_EVENTS') && (
                         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowAddDialog(true)} title="Programar Nuevo">
                             <Plus className="h-4 w-4" />
                         </Button>
                     )}
-                    */}
                 </div>
             </div>
 
@@ -103,6 +101,11 @@ export function UpcomingInventoriesWidget({ onDateClick }: Props) {
                     ))
                 )}
             </div>
+            <AddEventDialog
+                open={showAddDialog}
+                onOpenChange={setShowAddDialog}
+                onSuccess={loadData}
+            />
         </Card>
     );
 }

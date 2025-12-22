@@ -47,8 +47,8 @@ import { notify } from '@/lib/notifications';
 import { getProductByEAN } from '@/services/preCountDB';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
 import { FabMenu } from '@/components/FabMenu';
-import jsPDF from 'jspdf';
 import { BatchInfo, ExpirationItem } from '@/services/expirationDB';
+import { generatePDF, ExportOptions } from '@/services/ExportService';
 import { ExpirationEntryModal } from '@/components/ExpirationEntryModal';
 
 type Step = 'config' | 'counting';
@@ -181,50 +181,40 @@ export default function ExpirationControl() {
         return date;
     };
 
-    // Export PDF (Original Function)
+    // Export PDF (Using Unified ExportService)
     const handleExportPDF = () => {
         if (items.length === 0) {
             notify.error("Error", 'No hay datos');
             return;
         }
 
-        const doc = new jsPDF();
-        let y = 20;
-        doc.setFontSize(16);
-        doc.text(`Control de Vencimientos: ${session?.sector}`, 10, y);
-        doc.setFontSize(10);
-        doc.text(`Fecha: ${new Date().toLocaleDateString()}`, 10, y + 6);
+        // Transform ExpirationItem[] to ReportItem format expected by generatePDF
+        const reportData = items.flatMap(item =>
+            item.batches.map(batch => ({
+                id: crypto.randomUUID(),
+                ean: item.ean,
+                productName: item.productName,
+                batchNumber: batch.batchNumber,
+                expirationDate: batch.expirationDate,
+                quantity: batch.quantity,
+                status: batch.status || 'active',
+                actionDate: batch.actionDate,
+                destinationBranch: batch.destinationBranch
+            }))
+        );
 
-        y += 15;
+        const options: ExportOptions = {
+            format: 'pdf',
+            rangeType: 'day',
+            dateRange: {
+                from: session?.startTime ? new Date(session.startTime) : new Date(),
+                to: new Date()
+            },
+            selectedStatuses: ['all']
+        };
 
-        items.forEach(item => {
-            if (y > 270) { doc.addPage(); y = 20; }
-
-            doc.setFont("helvetica", "bold");
-            doc.text(`${item.productName} (EAN: ${item.ean})`, 10, y);
-            doc.text(`Total: ${item.totalQuantity}`, 180, y, { align: 'right' });
-            y += 6;
-
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(9);
-            // Headers
-            doc.text("Lote", 15, y);
-            doc.text("Vencimiento", 80, y);
-            doc.text("Cantidad", 150, y);
-            y += 5;
-
-            item.batches.forEach(batch => {
-                doc.text(batch.batchNumber, 15, y);
-                doc.text(formatExpiryDate(batch.expirationDate), 80, y);
-                doc.text(batch.quantity.toString(), 150, y);
-                y += 5;
-            });
-
-            y += 5; // Spacing between items
-        });
-
-        doc.save(`Vencimientos_${session?.sector}.pdf`);
-        notify.success("Operación exitosa", "PDF Generado");
+        generatePDF(reportData, options, user?.branchName || session?.sector || "Sucursal");
+        notify.success("Operación exitosa", "PDF Generado con nuevo formato profesional");
     };
 
     return (

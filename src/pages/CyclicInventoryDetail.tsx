@@ -22,7 +22,9 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Onboarding } from '@/components/Onboarding';
 import { cn } from '@/lib/utils';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
+import { FabMenu } from '@/components/FabMenu';
 import { useUser } from '@/contexts/UserContext';
+import { FileText, RotateCcw } from 'lucide-react';
 
 // Hooks & Components
 import { useInventorySync } from '@/hooks/useInventorySync';
@@ -241,35 +243,6 @@ export default function CyclicInventoryDetail() {
                 title={labName}
                 subtitle="Control de Inventario Cíclico"
                 showBackButton
-                actions={
-                    <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => document.getElementById('inventory-upload')?.click()} disabled={isUploading || isSaving}>
-                            {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4 md:mr-2" />}
-                            <span className="hidden md:inline">Cargar Excel</span>
-                        </Button>
-                        <Input
-                            id="inventory-upload"
-                            type="file"
-                            accept=".xlsx, .xls"
-                            className="hidden"
-                            onChange={handleFileUpload}
-                            disabled={isUploading}
-                        />
-
-                        <Button variant="destructive" size="sm" onClick={handleResetData}>
-                            <Trash2 className="w-4 h-4 md:mr-2" />
-                            <span className="hidden md:inline">Reiniciar</span>
-                        </Button>
-
-                        {/* Only show Finalize if there are items */}
-                        {items.length > 0 && (
-                            <Button onClick={handleFinalizeClick} disabled={isSaving}>
-                                {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-                                Finalizar
-                            </Button>
-                        )}
-                    </div>
-                }
             />
 
             {/* Loading State */}
@@ -355,40 +328,6 @@ export default function CyclicInventoryDetail() {
                                             onCheckedChange={setShowDifferencesOnly}
                                         />
                                         <Label htmlFor="diff-mode" className="cursor-pointer">Solo Diferencias</Label>
-                                    </div>
-                                    <div className="flex gap-2 ml-auto">
-                                        <div className="relative">
-                                            <Button variant="outline" size="sm" onClick={() => document.getElementById('header-upload-input')?.click()}>
-                                                <Upload className="w-4 h-4 lg:mr-2" />
-                                                <span className="hidden lg:inline">Cargar Excel</span>
-                                            </Button>
-                                            <input
-                                                id="header-upload-input"
-                                                type="file"
-                                                accept=".xlsx, .xls"
-                                                className="hidden"
-                                                onChange={handleFileUpload}
-                                                disabled={isLoading}
-                                            />
-                                        </div>
-                                        <Button
-                                            variant="destructive"
-                                            size="sm"
-                                            onClick={handleResetData}
-                                        >
-                                            <Trash2 className="w-4 h-4 lg:mr-2" />
-                                            <span className="hidden lg:inline">Reiniciar</span>
-                                        </Button>
-                                        <Button
-                                            variant="default"
-                                            size="sm"
-                                            onClick={handleFinalizeClick}
-                                            className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
-                                            disabled={isSaving}
-                                        >
-                                            {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-                                            Finalizar Inventario
-                                        </Button>
                                     </div>
                                 </div>
                                 {/* Category Tabs (Rubros) */}
@@ -572,6 +511,49 @@ export default function CyclicInventoryDetail() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Hidden Input for Excel Upload */}
+            <input
+                id="inventory-upload-hidden"
+                type="file"
+                accept=".xlsx, .xls"
+                className="hidden"
+                onChange={handleFileUpload}
+                disabled={isUploading || isLoading}
+            />
+
+            {/* Inventory Floating Action Button (FabMenu) */}
+            <FabMenu
+                actions={[
+                    {
+                        label: "Cargar Excel",
+                        icon: <Upload className="w-5 h-5" />,
+                        onClick: () => document.getElementById('inventory-upload-hidden')?.click(),
+                        disabled: isUploading || isSaving,
+                        variant: 'secondary'
+                    },
+                    {
+                        label: "Reiniciar",
+                        icon: <RotateCcw className="w-5 h-5" />,
+                        onClick: handleResetData,
+                        disabled: isUploading || isSaving,
+                        variant: 'destructive',
+                        color: 'bg-red-100 text-red-600 hover:bg-red-200'
+                    },
+                    {
+                        label: "Finalizar",
+                        icon: <CheckCircle2 className="w-5 h-5" />,
+                        onClick: handleFinalizeClick,
+                        disabled: isSaving,
+                        variant: 'default', // Primary style
+                        color: 'bg-primary text-primary-foreground'
+                    }
+                ].filter(action => {
+                    // Filter out Finalize if no items (optional, or just disable it)
+                    if (action.label === "Finalizar" && items.length === 0) return false;
+                    return true;
+                })}
+            />
 
             {/* Onboarding Overlay */}
             <Onboarding />

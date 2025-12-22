@@ -334,7 +334,7 @@ export default function Dashboard() {
 
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-medium tracking-tight text-foreground">
-            {getGreeting()}, {user?.role === 'admin' ? user?.name.split(' ')[0] : (user?.branchName || 'Sucursal')} 👋
+            {getGreeting()}, {(user?.role === 'admin' || user?.role === 'mod') ? user?.name.split(' ')[0] : (user?.branchName || 'Sucursal')} 👋
           </h1>
 
           <div className="flex gap-2">
@@ -368,48 +368,50 @@ export default function Dashboard() {
               </>
             )}
 
-            {/* Animated Edit Button */}
-            <motion.div
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <Button
-                variant={isEditMode ? "default" : "outline"}
-                size="sm"
-                onClick={() => setIsEditMode(!isEditMode)}
-                className={cn(
-                  "relative overflow-hidden transition-all duration-300",
-                  isEditMode && "bg-green-600 hover:bg-green-700"
-                )}
+            {/* Animated Edit Button - Gated by permission */}
+            {hasPermission(user, 'EDIT_DASHBOARD_LAYOUT') && (
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
               >
-                <div className="flex items-center gap-2">
-                  <AnimatePresence mode="wait">
-                    {isEditMode ? (
-                      <motion.div
-                        key="check"
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.8 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <Check className="h-4 w-4" />
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="edit"
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.8 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <Edit3 className="h-4 w-4" />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                  <span>{isEditMode ? 'Guardar' : 'Editar Dashboard'}</span>
-                </div>
-              </Button>
-            </motion.div>
+                <Button
+                  variant={isEditMode ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setIsEditMode(!isEditMode)}
+                  className={cn(
+                    "relative overflow-hidden transition-all duration-300",
+                    isEditMode && "bg-green-600 hover:bg-green-700"
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <AnimatePresence mode="wait">
+                      {isEditMode ? (
+                        <motion.div
+                          key="check"
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.8 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <Check className="h-4 w-4" />
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="edit"
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.8 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <Edit3 className="h-4 w-4" />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                    <span>{isEditMode ? 'Guardar' : 'Editar Dashboard'}</span>
+                  </div>
+                </Button>
+              </motion.div>
+            )}
           </div>
         </div>
       </motion.div>

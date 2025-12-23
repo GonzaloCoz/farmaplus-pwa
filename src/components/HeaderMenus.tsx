@@ -1,13 +1,11 @@
 import { useState, useEffect } from "react";
-import { Bell, Settings, User, ChevronRight, Moon, Sun, Trash2, BellRing } from "lucide-react";
+import { Bell, Settings, User, ChevronRight, Moon, Sun, Trash2, BellRing, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { parseISO, differenceInCalendarDays, format } from "date-fns";
-import { es } from "date-fns/locale";
+import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { notify } from "@/lib/notifications";
-import { notificationService } from "@/services/NotificationService";
-
-const DUMMY_NOTIFICATIONS: Array<{ id: string; text: string; date: string }> = [];
+import { notificationService as pushNotificationService } from "@/services/PushNotificationService";
+import { useNotifications } from "@/contexts/NotificationContext";
 
 const DUMMY_SETTINGS: Array<{ id: string; title: string; value: string }> = [];
 
@@ -19,68 +17,29 @@ const DUMMY_USER = {
 
 export function NotificationsMenu() {
   const [open, setOpen] = useState(false);
-  const [notifs, setNotifs] = useState<Array<{ id: string; text: string; date: string }>>([]);
-  const [nearCount, setNearCount] = useState(0);
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
 
   useEffect(() => {
     // Check notification permission status
-    if (notificationService.isSupported()) {
-      setNotificationPermission(notificationService.getPermissionStatus());
+    if (pushNotificationService.isSupported()) {
+      setNotificationPermission(pushNotificationService.getPermissionStatus());
     }
-
-    // build notifications from localStorage events, excluding events that are within 2-5 days
-    const stored = localStorage.getItem("inventory-events");
-    const evs = stored ? JSON.parse(stored) : [];
-    const today = new Date();
-    const generated: Array<{ id: string; text: string; date: string }> = [];
-    let near = 0;
-    evs.forEach((e: any) => {
-      try {
-        const ed = parseISO(e.date);
-        const diff = differenceInCalendarDays(ed, today);
-        if (diff >= 2 && diff <= 5) {
-          // count as near but DO NOT include in notifications list per request
-          near += 1;
-        } else {
-          generated.push({ id: e.id || e.date, text: e.title, date: format(ed, 'd/M/yyyy') });
-        }
-      } catch (err) {
-        // ignore parse errors
-      }
-    });
-
-    // merge static notifications with generated ones (static keep shown)
-    const merged = [
-      ...DUMMY_NOTIFICATIONS.map(d => {
-        try {
-          const pd = parseISO(d.date);
-          return { id: d.id, text: d.text, date: format(pd, 'd/M/yyyy') };
-        } catch {
-          return { id: d.id, text: d.text, date: d.date };
-        }
-      }),
-      ...generated,
-    ];
-    setNotifs(merged);
-    setNearCount(near);
   }, []);
 
-  const handleClearNotifications = () => {
-    setNotifs([]);
-    setNearCount(0);
-    setOpen(false);
-    notify.success("Notificaciones limpiadas", "Todas las notificaciones fueron eliminadas");
+  const handleMarkAllRead = async () => {
+    await markAllAsRead();
+    notify.success("Listo", "Todas las notificaciones marcadas como leídas");
   };
 
   const handleEnableNotifications = async () => {
-    const permission = await notificationService.requestPermission();
+    const permission = await pushNotificationService.requestPermission();
     setNotificationPermission(permission);
 
     if (permission === 'granted') {
       notify.success("Notificaciones habilitadas", "Ahora recibirás alertas de eventos próximos");
       // Mostrar notificación de prueba
-      await notificationService.showNotification({
+      await pushNotificationService.showNotification({
         title: "¡Notificaciones activadas!",
         body: "Ahora recibirás alertas de eventos próximos",
       });
@@ -93,14 +52,14 @@ export function NotificationsMenu() {
     <Dialog open={open} onOpenChange={setOpen}>
       <div className="inline-block relative">
         <button onClick={() => setOpen(true)} aria-label="Notificaciones" className="inline-flex h-10 w-10 items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
-          <Bell className={`w-4 h-4 ${nearCount > 0 ? 'text-accent' : 'text-muted-foreground'}`} />
-          {nearCount > 0 && (
+          <Bell className={`w-4 h-4 ${unreadCount > 0 ? 'text-accent' : 'text-muted-foreground'}`} />
+          {unreadCount > 0 && (
             <span
               className="absolute top-0 right-0 -mt-1 -mr-1 min-w-[18px] h-4 px-1.5 rounded-full bg-accent text-white text-xs font-medium flex items-center justify-center ring-1 ring-accent/60"
               role="status"
-              aria-label={`${nearCount} eventos próximos`}
+              aria-label={`${unreadCount} notificaciones nuevas`}
             >
-              {nearCount}
+              {unreadCount}
             </span>
           )}
         </button>
@@ -109,15 +68,15 @@ export function NotificationsMenu() {
         <DialogHeader className="p-4 border-b">
           <div className="flex justify-between items-center">
             <DialogTitle>Notificaciones</DialogTitle>
-            {notifs.length > 0 && (
-              <Button variant="ghost" size="sm" onClick={handleClearNotifications}>
-                <Trash2 className="w-4 h-4 mr-2" />
-                Limpiar todo
+            {notifications.length > 0 && unreadCount > 0 && (
+              <Button variant="ghost" size="sm" onClick={handleMarkAllRead}>
+                <Check className="w-4 h-4 mr-2" />
+                Marcar leídas
               </Button>
             )}
           </div>
         </DialogHeader>
-        {notificationPermission !== 'granted' && notificationService.isSupported() && (
+        {notificationPermission !== 'granted' && pushNotificationService.isSupported() && (
           <div className="p-4 border-b bg-muted/30">
             <Button
               onClick={handleEnableNotifications}
@@ -129,17 +88,27 @@ export function NotificationsMenu() {
               Habilitar notificaciones push
             </Button>
             <p className="text-xs text-muted-foreground mt-2 text-center">
-              Recibe alertas de eventos próximos
+              Recibe alertas de eventos próximos incluso cerrado
             </p>
           </div>
         )}
-        {notifs.length > 0 ? (
+        {notifications.length > 0 ? (
           <div className="p-4 max-h-[400px] overflow-y-auto">
             <ul className="divide-y">
-              {notifs.map(n => (
-                <li key={n.id} className="py-3">
-                  <div className="text-sm font-medium">{n.text}</div>
-                  <div className="text-xs text-muted-foreground">{n.date}</div>
+              {notifications.map(n => (
+                <li key={n.id} className={`py-3 ${!n.is_read ? 'bg-accent/5 -mx-4 px-4' : ''}`}>
+                  <div className="flex justify-between items-start gap-2">
+                    <div>
+                      <div className="text-sm font-medium">{n.title}</div>
+                      <div className="text-sm text-muted-foreground line-clamp-2">{n.message}</div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {new Date(n.created_at).toLocaleDateString()}
+                      </div>
+                    </div>
+                    {!n.is_read && (
+                      <div className="h-2 w-2 rounded-full bg-accent mt-1 flex-shrink-0" />
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -147,7 +116,7 @@ export function NotificationsMenu() {
         ) : (
           <div className="p-6 text-center">
             <p className="text-muted-foreground mb-4">No tienes notificaciones nuevas.</p>
-            {notificationPermission !== 'granted' && notificationService.isSupported() && (
+            {notificationPermission !== 'granted' && pushNotificationService.isSupported() && (
               <Button onClick={handleEnableNotifications} variant="outline" size="sm">
                 <BellRing className="w-4 h-4 mr-2" />
                 Habilitar notificaciones push

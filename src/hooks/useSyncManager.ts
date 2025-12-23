@@ -4,12 +4,21 @@ import { notify } from '@/lib/notifications';
 
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
 
+import { getUnsyncedItems } from '@/services/preCountDB';
+
 export function useSyncManager() {
     const [status, setStatus] = useState<SyncStatus>(navigator.onLine ? 'idle' : 'offline');
     const [queueLength, setQueueLength] = useState(0);
 
-    const updateQueueLength = useCallback(() => {
-        setQueueLength(OfflineQueue.getQueue().length);
+    const updateQueueLength = useCallback(async () => {
+        const offlineQueueLength = OfflineQueue.getQueue().length;
+        try {
+            const preCountItems = await getUnsyncedItems();
+            setQueueLength(offlineQueueLength + preCountItems.length);
+        } catch (error) {
+            console.error("Error checking pre-count queue:", error);
+            setQueueLength(offlineQueueLength);
+        }
     }, []);
 
     // Mock API call

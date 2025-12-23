@@ -485,6 +485,7 @@ export const cyclicInventoryService = {
             surplus_value: number;
             total_units_adjusted: number;
             user_name?: string;
+            user_id?: string; // New param
             // Optional: Pass full items snapshot if available
             items_snapshot?: CyclicItem[];
         }
@@ -526,6 +527,23 @@ export const cyclicInventoryService = {
 
                 if (error2) console.error("Error saving advanced report snapshot:", error2);
             }
+
+            // 3. Audit Log
+            try {
+                await import('./auditService').then(({ auditService }) => {
+                    auditService.logAction({
+                        action: 'INVENTORY_ADJUSTMENT',
+                        entityType: 'INVENTORY',
+                        branchId: branchName,
+                        userId: data.user_id, // Pass explicit ID
+                        details: {
+                            lab: labName,
+                            netValue: data.surplus_value - data.shortage_value,
+                            unitsAdjusted: data.total_units_adjusted
+                        }
+                    });
+                });
+            } catch (ignore) { }
 
         } catch (e) {
             console.error("Error saving history:", e);
@@ -571,6 +589,19 @@ export const cyclicInventoryService = {
 
             const { error } = await supabase.from('inventories').insert(insertData);
             if (error) throw error;
+
+            // Audit
+            try {
+                await import('./auditService').then(({ auditService }) => {
+                    auditService.logAction({
+                        action: 'CYCLE_CLOSURE',
+                        entityType: 'SYSTEM',
+                        branchId: branchName,
+                        details: { period, categories }
+                    });
+                });
+            } catch (ignore) { }
+
         } catch (e) {
             console.error(`Error saving closure for period ${period}:`, e);
             throw e;

@@ -12,6 +12,7 @@ import { PageTransition } from "./components/PageTransition";
 import { SnackbarProvider } from "@/contexts/SnackbarContext";
 import { UserProvider, useUser } from "./contexts/UserContext";
 import { NotificationPreferencesProvider } from "./contexts/NotificationPreferencesContext";
+import { NotificationProvider } from "./contexts/NotificationContext";
 
 import { LayoutPresetsDialog } from "@/components/dashboard/LayoutPresetsDialog";
 import { LAYOUT_PRESETS } from "@/config/widgetPresets";
@@ -38,6 +39,7 @@ const Login = lazy(() => import("./pages/Login"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const AdminBranches = lazy(() => import("./pages/AdminBranches"));
 const SmartAnalystPage = lazy(() => import("./pages/SmartAnalystPage"));
+const AdminAudit = lazy(() => import("./pages/AdminAudit"));
 
 
 const queryClient = new QueryClient();
@@ -237,6 +239,18 @@ const AppRoutes = () => {
             }
           />
           <Route
+            path="/admin/audit"
+            element={
+              <AdminRoute>
+                <Suspense fallback={<PageSkeleton />}>
+                  <PageTransition>
+                    <AdminAudit />
+                  </PageTransition>
+                </Suspense>
+              </AdminRoute>
+            }
+          />
+          <Route
             path="/smart-analyst"
             element={
               <Suspense fallback={<PageSkeleton />}>
@@ -291,12 +305,14 @@ const App = () => {
         <SnackbarProvider>
           <NotificationPreferencesProvider>
             <UserProvider>
-              <Sonner />
-              <OfflineIndicator />
-              <InstallPrompt />
-              <MemoryRouter>
-                <AppRoutes />
-              </MemoryRouter>
+              <NotificationProvider>
+                <Sonner />
+                <OfflineIndicator />
+                <InstallPrompt />
+                <MemoryRouter>
+                  <AppRoutes />
+                </MemoryRouter>
+              </NotificationProvider>
             </UserProvider>
           </NotificationPreferencesProvider>
         </SnackbarProvider>

@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 import { CounterAnimation } from "@/components/CounterAnimation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -59,10 +60,30 @@ interface AnalysisResults {
   allProducts: ProductData[];
 }
 
+interface NegativeItem {
+  codebar: string;
+  name: string;
+  quantity: number;
+  price: number;
+  totalValue: number;
+  rowIndex: number;
+}
+
+interface AnalysisResultsNegative {
+  totalProducts: number;
+  totalUnits: number;
+  totalValue: number;
+  items: NegativeItem[];
+}
+
+type ImportMode = 'inventory' | 'negative_preview';
+
 export default function StockImport() {
+  const [importMode, setImportMode] = useState<ImportMode>('inventory');
   const [file, setFile] = useState<File | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [results, setResults] = useState<AnalysisResults | null>(null);
+  const [negativeResults, setNegativeResults] = useState<AnalysisResultsNegative | null>(null);
   const [originalData, setOriginalData] = useState<{ headers: any[], rows: any[][] }>({ headers: [], rows: [] });
 
   const [hasExported, setHasExported] = useState(false);
@@ -71,6 +92,7 @@ export default function StockImport() {
   const [downloadFileName, setDownloadFileName] = useState("Inventario");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"all" | "shortage" | "surplus" | "match" | "zero_stock">("all");
+  const [negativeFilter, setNegativeFilter] = useState<"all" | "positive" | "negative">("negative");
   const [showDiscrepancy, setShowDiscrepancy] = useState(false);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ field: 'value', direction: 'desc' });
   const [editingRow, setEditingRow] = useState<number | null>(null);
@@ -83,7 +105,9 @@ export default function StockImport() {
       if (selectedFile.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
         selectedFile.type === "application/vnd.ms-excel") {
         setFile(selectedFile);
+        setFile(selectedFile);
         setResults(null); // Limpiar resultados anteriores al cargar un nuevo archivo
+        setNegativeResults(null);
         setOriginalData({ headers: [], rows: [] });
         notify.success("Operación exitosa", "Archivo cargado correctamente");
       } else {
@@ -144,6 +168,29 @@ export default function StockImport() {
     });
   };
 
+  const analyzeNegativePreview = (rows: any[]) => {
+    const items: NegativeItem[] = rows.map((row, index) => ({
+      codebar: row[2] ? String(row[2]) : "", // Columna C (Index 2)
+      name: row[3] ? String(row[3]) : "",   // Columna D (Index 3)
+      quantity: Number(row[4]) || 0,        // Columna E (Index 4)
+      price: Number(row[10]) || 0,          // Columna K (Index 10)
+      totalValue: (Number(row[4]) || 0) * (Number(row[10]) || 0),
+      rowIndex: index
+    })).filter(item => item.codebar && item.name); // Filter empty rows
+
+    // Calculate totals
+    const totalProducts = items.length;
+    const totalUnits = items.reduce((acc, item) => acc + item.quantity, 0);
+    const totalValue = items.reduce((acc, item) => acc + item.totalValue, 0);
+
+    setNegativeResults({
+      totalProducts,
+      totalUnits,
+      totalValue,
+      items
+    });
+  };
+
   const handleAnalyze = async () => {
     if (!file) {
       notify.error("Error", "Por favor, selecciona un archivo primero");
@@ -164,7 +211,12 @@ export default function StockImport() {
       const rows = json.slice(1);
 
       setOriginalData({ headers, rows });
-      analyzeRows(rows);
+
+      if (importMode === 'inventory') {
+        analyzeRows(rows);
+      } else {
+        analyzeNegativePreview(rows);
+      }
 
       notify.success("Operación exitosa", "Análisis completado", { id: "analysis-toast" });
 
@@ -456,38 +508,52 @@ export default function StockImport() {
 
       <Card className="p-8">
         <div className="space-y-6">
-          <div className="flex items-center justify-center w-full">
-            <label
-              htmlFor="dropzone-file"
-              className="flex flex-col items-center justify-center w-full h-64 border-2 border-border border-dashed rounded-2xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-colors"
-            >
-              <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                <Upload className="w-12 h-12 mb-4 text-muted-foreground" />
-                <p className="mb-2 text-sm text-foreground font-medium">
-                  {file ? file.name : "Haz clic para cargar o arrastra el archivo"}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Archivos Excel (.xlsx, .xls)
-                </p>
-              </div>
-              <input
-                id="dropzone-file"
-                type="file"
-                className="hidden"
-                accept=".xlsx,.xls"
-                onChange={handleFileChange}
-              />
-            </label>
-          </div>
+          <Tabs defaultValue="inventory" value={importMode} onValueChange={(v) => {
+            setImportMode(v as ImportMode);
+            setResults(null);
+            setNegativeResults(null);
+            setFile(null); // Reset file to force re-selection or at least clear state
+          }} className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-6">
+              <TabsTrigger value="inventory">Análisis de Inventario</TabsTrigger>
+              <TabsTrigger value="negative_preview">Previsión Negativos</TabsTrigger>
+            </TabsList>
+
+            <div className="flex items-center justify-center w-full">
+              <label
+                htmlFor="dropzone-file"
+                className="flex flex-col items-center justify-center w-full h-64 border-2 border-border border-dashed rounded-2xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-colors"
+              >
+                <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                  <Upload className="w-12 h-12 mb-4 text-muted-foreground" />
+                  <p className="mb-2 text-sm text-foreground font-medium">
+                    {file ? file.name : "Haz clic para cargar o arrastra el archivo"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Archivos Excel (.xlsx, .xls)
+                  </p>
+                </div>
+                <input
+                  id="dropzone-file"
+                  type="file"
+                  className="hidden"
+                  accept=".xlsx,.xls"
+                  onChange={handleFileChange}
+                />
+              </label>
+            </div>
+          </Tabs>
 
           <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
             <FileSpreadsheet className="w-5 h-5 text-muted-foreground" />
             <div className="flex-1">
               <p className="text-sm font-medium text-foreground">
-                Formato requerido
+                Formato requerido ({importMode === 'inventory' ? 'Inventario' : 'Negativos'})
               </p>
               <p className="text-xs text-muted-foreground">
-                El archivo debe contener las columnas: Código, Producto, Stock Sistema, Stock Físico, Diferencia
+                {importMode === 'inventory'
+                  ? "El archivo debe contener las columnas: Código, Producto, Stock Sistema, Stock Físico, Diferencia"
+                  : "El archivo debe contener las columnas: Codebar (C), Producto (D), Cantidad (E), Precio (K)"}
               </p>
             </div>
           </div>
@@ -498,12 +564,246 @@ export default function StockImport() {
             className="w-full"
             size="lg"
           >
-            {analyzing ? "Analizando..." : "Analizar Inventario"}
+            {analyzing ? "Analizando..." : "Analizar Archivo"}
           </Button>
         </div>
       </Card>
 
-      {results && (
+      {importMode === 'negative_preview' && negativeResults && (
+        <motion.div
+          ref={resultsRef}
+          className="space-y-8"
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+        >
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="p-6 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Total Productos</p>
+                  <h3 className="text-2xl font-bold text-foreground">{negativeResults.totalProducts}</h3>
+                </div>
+                <div className="h-12 w-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                  <Target className="w-6 h-6 text-primary" />
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-6 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Items Negativos</p>
+                  <h3 className="text-2xl font-bold text-destructive">
+                    {negativeResults.items.filter(i => i.quantity < 0).length}
+                  </h3>
+                </div>
+                <div className="h-12 w-12 bg-destructive/10 rounded-xl flex items-center justify-center">
+                  <TrendingDown className="w-6 h-6 text-destructive" />
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-6 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Items Positivos</p>
+                  <h3 className="text-2xl font-bold text-success">
+                    {negativeResults.items.filter(i => i.quantity > 0).length}
+                  </h3>
+                </div>
+                <div className="h-12 w-12 bg-success/10 rounded-xl flex items-center justify-center">
+                  <TrendingUp className="w-6 h-6 text-success" />
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-6 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Total Unidades Negativas</p>
+                  <h3 className="text-2xl font-bold text-destructive">
+                    {negativeResults.items
+                      .filter(i => i.quantity < 0)
+                      .reduce((sum, i) => sum + Math.abs(i.quantity), 0)
+                      .toLocaleString()}
+                  </h3>
+                </div>
+                <div className="h-12 w-12 bg-destructive/10 rounded-xl flex items-center justify-center">
+                  <Calculator className="w-6 h-6 text-destructive" />
+                </div>
+              </div>
+            </Card>
+
+            <Card className="p-6 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Valor Items Negativos</p>
+                  <h3 className="text-2xl font-bold text-destructive">
+                    <CounterAnimation
+                      value={negativeResults.items
+                        .filter(i => i.quantity < 0)
+                        .reduce((sum, i) => sum + Math.abs(i.totalValue), 0)
+                      }
+                      prefix="$"
+                    />
+                  </h3>
+                </div>
+                <div className="h-12 w-12 bg-destructive/10 rounded-xl flex items-center justify-center">
+                  <Wallet className="w-6 h-6 text-destructive" />
+                </div>
+              </div>
+            </Card>
+            <Card className="p-6 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Valor Total</p>
+                  <h3 className="text-2xl font-bold text-foreground">
+                    <CounterAnimation value={negativeResults.totalValue} prefix="$" />
+                  </h3>
+                </div>
+                <div className="h-12 w-12 bg-blue-500/10 rounded-xl flex items-center justify-center">
+                  <Wallet className="w-6 h-6 text-blue-500" />
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {/* Middle Section - Controls & Search */}
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4 py-4 sticky top-0 z-20 bg-background/80 backdrop-blur-md border-b">
+            <div className="flex items-center gap-2">
+              <div className="bg-destructive/10 px-4 py-2 rounded-xl">
+                <p className="text-sm font-semibold text-destructive">
+                  Mostrando Faltantes ({negativeResults.items.filter(i => i.quantity < 0).length})
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <div className="relative w-full md:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar producto, EAN..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9 h-10 bg-muted/30 border-muted-foreground/20 rounded-xl focus-visible:ring-primary"
+                />
+              </div>
+            </div>
+          </div>
+
+          <Card className="border-muted/40 shadow-sm overflow-hidden bg-card">
+            {/* Headers with Sorting */}
+            <div className="grid grid-cols-12 gap-4 p-4 border-b bg-muted/30 text-xs font-semibold text-muted-foreground uppercase tracking-wider shrink-0">
+              <div className="col-span-6 md:col-span-4 pl-2">Producto</div>
+              <div className="col-span-2 hidden md:block text-right">Precio</div>
+              <div
+                className="col-span-3 md:col-span-3 text-center flex items-center justify-center cursor-pointer hover:text-foreground transition-colors group"
+                onClick={() => setSortConfig({
+                  field: 'quantity',
+                  direction: sortConfig.field === 'quantity' && sortConfig.direction === 'desc' ? 'asc' : 'desc'
+                })}
+              >
+                Cantidad
+                <div className="ml-1 opacity-50 group-hover:opacity-100">
+                  {sortConfig.field === 'quantity' && (
+                    sortConfig.direction === 'desc' ? <ArrowDownRight className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />
+                  )}
+                  {sortConfig.field !== 'quantity' && <ArrowLeftRight className="w-3 h-3 rotate-90 opacity-20" />}
+                </div>
+              </div>
+              <div
+                className="col-span-3 md:col-span-3 text-right cursor-pointer hover:text-foreground transition-colors flex items-center justify-end pr-2 group"
+                onClick={() => setSortConfig({
+                  field: 'value',
+                  direction: sortConfig.field === 'value' && sortConfig.direction === 'desc' ? 'asc' : 'desc'
+                })}
+              >
+                Total ($)
+                <div className="ml-1 opacity-50 group-hover:opacity-100">
+                  {sortConfig.field === 'value' && (
+                    sortConfig.direction === 'desc' ? <ArrowDownRight className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />
+                  )}
+                  {sortConfig.field !== 'value' && <ArrowLeftRight className="w-3 h-3 rotate-90 opacity-20" />}
+                </div>
+              </div>
+            </div>
+
+            <div className="divide-y divide-border/40 max-h-[600px] overflow-y-auto">
+              {negativeResults.items
+                .filter(item => {
+                  if (negativeFilter === 'negative' && item.quantity >= 0) return false;
+                  if (negativeFilter === 'positive' && item.quantity <= 0) return false;
+
+                  if (searchQuery) {
+                    const q = searchQuery.toLowerCase();
+                    return item.name.toLowerCase().includes(q) || item.codebar.toLowerCase().includes(q);
+                  }
+                  return true;
+                })
+                .sort((a, b) => {
+                  const valA = sortConfig.field === 'value' ? a.totalValue : a.quantity;
+                  const valB = sortConfig.field === 'value' ? b.totalValue : b.quantity;
+
+                  if (sortConfig.direction === 'desc') {
+                    return valB - valA;
+                  } else {
+                    return valA - valB;
+                  }
+                })
+                .map((item, idx) => (
+                  <div key={idx} className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-muted/10 transition-colors group">
+                    {/* Product Info */}
+                    <div className="col-span-6 md:col-span-4 flex items-center gap-3 pl-2 min-w-0">
+                      <div className={cn("p-2 rounded-lg shrink-0", item.quantity < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success')}>
+                        {item.quantity < 0 ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
+                      </div>
+                      <div className="min-w-0 flex flex-col justify-center">
+                        <p className="font-semibold text-sm text-foreground truncate" title={item.name}>{item.name}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <Badge variant="outline" className="text-[10px] h-5 font-mono text-muted-foreground border-border/60 font-normal hidden sm:inline-flex">
+                            {item.codebar}
+                          </Badge>
+                          <span className="text-[10px] text-muted-foreground sm:hidden">{item.codebar}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Unit Price */}
+                    <div className="col-span-2 hidden md:block text-right self-center">
+                      <p className="text-sm font-medium">${item.price.toLocaleString()}</p>
+                      <p className="text-[10px] text-muted-foreground">Costo Unit.</p>
+                    </div>
+
+                    {/* Quantity (Pill Style) */}
+                    <div className="col-span-3 md:col-span-3 flex justify-center self-center">
+                      <div className={cn(
+                        "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold w-20 justify-center",
+                        item.quantity < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'
+                      )}>
+                        {item.quantity < 0 ? <ArrowDownRight className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
+                        {item.quantity}
+                      </div>
+                    </div>
+
+                    {/* Total Value */}
+                    <div className="col-span-3 md:col-span-3 text-right pr-2 self-center">
+                      <p className={cn(
+                        "font-bold text-sm",
+                        item.quantity < 0 ? "text-destructive" : "text-success"
+                      )}>
+                        ${item.totalValue.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </Card>
+        </motion.div>
+      )}
+
+      {importMode === 'inventory' && results && (
         <motion.div
           ref={resultsRef}
           className="space-y-8"
@@ -771,10 +1071,9 @@ export default function StockImport() {
                   <div
                     key={item.rowIndex}
                     className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-muted/10 transition-colors group"
-                  >
-                    {/* Product Info */}
+                  >                     {/* Product Info */}
                     <div className="col-span-5 md:col-span-4 flex items-center gap-3 pl-2 min-w-0">
-                      <div className={`p-2 rounded-lg shrink-0 ${item.diffQty < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'}`}>
+                      <div className={cn("p-2 rounded-lg shrink-0", item.diffQty < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success')}>
                         {item.diffQty < 0 ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
                       </div>
                       <div className="min-w-0">
@@ -789,24 +1088,24 @@ export default function StockImport() {
                     </div>
 
                     {/* Price */}
-                    <div className="col-span-2 text-right hidden md:block">
+                    <div className="col-span-2 text-right hidden md:block self-center">
                       <p className="text-sm font-medium">${item.cost.toLocaleString()}</p>
                       <p className="text-[10px] text-muted-foreground">Costo Unit.</p>
                     </div>
 
                     {/* Difference (Pill) */}
-                    <div className="col-span-3 md:col-span-2 flex justify-center">
-                      <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${item.diffQty < 0
-                        ? 'bg-destructive/10 text-destructive'
-                        : 'bg-success/10 text-success'
-                        }`}>
+                    <div className="col-span-3 md:col-span-2 flex justify-center self-center">
+                      <div className={cn(
+                        "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold w-20 justify-center",
+                        item.diffQty < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'
+                      )}>
                         {item.diffQty > 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
                         {item.diffQty > 0 ? '+' : ''}{item.diffQty}
                       </div>
                     </div>
 
                     {/* Physical / System */}
-                    <div className="col-span-2 text-center hidden sm:block">
+                    <div className="col-span-2 text-center hidden sm:block self-center">
                       <div className="flex items-center justify-center gap-1 text-sm relative">
                         {editingRow === item.rowIndex ? (
                           <Input
@@ -839,8 +1138,11 @@ export default function StockImport() {
                     </div>
 
                     {/* Total Value & Actions */}
-                    <div className="col-span-2 md:col-span-2 text-right pr-2">
-                      <p className={`text-sm font-bold ${item.diffValue < 0 ? 'text-destructive' : 'text-success'}`}>
+                    <div className="col-span-2 md:col-span-2 text-right pr-2 self-center">
+                      <p className={cn(
+                        "text-sm font-bold",
+                        item.diffValue < 0 ? 'text-destructive' : 'text-success'
+                      )}>
                         {item.diffValue > 0 ? '+' : ''}${Math.abs(item.diffValue).toLocaleString()}
                       </p>
                       <div className="flex justify-end mt-1 md:hidden">

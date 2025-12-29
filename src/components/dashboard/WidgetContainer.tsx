@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, memo } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Card } from '@/components/ui/card';
@@ -18,7 +18,7 @@ interface WidgetContainerProps {
     children: ReactNode;
 }
 
-export function WidgetContainer({ widget, isEditMode, onRemove, onSizeChange, children }: WidgetContainerProps) {
+export const WidgetContainer = memo(({ widget, isEditMode, onRemove, onSizeChange, children }: WidgetContainerProps) => {
     const {
         attributes,
         listeners,
@@ -85,4 +85,4 @@ export function WidgetContainer({ widget, isEditMode, onRemove, onSizeChange, ch
             </AnimatedCard>
         </div>
     );
-}
+});

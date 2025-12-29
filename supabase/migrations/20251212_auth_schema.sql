@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     full_name TEXT,
-    role TEXT NOT NULL CHECK (role IN ('admin', 'branch', 'auditor')),
+    role TEXT NOT NULL CHECK (role IN ('admin', 'branch', 'auditor', 'mod')),
     branch_id UUID REFERENCES public.branches(id) ON DELETE SET NULL,
     active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL

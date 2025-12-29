@@ -83,3 +83,13 @@ INSERT INTO public.profiles (username, full_name, role) VALUES
 ('nmomeno', 'Nicolas Momeño', 'admin'),
 ('cfraga', 'Carlos Fraga', 'admin')
 ON CONFLICT (username) DO NOTHING;
+
+-- 4. Insert Zonal Moderators
+INSERT INTO public.profiles (username, full_name, role) VALUES
+('cmcgarva', 'Christian Mac Garva', 'mod'),
+('azanovello', 'Andrés Zanovello', 'mod'),
+('jparedes', 'Javier Paredes', 'mod'),
+('jarredondo', 'Jorge Arredondo', 'mod'),
+('druiz', 'Diego Ruiz', 'mod'),
+('emendoza', 'Javier Mendoza', 'mod')
+ON CONFLICT (username) DO NOTHING;

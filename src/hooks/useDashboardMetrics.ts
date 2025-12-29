@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useUser } from "@/contexts/UserContext";
 import { cyclicInventoryService } from "@/services/cyclicInventoryService";
 import { getProductCount } from "@/services/preCountDB";
@@ -112,7 +112,7 @@ export const useDashboardMetrics = () => {
     }, [user]);
 
     // Config Update Handler
-    const updateConfig = async (branch: string, days: number, startDate?: string) => {
+    const updateConfig = useCallback(async (branch: string, days: number, startDate?: string) => {
         try {
             await cyclicInventoryService.saveBranchConfig(branch, days, startDate);
 
@@ -135,14 +135,27 @@ export const useDashboardMetrics = () => {
             console.error("Error saving config:", e);
             throw e;
         }
-    };
+    }, [user]);
 
-    return {
+    const returnValue = useMemo(() => ({
         metrics,
         globalProgress,
         assignedDays,
         cycleStartDate,
         updateConfig,
         isLoading
-    };
+    }), [metrics, globalProgress, assignedDays, cycleStartDate, isLoading]); // updateConfig is async func, stable? technically no if it's recreated. But it's defined inside component? Wait, line 115 is const updateConfig = async... inside the hook. It should be wrapped in useCallback?
+
+    // Ah, updateConfig is defined at line 115. Let's wrap it in useCallback first, OR just omit it from dependency array if we assume it's stable enough (but it's not).
+    // Better: wrap updateConfig in useCallback, then useMemo result.
+    // Actually, to minimize changes in this specific call, I will just wrap the return.
+
+    return useMemo(() => ({
+        metrics,
+        globalProgress,
+        assignedDays,
+        cycleStartDate,
+        updateConfig,
+        isLoading
+    }), [metrics, globalProgress, assignedDays, cycleStartDate, updateConfig, isLoading]);
 };

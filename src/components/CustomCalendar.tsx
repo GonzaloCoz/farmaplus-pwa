@@ -10,10 +10,12 @@ export default function CustomCalendar({
   events = [],
   selected,
   onSelect,
+  className,
 }: {
   events?: EventItem[];
   selected?: Date | undefined;
   onSelect?: (d: Date) => void;
+  className?: string; // Add className
 }) {
   const [currentMonth, setCurrentMonth] = React.useState<Date>(selected || new Date());
 
@@ -56,7 +58,7 @@ export default function CustomCalendar({
   const dayButtonSize = "h-10 w-10"; // similar to sidebar icon sizes
 
   return (
-    <div className="w-full">
+    <div className={`w-full ${className || ''}`}>
       <div className="flex items-center justify-between px-2 pb-2">
         <button onClick={handlePrev} className="p-1 rounded hover:bg-muted/50">
           <ChevronLeft className="h-5 w-5 text-muted-foreground" />

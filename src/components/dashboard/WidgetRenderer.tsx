@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { SmartAnalystWidget } from "@/components/dashboard/widgets/SmartAnalystWidget";
 import { MetricsCarouselWidget } from "@/components/dashboard/widgets/MetricsCarouselWidget";
 import { ActiveProductsWidget } from "@/components/dashboard/widgets/ActiveProductsWidget";
@@ -34,7 +35,7 @@ interface WidgetRendererProps {
     onEditConfig: () => void;
 }
 
-export const WidgetRenderer = ({
+export const WidgetRenderer = memo(({
     widgetType,
     user,
     metrics,
@@ -109,4 +110,4 @@ export const WidgetRenderer = ({
         default:
             return null;
     }
-};
+});

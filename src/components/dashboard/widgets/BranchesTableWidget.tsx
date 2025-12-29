@@ -7,6 +7,7 @@ import { Search, ArrowUpDown, TrendingUp, CheckCircle, AlertCircle, Clock } from
 import { motion, AnimatePresence } from 'framer-motion';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { useUser } from '@/contexts/UserContext';
+import { useUserBranches } from '@/hooks/useUserBranches';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/lib/utils'; // Assuming this exists or I'll implement inline
@@ -33,6 +34,7 @@ interface BranchesTableWidgetProps {
 
 export function BranchesTableWidget({ branches: initialBranches }: BranchesTableWidgetProps) {
     const { selectBranch, clearBranchSelection, user } = useUser();
+    const { availableBranches } = useUserBranches();
     const [searchTerm, setSearchTerm] = useState("");
     const [showAllBranches, setShowAllBranches] = useState(false);
     const [branchSummaries, setBranchSummaries] = useState<BranchSummary[]>([]);
@@ -47,7 +49,11 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
             setLoading(true);
             try {
                 const data = await cyclicInventoryService.getBranchesSummary();
-                setBranchSummaries(data);
+                // Filter branches based on user permissions
+                const filteredData = data.filter(branch =>
+                    availableBranches.length === 0 || availableBranches.includes(branch.branchName)
+                );
+                setBranchSummaries(filteredData);
             } catch (error) {
                 console.error("Failed to load branch summaries", error);
             } finally {
@@ -55,7 +61,7 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
             }
         };
         loadData();
-    }, []);
+    }, [availableBranches]);
 
     const filteredBranches = useMemo(() => {
         return branchSummaries.filter(

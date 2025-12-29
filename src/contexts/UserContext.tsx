@@ -11,6 +11,7 @@ export interface User {
     branchName?: string; // Optional for admins/mods
     branchSheet?: string; // Optional for admins/mods
     permissions?: string[];
+    assignedBranches?: string[]; // Array of branch names for mod users
 }
 
 interface UserContextType {
@@ -71,6 +72,24 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
                 const branchName = data.branches?.name || undefined;
 
+                // Fetch assigned branches for mod users
+                let assignedBranches: string[] | undefined = undefined;
+                if (data.role === 'mod') {
+                    const { data: zonalBranches } = await (supabase as any)
+                        .from('zonal_branches')
+                        .select(`
+                            branches (
+                                name
+                            )
+                        `)
+                        .eq('zonal_id', data.id);
+
+                    if (zonalBranches && zonalBranches.length > 0) {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        assignedBranches = zonalBranches.map((zb: any) => zb.branches?.name).filter(Boolean);
+                    }
+                }
+
                 const newUser: User = {
                     id: data.id,
                     username: data.username,
@@ -78,7 +97,8 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                     role: (data.role as 'admin' | 'branch' | 'mod') || 'admin',
                     branchName: branchName || 'Casa Central',
                     branchSheet: branchName || 'Casa Central', // Maintain compatibility
-                    permissions: profile.permissions || []
+                    permissions: profile.permissions || [],
+                    assignedBranches: assignedBranches
                 };
                 persistUser(newUser);
                 return true;

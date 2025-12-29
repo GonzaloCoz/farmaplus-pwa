@@ -42,9 +42,11 @@ interface AnalyzedBatch extends BatchInfo {
 import { TransferModal } from '@/components/modals/TransferModal';
 import { BRANCH_NAMES } from '@/config/users';
 import { useUser } from '@/contexts/UserContext';
+import { useUserBranches } from '@/hooks/useUserBranches';
 
 export default function SmartAnalystPage() {
     const { user } = useUser();
+    const { availableBranches } = useUserBranches();
     const navigate = useNavigate();
     const { session, isLoading: isControlLoading } = useExpirationControl(); // Assuming useExpirationControl exists
     const [items, setItems] = useState<ExpirationItem[]>([]);
@@ -497,7 +499,7 @@ export default function SmartAnalystPage() {
                 onClose={() => setTransferModalOpen(false)}
                 onConfirm={confirmTransfer}
                 batch={batchToTransfer}
-                branches={BRANCH_NAMES}
+                branches={availableBranches}
             />
 
             {/* <ScrollHideFAB actions={fabActions} /> Replaced with FabMenu */}

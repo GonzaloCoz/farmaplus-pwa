@@ -40,7 +40,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             if (error) {
                 console.error("Error loading notifications:", error);
             } else {
-                setNotifications(data as Notification[]);
+                setNotifications(data as unknown as Notification[]);
             }
             setLoading(false);
         };

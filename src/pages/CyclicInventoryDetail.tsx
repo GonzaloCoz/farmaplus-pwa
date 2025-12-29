@@ -530,14 +530,14 @@ export default function CyclicInventoryDetail() {
                         icon: <Upload className="w-5 h-5" />,
                         onClick: () => document.getElementById('inventory-upload-hidden')?.click(),
                         disabled: isUploading || isSaving,
-                        variant: 'secondary'
+                        variant: 'secondary' as const
                     },
                     {
                         label: "Reiniciar",
                         icon: <RotateCcw className="w-5 h-5" />,
                         onClick: handleResetData,
                         disabled: isUploading || isSaving,
-                        variant: 'destructive',
+                        variant: 'destructive' as const,
                         color: 'bg-red-100 text-red-600 hover:bg-red-200'
                     },
                     {
@@ -545,7 +545,7 @@ export default function CyclicInventoryDetail() {
                         icon: <CheckCircle2 className="w-5 h-5" />,
                         onClick: handleFinalizeClick,
                         disabled: isSaving,
-                        variant: 'default', // Primary style
+                        variant: 'default' as const, // Primary style
                         color: 'bg-primary text-primary-foreground'
                     }
                 ].filter(action => {

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
@@ -23,7 +23,7 @@ const containerVariants = {
   show: {
     opacity: 1,
     transition: {
-      staggerChildren: 0.1
+      staggerChildren: 0.03
     }
   }
 };
@@ -62,12 +62,12 @@ export default function Dashboard() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
 
-  const openCalendarForIso = (iso?: string) => {
+  const openCalendarForIso = useCallback((iso?: string) => {
     const d = iso ? new Date(iso) : new Date();
     d.setHours(12, 0, 0, 0);
     setSelectedDate(d);
     setShowCalendar(true);
-  };
+  }, []);
 
   // Drag and drop sensors
   const sensors = useSensors(
@@ -75,12 +75,12 @@ export default function Dashboard() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const handleDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (over && active.id !== over.id) {
       reorderWidgets(active.id as string, over.id as string);
     }
-  };
+  }, [reorderWidgets]);
 
   // Filter widgets permission
   const displayedWidgets = useMemo(() => {
@@ -89,6 +89,17 @@ export default function Dashboard() {
       return true;
     });
   }, [visibleWidgets, user]);
+
+  // Stable handlers for child components
+  const handleOpenPresets = useCallback(() => setShowPresetsDialog(true), []);
+  const handleOpenGallery = useCallback(() => setShowWidgetGallery(true), []);
+  const handleEditConfig = useCallback(() => setShowConfigDialog(true), []);
+  const handleToggleWidget = useCallback((id: string) => toggleWidgetVisibility(id), [toggleWidgetVisibility]);
+  const handleSizeChange = useCallback((id: string, newSize: any) => updateWidgetSize(id, newSize), [updateWidgetSize]);
+  const handleApplyPreset = useCallback((presetId: string) => {
+    const preset = LAYOUT_PRESETS.find(p => p.id === presetId);
+    if (preset) applyPreset(preset.widgetIds);
+  }, [applyPreset]);
 
   if (isLoading) {
     return <DashboardSkeleton />;
@@ -104,8 +115,8 @@ export default function Dashboard() {
       <DashboardHeader
         isEditMode={isEditMode}
         setIsEditMode={setIsEditMode}
-        onOpenPresets={() => setShowPresetsDialog(true)}
-        onOpenGallery={() => setShowWidgetGallery(true)}
+        onOpenPresets={handleOpenPresets}
+        onOpenGallery={handleOpenGallery}
         onResetLayout={resetLayout}
         hasHiddenWidgets={hiddenWidgets.length > 0}
       />
@@ -132,8 +143,8 @@ export default function Dashboard() {
                 <WidgetContainer
                   widget={widget}
                   isEditMode={isEditMode}
-                  onRemove={() => toggleWidgetVisibility(widget.id)}
-                  onSizeChange={(newSize) => updateWidgetSize(widget.id, newSize)}
+                  onRemove={() => handleToggleWidget(widget.id)}
+                  onSizeChange={(newSize) => handleSizeChange(widget.id, newSize)}
                 >
                   <WidgetErrorBoundary>
                     <WidgetRenderer
@@ -144,7 +155,7 @@ export default function Dashboard() {
                       assignedDays={assignedDays}
                       cycleStartDate={cycleStartDate}
                       onDateClick={openCalendarForIso}
-                      onEditConfig={() => setShowConfigDialog(true)}
+                      onEditConfig={handleEditConfig}
                     />
                   </WidgetErrorBoundary>
                 </WidgetContainer>
@@ -157,17 +168,14 @@ export default function Dashboard() {
       <LayoutPresetsDialog
         open={showPresetsDialog}
         onOpenChange={setShowPresetsDialog}
-        onApplyPreset={(presetId) => {
-          const preset = LAYOUT_PRESETS.find(p => p.id === presetId);
-          if (preset) applyPreset(preset.widgetIds);
-        }}
+        onApplyPreset={handleApplyPreset}
       />
 
       <WidgetGallery
         open={showWidgetGallery}
         onOpenChange={setShowWidgetGallery}
         hiddenWidgets={hiddenWidgets}
-        onAddWidget={toggleWidgetVisibility}
+        onAddWidget={handleToggleWidget}
       />
 
       <ConfigDialog

@@ -9,6 +9,75 @@ export type Json =
 export interface Database {
     public: {
         Tables: {
+            audit_logs: {
+                Row: {
+                    id: string
+                    created_at: string
+                    user_id: string | null
+                    branch_id: string | null
+                    action: string
+                    entity_type: string
+                    entity_id: string | null
+                    details: Json
+                }
+                Insert: {
+                    id?: string
+                    created_at?: string
+                    user_id?: string | null
+                    branch_id?: string | null
+                    action: string
+                    entity_type: string
+                    entity_id?: string | null
+                    details?: Json
+                }
+                Update: {
+                    id?: string
+                    created_at?: string
+                    user_id?: string | null
+                    branch_id?: string | null
+                    action?: string
+                    entity_type?: string
+                    entity_id?: string | null
+                    details?: Json
+                }
+                Relationships: []
+            }
+            notifications: {
+                Row: {
+                    id: string
+                    created_at: string
+                    user_id: string
+                    type: string
+                    category: string
+                    title: string
+                    message: string
+                    is_read: boolean
+                    metadata: Json
+                }
+                Insert: {
+                    id?: string
+                    created_at?: string
+                    user_id: string
+                    type: string
+                    category: string
+                    title: string
+                    message: string
+                    is_read?: boolean
+                    metadata?: Json
+                }
+                Update: {
+                    id?: string
+                    created_at?: string
+                    user_id?: string
+                    type?: string
+                    category?: string
+                    title?: string
+                    message?: string
+                    is_read?: boolean
+                    metadata?: Json
+                }
+                Relationships: []
+            }
             branches: {
                 Row: {
                     id: string

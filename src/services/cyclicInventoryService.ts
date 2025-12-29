@@ -122,6 +122,9 @@ export const cyclicInventoryService = {
 
             if (error) throw error;
 
+            // 3. Update metadata table for real-time monitoring
+            await cyclicInventoryService.updateLabMetadata(branchName, labName, items);
+
         } catch (e) {
             console.error("Error saving inventory:", e);
             throw e;
@@ -138,6 +141,51 @@ export const cyclicInventoryService = {
         if (error) {
             console.error("Error deleting inventory:", error);
             throw error;
+        }
+    },
+
+    // Update laboratory metadata for real-time monitoring
+    updateLabMetadata: async (branchName: string, labName: string, items: CyclicItem[]): Promise<void> => {
+        try {
+            const stats = cyclicInventoryService.calculateStats(items);
+
+            // Count items by status
+            const controlledItems = items.filter(i => i.status === 'controlled').length;
+            const adjustedItems = items.filter(i => i.status === 'adjusted').length;
+            const pendingItems = items.filter(i => i.status === 'pending').length;
+
+            // Determine overall status
+            let status: 'pending' | 'in_progress' | 'completed' = 'pending';
+            if (stats.progress === 100) status = 'completed';
+            else if (stats.progress > 0) status = 'in_progress';
+
+            // Upsert to metadata table
+            const { error } = await (supabase as any)
+                .from('branch_laboratories')
+                .upsert({
+                    branch_name: branchName,
+                    laboratory: labName,
+                    total_items: items.length,
+                    controlled_items: controlledItems,
+                    adjusted_items: adjustedItems,
+                    pending_items: pendingItems,
+                    progress_percentage: stats.progress,
+                    total_system_units: stats.totalSystemUnits,
+                    net_units: stats.netUnits,
+                    net_value: stats.net,
+                    negative_value: stats.negative,
+                    positive_value: stats.positive,
+                    status: status
+                }, {
+                    onConflict: 'branch_name,laboratory'
+                });
+
+            if (error) {
+                console.error('Error updating lab metadata:', error);
+            }
+        } catch (e) {
+            console.error('Error in updateLabMetadata:', e);
+            // Don't throw - metadata update failure shouldn't break inventory save
         }
     },
 
@@ -349,18 +397,27 @@ export const cyclicInventoryService = {
                 const group = groupedByBranch[validName];
                 const labName = row.laboratory || 'Unknown';
 
+                // **FIX: Only count adjusted or controlled items**
+                const isAdjustedOrControlled = row.status === 'adjusted' || row.status === 'controlled';
+
                 // Units and Values logic (Sum of items)
                 const quantity = row.quantity || 0;
                 const sysQuantity = row.system_quantity || 0;
                 const cost = row.products?.cost || 0;
 
-                group.totalSystemUnits += sysQuantity;
-                group.netUnits += (quantity - sysQuantity);
-                group.netValue += (quantity - sysQuantity) * cost;
+                // Only add to totals if item has been adjusted/controlled
+                if (isAdjustedOrControlled) {
+                    group.totalSystemUnits += sysQuantity;
+                    group.netUnits += (quantity - sysQuantity);
+                    group.netValue += (quantity - sysQuantity) * cost;
+                }
 
-                // Lab Stats
+                // Lab Stats - count all labs that have ANY items
                 group.totalLabsInDB.add(labName);
-                if (row.status === 'controlado') {
+
+                // Only count lab as controlled if ALL its items are controlled/adjusted
+                // We'll handle this differently - track controlled status per lab
+                if (row.status === 'controlled' || row.status === 'adjusted') {
                     group.controlledLabs.add(labName);
                 }
             }

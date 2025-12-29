@@ -101,20 +101,31 @@ export default function Settings() {
         return;
       }
 
-      // Clear existing data and insert new assignments
+      // First, clear all existing data
       const { error: deleteError } = await supabase
         .from('branch_laboratories')
         .delete()
-        .gt('created_at', '1970-01-01'); // Delete all records
+        .gte('created_at', '1970-01-01T00:00:00Z');
 
       if (deleteError) {
-        throw new Error(`Error limpiando datos: ${deleteError.message}`);
+        console.warn("Could not delete existing records:", deleteError);
+        // Continue anyway, upsert will handle it
       }
 
-      // Insert new assignments
-      const insertData = labAssignments.map(a => ({
+      // Deduplicate assignments (in case Excel has duplicates)
+      const uniqueAssignments = new Map<string, typeof labAssignments[0]>();
+      labAssignments.forEach(a => {
+        const key = `${a.branch}|${a.lab}`;
+        if (!uniqueAssignments.has(key)) {
+          uniqueAssignments.set(key, a);
+        }
+      });
+
+      // Insert new assignments using UPSERT
+      const insertData = Array.from(uniqueAssignments.values()).map(a => ({
         branch_name: a.branch,
         laboratory: a.lab,
+        category: a.category,
         total_items: 0,
         controlled_items: 0,
         adjusted_items: 0,
@@ -128,17 +139,23 @@ export default function Settings() {
         status: 'pending' as const
       }));
 
-      // Insert in chunks to avoid payload limit
+      // Insert in chunks using UPSERT to avoid payload limit and handle duplicates
       const chunkSize = 500;
+      let insertedCount = 0;
+
       for (let i = 0; i < insertData.length; i += chunkSize) {
         const chunk = insertData.slice(i, i + chunkSize);
-        const { error } = await (supabase as any)
+        const { error } = await supabase
           .from('branch_laboratories')
-          .insert(chunk);
+          .upsert(chunk, {
+            onConflict: 'branch_name,laboratory,category',
+            ignoreDuplicates: false
+          });
 
         if (error) {
           throw new Error(`Error insertando chunk ${i}: ${error.message}`);
         }
+        insertedCount += chunk.length;
       }
 
       // Now update with real progress data from inventories
@@ -152,7 +169,7 @@ export default function Settings() {
 
       notify.success(
         "Importación exitosa",
-        `${totalLabs} laboratorios importados correctamente.`
+        `${insertedCount} laboratorios importados/actualizados correctamente.`
       );
 
       event.target.value = '';

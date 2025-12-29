@@ -250,7 +250,7 @@ function parseSheetLabs(worksheet: XLSX.WorkSheet): { name: string, category: st
 export async function getLaboratoriesForBranch(branchName: string): Promise<{ name: string, category: string }[]> {
     try {
         const { data, error } = await supabase
-            .from('branch_laboratories' as any)
+            .from('branch_laboratories')
             .select('laboratory, category')
             .eq('branch_name', branchName);
 
@@ -263,7 +263,7 @@ export async function getLaboratoriesForBranch(branchName: string): Promise<{ na
 
         return (data as any[]).map(row => ({
             name: row.laboratory.toUpperCase(),
-            category: (row.category || 'SIN CLASIFICAR').toUpperCase()
+            category: (row.category || 'MEDICAMENTOS').toUpperCase()
         })).sort((a, b) => a.name.localeCompare(b.name));
 
     } catch (error) {

@@ -20,7 +20,8 @@ const pathTitles: Record<string, string> = {
     "profile": "Perfil",
     "admin": "Admin",
     "branches": "Sucursales",
-    "smart-analyst": "Analista Inteligente"
+    "smart-analyst": "Analista Inteligente",
+    "comparison": "Comparativa"
 };
 
 export function DesktopHeader() {

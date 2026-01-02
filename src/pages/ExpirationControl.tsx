@@ -42,7 +42,7 @@ import { BarcodeScanner } from '@/components/BarcodeScanner';
 // import { ProductSearchInput } from '@/components/ProductSearchInput'; // Replaced
 import { SmartProductSearch } from '@/components/SmartProductSearch';
 import { useExpirationControl } from '@/hooks/useExpirationControl';
-import { useOfflineSync } from '@/hooks/useOfflineSync';
+// import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { notify } from '@/lib/notifications';
 import { getProductByEAN } from '@/services/preCountDB';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
@@ -86,7 +86,8 @@ export default function ExpirationControl() {
         deleteSession
     } = useExpirationControl();
 
-    const { isOnline } = useOfflineSync();
+    // const { isOnline } = useOfflineSync();
+    const isOnline = true;
 
     // 1. Configurar Sesión
     const handleStartSession = async () => {
@@ -224,17 +225,10 @@ export default function ExpirationControl() {
                     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
                         {/* Online Status Indicator */}
                         <div className="flex justify-end">
-                            {isOnline ? (
-                                <div className="flex items-center gap-2 px-3 py-1.5 bg-success/10 text-success rounded-full text-sm">
-                                    <Wifi className="w-4 h-4" />
-                                    <span className="font-medium">En línea</span>
-                                </div>
-                            ) : (
-                                <div className="flex items-center gap-2 px-3 py-1.5 bg-warning/10 text-warning rounded-full text-sm">
-                                    <WifiOff className="w-4 h-4" />
-                                    <span className="font-medium">Sin conexión</span>
-                                </div>
-                            )}
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-success/10 text-success rounded-full text-sm">
+                                <Wifi className="w-4 h-4" />
+                                <span className="font-medium">En línea</span>
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">

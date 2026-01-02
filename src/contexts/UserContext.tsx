@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { BRANCH_NAMES, ZONAL_USERS } from '@/config/users';
 import { notify } from "@/lib/notifications";
 import { supabase } from "@/integrations/supabase/client";
+import { permissionsService } from "@/services/permissionsService";
 
 export interface User {
     id: string;
@@ -90,6 +91,21 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                     }
                 }
 
+                let finalPermissions: string[] = [];
+
+                // If user has individual permissions set in DB, use them
+                if (profile.permissions && Array.isArray(profile.permissions) && profile.permissions.length > 0) {
+                    finalPermissions = profile.permissions;
+                } else {
+                    // Fallback to role defaults
+                    finalPermissions = await permissionsService.getRolePermissions(data.role || 'branch');
+                }
+
+                // Hardcode superadmin permission for gcoz to prevent lockout during migration
+                if (data.username === 'gcoz' && !finalPermissions.includes('MANAGE_USERS')) {
+                    finalPermissions.push('MANAGE_USERS');
+                }
+
                 const newUser: User = {
                     id: data.id,
                     username: data.username,
@@ -97,7 +113,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                     role: (data.role as 'admin' | 'branch' | 'mod') || 'admin',
                     branchName: branchName || 'Casa Central',
                     branchSheet: branchName || 'Casa Central', // Maintain compatibility
-                    permissions: profile.permissions || [],
+                    permissions: finalPermissions,
                     assignedBranches: assignedBranches
                 };
                 persistUser(newUser);

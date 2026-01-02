@@ -257,7 +257,6 @@ export const cyclicInventoryService = {
                 system_quantity,
                 status,
                 products (
-                    name,
                     cost,
                     category
                 )

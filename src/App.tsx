@@ -13,6 +13,7 @@ import { SnackbarProvider } from "@/contexts/SnackbarContext";
 import { UserProvider, useUser } from "./contexts/UserContext";
 import { NotificationPreferencesProvider } from "./contexts/NotificationPreferencesContext";
 import { NotificationProvider } from "./contexts/NotificationContext";
+import { hasPermission } from "@/config/permissions";
 
 import { LayoutPresetsDialog } from "@/components/dashboard/LayoutPresetsDialog";
 import { LAYOUT_PRESETS } from "@/config/widgetPresets";
@@ -41,6 +42,9 @@ const AdminBranches = lazy(() => import("./pages/AdminBranches"));
 const SmartAnalystPage = lazy(() => import("./pages/SmartAnalystPage"));
 const AdminAudit = lazy(() => import("./pages/AdminAudit"));
 
+const AdminUsers = lazy(() => import("./pages/AdminUsers"));
+const BranchComparison = lazy(() => import("./pages/BranchComparison"));
+
 
 const queryClient = new QueryClient();
 
@@ -66,7 +70,7 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
     return <DashboardSkeleton />;
   }
 
-  if (!user || user.role !== 'admin') {
+  if (!user || !hasPermission(user, 'VIEW_ADMIN_DASHBOARD')) {
     return <Navigate to="/" replace />;
   }
 
@@ -187,6 +191,16 @@ const AppRoutes = () => {
             }
           />
           <Route
+            path="/comparison"
+            element={
+              <Suspense fallback={<PageSkeleton />}>
+                <PageTransition>
+                  <BranchComparison />
+                </PageTransition>
+              </Suspense>
+            }
+          />
+          <Route
             path="/settings"
             element={
               <Suspense fallback={<PageSkeleton />}>
@@ -227,6 +241,31 @@ const AppRoutes = () => {
             }
           />
           <Route
+            path="/admin/audit"
+            element={
+              <AdminRoute>
+                <Suspense fallback={<PageSkeleton />}>
+                  <PageTransition>
+                    <AdminAudit />
+                  </PageTransition>
+                </Suspense>
+              </AdminRoute>
+            }
+          />
+
+          <Route
+            path="/admin/users"
+            element={
+              <AdminRoute>
+                <Suspense fallback={<PageSkeleton />}>
+                  <PageTransition>
+                    <AdminUsers />
+                  </PageTransition>
+                </Suspense>
+              </AdminRoute>
+            }
+          />
+          <Route
             path="/admin/branches"
             element={
               <AdminRoute>
@@ -239,23 +278,21 @@ const AppRoutes = () => {
             }
           />
           <Route
-            path="/admin/audit"
-            element={
-              <AdminRoute>
-                <Suspense fallback={<PageSkeleton />}>
-                  <PageTransition>
-                    <AdminAudit />
-                  </PageTransition>
-                </Suspense>
-              </AdminRoute>
-            }
-          />
-          <Route
             path="/smart-analyst"
             element={
               <Suspense fallback={<PageSkeleton />}>
                 <PageTransition>
                   <SmartAnalystPage />
+                </PageTransition>
+              </Suspense>
+            }
+          />
+          <Route
+            path="/comparison"
+            element={
+              <Suspense fallback={<PageSkeleton />}>
+                <PageTransition>
+                  <BranchComparison />
                 </PageTransition>
               </Suspense>
             }

@@ -31,7 +31,7 @@ import { BarcodeScanner } from '@/components/BarcodeScanner';
 import { SmartProductSearch } from '@/components/SmartProductSearch';
 import { PreCountList } from '@/components/PreCountList';
 import { usePreCount } from '@/hooks/usePreCount';
-import { useOfflineSync } from '@/hooks/useOfflineSync';
+// import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { Product, getProductByEAN, addProducts } from '@/services/preCountDB';
 import { notify } from '@/lib/notifications';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
@@ -40,6 +40,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import JsBarcode from 'jsbarcode';
 import { FabMenu } from '@/components/FabMenu';
+import { getCachedProduct, cacheProduct } from '@/services/productCache';
 
 type Step = 'config' | 'counting';
 
@@ -76,7 +77,7 @@ export default function PreCount() {
         registerError,
     } = usePreCount();
 
-    const { isOnline, isSyncing, unsyncedCount, syncNow } = useOfflineSync();
+    const isOnline = true; // Always online for cloud version
 
     // Paso 1: Configuración
     const handleStartSession = async () => {
@@ -92,9 +93,20 @@ export default function PreCount() {
     // Manejar escaneo de código de barras
     const handleBarcodeScan = async (code: string) => {
         try {
+            // Check cache first
+            const cachedName = getCachedProduct(code);
+            if (cachedName) {
+                setSelectedProduct({ ean: code, name: cachedName, cost: 0, salePrice: 0, stock: 0 });
+                setManualEAN(code);
+                notify.success("Operación exitosa", `Producto encontrado: ${cachedName}`);
+                return;
+            }
+
             const product = await getProductByEAN(code);
 
             if (product) {
+                // Cache the product
+                cacheProduct(code, product.name);
                 setSelectedProduct(product);
                 setManualEAN(code);
                 notify.success("Operación exitosa", `Producto encontrado: ${product.name}`);
@@ -134,13 +146,21 @@ export default function PreCount() {
 
         // Si no hay producto seleccionado, intentar buscarlo por EAN
         if (!productName) {
-            try {
-                const foundProduct = await getProductByEAN(manualEAN.trim());
-                if (foundProduct) {
-                    productName = foundProduct.name;
+            // Check cache first
+            const cachedName = getCachedProduct(manualEAN.trim());
+            if (cachedName) {
+                productName = cachedName;
+            } else {
+                try {
+                    const foundProduct = await getProductByEAN(manualEAN.trim());
+                    if (foundProduct) {
+                        productName = foundProduct.name;
+                        // Cache it
+                        cacheProduct(manualEAN.trim(), foundProduct.name);
+                    }
+                } catch (error) {
+                    console.error("Error fetching product by EAN:", error);
                 }
-            } catch (error) {
-                console.error("Error fetching product by EAN:", error);
             }
         }
 
@@ -150,6 +170,11 @@ export default function PreCount() {
         }
 
         await addItem(manualEAN, productName, qty);
+
+        // Trigger sync count update immediately
+        // setTimeout(() => {
+        //     updateUnsyncedCount();
+        // }, 100);
 
         // Limpiar formulario y devolver foco al buscador
         setManualEAN('');
@@ -395,7 +420,7 @@ export default function PreCount() {
                                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                                 <Calendar className="w-3 h-3" />
                                                 <span>
-                                                    {format(new Date(s.startTime), "d MMM yyyy, HH:mm", { locale: es })}
+                                                    {format(new Date(s.start_time), "d MMM yyyy, HH:mm", { locale: es })}
                                                 </span>
                                             </div>
                                             <div className="flex gap-3 text-xs text-muted-foreground mt-1">
@@ -492,7 +517,7 @@ export default function PreCount() {
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
                             transition={{ duration: 0.3 }}
-                            className="p-4 md:p-6 space-y-4 max-w-7xl mx-auto"
+                            className="h-[calc(100vh-6rem)] p-4 md:p-6 flex flex-col gap-4 max-w-7xl mx-auto"
                         >
                             {/* 1. Enhanced Status Bar - Full Width Single Row */}
                             <Card className="min-h-[120px] flex flex-col justify-center px-6 sm:px-8 bg-gradient-to-br from-secondary/40 to-secondary/20 border-muted/50 shadow-sm">
@@ -529,23 +554,11 @@ export default function PreCount() {
 
                                     {/* Right: Status Icons */}
                                     <div className="flex items-center gap-2 flex-shrink-0">
-                                        {unsyncedCount > 0 && (
-                                            <Button
-                                                onClick={syncNow}
-                                                disabled={!isOnline || isSyncing}
-                                                variant="ghost"
-                                                size="sm"
-                                                className="h-8 px-2 text-xs gap-1.5 text-warning hover:text-warning hover:bg-warning/10"
-                                            >
-                                                <div className="w-2 h-2 rounded-full bg-warning animate-pulse" />
-                                                {isSyncing ? 'Sincronizando' : `${unsyncedCount} Pend.`}
-                                            </Button>
-                                        )}
                                         <div
-                                            className={`p-2 rounded-full ${isOnline ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}`}
-                                            title={isOnline ? "En línea" : "Sin conexión"}
+                                            className={`p-2 rounded-full bg-success/10 text-success`}
+                                            title="En línea (Cloud Sync)"
                                         >
-                                            {isOnline ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
+                                            <Wifi className="w-4 h-4" />
                                         </div>
                                     </div>
                                 </div>
@@ -672,7 +685,7 @@ export default function PreCount() {
                             </Card>
 
                             {/* 3. Dense List */}
-                            <div className="space-y-2 relative z-10">
+                            <div className="flex-1 min-h-0 relative z-10">
                                 <div className="flex items-center justify-between px-1">
                                     <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
                                         Historial ({totalProducts})

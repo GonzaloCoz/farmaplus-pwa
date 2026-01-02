@@ -1,6 +1,6 @@
 
 import { supabase } from '@/integrations/supabase/client';
-import * as XLSX from 'xlsx';
+// import * as XLSX from 'xlsx';
 // import { openDB, DBSchema, IDBPDatabase } from 'idb'; // Removed
 import { BRANCH_NAMES } from '@/config/users';
 
@@ -427,9 +427,4 @@ export async function initDB() {
 export async function clearAllData(): Promise<void> {
     console.warn("clearAllData called in Cloud Mode - ignoring local DB clear");
 }
-
-export async function clearProducts(): Promise<void> {
-    console.warn("clearProducts called in Cloud Mode - use Supabase dashboard to manage products");
-}
-
 

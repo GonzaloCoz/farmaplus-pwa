@@ -1,11 +1,10 @@
-import { Home, Upload, BarChart3, Package, FileText, Settings, User, Bell, LucideIcon } from "lucide-react";
+import { Home, Upload, BarChart3, Package, FileText, Settings, User, Bell, LucideIcon, TrendingUp, Archive } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import LogoExpanded from "@/assets/logotxt.svg";
 import LogoCollapsed from "@/assets/logo.svg";
 import { NotificationsMenu, SettingsMenu, UserMenu } from "@/components/HeaderMenus";
-import { ThemeToggle } from "@/components/ThemeToggle";
 
 // Usamos marcado simple para el sidebar (evita wrappers que insertan espacio inesperado)
 
@@ -13,6 +12,7 @@ const menuItems = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Stock", url: "/stock", icon: Upload },
   { title: "Inventarios Cíclicos", url: "/cyclic-inventory", icon: BarChart3 },
+  { title: "Comparativa", url: "/comparison", icon: TrendingUp },
   { title: "Productos", url: "/products", icon: Package },
   { title: "Reportes", url: "/reports", icon: FileText },
 ];
@@ -76,10 +76,16 @@ function AppSidebarMenuItemMobile({ item, end }: AppSidebarMenuItemProps) {
   );
 }
 
+import { useUser } from "@/contexts/UserContext";
+
+// ... (existing imports)
+
 export function AppSidebar() {
+  const { user } = useUser();
+  const isAdmin = user?.role === 'admin';
+
   return (
     <>
-      {/* Se muestra solo en pantallas 'lg' y mayores */}
       <aside className="hidden lg:flex flex-col w-[72px] fixed inset-y-0 left-0 z-20 bg-transparent pt-6 pb-6">
         <div className="flex h-16 items-center justify-center pl-2">
           <img src={LogoCollapsed} alt="Logo Farmaplus" className="h-10 w-10" />
@@ -100,7 +106,6 @@ export function AppSidebar() {
         </div>
 
         <nav className="py-3 flex flex-col items-center gap-3 pl-2">
-          <ThemeToggle />
           <NotificationsMenu />
           <Tooltip>
             <TooltipTrigger asChild>

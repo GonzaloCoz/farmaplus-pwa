@@ -46,13 +46,18 @@ export const useDashboardMetrics = () => {
     useEffect(() => {
         const loadMetrics = async () => {
             setIsLoading(true);
-            let currentActiveProducts = 0;
-
-            try {
-                currentActiveProducts = await getProductCount();
-            } catch (e) {
-                console.error("Error fetching product count:", e);
-            }
+            const [currentActiveProducts, allInventories] = await Promise.all([
+                getProductCount().catch(e => {
+                    console.error("Error fetching product count:", e);
+                    return 0;
+                }),
+                user.branchSheet
+                    ? cyclicInventoryService.getAllCyclicInventories(user.branchSheet).catch(e => {
+                        console.error('Error loading inventories:', e);
+                        return [];
+                    })
+                    : Promise.resolve([])
+            ]);
 
             if (!user?.branchSheet) {
                 setMetrics({
@@ -69,7 +74,7 @@ export const useDashboardMetrics = () => {
             }
 
             try {
-                const allInventories = await cyclicInventoryService.getAllCyclicInventories(user.branchSheet);
+                // allInventories is already fetched in parallel above
 
                 const aggregated = allInventories.reduce((acc, inv) => ({
                     negativeStock: acc.negativeStock + inv.negativeValue,

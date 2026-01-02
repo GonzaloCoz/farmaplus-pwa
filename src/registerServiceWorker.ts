@@ -1,16 +1,14 @@
+import { registerSW } from 'virtual:pwa-register';
+
 export function register() {
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker
-        .register(`${import.meta.env.BASE_URL}service-worker.js`, {
-          scope: import.meta.env.BASE_URL,
-        })
-        .then((registration) => {
-          console.log('Service Worker registrado con éxito:', registration);
-        })
-        .catch((error) => {
-          console.log('Error al registrar el Service Worker:', error);
-        });
-    });
-  }
+  const updateSW = registerSW({
+    onNeedRefresh() {
+      // Optional: Show a prompt to user
+      // For now we use autoUpdate, so this might not fire unless configured otherwise
+      console.log('Nueva versión disponible. Refrescando...');
+    },
+    onOfflineReady() {
+      console.log('App lista para trabajar offline');
+    },
+  });
 }

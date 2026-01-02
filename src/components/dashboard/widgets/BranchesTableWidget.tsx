@@ -3,7 +3,8 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Search, ArrowUpDown, TrendingUp, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { Search, ArrowUpDown, TrendingUp, CheckCircle, AlertCircle, Clock, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { useUser } from '@/contexts/UserContext';
@@ -123,6 +124,26 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
 
     const isActiveBranch = (branchName: string) => user?.branchName === branchName;
 
+    const exportToExcel = () => {
+        const exportData = sortedBranches.map(branch => ({
+            'Sucursal': branch.branchName,
+            'Progreso %': branch.progress,
+            'Diferencia Neta (Unidades)': branch.differenceUnits,
+            'Valor de Ajustes': formatMoney(branch.adjustmentsValue),
+            'Estado': branch.status === 'controlado' ? 'Controlado' :
+                branch.status === 'por_controlar' ? 'Por Controlar' : 'Pendiente',
+            'Días Transcurridos': branch.elapsedDays,
+            'Meta Mensual': branch.monthlyGoal
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Monitor de Sucursales');
+
+        const fileName = `monitor_sucursales_${new Date().toISOString().split('T')[0]}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+    };
+
     return (
         <motion.div
             initial={{ opacity: 0, y: 50 }} // Animation from bottom
@@ -141,14 +162,25 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                             Estado en tiempo real de inventarios cíclicos y cumplimiento.
                         </p>
                     </div>
-                    <div className="relative w-full md:w-72">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            placeholder="Buscar sucursal..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-10 h-10 bg-muted/50 border-0 focus-visible:ring-1 focus-visible:ring-primary"
-                        />
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                        <div className="relative flex-1 md:w-72">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Buscar sucursal..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="pl-10 h-10 bg-muted/50 border-0 focus-visible:ring-1 focus-visible:ring-primary"
+                            />
+                        </div>
+                        <Button
+                            onClick={exportToExcel}
+                            variant="outline"
+                            size="sm"
+                            className="h-10 gap-2"
+                        >
+                            <Download className="h-4 w-4" />
+                            <span className="hidden sm:inline">Exportar</span>
+                        </Button>
                     </div>
                 </div>
 

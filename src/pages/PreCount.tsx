@@ -32,7 +32,7 @@ import { SmartProductSearch } from '@/components/SmartProductSearch';
 import { PreCountList } from '@/components/PreCountList';
 import { usePreCount } from '@/hooks/usePreCount';
 // import { useOfflineSync } from '@/hooks/useOfflineSync';
-import { Product, getProductByEAN, addProducts } from '@/services/preCountDB';
+import { Product, getProductByEAN, addProducts } from '@/services/productService';
 import { notify } from '@/lib/notifications';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
 import { Calculator } from '@/components/Calculator';

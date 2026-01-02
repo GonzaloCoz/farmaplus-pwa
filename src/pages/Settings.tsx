@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 
 import { Smartphone, Wifi, Trash2, Info, Cloud, Database, Bell, Shield, User as UserIcon, Users } from "lucide-react";
 // import { toast } from "sonner"; // Removed
-import { clearAllData, clearProducts, addProducts, Product } from "@/services/preCountDB";
+import { clearAllData } from "@/services/preCountDB";
+import { clearProducts, addProducts, Product } from "@/services/productService";
 import { SyncStatusBottomSheet } from "@/components/SyncStatusBottomSheet";
 import { Input } from "@/components/ui/input";
 import * as XLSX from 'xlsx';

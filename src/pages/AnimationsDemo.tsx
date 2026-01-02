@@ -1,7 +1,7 @@
 import { AnimatedButton } from '@/components/ui/AnimatedButton';
 import { AnimatedCard } from '@/components/ui/AnimatedCard';
 import { StaggerContainer } from '@/components/ui/StaggerContainer';
-import { Skeleton, SkeletonCard, SkeletonTable, SkeletonChart, SkeletonWidget } from '@/components/ui/Skeleton';
+import { Skeleton, SkeletonCard, SkeletonTable, SkeletonChart, SkeletonWidget } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageLayout } from '@/components/layout/PageLayout';

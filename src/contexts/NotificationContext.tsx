@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { useUser } from './UserContext';
-import { Notification, notificationService } from '@/services/notificationService';
+import { Notification, notificationService } from '@/services/notifications.service';
 import { toast } from 'sonner';
 
 interface NotificationContextType {

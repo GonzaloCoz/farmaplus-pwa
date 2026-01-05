@@ -69,7 +69,7 @@ export class SmartAutoSave {
 
         try {
             // Show saving indicator
-            const savingToast = notify.info('💾 Guardando...', {
+            notify.info('💾 Guardando...', '', {
                 duration: 0, // Don't auto-dismiss
                 id: 'auto-save-progress'
             });
@@ -101,7 +101,7 @@ export class SmartAutoSave {
             // Success
             this.lastSaveTime = Date.now();
             notify.dismiss('auto-save-progress');
-            notify.success('✓ Guardado', {
+            notify.success('✓ Guardado', '', {
                 duration: 1500,
                 id: 'auto-save-success'
             });

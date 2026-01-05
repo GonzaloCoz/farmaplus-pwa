@@ -85,10 +85,6 @@ export const cyclicInventoryService = {
     // Save inventory (Upsert)
     saveInventory: async (branchName: string, labName: string, items: CyclicItem[]) => {
         try {
-            // We only save items that have been counted/modified to save DB space?
-            // Or save everything? The user wants "Gran Base de Datos".
-            // Let's save everything for now to keep state consistent.
-
             const dbItems = items.map(item => ({
                 branch_name: branchName,
                 laboratory: labName,
@@ -99,30 +95,21 @@ export const cyclicInventoryService = {
                 was_readjusted: item.wasReadjusted || false
             }));
 
-            // Upsert based on branch_name + ean?
-            // The table schema I gave has 'id' as PK. 
-            // If we want to update existing, we need a unique constraint on (branch_name, ean).
-            // I didn't add that constraint in the SQL schema I provided. 
-            // I should have added: create unique index on public.inventories (branch_name, ean);
-            // Without it, upsert might duplicate.
-            // WORKAROUND: Delete all for branch then insert? Or handle ID?
-            // Since I cannot change SQL easily now without user, I will try to use the 'id' if I have it, 
-            // but the 'id' in CyclicItem is crypto.randomUUID() generated locally in the component.
-            // Best approach given current state: Delete all for this lab and re-insert. 
-            // It's not efficient but safe for consistency.
+            // Use upsert with the unique constraint (branch_name, laboratory, ean)
+            // This will insert new records or update existing ones atomically
+            const { error } = await supabase
+                .from('inventories')
+                .upsert(dbItems, {
+                    onConflict: 'branch_name,laboratory,ean',
+                    ignoreDuplicates: false // Update if exists
+                });
 
-            // 1. Delete existing for this lab AND branch
-            await supabase.from('inventories')
-                .delete()
-                .eq('branch_name', branchName)
-                .eq('laboratory', labName);
+            if (error) {
+                console.error('Error upserting inventory:', error);
+                throw error;
+            }
 
-            // 2. Insert new
-            const { error } = await supabase.from('inventories').insert(dbItems);
-
-            if (error) throw error;
-
-            // 3. Update metadata table for real-time monitoring
+            // Update metadata table for real-time monitoring
             await cyclicInventoryService.updateLabMetadata(branchName, labName, items);
 
         } catch (e) {

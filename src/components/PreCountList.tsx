@@ -4,7 +4,6 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Pencil, Trash2, Package } from 'lucide-react';
-// import { PreCountItem } from '@/services/preCountDB';
 import { UIPreCountItem } from '@/hooks/usePreCount';
 import {
     AlertDialog,

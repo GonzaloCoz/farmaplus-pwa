@@ -4,7 +4,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import CustomCalendar from "@/components/CustomCalendar";
-import { useMediaQuery } from "@/hooks/use-media-query";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { calendarService, CalendarEvent } from "@/services/calendarService";
 import { useUser } from "@/contexts/UserContext";
 import { notify } from "@/lib/notifications";

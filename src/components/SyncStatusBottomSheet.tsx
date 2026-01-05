@@ -2,9 +2,15 @@ import { useState, useEffect } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Cloud, CloudOff, RefreshCw, CheckCircle2, Wifi, WifiOff } from "lucide-react";
-import { getUnsyncedItems, PreCountItem } from "@/services/preCountDB";
 import { notify } from '@/lib/notifications';
 import { cn } from "@/lib/utils";
+
+// Simplified PreCountItem type for display
+interface PreCountItem {
+    id: string;
+    productName: string;
+    quantity: number;
+}
 
 export function SyncStatusBottomSheet({ children }: { children?: React.ReactNode }) {
     const [isOpen, setIsOpen] = useState(false);
@@ -31,12 +37,9 @@ export function SyncStatusBottomSheet({ children }: { children?: React.ReactNode
     }, []);
 
     const loadUnsyncedItems = async () => {
-        try {
-            const items = await getUnsyncedItems();
-            setUnsyncedItems(items);
-        } catch (e) {
-            console.error("Error loading unsynced items", e);
-        }
+        // In cloud mode, sync happens automatically via Supabase
+        // This is kept for UI compatibility
+        setUnsyncedItems([]);
     };
 
     const handleSync = async () => {

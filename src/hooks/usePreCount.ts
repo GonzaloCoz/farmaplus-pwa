@@ -23,6 +23,7 @@ export interface UIPreCountItem {
     productName: string;
     quantity: number;
     timestamp: number;
+    synced?: number;
 }
 
 interface UsePreCountReturn {
@@ -116,7 +117,8 @@ export function usePreCount(): UsePreCountReturn {
         ean: dbItem.ean,
         productName: dbItem.product_name,
         quantity: dbItem.quantity,
-        timestamp: new Date(dbItem.scanned_at).getTime()
+        timestamp: new Date(dbItem.scanned_at).getTime(),
+        synced: dbItem.synced ?? 1
     });
 
     // Calcular totales

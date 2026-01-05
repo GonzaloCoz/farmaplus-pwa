@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -7,8 +7,6 @@ import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 
 import { Smartphone, Wifi, Trash2, Info, Cloud, Database, Bell, Shield, User as UserIcon, Users } from "lucide-react";
-// import { toast } from "sonner"; // Removed
-import { clearAllData } from "@/services/preCountDB";
 import { clearProducts, addProducts, Product } from "@/services/productService";
 import { SyncStatusBottomSheet } from "@/components/SyncStatusBottomSheet";
 import { Input } from "@/components/ui/input";
@@ -32,6 +30,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AdminAudit from "@/pages/AdminAudit"; // Direct import or lazy? Direct is easier for now
 // ... other imports
 
+// Consolidated settings interface
+interface AppSettings {
+  haptics: boolean;
+  sounds: boolean;
+  autoSync: boolean;
+  scannerSensitivity: number;
+}
+
 export default function Settings() {
   const navigate = useNavigate();
   const { user } = useUser();
@@ -39,13 +45,24 @@ export default function Settings() {
   const { preferences, setPosition, setReminderType } = useNotificationPreferences();
   const { themeMode, setThemeMode } = useTheme();
 
-  // ... (state hooks remain)
-  const [haptics, setHaptics] = useState(true);
-  const [sounds, setSounds] = useState(false);
-  const [autoSync, setAutoSync] = useState(true);
-  const [scannerSensitivity, setScannerSensitivity] = useState([50]);
+  // Consolidated settings state
+  const [settings, setSettings] = useState<AppSettings>({
+    haptics: true,
+    sounds: false,
+    autoSync: true,
+    scannerSensitivity: 50
+  });
+
   const [isImporting, setIsImporting] = useState(false);
   const [isImportingLabs, setIsImportingLabs] = useState(false);
+
+  // Optimized update function
+  const updateSetting = useCallback(<K extends keyof AppSettings>(
+    key: K,
+    value: AppSettings[K]
+  ) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+  }, []);
 
   const handleImportLaboratories = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -192,12 +209,10 @@ export default function Settings() {
 
   // ... (handlers remain - keep existing implementation)
   const handleClearCache = async () => {
-    // ...
-    if (confirm("¿Estás seguro de que deseas borrar todos los datos locales? Esta acción no se puede deshacer.")) {
+    if (confirm("¿Estás seguro de que deseas borrar la base de datos de productos? Esta acción no se puede deshacer.")) {
       try {
-        await clearAllData();
-        notify.success("Operación exitosa", "Datos locales eliminados correctamente");
-        window.location.reload();
+        await clearProducts();
+        notify.success("Operación exitosa", "Base de datos de productos eliminada correctamente");
       } catch (e) {
         notify.error("Error", "Error al eliminar datos");
       }
@@ -396,7 +411,7 @@ export default function Settings() {
                       Vibrar al escanear correctamente un producto.
                     </p>
                   </div>
-                  <Switch checked={haptics} onCheckedChange={setHaptics} />
+                  <Switch checked={settings.haptics} onCheckedChange={(val) => updateSetting('haptics', val)} />
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -406,17 +421,17 @@ export default function Settings() {
                       Reproducir sonido de confirmación.
                     </p>
                   </div>
-                  <Switch checked={sounds} onCheckedChange={setSounds} />
+                  <Switch checked={settings.sounds} onCheckedChange={(val) => updateSetting('sounds', val)} />
                 </div>
 
                 <div className="space-y-4 pt-2">
                   <div className="flex justify-between">
                     <Label>Sensibilidad del Escáner</Label>
-                    <span className="text-sm text-muted-foreground">{scannerSensitivity}%</span>
+                    <span className="text-sm text-muted-foreground">{settings.scannerSensitivity}%</span>
                   </div>
                   <Slider
-                    value={scannerSensitivity}
-                    onValueChange={setScannerSensitivity}
+                    value={[settings.scannerSensitivity]}
+                    onValueChange={(val) => updateSetting('scannerSensitivity', val[0])}
                     max={100}
                     step={10}
                     className="w-full"
@@ -442,7 +457,7 @@ export default function Settings() {
                       Subir cambios automáticamente cuando haya conexión.
                     </p>
                   </div>
-                  <Switch checked={autoSync} onCheckedChange={setAutoSync} />
+                  <Switch checked={settings.autoSync} onCheckedChange={(val) => updateSetting('autoSync', val)} />
                 </div>
 
                 <div className="pt-2">

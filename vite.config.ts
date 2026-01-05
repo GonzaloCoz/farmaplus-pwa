@@ -5,7 +5,6 @@ import path from "path"
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: "/farmaplus-pwa/",
   plugins: [
     react(),
     VitePWA({
@@ -107,6 +106,13 @@ export default defineConfig({
           'utils': ['date-fns', 'clsx', 'tailwind-merge'],
         },
       },
+      onwarn(warning, warn) {
+        // Suppress circular dependency warnings - they're often false positives
+        if (warning.code === 'CIRCULAR_DEPENDENCY') return;
+        // Suppress "this" keyword warnings in class constructors
+        if (warning.code === 'THIS_IS_UNDEFINED') return;
+        warn(warning);
+      }
     },
     chunkSizeWarningLimit: 1000,
     minify: 'esbuild',
@@ -120,7 +126,13 @@ export default defineConfig({
       'react-dom',
       'react-router-dom',
       '@supabase/supabase-js',
-      'xlsx',
     ],
+    exclude: ['xlsx'], // xlsx causes Rollup issues, load dynamically instead
+    esbuildOptions: {
+      target: 'es2020',
+      supported: {
+        'top-level-await': true
+      }
+    }
   },
 })

@@ -20,7 +20,8 @@ import { LAYOUT_PRESETS } from "@/config/widgetPresets";
 import { OfflineBanner } from "@/components/offline/OfflineBanner";
 import { DashboardSkeleton } from "./components/DashboardSkeleton";
 import { PageSkeleton } from "./components/skeletons/PageSkeleton";
-import { loadDefaultData, initDB } from "@/services/preCountDB";
+import { initDB } from "@/services/preCountDB";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Lazy load de todas las páginas para reducir bundle inicial
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -287,16 +288,7 @@ const AppRoutes = () => {
               </Suspense>
             }
           />
-          <Route
-            path="/comparison"
-            element={
-              <Suspense fallback={<PageSkeleton />}>
-                <PageTransition>
-                  <BranchComparison />
-                </PageTransition>
-              </Suspense>
-            }
-          />
+
         </Route>
         <Route
           path="*"
@@ -318,20 +310,14 @@ const AppRoutes = () => {
 
 const App = () => {
   useEffect(() => {
-    // Intentar cargar datos por defecto al iniciar
-    // Deferir la carga para no bloquear el render inicial
+    // Inicializar DB al cargar la app
     const timer = setTimeout(async () => {
       try {
-        await initDB(); // Initialize DB first
-        loadDefaultData().then(loaded => {
-          if (loaded) {
-            console.log("Base de datos inicializada con archivo por defecto");
-          }
-        });
+        await initDB();
       } catch (error) {
         console.error("Error initializing DB:", error);
       }
-    }, 1000); // Esperar 1 segundo para asegurar que la UI cargó
+    }, 1000);
 
     return () => clearTimeout(timer);
   }, []);
@@ -346,9 +332,11 @@ const App = () => {
                 <Sonner />
                 <OfflineIndicator />
                 <InstallPrompt />
-                <MemoryRouter>
-                  <AppRoutes />
-                </MemoryRouter>
+                <ErrorBoundary>
+                  <MemoryRouter>
+                    <AppRoutes />
+                  </MemoryRouter>
+                </ErrorBoundary>
               </NotificationProvider>
             </UserProvider>
           </NotificationPreferencesProvider>

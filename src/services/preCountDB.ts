@@ -11,14 +11,10 @@ export {
     getProductCount,
     getLaboratoriesForBranch,
     getAllBranchLabCounts,
-    clearProducts
+    clearProducts,
+    loadDefaultData
 } from '@/services/productService';
 
-// Stub loadDefaultData or move it if needed
-export async function loadDefaultData(): Promise<boolean> { return false; }
-
-// Stub legacy offline sync function
-export async function getUnsyncedItems(): Promise<PreCountItem[]> { return []; }
 
 
 
@@ -52,14 +48,13 @@ export interface PreCountItem {
 export async function createSession(sector: string): Promise<PreCountSession> {
     const { data: userData } = await supabase.auth.getUser();
 
-    // @ts-ignore
     const { data, error } = await supabase
-        .from('precount_sessions' as any)
+        .from('precount_sessions')
         .insert({
             sector: sector,
             status: 'active',
             user_id: userData.user?.id
-        } as any)
+        })
         .select()
         .single();
 
@@ -73,9 +68,8 @@ export async function createSession(sector: string): Promise<PreCountSession> {
 
 
 export async function getActiveSessions(): Promise<PreCountSession[]> {
-    // @ts-ignore
     const { data, error } = await supabase
-        .from('precount_sessions' as any)
+        .from('precount_sessions')
         .select('*')
         .eq('status', 'active')
         .order('start_time', { ascending: false });
@@ -85,13 +79,12 @@ export async function getActiveSessions(): Promise<PreCountSession[]> {
         return [];
     }
 
-    return data as unknown as PreCountSession[];
+    return data as PreCountSession[];
 }
 
 export async function deleteSession(id: string): Promise<void> {
-    // @ts-ignore
     const { error } = await supabase
-        .from('precount_sessions' as any)
+        .from('precount_sessions')
         .delete()
         .eq('id', id);
 
@@ -113,9 +106,8 @@ export async function updateSession(id: string, updates: any): Promise<void> {
     // Filter out client-only fields if they shouldn't be in DB
     const { totalProducts, totalUnits, errorCount, ...dbUpdates } = updates;
 
-    // @ts-ignore
     const { error } = await supabase
-        .from('precount_sessions' as any)
+        .from('precount_sessions')
         .update(dbUpdates)
         .eq('id', id);
 
@@ -125,9 +117,8 @@ export async function updateSession(id: string, updates: any): Promise<void> {
 }
 
 export async function endSession(id: string): Promise<void> {
-    // @ts-ignore
     const { error } = await supabase
-        .from('precount_sessions' as any)
+        .from('precount_sessions')
         .update({ status: 'completed', end_time: new Date().toISOString() })
         .eq('id', id);
 
@@ -139,27 +130,25 @@ export async function endSession(id: string): Promise<void> {
 export async function addPreCountItem(item: { session_id: string, ean: string, product_name: string, quantity: number }): Promise<PreCountItem> {
     const { data: userData } = await supabase.auth.getUser();
 
-    // @ts-ignore
     const { data, error } = await supabase
-        .from('precount_items' as any)
+        .from('precount_items')
         .insert({
             session_id: item.session_id,
             ean: item.ean,
             product_name: item.product_name,
             quantity: item.quantity,
             scanned_by: userData.user?.id
-        } as any)
+        })
         .select()
         .single();
 
     if (error) throw error;
-    return data as unknown as PreCountItem;
+    return data as PreCountItem;
 }
 
 export async function updatePreCountItem(id: string, updates: Partial<PreCountItem>): Promise<void> {
-    // @ts-ignore
     const { error } = await supabase
-        .from('precount_items' as any)
+        .from('precount_items')
         .update(updates)
         .eq('id', id);
 
@@ -167,9 +156,8 @@ export async function updatePreCountItem(id: string, updates: Partial<PreCountIt
 }
 
 export async function deletePreCountItem(id: string): Promise<void> {
-    // @ts-ignore
     const { error } = await supabase
-        .from('precount_items' as any)
+        .from('precount_items')
         .delete()
         .eq('id', id);
 
@@ -177,9 +165,8 @@ export async function deletePreCountItem(id: string): Promise<void> {
 }
 
 export async function getPreCountItemsBySessionId(sessionId: string): Promise<PreCountItem[]> {
-    // @ts-ignore
     const { data, error } = await supabase
-        .from('precount_items' as any)
+        .from('precount_items')
         .select('*')
         .eq('session_id', sessionId)
         .order('scanned_at', { ascending: false });
@@ -189,7 +176,7 @@ export async function getPreCountItemsBySessionId(sessionId: string): Promise<Pr
         return [];
     }
 
-    return data as unknown as PreCountItem[];
+    return data as PreCountItem[];
 }
 
 export async function initDB() {
@@ -197,9 +184,25 @@ export async function initDB() {
     return Promise.resolve();
 }
 
-// Legacy / Unused in Cloud Mode but kept to prevent breakages if called
-export async function clearAllData(): Promise<void> {
-    console.warn("clearAllData called in Cloud Mode - ignoring local DB clear");
+// Get all sessions (active and completed)
+export async function getAllSessions(): Promise<PreCountSession[]> {
+    const { data, error } = await supabase
+        .from('precount_sessions')
+        .select('*')
+        .order('start_time', { ascending: false });
+
+    if (error) {
+        console.error('Error fetching all sessions:', error);
+        return [];
+    }
+
+    return data as PreCountSession[];
 }
 
-// clearProducts is re-exported from productService, no need to define it here
+// Alias for compatibility with Reports.tsx
+export async function getSessionItems(sessionOrId: string | PreCountSession): Promise<PreCountItem[]> {
+    const sessionId = typeof sessionOrId === 'string' ? sessionOrId : sessionOrId.id;
+    return getPreCountItemsBySessionId(sessionId);
+}
+
+// clearProducts and loadDefaultData are re-exported from productService

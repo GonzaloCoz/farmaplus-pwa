@@ -412,6 +412,70 @@ export interface Database {
                 }
                 Relationships: []
             }
+            precount_sessions: {
+                Row: {
+                    id: string
+                    sector: string
+                    start_time: string
+                    end_time: string | null
+                    status: string
+                    user_id: string | null
+                }
+                Insert: {
+                    id?: string
+                    sector: string
+                    start_time?: string
+                    end_time?: string | null
+                    status?: string
+                    user_id?: string | null
+                }
+                Update: {
+                    id?: string
+                    sector?: string
+                    start_time?: string
+                    end_time?: string | null
+                    status?: string
+                    user_id?: string | null
+                }
+                Relationships: []
+            }
+            precount_items: {
+                Row: {
+                    id: string
+                    session_id: string
+                    ean: string
+                    product_name: string
+                    quantity: number
+                    scanned_at: string
+                    scanned_by: string | null
+                }
+                Insert: {
+                    id?: string
+                    session_id: string
+                    ean: string
+                    product_name: string
+                    quantity?: number
+                    scanned_at?: string
+                    scanned_by?: string | null
+                }
+                Update: {
+                    id?: string
+                    session_id?: string
+                    ean?: string
+                    product_name?: string
+                    quantity?: number
+                    scanned_at?: string
+                    scanned_by?: string | null
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "precount_items_session_id_fkey"
+                        columns: ["session_id"]
+                        referencedRelation: "precount_sessions"
+                        referencedColumns: ["id"]
+                    }
+                ]
+            }
             expiration_items: {
                 Row: {
                     id: string

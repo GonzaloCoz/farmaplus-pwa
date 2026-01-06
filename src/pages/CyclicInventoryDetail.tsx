@@ -25,6 +25,7 @@ import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { FabMenu } from '@/components/FabMenu';
 import { useUser } from '@/contexts/UserContext';
 import { FileText, RotateCcw } from 'lucide-react';
+import { DeleteConfirmationDialog } from '@/components/cyclic/DeleteConfirmationDialog';
 
 // Hooks & Components
 import { useInventorySync } from '@/hooks/useInventorySync';
@@ -75,6 +76,11 @@ export default function CyclicInventoryDetail() {
     const [showSaveDialog, setShowSaveDialog] = useState(false);
     const [shortageId, setShortageId] = useState("");
     const [surplusId, setSurplusId] = useState("");
+
+    // Delete Confirmation State
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+    const [verificationText, setVerificationText] = useState("");
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // History State
     const [history, setHistory] = useState<any[]>([]);
@@ -249,23 +255,43 @@ export default function CyclicInventoryDetail() {
         .filter(i => i.countedQuantity > i.systemQuantity)
         .reduce((acc, i) => acc + ((i.countedQuantity - i.systemQuantity) * i.cost), 0);
 
-    const handleResetData = async () => {
-        if (confirm("¿Estás seguro de que quieres reiniciar los datos de este laboratorio? Se borrarán de la nube.")) {
+    const handleResetData = () => {
+        // 1. Select a random item name for verification
+        let challenge = "CONFIRMAR";
+        if (items.length > 0) {
+            // Filter valid names (longer than 3 chars) to avoid weird challenges
+            const validItems = items.filter(i => i.name && i.name.length > 4);
+            if (validItems.length > 0) {
+                const randomItem = validItems[Math.floor(Math.random() * validItems.length)];
+                challenge = randomItem.name.toUpperCase(); // Ensure uppercase for consistency
+            }
+        }
+
+        setVerificationText(challenge);
+        setShowDeleteDialog(true);
+    };
+
+    const handleConfirmDelete = async () => {
+        setIsDeleting(true);
+        try {
             // 1. Clear local state immediately
             setItems([]);
 
-            // 2. Wait for auto-saves
-            await new Promise(resolve => setTimeout(resolve, 2500));
+            // 2. Wait for auto-saves (safety buffer)
+            await new Promise(resolve => setTimeout(resolve, 1500));
 
             // 3. Delete from server
-            try {
-                await cyclicInventoryService.deleteInventory(branchName, labName);
-                notify.success("Operación exitosa", "Datos reiniciados correctamente.");
-                navigate('/cyclic-inventory');
-            } catch (error) {
-                console.error("Error resetting data:", error);
-                notify.error("Error", "Error al reiniciar datos. Intente de nuevo.");
-            }
+            await cyclicInventoryService.deleteInventory(branchName, labName);
+
+            setShowDeleteDialog(false);
+            notify.success("Operación exitosa", "Datos reiniciados correctamente.");
+            navigate('/cyclic-inventory');
+
+        } catch (error) {
+            console.error("Error resetting data:", error);
+            notify.error("Error", "Error al reiniciar datos. Intente de nuevo.");
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -543,6 +569,26 @@ export default function CyclicInventoryDetail() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Security Delete Dialog */}
+            <DeleteConfirmationDialog
+                open={showDeleteDialog}
+                onOpenChange={setShowDeleteDialog}
+                onConfirm={handleConfirmDelete}
+                verificationText={verificationText}
+                isDeleting={isDeleting}
+                title={`Reiniciar ${labName}`}
+                description={
+                    <div className="space-y-2">
+                        <p>¿Estás seguro de que quieres reiniciar todo el progreso de este laboratorio?</p>
+                        <ul className="list-disc pl-4 text-sm text-muted-foreground">
+                            <li>Se eliminarán todos los conteos actuales (Pendientes, Controlados, Ajustados).</li>
+                            <li>Esta acción <strong>NO</strong> se puede deshacer.</li>
+                            <li>Deberás comenzar desde cero o cargar un nuevo Excel.</li>
+                        </ul>
+                    </div>
+                }
+            />
 
             {/* Hidden Input for Excel Upload */}
             <input

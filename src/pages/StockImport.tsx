@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
+import { ProductImageHover } from "@/components/ProductImageHover";
 import { cn } from "@/lib/utils";
 import { CounterAnimation } from "@/components/CounterAnimation";
 import { Card } from "@/components/ui/card";
@@ -760,7 +761,9 @@ export default function StockImport() {
                         {item.quantity < 0 ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
                       </div>
                       <div className="min-w-0 flex flex-col justify-center">
-                        <p className="font-semibold text-sm text-foreground truncate" title={item.name}>{item.name}</p>
+                        <ProductImageHover ean={item.codebar} name={item.name}>
+                          <p className="font-semibold text-sm text-foreground truncate" title={item.name}>{item.name}</p>
+                        </ProductImageHover>
                         <div className="flex items-center gap-2 mt-0.5">
                           <Badge variant="outline" className="text-[10px] h-5 font-mono text-muted-foreground border-border/60 font-normal hidden sm:inline-flex">
                             {item.codebar}
@@ -1077,7 +1080,9 @@ export default function StockImport() {
                         {item.diffQty < 0 ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
                       </div>
                       <div className="min-w-0">
-                        <p className="font-semibold text-sm text-foreground truncate" title={item.name}>{item.name}</p>
+                        <ProductImageHover ean={item.codebar} name={item.name}>
+                          <p className="font-semibold text-sm text-foreground truncate" title={item.name}>{item.name}</p>
+                        </ProductImageHover>
                         <div className="flex items-center gap-2 mt-0.5">
                           <Badge variant="outline" className="text-[10px] h-5 font-mono text-muted-foreground border-border/60 font-normal hidden sm:inline-flex">
                             {item.codebar}

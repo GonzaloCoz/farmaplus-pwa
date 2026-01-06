@@ -535,6 +535,14 @@ export interface Database {
                 }
                 Returns: Json
             }
+            save_cyclic_inventory: {
+                Args: {
+                    p_branch_name: string
+                    p_laboratory: string
+                    p_items: Json
+                }
+                Returns: void
+            }
         }
         Enums: {
             [_ in never]: never

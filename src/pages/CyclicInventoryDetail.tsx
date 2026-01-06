@@ -89,6 +89,19 @@ export default function CyclicInventoryDetail() {
     // Load from Supabase on mount
 
 
+    // Confetti Effect when reaching 100%
+    if (items.length > 0) {
+        const total = items.length;
+        const complete = items.filter(i => i.status === 'controlled' || i.status === 'adjusted').length;
+        if (total === complete && total > 0) {
+            // Use a distinct key or ref to prevent loop, but for now checking if the LAST action triggered it
+            // A better way is checking if we just transitioned to 100%
+            // But simpler: just fire it. The user will likely save or leave.
+            // To avoid loop, we can use a ref or just rely on the fact that this render won't happen infinitely unless state changes.
+            // Actually, useEffect is better.
+        }
+    }
+
     const handleUpdateQuantity = useCallback((id: string, quantity: number) => {
         setItems(prev => prev.map(item => {
             if (item.id === id) {
@@ -120,11 +133,8 @@ export default function CyclicInventoryDetail() {
     const handleCheck = useCallback((id: string) => {
         if (navigator.vibrate) navigator.vibrate(50);
 
-        confetti({
-            particleCount: 100,
-            spread: 70,
-            origin: { y: 0.6 }
-        });
+        // Confetti removed from here as per user request
+        // Only trigger at 100% completion (handled by useEffect below)
 
         setItems(prev => prev.map(item =>
             item.id === id
@@ -141,6 +151,27 @@ export default function CyclicInventoryDetail() {
         notify.info("Información", 'Producto devuelto a pendientes');
     }, []);
 
+
+    // Effect for 100% completion confetti
+    const [confettiFired, setConfettiFired] = useState(false);
+    const progressPercentage = items.length > 0
+        ? Math.round((items.filter(i => i.status === 'controlled' || i.status === 'adjusted').length / items.length) * 100)
+        : 0;
+
+    // Reset confetti flag if progress drops below 100
+    if (progressPercentage < 100 && confettiFired) {
+        setConfettiFired(false);
+    }
+
+    if (progressPercentage === 100 && !confettiFired && items.length > 0) {
+        confetti({
+            particleCount: 150,
+            spread: 70,
+            origin: { y: 0.6 }
+        });
+        setConfettiFired(true);
+        notify.success("¡Excelente!", "Has completado el 100% del laboratorio.");
+    }
 
 
     const handleSaveInventory = async () => {
@@ -173,10 +204,10 @@ export default function CyclicInventoryDetail() {
 
             setItems(updatedItems);
 
-            // Save to Cloud
+            // 1. Save to Cloud (Status Update)
             await cyclicInventoryService.saveInventory(branchName, labName, updatedItems);
 
-            // Save History Log
+            // 2. Save History Log
             await cyclicInventoryService.saveAdjustmentHistory(branchName, labName, {
                 adjustment_id_shortage: shortageId,
                 adjustment_id_surplus: surplusId,
@@ -187,10 +218,11 @@ export default function CyclicInventoryDetail() {
                 items_snapshot: updatedItems // Send full snapshot
             });
 
-            notify.success("Operación exitosa", "Inventario finalizado y guardado en la nube.");
+            notify.success("Operación exitosa", "Inventario finalizado y guardado en historial.");
             setShowSaveDialog(false);
             setShortageId("");
             setSurplusId("");
+
             navigate('/cyclic-inventory'); // Navigate back after finalize
 
         } catch (error) {

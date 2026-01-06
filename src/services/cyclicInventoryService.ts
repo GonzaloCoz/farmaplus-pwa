@@ -85,27 +85,28 @@ export const cyclicInventoryService = {
     // Save inventory (Upsert)
     saveInventory: async (branchName: string, labName: string, items: CyclicItem[]) => {
         try {
-            const dbItems = items.map(item => ({
-                branch_name: branchName,
-                laboratory: labName,
+            // Prepare items payload for the RPC function
+            const rpcItems = items.map(item => ({
                 ean: item.ean,
-                quantity: item.countedQuantity,
-                system_quantity: item.systemQuantity,
+                name: item.name,
+                category: item.category,
+                cost: item.cost || 0,
+                countedQuantity: item.countedQuantity,
+                systemQuantity: item.systemQuantity,
                 status: item.status,
-                was_readjusted: item.wasReadjusted || false
+                wasReadjusted: item.wasReadjusted || false
             }));
 
-            // Use upsert with the unique constraint (branch_name, laboratory, ean)
-            // This will insert new records or update existing ones atomically
-            const { error } = await supabase
-                .from('inventories')
-                .upsert(dbItems, {
-                    onConflict: 'branch_name,laboratory,ean',
-                    ignoreDuplicates: false // Update if exists
-                });
+            // Call the database function (RPC)
+            // This handles BOTH product creation (if missing) and inventory upsert atomically
+            const { error } = await supabase.rpc('save_cyclic_inventory', {
+                p_branch_name: branchName,
+                p_laboratory: labName,
+                p_items: rpcItems as any // Cast as any because Jsonb support varies in types
+            });
 
             if (error) {
-                console.error('Error upserting inventory:', error);
+                console.error('Error calling save_cyclic_inventory RPC:', error);
                 throw error;
             }
 

@@ -140,7 +140,8 @@ export default function Settings() {
       // Deduplicate assignments (in case Excel has duplicates)
       const uniqueAssignments = new Map<string, typeof labAssignments[0]>();
       labAssignments.forEach(a => {
-        const key = `${a.branch}|${a.lab}`;
+        // Fix: Include Category in key to allow multiple categories per lab
+        const key = `${a.branch}|${a.lab}|${a.category}`;
         if (!uniqueAssignments.has(key)) {
           uniqueAssignments.set(key, a);
         }

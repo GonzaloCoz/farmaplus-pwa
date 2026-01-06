@@ -135,45 +135,61 @@ export const cyclicInventoryService = {
     // Update laboratory metadata for real-time monitoring
     updateLabMetadata: async (branchName: string, labName: string, items: CyclicItem[]): Promise<void> => {
         try {
-            const stats = cyclicInventoryService.calculateStats(items);
+            // Group items by category to split metadata records
+            const grouped: Record<string, CyclicItem[]> = {};
+            items.forEach(item => {
+                const cat = item.category || 'Varios';
+                if (!grouped[cat]) grouped[cat] = [];
+                grouped[cat].push(item);
+            });
 
-            // Count items by status
-            const controlledItems = items.filter(i => i.status === 'controlled').length;
-            const adjustedItems = items.filter(i => i.status === 'adjusted').length;
-            const pendingItems = items.filter(i => i.status === 'pending').length;
+            // Iterate each category and upsert its own stats
+            const upsertPromises = Object.entries(grouped).map(async ([category, catItems]) => {
+                const stats = cyclicInventoryService.calculateStats(catItems);
 
-            // Determine overall status
-            let status: 'pending' | 'in_progress' | 'completed' = 'pending';
-            if (stats.progress === 100) status = 'completed';
-            else if (stats.progress > 0) status = 'in_progress';
+                // Count items by status
+                const controlledItems = catItems.filter(i => i.status === 'controlled').length;
+                const adjustedItems = catItems.filter(i => i.status === 'adjusted').length;
+                const pendingItems = catItems.filter(i => i.status === 'pending').length;
 
-            // Upsert to metadata table
-            const { error } = await (supabase as any)
-                .from('branch_laboratories')
-                .upsert({
-                    branch_name: branchName,
-                    laboratory: labName,
-                    total_items: items.length,
-                    controlled_items: controlledItems,
-                    adjusted_items: adjustedItems,
-                    pending_items: pendingItems,
-                    progress_percentage: stats.progress,
-                    total_system_units: stats.totalSystemUnits,
-                    net_units: stats.netUnits,
-                    net_value: stats.net,
-                    negative_value: stats.negative,
-                    positive_value: stats.positive,
-                    status: status
-                }, {
-                    onConflict: 'branch_name,laboratory'
-                });
+                // Determine overall status
+                let status: 'pending' | 'in_progress' | 'completed' = 'pending';
+                if (stats.progress === 100) status = 'completed';
+                else if (stats.progress > 0) status = 'in_progress';
 
-            if (error) {
-                console.error('Error updating lab metadata:', error);
-            }
+                // Upsert to metadata table with composite key (Branch + Lab + Category)
+                return (supabase as any)
+                    .from('branch_laboratories')
+                    .upsert({
+                        branch_name: branchName,
+                        laboratory: labName,
+                        category: category, // NEW: Include Category in unique identifier
+                        total_items: catItems.length,
+                        controlled_items: controlledItems,
+                        adjusted_items: adjustedItems,
+                        pending_items: pendingItems,
+                        progress_percentage: stats.progress,
+                        total_system_units: stats.totalSystemUnits,
+                        net_units: stats.netUnits,
+                        net_value: stats.net,
+                        negative_value: stats.negative,
+                        positive_value: stats.positive,
+                        status: status
+                    }, {
+                        // Crucial: This requires the DB constraint to be updated to (branch_name, laboratory, category)
+                        onConflict: 'branch_name,laboratory,category'
+                    });
+            });
+
+            const results = await Promise.all(upsertPromises);
+
+            // Log any errors
+            results.forEach(({ error }) => {
+                if (error) console.error('Error updating lab metadata chunk:', error);
+            });
+
         } catch (e) {
             console.error('Error in updateLabMetadata:', e);
-            // Don't throw - metadata update failure shouldn't break inventory save
         }
     },
 
@@ -265,32 +281,34 @@ export const cyclicInventoryService = {
         const grouped: Record<string, CyclicItem[]> = {};
 
         data.forEach((row: any) => {
-            // If branchName is provided, we only get rows for that branch.
-            // So we aggregate by laboratory.
-            // If no branchName, we might get mix, but UI usually calls with branchName.
-            // Let's assume grouping by laboratory is what we want for the "Labs List" view.
-
-            const groupKey = row.laboratory || 'Desconocido';
+            const lab = row.laboratory || 'Desconocido';
+            const cat = row.products?.category || 'Varios';
+            // GROUP KEY: Lab Name + Category
+            // This ensures logic splits "Abbott (Medicamentos)" from "Abbott (Perfumeria)"
+            const groupKey = `${lab}|${cat}`;
 
             if (!grouped[groupKey]) grouped[groupKey] = [];
 
             grouped[groupKey].push({
-                id: '', // Not needed for stats
+                id: '',
                 ean: '',
                 name: row.products?.name || '',
                 systemQuantity: row.system_quantity || 0,
                 countedQuantity: row.quantity,
                 cost: row.products?.cost || 0,
                 status: row.status,
-                category: row.products?.category
+                category: cat
             });
         });
 
         const stats: CyclicInventoryStats[] = [];
 
-        Object.entries(grouped).forEach(([labName, items]) => {
+        Object.entries(grouped).forEach(([key, items]) => {
+            // Extract Name and Category from composite key
+            // Format: "Name|Category"
+            const [labName, category] = key.split('|');
+
             const calc = cyclicInventoryService.calculateStats(items);
-            const category = items[0]?.category || 'Varios';
 
             stats.push({
                 labName,

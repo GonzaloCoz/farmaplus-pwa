@@ -44,36 +44,34 @@ export default function CyclicInventory() {
 
         // 2. Get Current Inventory Status from Supabase (Filtered by branch)
         const inventoryStats = await cyclicInventoryService.getAllCyclicInventories(user.branchSheet);
-        const statsMap = new Map(inventoryStats.map(s => [s.labName, s]));
+        // 3. Merge Data: Union of Active Inventory + Master List (for pending)
+        const mergedData: CyclicInventoryStats[] = [...inventoryStats];
 
-        // 3. Merge Data
-        const mergedData: CyclicInventoryStats[] = allowedLabs.map(labInfo => {
-          const existingStats = statsMap.get(labInfo.name);
+        // Create lookup Set to prevent duplicates (Key: Name|Category)
+        const activeLabsSet = new Set(inventoryStats.map(s => `${s.labName}|${s.category}`));
 
-          if (existingStats) {
-            return {
-              ...existingStats,
-              category: labInfo.category // Ensure category matches master list
-            };
+        allowedLabs.forEach(labInfo => {
+          const key = `${labInfo.name}|${labInfo.category}`;
+
+          // If this specific combination (Name+Category) doesn't exist in active inventory, add as Pending
+          if (!activeLabsSet.has(key)) {
+            mergedData.push({
+              labName: labInfo.name,
+              category: labInfo.category,
+              status: 'pendiente',
+              totalItems: 0,
+              controlledItems: 0,
+              progress: 0,
+              negativeValue: 0,
+              positiveValue: 0,
+              netValue: 0,
+              differenceValue: 0,
+              totalSystemUnits: 0,
+              negativeUnits: 0,
+              positiveUnits: 0,
+              netUnits: 0
+            });
           }
-
-          // Default empty state for labs not yet started
-          return {
-            labName: labInfo.name,
-            category: labInfo.category,
-            status: 'pendiente',
-            totalItems: 0,
-            controlledItems: 0,
-            progress: 0,
-            negativeValue: 0,
-            positiveValue: 0,
-            netValue: 0,
-            differenceValue: 0,
-            totalSystemUnits: 0,
-            negativeUnits: 0,
-            positiveUnits: 0,
-            netUnits: 0
-          };
         });
 
         setLaboratories(mergedData);

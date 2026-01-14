@@ -283,6 +283,9 @@ export default function CyclicInventoryDetail() {
             // 3. Delete from server
             await cyclicInventoryService.deleteInventory(branchName, labName);
 
+            // 4. Delete adjustment history
+            await cyclicInventoryService.deleteAdjustmentHistory(branchName, labName);
+
             setShowDeleteDialog(false);
             notify.success("Operación exitosa", "Datos reiniciados correctamente.");
             navigate('/cyclic-inventory');
@@ -294,6 +297,8 @@ export default function CyclicInventoryDetail() {
             setIsDeleting(false);
         }
     };
+
+
 
     return (
         <PageLayout className="pb-32 lg:pb-10">
@@ -333,7 +338,7 @@ export default function CyclicInventoryDetail() {
                                 />
                             </div>
                             <p className="text-xs text-muted-foreground mt-4">
-                                Columnas requeridas: C (EAN), D (Producto), E (Cantidad), O (Laboratorio), J (Rubro)
+                                Columnas requeridas: C (EAN), D (Producto), E (Cantidad), K (Costo), J (Rubro), O (Laboratorio)
                             </p>
                         </Card>
                     ) : (
@@ -435,6 +440,11 @@ export default function CyclicInventoryDetail() {
                                         </TabsTrigger>
                                         <TabsTrigger value="history">
                                             Historial
+                                            {history.length > 0 && (
+                                                <span className="ml-2 bg-muted-foreground text-background text-[10px] px-1.5 py-0.5 rounded-full">
+                                                    {history.length}
+                                                </span>
+                                            )}
                                         </TabsTrigger>
                                     </TabsList>
 

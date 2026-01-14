@@ -6,16 +6,6 @@ import { Input } from '@/components/ui/input';
 import { Pencil, Trash2, Package } from 'lucide-react';
 import { UIPreCountItem } from '@/hooks/usePreCount';
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import {
     Dialog,
     DialogContent,
     DialogHeader,
@@ -32,7 +22,6 @@ interface PreCountListProps {
 export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editQuantity, setEditQuantity] = useState('');
-    const [deletingId, setDeletingId] = useState<string | null>(null);
     const [visibleRange, setVisibleRange] = useState({ start: 0, end: 15 });
     const containerRef = useRef<HTMLDivElement>(null);
     const ITEMS_PER_VIEW = 15; // Show 15 items at a time
@@ -59,12 +48,7 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
         setEditQuantity('');
     };
 
-    const handleConfirmDelete = () => {
-        if (deletingId) {
-            onDelete(deletingId);
-            setDeletingId(null);
-        }
-    };
+    // removed handleConfirmDelete
 
     // True windowed virtualization
     useEffect(() => {
@@ -139,9 +123,9 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
                                 transition={{ duration: 0.15 }}
                                 layout
                             >
-                                <Card className="h-full relative overflow-hidden group border-muted/60 shadow-sm hover:shadow-md transition-all">
+                                <Card className={`h-full relative overflow-hidden group border-muted/60 shadow-sm hover:shadow-md transition-all ${item.synced === 0 ? 'ring-2 ring-primary/20' : ''}`}>
                                     {/* Status Indicator Strip */}
-                                    <div className={`absolute top-0 left-0 w-1 h-full ${item.synced === 0 ? 'bg-warning/50' : 'bg-primary/20 group-hover:bg-primary transition-colors'}`} />
+                                    <div className={`absolute top-0 left-0 w-1 h-full ${item.synced === 0 ? 'bg-primary' : 'bg-primary/20 group-hover:bg-primary transition-colors'}`} />
 
                                     <div className="p-3 pl-4 flex flex-col h-full gap-2">
                                         {/* Header: Name & Menu */}
@@ -191,7 +175,8 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
                                                     size="icon"
                                                     variant="ghost"
                                                     className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/5"
-                                                    onClick={() => setDeletingId(item.id)}
+                                                    onClick={() => onDelete(item.id)}
+                                                    title="Eliminar (Instantáneo)"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
                                                 </Button>
@@ -254,23 +239,7 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
                 </DialogContent>
             </Dialog>
 
-            {/* Dialog de confirmación de eliminación */}
-            <AlertDialog open={deletingId !== null} onOpenChange={(open) => !open && setDeletingId(null)}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>¿Eliminar producto?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            Esta acción no se puede deshacer. El producto será eliminado del pre-conteo.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleConfirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                            Eliminar
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+            {/* Removed AlertDialog for instant delete */}
         </>
     );
 }

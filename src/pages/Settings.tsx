@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -27,7 +27,7 @@ import { BRANCH_NAMES } from "@/config/users";
 import { useTheme } from "@/hooks/useTheme";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import AdminAudit from "@/pages/AdminAudit"; // Direct import or lazy? Direct is easier for now
+const AdminAudit = lazy(() => import("@/pages/AdminAudit"));
 // ... other imports
 
 // Consolidated settings interface
@@ -606,7 +606,9 @@ export default function Settings() {
         {
           isAdmin && (
             <TabsContent value="audit">
-              <AdminAudit />
+              <Suspense fallback={<div className="p-12 text-center text-muted-foreground animate-pulse">Cargando auditoría...</div>}>
+                <AdminAudit />
+              </Suspense>
             </TabsContent>
           )
         }

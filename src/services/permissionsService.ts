@@ -6,8 +6,7 @@ export const permissionsService = {
     // Get all available permissions definition
     async getAllPermissions() {
         const { data, error } = await supabase
-            // @ts-ignore
-            .from('permissions' as any)
+            .from('permissions')
             .select('*')
             .order('category', { ascending: true })
             .order('code', { ascending: true });
@@ -17,15 +16,14 @@ export const permissionsService = {
             return PERMISSION_DETAILS;
         }
 
-        return data;
+        return data; // Now correctly typed
     },
 
     // Get permissions assigned to a specific role
     async getRolePermissions(role: string): Promise<Permission[]> {
         try {
             const { data, error } = await supabase
-                // @ts-ignore
-                .from('role_permissions' as any)
+                .from('role_permissions')
                 .select('permission_code')
                 .eq('role', role);
 
@@ -35,7 +33,7 @@ export const permissionsService = {
                 return ROLE_PERMISSIONS[role] || [];
             }
 
-            // @ts-ignore
+            // Map the permission codes directly
             return data.map(p => p.permission_code as Permission);
         } catch (e) {
             console.error("Unexpected error fetching role permissions", e);
@@ -47,8 +45,7 @@ export const permissionsService = {
     async updateRolePermissions(role: string, permissionCodes: string[]) {
         // 1. Delete existing
         const { error: deleteError } = await supabase
-            // @ts-ignore
-            .from('role_permissions' as any)
+            .from('role_permissions')
             .delete()
             .eq('role', role);
 
@@ -62,9 +59,8 @@ export const permissionsService = {
             }));
 
             const { error: insertError } = await supabase
-                // @ts-ignore
-                .from('role_permissions' as any)
-                .insert(insertData as any);
+                .from('role_permissions')
+                .insert(insertData);
 
             if (insertError) throw insertError;
         }

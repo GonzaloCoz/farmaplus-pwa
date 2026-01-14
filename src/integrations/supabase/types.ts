@@ -112,6 +112,17 @@ export interface Database {
                     laboratory: string
                     category: string
                     created_at: string
+                    total_items: number
+                    controlled_items: number
+                    adjusted_items: number
+                    pending_items: number
+                    progress_percentage: number
+                    total_system_units: number
+                    net_units: number
+                    net_value: number
+                    negative_value: number
+                    positive_value: number
+                    status: string
                 }
                 Insert: {
                     id?: string
@@ -119,6 +130,17 @@ export interface Database {
                     laboratory: string
                     category: string
                     created_at?: string
+                    total_items?: number
+                    controlled_items?: number
+                    adjusted_items?: number
+                    pending_items?: number
+                    progress_percentage?: number
+                    total_system_units?: number
+                    net_units?: number
+                    net_value?: number
+                    negative_value?: number
+                    positive_value?: number
+                    status?: string
                 }
                 Update: {
                     id?: string
@@ -126,6 +148,50 @@ export interface Database {
                     laboratory?: string
                     category?: string
                     created_at?: string
+                    total_items?: number
+                    controlled_items?: number
+                    adjusted_items?: number
+                    pending_items?: number
+                    progress_percentage?: number
+                    total_system_units?: number
+                    net_units?: number
+                    net_value?: number
+                    negative_value?: number
+                    positive_value?: number
+                    status?: string
+                }
+                Relationships: []
+            }
+            permissions: {
+                Row: {
+                    code: string
+                    category: string
+                    description: string
+                }
+                Insert: {
+                    code: string
+                    category?: string
+                    description?: string
+                }
+                Update: {
+                    code?: string
+                    category?: string
+                    description?: string
+                }
+                Relationships: []
+            }
+            role_permissions: {
+                Row: {
+                    role: string
+                    permission_code: string
+                }
+                Insert: {
+                    role: string
+                    permission_code: string
+                }
+                Update: {
+                    role?: string
+                    permission_code?: string
                 }
                 Relationships: []
             }
@@ -138,6 +204,7 @@ export interface Database {
                     branch_id: string | null
                     active: boolean
                     created_at: string
+                    permissions: string[] | null
                 }
                 Insert: {
                     id?: string
@@ -147,6 +214,7 @@ export interface Database {
                     branch_id?: string | null
                     active?: boolean
                     created_at?: string
+                    permissions?: string[] | null
                 }
                 Update: {
                     id?: string
@@ -156,6 +224,7 @@ export interface Database {
                     branch_id?: string | null
                     active?: boolean
                     created_at?: string
+                    permissions?: string[] | null
                 }
                 Relationships: [
                     {
@@ -526,22 +595,75 @@ export interface Database {
         Functions: {
             manage_inventory_event: {
                 Args: {
-                    p_action: string
-                    p_title?: string
-                    p_branch?: string
-                    p_sector?: string
-                    p_date?: string
-                    p_id?: string
+                    p_branch_name: string
+                    p_event_data: Json
+                    p_event_type: string
+                    p_lab_name: string
                 }
-                Returns: Json
+                Returns: undefined
             }
             save_cyclic_inventory: {
                 Args: {
                     p_branch_name: string
-                    p_laboratory: string
                     p_items: Json
+                    p_lab_name: string
                 }
-                Returns: void
+                Returns: undefined
+            }
+            upsert_precount_item: {
+                Args: {
+                    p_session_id: string
+                    p_ean: string
+                    p_product_name: string
+                    p_quantity: number
+                    p_user_id?: string
+                }
+                Returns: {
+                    id: string
+                    session_id: string
+                    ean: string
+                    product_name: string
+                    quantity: number
+                    scanned_at: string
+                    scanned_by: string | null
+                }[]
+            }
+            get_session_summary: {
+                Args: {
+                    p_session_id: string
+                }
+                Returns: {
+                    total_products: number
+                    total_units: number
+                    last_updated: string | null
+                }[]
+            }
+            search_products_optimized: {
+                Args: {
+                    p_query: string
+                    p_limit?: number
+                }
+                Returns: {
+                    ean: string
+                    name: string
+                    cost: number
+                    sale_price: number
+                    category: string | null
+                    laboratory: string | null
+                }[]
+            }
+            get_product_by_ean: {
+                Args: {
+                    p_ean: string
+                }
+                Returns: {
+                    ean: string
+                    name: string
+                    cost: number
+                    sale_price: number
+                    category: string | null
+                    laboratory: string | null
+                }[]
             }
         }
         Enums: {

@@ -150,13 +150,8 @@ export function TeamsChatWidget() {
     };
 
     return (
-        <Card className="h-full flex flex-col border-border/50 bg-gradient-to-br from-card/50 to-muted/20 backdrop-blur-sm overflow-hidden relative group">
-            {/* Ambient Background */}
-            <div className="absolute top-0 right-0 w-full h-full opacity-5 pointer-events-none"
-                style={{
-                    background: `radial-gradient(circle at top right, ${AI_COLORS.light}, transparent 70%)`
-                }}
-            />
+        <Card className="h-full flex flex-col justify-between">
+            {/* Ambient Background Removed */}
 
             {/* Header: Cleaned up to match standard widget format (Left aligned Text, no icon or block) */}
             <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0 relative z-10">

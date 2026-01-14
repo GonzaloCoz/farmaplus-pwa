@@ -98,7 +98,7 @@ export default function Reports() {
     try {
       setLoadingSessions(true);
       const allSessions = await getAllSessions();
-      const finishedSessions = allSessions.filter(s => s.endTime).sort((a, b) => b.startTime - a.startTime);
+      const finishedSessions = allSessions.filter(s => s.end_time).sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
       setSessions(finishedSessions);
     } catch (error) {
       console.error("Error loading sessions:", error);
@@ -149,7 +149,7 @@ export default function Reports() {
       doc.setFontSize(14);
       doc.text(`Pre-Conteo: ${session.sector}`, margin, margin + 5);
       doc.setFontSize(8);
-      doc.text(`Fecha: ${new Date(session.startTime).toLocaleDateString()}`, pageWidth - margin - 30, margin + 5);
+      doc.text(`Fecha: ${new Date(session.start_time).toLocaleDateString()}`, pageWidth - margin - 30, margin + 5);
 
       items.forEach((item, index) => {
         if (y + cellHeight > pageHeight - margin) {
@@ -167,7 +167,7 @@ export default function Reports() {
 
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
-        let title = item.productName;
+        let title = item.product_name;
         if (doc.getTextWidth(title) > contentWidth) {
           const maxChars = Math.floor(contentWidth / 2);
           title = title.substring(0, maxChars) + "...";
@@ -224,7 +224,7 @@ export default function Reports() {
         }
       });
 
-      const fileName = `PreConteo_${session.sector}_${new Date(session.startTime).toISOString().split('T')[0]}.pdf`;
+      const fileName = `PreConteo_${session.sector}_${new Date(session.start_time).toISOString().split('T')[0]}.pdf`;
       doc.save(fileName);
       notify.success("Operación exitosa", 'PDF generado correctamente');
 
@@ -469,7 +469,7 @@ export default function Reports() {
                           <TableCell>
                             <div className="flex items-center gap-2 text-muted-foreground text-xs">
                               <Calendar className="w-3 h-3" />
-                              {new Date(session.startTime).toLocaleDateString()}
+                              {new Date(session.start_time).toLocaleDateString()}
                             </div>
                           </TableCell>
                           <TableCell className="text-right font-mono text-sm">
@@ -661,7 +661,7 @@ export default function Reports() {
                 {selectedSession && (
                   <span>
                     Sector: <strong>{selectedSession.sector}</strong> -
-                    Fecha: {new Date(selectedSession.startTime).toLocaleString()}
+                    Fecha: {new Date(selectedSession.start_time).toLocaleString()}
                   </span>
                 )}
               </DialogDescription>
@@ -685,7 +685,7 @@ export default function Reports() {
                     {sessionItems.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell className="font-mono text-xs">{item.ean}</TableCell>
-                        <TableCell className="text-sm">{item.productName}</TableCell>
+                        <TableCell className="text-sm">{item.product_name}</TableCell>
                         <TableCell className="text-right font-bold">{item.quantity}</TableCell>
                       </TableRow>
                     ))}

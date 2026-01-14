@@ -40,26 +40,25 @@ export async function getAllProducts(): Promise<Product[]> {
     }
 }
 
-// Search products by name or EAN
+// Search products by name or EAN (optimized with RPC)
 export async function searchProducts(query: string, limit: number = 50): Promise<Product[]> {
     try {
         if (!query || query.trim().length === 0) {
             return [];
         }
 
-        const { data, error } = await supabase
-            .from('products')
-            .select('*')
-            .or(`name.ilike.%${query}%,ean.ilike.%${query}%`)
-            .limit(limit)
-            .order('name', { ascending: true });
+        // Use optimized RPC function
+        const { data, error } = await supabase.rpc('search_products_optimized', {
+            p_query: query.trim(),
+            p_limit: limit
+        });
 
         if (error) {
             console.error('Error searching products:', error);
             return [];
         }
 
-        return (data || []).map(item => ({
+        const products = (data || []).map((item: any) => ({
             ean: item.ean,
             name: item.name,
             cost: item.cost || 0,
@@ -68,39 +67,70 @@ export async function searchProducts(query: string, limit: number = 50): Promise
             laboratory: item.laboratory || undefined,
             stock: item.stock || 0
         }));
+
+        // Cache results for future use
+        if (products.length > 0) {
+            const { cacheProducts } = await import('./enhancedProductCache');
+            cacheProducts(products).catch(err => console.warn('Cache error:', err));
+        }
+
+        return products;
     } catch (error) {
         console.error('Error in searchProducts:', error);
         return [];
     }
 }
 
-// Get product by EAN
+// Get product by EAN (optimized with cache and RPC)
 export async function getProductByEAN(ean: string): Promise<Product | undefined> {
     try {
-        const { data, error } = await supabase
-            .from('products')
-            .select('*')
-            .eq('ean', ean)
-            .maybeSingle();
+        // Check cache first
+        const { enhancedProductCache } = await import('./enhancedProductCache');
+        const cached = await enhancedProductCache.get(ean);
+
+        if (cached) {
+            return {
+                ean: cached.ean,
+                name: cached.name,
+                cost: cached.cost,
+                salePrice: cached.salePrice,
+                category: cached.category,
+                laboratory: cached.laboratory,
+                stock: cached.stock
+            };
+        }
+
+        // Use optimized RPC function
+        const { data, error } = await supabase.rpc('get_product_by_ean', {
+            p_ean: ean
+        });
 
         if (error) {
             console.error('Error fetching product by EAN:', error);
             return undefined;
         }
 
-        if (!data) {
+        // RPC returns array
+        const productData = Array.isArray(data) ? data[0] : data;
+
+        if (!productData) {
             return undefined;
         }
 
-        return {
-            ean: data.ean,
-            name: data.name,
-            cost: data.cost || 0,
-            salePrice: data.sale_price || 0,
-            category: data.category || undefined,
-            laboratory: data.laboratory || undefined,
-            stock: data.stock || 0
+        const product: Product = {
+            ean: productData.ean,
+            name: productData.name,
+            cost: productData.cost || 0,
+            salePrice: productData.sale_price || 0,
+            category: productData.category || undefined,
+            laboratory: productData.laboratory || undefined,
+            stock: 0 // Column doesn't exist in actual database
         };
+
+        // Cache for future use
+        enhancedProductCache.set(product).catch(err => console.warn('Cache error:', err));
+
+        return product;
     } catch (error) {
         console.error('Error in getProductByEAN:', error);
         return undefined;

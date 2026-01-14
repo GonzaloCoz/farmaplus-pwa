@@ -40,7 +40,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import JsBarcode from 'jsbarcode';
 import { FabMenu } from '@/components/FabMenu';
-import { getCachedProduct, cacheProduct } from '@/services/productCache';
+import { enhancedProductCache } from '@/services/enhancedProductCache';
 
 type Step = 'config' | 'counting';
 
@@ -93,20 +93,28 @@ export default function PreCount() {
     // Manejar escaneo de código de barras
     const handleBarcodeScan = async (code: string) => {
         try {
-            // Check cache first
-            const cachedName = getCachedProduct(code);
-            if (cachedName) {
-                setSelectedProduct({ ean: code, name: cachedName, cost: 0, salePrice: 0, stock: 0 });
+            // Check enhanced cache first (much faster)
+            const cached = await enhancedProductCache.get(code);
+            if (cached) {
+                setSelectedProduct({
+                    ean: code,
+                    name: cached.name,
+                    cost: cached.cost,
+                    salePrice: cached.salePrice,
+                    stock: cached.stock,
+                    category: cached.category,
+                    laboratory: cached.laboratory
+                });
                 setManualEAN(code);
-                notify.success("Operación exitosa", `Producto encontrado: ${cachedName}`);
+                notify.success("Operación exitosa", `Producto encontrado: ${cached.name}`);
                 return;
             }
 
+            // Not in cache, fetch from database
             const product = await getProductByEAN(code);
 
             if (product) {
-                // Cache the product
-                cacheProduct(code, product.name);
+                // Product is automatically cached by getProductByEAN
                 setSelectedProduct(product);
                 setManualEAN(code);
                 notify.success("Operación exitosa", `Producto encontrado: ${product.name}`);
@@ -144,19 +152,18 @@ export default function PreCount() {
 
         let productName = selectedProduct?.name;
 
-        // Si no hay producto seleccionado, intentar buscarlo por EAN
+        // Si no hay producto seleccionado, intentar buscarlo
         if (!productName) {
-            // Check cache first
-            const cachedName = getCachedProduct(manualEAN.trim());
-            if (cachedName) {
-                productName = cachedName;
+            // Check enhanced cache first
+            const cached = await enhancedProductCache.get(manualEAN.trim());
+            if (cached) {
+                productName = cached.name;
             } else {
+                // Fetch from database (will be cached automatically)
                 try {
                     const foundProduct = await getProductByEAN(manualEAN.trim());
                     if (foundProduct) {
                         productName = foundProduct.name;
-                        // Cache it
-                        cacheProduct(manualEAN.trim(), foundProduct.name);
                     }
                 } catch (error) {
                     console.error("Error fetching product by EAN:", error);
@@ -171,11 +178,6 @@ export default function PreCount() {
 
         await addItem(manualEAN, productName, qty);
 
-        // Trigger sync count update immediately
-        // setTimeout(() => {
-        //     updateUnsyncedCount();
-        // }, 100);
-
         // Limpiar formulario y devolver foco al buscador
         setManualEAN('');
         setQuantity('1');
@@ -184,7 +186,7 @@ export default function PreCount() {
         // Timeout breve para asegurar que el renderizado limpie el estado antes de enfocar
         setTimeout(() => {
             document.getElementById('smart-search-input')?.focus();
-        }, 10);
+        }, 50);
     };
 
     // Finalizar sesión

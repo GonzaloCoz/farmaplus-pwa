@@ -146,6 +146,49 @@ export async function addPreCountItem(item: { session_id: string, ean: string, p
     return data as PreCountItem;
 }
 
+// Optimized upsert using RPC function (adds or updates in one atomic operation)
+export async function upsertPreCountItem(item: { session_id: string, ean: string, product_name: string, quantity: number }): Promise<PreCountItem> {
+    const { data: userData } = await supabase.auth.getUser();
+
+    const { data, error } = await supabase.rpc('upsert_precount_item', {
+        p_session_id: item.session_id,
+        p_ean: item.ean,
+        p_product_name: item.product_name,
+        p_quantity: item.quantity,
+        p_user_id: userData.user?.id
+    });
+
+    if (error) throw error;
+
+    // RPC returns array, get first item
+    return (Array.isArray(data) ? data[0] : data) as PreCountItem;
+}
+
+// Get session summary without loading all items (much faster)
+export async function getSessionSummary(sessionId: string): Promise<{
+    totalProducts: number;
+    totalUnits: number;
+    lastUpdated: string | null;
+}> {
+    const { data, error } = await supabase.rpc('get_session_summary', {
+        p_session_id: sessionId
+    });
+
+    if (error) {
+        console.error('Error getting session summary:', error);
+        return { totalProducts: 0, totalUnits: 0, lastUpdated: null };
+    }
+
+    // RPC returns array with one row
+    const summary = Array.isArray(data) ? data[0] : data;
+
+    return {
+        totalProducts: Number(summary?.total_products || 0),
+        totalUnits: Number(summary?.total_units || 0),
+        lastUpdated: summary?.last_updated || null
+    };
+}
+
 export async function updatePreCountItem(id: string, updates: Partial<PreCountItem>): Promise<void> {
     const { error } = await supabase
         .from('precount_items')

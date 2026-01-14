@@ -76,35 +76,57 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                     const row: any = data[i];
                     if (!row || !row[3]) continue;
 
-                    const rawEan = row[2];
+                    const rawEan = row[2]; // Column C
                     if (!rawEan) continue;
 
                     const ean = String(rawEan).trim();
                     if (!ean) continue;
 
-                    let category = row[9]?.toString().trim();
+                    let category = row[9]?.toString().trim(); // Column J
                     if (category) {
                         if (category === "Medicamento") category = "Medicamentos";
                         if (category === "Perfumeria") category = "Perfumería";
                     }
                     if (!category || !CATEGORIES.includes(category)) category = "Varios";
 
+                    const rawCost = row[12]; // Column M
+                    const costValue = Number(rawCost) || 0;
+
+                    // Debug logging
+                    console.log(`📊 EAN: ${ean}, Name: ${row[3]}, Raw Cost (Col M): ${rawCost}, Parsed Cost: ${costValue}`);
+
                     if (eanMap.has(ean)) {
                         const index = eanMap.get(ean);
                         const existingItem = finalItems[index];
 
-                        if (existingItem.status === 'adjusted' || existingItem.status === 'controlled') {
+                        // Skip adjusted items completely (they are finalized)
+                        if (existingItem.status === 'adjusted') {
                             ignoredCount++;
                             continue;
                         }
 
-                        // Update pending item
+                        // For controlled items: update cost and system quantity, but keep counted quantity and status
+                        if (existingItem.status === 'controlled') {
+                            finalItems[index] = {
+                                ...existingItem,
+                                name: row[3], // Column D
+                                systemQuantity: Number(row[4]) || 0, // Column E
+                                cost: costValue, // Column M - UPDATE COST
+                                category: category
+                                // Keep: countedQuantity, status: 'controlled'
+                            };
+                            console.log(`✅ Updated CONTROLLED item: ${ean}, Old Cost: ${existingItem.cost}, New Cost: ${costValue}`);
+                            updatedCount++;
+                            continue;
+                        }
+
+                        // For pending items: reset everything
                         finalItems[index] = {
                             ...existingItem,
-                            name: row[3],
-                            systemQuantity: Number(row[4]) || 0,
+                            name: row[3], // Column D
+                            systemQuantity: Number(row[4]) || 0, // Column E
                             countedQuantity: Number(row[4]) || 0, // Reset to match system
-                            cost: Number(row[12]) || 0,
+                            cost: costValue, // Column M
                             category: category,
                             status: 'pending'
                         };
@@ -115,10 +137,10 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                     finalItems.push({
                         id: crypto.randomUUID(),
                         ean: ean,
-                        name: row[3],
-                        systemQuantity: Number(row[4]) || 0,
+                        name: row[3], // Column D
+                        systemQuantity: Number(row[4]) || 0, // Column E
                         countedQuantity: Number(row[4]) || 0,
-                        cost: Number(row[12]) || 0,
+                        cost: costValue, // Column M
                         status: 'pending',
                         category: category,
                         wasReadjusted: false

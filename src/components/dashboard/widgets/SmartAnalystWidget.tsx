@@ -139,7 +139,7 @@ export function SmartAnalystWidget() {
             className="h-full"
         >
             <Card
-                className="flex flex-col h-full bg-card border-border/50 shadow-sm relative overflow-hidden group hover:shadow-md transition-all cursor-pointer"
+                className="flex flex-col h-full bg-card justify-between relative overflow-hidden group hover:shadow-md transition-all cursor-pointer"
                 onClick={() => navigate('/smart-analyst')}
                 role="button"
                 tabIndex={0}

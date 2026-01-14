@@ -99,10 +99,11 @@ export const cyclicInventoryService = {
 
             // Call the database function (RPC)
             // This handles BOTH product creation (if missing) and inventory upsert atomically
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { error } = await supabase.rpc('save_cyclic_inventory', {
                 p_branch_name: branchName,
                 p_laboratory: labName,
-                p_items: rpcItems as any // Cast as any because Jsonb support varies in types
+                p_items: rpcItems as any // Keeping 'as any' for complex Json mapping for now to avoid specific Json type errors
             });
 
             if (error) {
@@ -128,6 +129,19 @@ export const cyclicInventoryService = {
 
         if (error) {
             console.error("Error deleting inventory:", error);
+            throw error;
+        }
+    },
+
+    // Delete adjustment history for a laboratory
+    deleteAdjustmentHistory: async (branchName: string, labName: string) => {
+        const { error } = await supabase.from('inventory_adjustments')
+            .delete()
+            .eq('branch_name', branchName)
+            .eq('laboratory', labName);
+
+        if (error) {
+            console.error("Error deleting adjustment history:", error);
             throw error;
         }
     },
@@ -158,7 +172,7 @@ export const cyclicInventoryService = {
                 else if (stats.progress > 0) status = 'in_progress';
 
                 // Upsert to metadata table with composite key (Branch + Lab + Category)
-                return (supabase as any)
+                return supabase
                     .from('branch_laboratories')
                     .upsert({
                         branch_name: branchName,
@@ -264,7 +278,8 @@ export const cyclicInventoryService = {
                     cost,
                     category
                 )
-            `);
+            `)
+            .in('status', ['pending', 'controlled', 'adjusted']); // Explicitly include all statuses
 
         if (branchName) {
             query = query.eq('branch_name', branchName);
@@ -550,6 +565,7 @@ export const cyclicInventoryService = {
             user_id?: string; // New param
             // Optional: Pass full items snapshot if available
             items_snapshot?: CyclicItem[];
+            category?: string;
         }
     ): Promise<void> => {
         try {
@@ -557,13 +573,14 @@ export const cyclicInventoryService = {
             const { error: error1 } = await supabase.from('inventory_adjustments').insert({
                 branch_name: branchName,
                 laboratory: labName,
+                category: data.category || null, // NEW: Save Category
                 adjustment_id_shortage: data.adjustment_id_shortage,
                 adjustment_id_surplus: data.adjustment_id_surplus,
                 shortage_value: data.shortage_value,
                 surplus_value: data.surplus_value,
                 total_units_adjusted: data.total_units_adjusted,
                 user_name: data.user_name || 'Desconocido'
-            });
+            } as any); // cast as any in case Typescript Definitions aren't updated in IDE yet
 
             if (error1) throw error1;
 
@@ -582,6 +599,7 @@ export const cyclicInventoryService = {
                 const { error: error2 } = await supabase.from('inventory_reports').insert({
                     branch_name: branchName,
                     laboratory: labName,
+                    category: data.category || null, // NEW: Save Category here too if column exists, otherwise it might be in snapshot_data
                     snapshot_data: data.items_snapshot, // Guarda todo el JSON
                     financial_summary: financialSummary,
                     user_name: data.user_name || 'Desconocido'

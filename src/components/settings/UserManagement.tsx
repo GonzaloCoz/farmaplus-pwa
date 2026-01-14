@@ -78,9 +78,15 @@ export function UserManagement() {
 
     const loadAllPermissions = async () => {
         try {
-            // @ts-ignore
             const perms = await permissionsService.getAllPermissions();
-            setAllPermissions(perms || []);
+            // Map to PermissionItem interface which expects an id
+            const mappedPerms: PermissionItem[] = (perms || []).map(p => ({
+                id: p.code,
+                code: p.code,
+                description: p.description,
+                category: p.category
+            }));
+            setAllPermissions(mappedPerms);
         } catch (error) {
             console.error("Error loading permissions", error);
         }
@@ -98,8 +104,8 @@ export function UserManagement() {
 
             if (error) throw error;
 
-            const mappedProfiles: Profile[] = (data || []).map((p: any) => ({
-                id: p.id || p.user_id || 'unknown',
+            const mappedProfiles: Profile[] = (data || []).map((p) => ({
+                id: p.id,
                 username: p.username,
                 full_name: p.full_name,
                 role: p.role,
@@ -126,7 +132,7 @@ export function UserManagement() {
         try {
             const { error } = await supabase
                 .from('profiles')
-                .update({ active: newStatus } as any)
+                .update({ active: newStatus })
                 .eq('id', id);
 
             if (error) throw error;
@@ -175,7 +181,7 @@ export function UserManagement() {
         try {
             const { error } = await supabase
                 .from('profiles')
-                .update({ permissions: newPermissions } as any)
+                .update({ permissions: newPermissions })
                 .eq('id', userId);
 
             if (error) throw error;

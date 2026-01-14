@@ -159,16 +159,6 @@ export function NotificationToast({
                                 >
                                     <div className="pt-3 pb-1 leading-relaxed">
                                         {message}
-                                        {action && (
-                                            <div className="mt-3">
-                                                <button
-                                                    onClick={action.onClick}
-                                                    className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
-                                                >
-                                                    {action.label}
-                                                </button>
-                                            </div>
-                                        )}
                                     </div>
                                 </motion.div>
                             </motion.div>
@@ -201,22 +191,36 @@ export function NotificationToast({
 
             {/* Footer with Timer and Progress */}
             <div className="relative bg-muted/30 px-4 py-2.5 text-[11px] text-muted-foreground">
-                <div className="flex items-center gap-1.5 flex-wrap">
+                <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
                     <span className="tabular-nums">
                         Este mensaje se cerrará en <span className="font-semibold text-foreground inline-block min-w-[8px] text-center">{secondsLeft}</span> segundos.
                     </span>
-                    <button
-                        onClick={() => setIsPaused(true)}
-                        disabled={isPaused}
-                        className={cn(
-                            "font-medium transition-all whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-sm px-1 -mx-1",
-                            isPaused
-                                ? "text-primary cursor-default"
-                                : "text-foreground hover:underline decoration-foreground/50 underline-offset-2 cursor-pointer"
-                        )}
-                    >
-                        {isPaused ? "Pausado" : "Clic para detener"}
-                    </button>
+
+                    {action ? (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                action.onClick();
+                                handleDismiss();
+                            }}
+                            className="font-medium text-foreground hover:text-primary hover:underline decoration-primary/50 underline-offset-2 cursor-pointer ml-1"
+                        >
+                            {action.label}
+                        </button>
+                    ) : (
+                        <button
+                            onClick={() => setIsPaused(true)}
+                            disabled={isPaused}
+                            className={cn(
+                                "font-medium transition-all whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-sm px-1 -mx-1",
+                                isPaused
+                                    ? "text-primary cursor-default"
+                                    : "text-foreground hover:underline decoration-foreground/50 underline-offset-2 cursor-pointer"
+                            )}
+                        >
+                            {isPaused ? "Pausado" : "Clic para detener"}
+                        </button>
+                    )}
                 </div>
 
                 {/* Progress Bar positioned at bottom of footer absolutely */}

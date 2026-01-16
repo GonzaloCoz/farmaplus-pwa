@@ -77,11 +77,13 @@ interface AnalysisResultsNegative {
   items: NegativeItem[];
 }
 
-type ImportMode = 'inventory' | 'negative_preview';
+type ImportMode = 'inventory' | 'negative_preview' | 'collaborative_inventory';
 
 export default function StockImport() {
   const [importMode, setImportMode] = useState<ImportMode>('inventory');
   const [file, setFile] = useState<File | null>(null);
+  const [filePartial, setFilePartial] = useState<File | null>(null); // For collaborative mode (Step 1)
+  const [fileComplete, setFileComplete] = useState<File | null>(null); // For collaborative mode (Step 2)
   const [analyzing, setAnalyzing] = useState(false);
   const [results, setResults] = useState<AnalysisResults | null>(null);
   const [negativeResults, setNegativeResults] = useState<AnalysisResultsNegative | null>(null);
@@ -98,6 +100,15 @@ export default function StockImport() {
   const [sortConfig, setSortConfig] = useState<SortConfig>({ field: 'value', direction: 'desc' });
   const [editingRow, setEditingRow] = useState<number | null>(null);
   const [frozenSortIndices, setFrozenSortIndices] = useState<number[] | null>(null);
+
+  // Collaborative State
+  const [collaborativeResults, setCollaborativeResults] = useState<{
+    partial: AnalysisResults,
+    branch: AnalysisResults,
+    general: AnalysisResults
+  } | null>(null);
+  const [collaborativeTab, setCollaborativeTab] = useState<'partial' | 'branch' | 'general'>('general');
+
   const resultsRef = useRef<HTMLDivElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -105,7 +116,6 @@ export default function StockImport() {
     if (selectedFile) {
       if (selectedFile.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
         selectedFile.type === "application/vnd.ms-excel") {
-        setFile(selectedFile);
         setFile(selectedFile);
         setResults(null); // Limpiar resultados anteriores al cargar un nuevo archivo
         setNegativeResults(null);
@@ -117,12 +127,32 @@ export default function StockImport() {
     }
   };
 
-  const analyzeRows = (rows: any[]) => {
-    // Asumiendo que la primera fila es el encabezado y la saltamos.
-    // Nota: rows ya no incluye encabezado si viene de handleAnalyze cortado, 
-    // pero si viene de state originalData.rows, es la lista raw.
-    // Ajustemos para que reciba las filas de datos (sin headers).
+  const handlePartialFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (isValidExcel(selectedFile)) {
+      setFilePartial(selectedFile!);
+      notify.success("Operación exitosa", "Stock Parcial cargado");
+    } else {
+      notify.error("Error", "Archivo inválido");
+    }
+  };
 
+  const handleCompleteFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (isValidExcel(selectedFile)) {
+      setFileComplete(selectedFile!);
+      notify.success("Operación exitosa", "Stock Completo cargado");
+    } else {
+      notify.error("Error", "Archivo inválido");
+    }
+  };
+
+  const isValidExcel = (file: File | undefined | null) => {
+    return file && (file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+      file.type === "application/vnd.ms-excel");
+  };
+
+  const calculateAnalysisResults = (rows: any[]): AnalysisResults => {
     // Mapeamos usando el índice original del array para poder actualizar luego
     const products: ProductData[] = rows.map((row, index) => ({
       codebar: row[6], // Columna G
@@ -150,7 +180,7 @@ export default function StockImport() {
     const topShortagesByValue = [...allShortages].sort((a, b) => a.diffValue - b.diffValue).slice(0, 10);
     const topSurplusesByValue = [...allSurpluses].sort((a, b) => b.diffValue - a.diffValue).slice(0, 10);
 
-    setResults({
+    return {
       totalProducts: products.length,
       allShortages,
       allSurpluses,
@@ -166,7 +196,12 @@ export default function StockImport() {
       netDiscrepancyUnits: totalSurplusUnits + totalShortageUnits,
       totalScannedUnits: products.reduce((acc, curr) => acc + (Number(curr.physicalCount) || 0), 0),
       allProducts: products,
-    });
+    };
+  };
+
+  const analyzeRows = (rows: any[]) => {
+    const results = calculateAnalysisResults(rows);
+    setResults(results);
   };
 
   const analyzeNegativePreview = (rows: any[]) => {
@@ -228,6 +263,197 @@ export default function StockImport() {
     } catch (error) {
       console.error("Error analyzing file:", error);
       notify.error("Error", "Hubo un error al analizar el archivo.", { id: "analysis-toast" });
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const getColumnIndex = (headers: any[], possibleNames: string[], defaultIndex: number) => {
+    if (!headers || headers.length === 0) return defaultIndex;
+    const lowerHeaders = headers.map(h => String(h).toLowerCase().trim());
+    for (const name of possibleNames) {
+      const index = lowerHeaders.findIndex(h => h.includes(name.toLowerCase()));
+      if (index !== -1) return index;
+    }
+    return defaultIndex;
+  };
+
+  const cleanEAN = (val: any) => {
+    if (val === null || val === undefined) return "";
+    return String(val).trim().replace(/[^0-9a-zA-Z]/g, ''); // Remove weird chars/spaces
+  };
+
+  const handleAnalyzeMerge = async () => {
+    if (!filePartial || !fileComplete) {
+      notify.error("Error", "Debes cargar ambos archivos.");
+      return;
+    }
+
+    setAnalyzing(true);
+    notify.info("Información", "Fusionando inventarios...", { id: "merge-toast" });
+
+    try {
+      // 1. Process Partial File (Our Count)
+      const dataPartial = await filePartial.arrayBuffer();
+      const wbPartial = XLSX.read(dataPartial);
+      const wsPartial = wbPartial.Sheets[wbPartial.SheetNames[0]];
+      const rawRowsPartial: any[][] = XLSX.utils.sheet_to_json(wsPartial, { header: 1 });
+
+      const headersPartial = rawRowsPartial[0];
+      const codeIndexPartial = getColumnIndex(headersPartial, ['codebar', 'código', 'codigo', 'ean'], 6);
+      const qtyIndexPartial = getColumnIndex(headersPartial, ['físico', 'fisico', 'cantidad', 'physical'], 13);
+
+      console.log(`Debug: Partial File - Code Code: ${codeIndexPartial}, Col Qty: ${qtyIndexPartial}`);
+
+      // Map: Codebar -> Quantity
+      const partialMap = new Map<string, number>();
+      rawRowsPartial.slice(1).forEach(row => {
+        const code = cleanEAN(row[codeIndexPartial]);
+        const qty = Number(row[qtyIndexPartial]) || 0;
+        if (code) {
+          const current = partialMap.get(code) || 0;
+          partialMap.set(code, current + qty);
+        }
+      });
+
+      // 2. Process Complete File (Branch Count + System)
+      const dataComplete = await fileComplete.arrayBuffer();
+      const wbComplete = XLSX.read(dataComplete);
+      const wsComplete = wbComplete.Sheets[wbComplete.SheetNames[0]];
+      const rowsComplete: any[][] = XLSX.utils.sheet_to_json(wsComplete, { header: 1 }); // Includes Headers at 0
+
+      const headers = rowsComplete[0];
+      const dataRows = rowsComplete.slice(1);
+
+      const codeIndexComplete = getColumnIndex(headers, ['codebar', 'código', 'codigo', 'ean'], 6);
+      const qtyIndexComplete = getColumnIndex(headers, ['físico', 'fisico', 'cantidad', 'physical'], 13);
+      const systemIndexComplete = getColumnIndex(headers, ['sistema', 'system'], 15);
+      const costIndexComplete = getColumnIndex(headers, ['costo', 'cost'], 19);
+
+      console.log(`Debug: Complete File - Col Code: ${codeIndexComplete}, Col Qty: ${qtyIndexComplete}`);
+
+      // 3. Merge Logic & Partitioning
+
+      // A. General (Merged) Rows
+      const rowsGeneral = dataRows.map((row) => {
+        const newRow = [...row];
+        const code = cleanEAN(row[codeIndexComplete]);
+        const partialQty = partialMap.get(code) || 0;
+        const branchQty = Number(row[qtyIndexComplete]) || 0;
+        const totalQty = branchQty + partialQty;
+
+        newRow[13] = totalQty; // Force put into standard index 13 for internal consistency if using standard analysis
+
+        // However, standard analysis relies on HARDCODED indices (13, 15, 17, etc.)
+        // We should map our found indices to the "Analyzed Product" structure, 
+        // BUT calculateAnalysisResults parses raw rows using HARDCODED indices.
+        // We must update calculateAnalysisResults to use DYNAMIC indices too, or normalize the row structure here.
+        // Normalizing row structure is safer for `calculateAnalysisResults`.
+
+        // Let's NORMALIZE the row to fit `ProductData` expectation:
+        // Col 6: Codebar, 10: Name, 13: Physical, 15: System, 17: Diff, 19: Cost, 22: DiffValue
+        // We'll preserve the original row but overwrite these indices.
+        // Actually, if we overwrite, we might overwrite original data if indices differ.
+        // BUT calculateAnalysisResults reads from specific indices.
+        // So we MUST ensure data is at those indices.
+
+        // Let's use the found values to populate the fields correctly.
+
+        newRow[6] = code;
+        newRow[13] = totalQty;
+        newRow[15] = Number(row[systemIndexComplete]) || 0;
+        newRow[17] = totalQty - (Number(row[systemIndexComplete]) || 0);
+        newRow[19] = Number(row[costIndexComplete]) || 0;
+        newRow[22] = (totalQty - (Number(row[systemIndexComplete]) || 0)) * (Number(row[costIndexComplete]) || 0);
+
+        return newRow;
+      });
+
+      // B. Partial Rows
+      const rowsPartial = dataRows
+        .filter(row => {
+          const code = cleanEAN(row[codeIndexComplete]);
+          return partialMap.has(code);
+        })
+        .map(row => {
+          const newRow = [...row];
+          const code = cleanEAN(row[codeIndexComplete]);
+          const partialQty = partialMap.get(code) || 0;
+
+          const systemStock = Number(row[systemIndexComplete]) || 0;
+          const cost = Number(row[costIndexComplete]) || 0;
+
+          newRow[6] = code;
+          newRow[13] = partialQty;
+          newRow[15] = systemStock;
+          newRow[17] = partialQty - systemStock;
+          newRow[19] = cost;
+          newRow[22] = (partialQty - systemStock) * cost;
+
+          return newRow;
+        });
+
+      // C. Branch Rows
+      const rowsBranch = dataRows
+        .filter(row => {
+          const code = cleanEAN(row[codeIndexComplete]);
+          return !partialMap.has(code);
+        })
+        .map(row => {
+          const newRow = [...row];
+          const code = cleanEAN(row[codeIndexComplete]);
+          const branchQty = Number(row[qtyIndexComplete]) || 0;
+          const systemStock = Number(row[systemIndexComplete]) || 0;
+          const cost = Number(row[costIndexComplete]) || 0;
+
+          newRow[6] = code;
+          newRow[13] = branchQty;
+          newRow[15] = systemStock;
+          newRow[17] = branchQty - systemStock;
+          newRow[19] = cost;
+          newRow[22] = (branchQty - systemStock) * cost;
+
+          return newRow;
+        });
+
+      // 4. Calculate Results
+      const resGeneral = calculateAnalysisResults(rowsGeneral);
+      const resPartial = calculateAnalysisResults(rowsPartial);
+      const resBranch = calculateAnalysisResults(rowsBranch);
+
+      if (partialMap.size === 0) {
+        notify.warning("Advertencia", "No se encontraron productos en el Archivo Parcial (Codebar col G).");
+      } else if (resPartial.totalProducts === 0) {
+        notify.warning("Advertencia", "El Archivo Parcial no tuvo coincidencias con el Archivo Completo.");
+        console.log("Debug: Partial Map Keys Sample:", [...partialMap.keys()].slice(0, 5));
+        console.log("Debug: Complete File Keys Sample:", dataRows.slice(0, 5).map(r => r[6]));
+      }
+
+      if (resGeneral.totalProducts === 0) {
+        notify.error("Error", "No se encontraron productos en el Archivo Completo.");
+      }
+
+      setCollaborativeResults({
+        general: resGeneral,
+        partial: resPartial,
+        branch: resBranch
+      });
+
+      // Set initial view based on current tab, defaults to general if not set or just force update
+      if (collaborativeTab === 'partial') setResults(resPartial);
+      else if (collaborativeTab === 'branch') setResults(resBranch);
+      else setResults(resGeneral);
+
+      setOriginalData({ headers, rows: rowsGeneral }); // Keep General as "Original" for now
+
+      notify.success("Operación exitosa", "Fusión completada", { id: "merge-toast" });
+      setTimeout(() => {
+        resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 300);
+
+    } catch (error) {
+      console.error("Error merging:", error);
+      notify.error("Error", "Error al fusionar archivos.", { id: "merge-toast" });
     } finally {
       setAnalyzing(false);
     }
@@ -515,33 +741,78 @@ export default function StockImport() {
             setNegativeResults(null);
             setFile(null); // Reset file to force re-selection or at least clear state
           }} className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-6">
+            <TabsList className="grid w-full grid-cols-3 mb-6">
               <TabsTrigger value="inventory">Análisis de Inventario</TabsTrigger>
               <TabsTrigger value="negative_preview">Previsión Negativos</TabsTrigger>
+              <TabsTrigger value="collaborative_inventory">Análisis Colaborativo</TabsTrigger>
             </TabsList>
 
-            <div className="flex items-center justify-center w-full">
-              <label
-                htmlFor="dropzone-file"
-                className="flex flex-col items-center justify-center w-full h-64 border-2 border-border border-dashed rounded-2xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-colors"
-              >
-                <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                  <Upload className="w-12 h-12 mb-4 text-muted-foreground" />
-                  <p className="mb-2 text-sm text-foreground font-medium">
-                    {file ? file.name : "Haz clic para cargar o arrastra el archivo"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Archivos Excel (.xlsx, .xls)
-                  </p>
+            <div className="flex flex-col gap-4">
+              {importMode === 'collaborative_inventory' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Partial File Upload */}
+                  <label
+                    className={cn(
+                      "flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-2xl cursor-pointer transition-colors",
+                      filePartial ? "border-success bg-success/5" : "border-border bg-muted/30 hover:bg-muted/50"
+                    )}
+                  >
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4">
+                      {filePartial ? <CheckCircle className="w-10 h-10 mb-3 text-success" /> : <Upload className="w-10 h-10 mb-3 text-muted-foreground" />}
+                      <p className="mb-1 text-sm text-foreground font-medium">
+                        {filePartial ? filePartial.name : "1. Cargar Stock Propio"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        El que controlamos nosotros
+                      </p>
+                    </div>
+                    <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handlePartialFileChange} />
+                  </label>
+
+                  {/* Complete File Upload */}
+                  <label
+                    className={cn(
+                      "flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-2xl cursor-pointer transition-colors",
+                      fileComplete ? "border-success bg-success/5" : "border-border bg-muted/30 hover:bg-muted/50"
+                    )}
+                  >
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4">
+                      {fileComplete ? <CheckCircle className="w-10 h-10 mb-3 text-success" /> : <Upload className="w-10 h-10 mb-3 text-muted-foreground" />}
+                      <p className="mb-1 text-sm text-foreground font-medium">
+                        {fileComplete ? fileComplete.name : "2. Cargar Stock Sucursal"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        El archivo completo de sistema
+                      </p>
+                    </div>
+                    <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleCompleteFileChange} />
+                  </label>
                 </div>
-                <input
-                  id="dropzone-file"
-                  type="file"
-                  className="hidden"
-                  accept=".xlsx,.xls"
-                  onChange={handleFileChange}
-                />
-              </label>
+              ) : (
+                <div className="flex items-center justify-center w-full">
+                  <label
+                    htmlFor="dropzone-file"
+                    className="flex flex-col items-center justify-center w-full h-64 border-2 border-border border-dashed rounded-2xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      <Upload className="w-12 h-12 mb-4 text-muted-foreground" />
+                      <p className="mb-2 text-sm text-foreground font-medium">
+                        {file ? file.name : "Haz clic para cargar o arrastra el archivo"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Archivos Excel (.xlsx, .xls)
+                      </p>
+                    </div>
+                    <input
+                      id="dropzone-file"
+                      type="file"
+                      className="hidden"
+                      accept=".xlsx,.xls"
+                      onChange={handleFileChange}
+                    />
+                  </label>
+                </div>
+              )}
             </div>
           </Tabs>
 
@@ -552,16 +823,20 @@ export default function StockImport() {
                 Formato requerido ({importMode === 'inventory' ? 'Inventario' : 'Negativos'})
               </p>
               <p className="text-xs text-muted-foreground">
-                {importMode === 'inventory'
-                  ? "El archivo debe contener las columnas: Código, Producto, Stock Sistema, Stock Físico, Diferencia"
-                  : "El archivo debe contener las columnas: Codebar (C), Producto (D), Cantidad (E), Precio (K)"}
+                {importMode === 'inventory' && "El archivo debe contener las columnas: Código, Producto, Stock Sistema, Stock Físico, Diferencia"}
+                {importMode === 'negative_preview' && "El archivo debe contener las columnas: Codebar (C), Producto (D), Cantidad (E), Precio (K)"}
+                {importMode === 'collaborative_inventory' && "Se requiere cargar dos archivos con el formato de Inventario estándar."}
               </p>
             </div>
           </div>
 
           <Button
-            onClick={handleAnalyze}
-            disabled={!file || analyzing}
+            onClick={importMode === 'collaborative_inventory' ? handleAnalyzeMerge : handleAnalyze}
+            disabled={
+              (importMode === 'collaborative_inventory' && (!filePartial || !fileComplete)) ||
+              (importMode !== 'collaborative_inventory' && !file) ||
+              analyzing
+            }
             className="w-full"
             size="lg"
           >
@@ -806,7 +1081,7 @@ export default function StockImport() {
         </motion.div>
       )}
 
-      {importMode === 'inventory' && results && (
+      {(importMode === 'inventory' || importMode === 'collaborative_inventory') && results && (
         <motion.div
           ref={resultsRef}
           className="space-y-8"
@@ -814,6 +1089,56 @@ export default function StockImport() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
         >
+          {/* Collaborative Tabs */}
+          {importMode === 'collaborative_inventory' && collaborativeResults && (
+            <div className="flex justify-center">
+              <div className="inline-flex bg-muted/50 p-1 rounded-xl">
+                <button
+                  onClick={() => {
+                    setCollaborativeTab('partial');
+                    setResults(collaborativeResults.partial);
+                  }}
+                  className={cn(
+                    "px-6 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                    collaborativeTab === 'partial'
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                  )}
+                >
+                  Nuestro Conteo
+                </button>
+                <button
+                  onClick={() => {
+                    setCollaborativeTab('branch');
+                    setResults(collaborativeResults.branch);
+                  }}
+                  className={cn(
+                    "px-6 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                    collaborativeTab === 'branch'
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                  )}
+                >
+                  Conteo Sucursal
+                </button>
+                <button
+                  onClick={() => {
+                    setCollaborativeTab('general');
+                    setResults(collaborativeResults.general);
+                  }}
+                  className={cn(
+                    "px-6 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                    collaborativeTab === 'general'
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-background/50"
+                  )}
+                >
+                  Stock General
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* 1. Top Section - Dashboard Summary Cards */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 

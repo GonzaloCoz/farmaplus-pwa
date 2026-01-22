@@ -126,6 +126,8 @@ export default defineConfig({
       'react-dom',
       'react-router-dom',
       '@supabase/supabase-js',
+      'react-window',
+      'react-virtualized-auto-sizer',
     ],
     exclude: ['xlsx'], // xlsx causes Rollup issues, load dynamically instead
     esbuildOptions: {

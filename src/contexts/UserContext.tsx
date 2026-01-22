@@ -254,9 +254,10 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         notify.info("Vista Restaurada", "Has regresado a la vista de Administrador.");
     };
 
-    const logout = () => {
+    const logout = async () => {
         setUser(null);
         localStorage.removeItem('farmaplus_user');
+        await supabase.auth.signOut();
         notify.info("Sesión Cerrada", "Has cerrado sesión correctamente.");
     };
 

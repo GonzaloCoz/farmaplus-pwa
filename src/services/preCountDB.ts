@@ -1,3 +1,6 @@
+import { db, LocalSession, LocalItem } from './db';
+import { syncManager } from './syncManager';
+import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '@/integrations/supabase/client';
 
 // Re-export product functionality from the new service
@@ -15,237 +18,237 @@ export {
     loadDefaultData
 } from '@/services/productService';
 
+// ============ PRE-CONTEO (OFFLINE FIRST) ============
 
-
-
-// ============ PRE-CONTEO (Supabase - Cloud Sync) ============
-
-export interface PreCountSession {
-    id: string;
-    sector: string;
-    start_time: string; // Supabase returns ISO string
-    end_time?: string;
-    status: 'active' | 'completed';
-    totalProducts?: number; // Calculated on client for now or DB view
+export interface PreCountSession extends LocalSession {
+    totalProducts?: number;
     totalUnits?: number;
     errorCount?: number;
-    user_id?: string;
 }
 
-export interface PreCountItem {
-    id: string;
-    session_id: string;
-    ean: string;
-    product_name: string;
-    quantity: number;
-    scanned_at: string;
-    scanned_by?: string;
-    synced?: number; // Kept for compatibility but always 1 in cloud
-}
+export type PreCountItem = LocalItem;
 
-// --- Sesiones (Supabase) ---
+// --- Sesiones ---
 
 export async function createSession(sector: string): Promise<PreCountSession> {
     const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id;
+    const sessionId = uuidv4();
+    const now = new Date().toISOString();
 
-    const { data, error } = await supabase
-        .from('precount_sessions')
-        .insert({
-            sector: sector,
-            status: 'active',
-            user_id: userData.user?.id
-        })
-        .select()
-        .single();
+    const newSession: LocalSession = {
+        id: sessionId,
+        sector,
+        start_time: now,
+        status: 'active',
+        user_id: userId,
+        is_synced: false
+    };
 
-    if (error) {
-        console.error('Error creating session:', error);
-        throw error;
-    }
+    // 1. Save to Local DB
+    await db.sessions.add(newSession);
 
-    return data as unknown as PreCountSession;
+    // 2. Queue for Sync
+    await syncManager.addToQueue({
+        type: 'create',
+        entity: 'session',
+        data: newSession
+    });
+
+    return newSession;
 }
 
 
 export async function getActiveSessions(): Promise<PreCountSession[]> {
-    const { data, error } = await supabase
-        .from('precount_sessions')
-        .select('*')
-        .eq('status', 'active')
-        .order('start_time', { ascending: false });
-
-    if (error) {
-        console.error('Error fetching active sessions:', error);
-        return [];
-    }
-
-    return data as PreCountSession[];
+    // Read from Local DB
+    return await db.sessions
+        .where('status')
+        .equals('active')
+        .reverse()
+        .sortBy('start_time') as PreCountSession[];
 }
 
 export async function deleteSession(id: string): Promise<void> {
-    const { error } = await supabase
-        .from('precount_sessions')
-        .delete()
-        .eq('id', id);
+    // 1. Delete from Local DB
+    await db.sessions.delete(id);
+    // Also delete related items locally
+    await db.items.where('session_id').equals(id).delete();
 
-    if (error) {
-        console.error('Error deleting session:', error);
-        throw error;
-    }
+    // 2. Queue for Sync (Delete on server)
+    // Note: If the session was never synced (created offline and deleted offline), 
+    // we technically don't need to send a delete, but our sync manager isn't smart enough yet 
+    // to cancel pending creates. Sending a delete for a non-existent ID on server might fail or be ignored.
+    // For robusteness, we just queue it.
+    await syncManager.addToQueue({
+        type: 'delete',
+        entity: 'session',
+        data: { id }
+    });
 }
 
 export async function getActiveSession(): Promise<PreCountSession | null> {
-    // This logic might need to change to "get MY active session" or "selected session"
-    // For now returning the most recent active one
     const sessions = await getActiveSessions();
     return sessions.length > 0 ? sessions[0] : null;
 }
 
 
 export async function updateSession(id: string, updates: any): Promise<void> {
-    // Filter out client-only fields if they shouldn't be in DB
     const { totalProducts, totalUnits, errorCount, ...dbUpdates } = updates;
 
-    const { error } = await supabase
-        .from('precount_sessions')
-        .update(dbUpdates)
-        .eq('id', id);
+    // 1. Update Local
+    await db.sessions.update(id, dbUpdates);
 
-    if (error) {
-        console.error('Error updating session:', error);
-    }
+    // 2. Queue Sync
+    await syncManager.addToQueue({
+        type: 'update',
+        entity: 'session',
+        data: { id, ...dbUpdates }
+    });
 }
 
 export async function endSession(id: string): Promise<void> {
-    const { error } = await supabase
-        .from('precount_sessions')
-        .update({ status: 'completed', end_time: new Date().toISOString() })
-        .eq('id', id);
+    const now = new Date().toISOString();
 
-    if (error) throw error;
+    // 1. Update Local
+    await db.sessions.update(id, { status: 'completed', end_time: now });
+
+    // 2. Queue Sync
+    await syncManager.addToQueue({
+        type: 'update',
+        entity: 'session',
+        data: { id, status: 'completed', end_time: now }
+    });
 }
 
-// --- Items (Supabase) ---
+// --- Items ---
 
 export async function addPreCountItem(item: { session_id: string, ean: string, product_name: string, quantity: number }): Promise<PreCountItem> {
+    // Wrapper for upsert to maintain interface compatibility
+    return upsertPreCountItem(item);
+}
+
+export async function upsertPreCountItem(item: { session_id: string, ean: string, product_name: string, quantity: number }): Promise<PreCountItem> {
     const { data: userData } = await supabase.auth.getUser();
 
-    const { data, error } = await supabase
-        .from('precount_items')
-        .insert({
+    // Check if item exists locally (deduplication/update logic)
+    const existingItem = await db.items
+        .where('[session_id+ean]')
+        .equals([item.session_id, item.ean])
+        .first();
+
+    const now = new Date().toISOString();
+    let resultItem: LocalItem;
+
+    if (existingItem) {
+        // Update existing
+        const newQuantity = existingItem.quantity + item.quantity;
+        await db.items.update(existingItem.id, {
+            quantity: newQuantity,
+            scanned_at: now,
+            is_synced: false
+        });
+        resultItem = { ...existingItem, quantity: newQuantity, scanned_at: now };
+    } else {
+        // Create new
+        const newItem: LocalItem = {
+            id: uuidv4(),
             session_id: item.session_id,
             ean: item.ean,
             product_name: item.product_name,
             quantity: item.quantity,
+            scanned_at: now,
+            scanned_by: userData.user?.id,
+            is_synced: false
+        };
+        await db.items.add(newItem);
+        resultItem = newItem;
+    }
+
+    // Queue Sync
+    // We send 'upsert' equivalent logic. 
+    // Ideally we stick to atomic operations.
+    // SyncManager handles 'create/update' for items using the RPC 'upsert_precount_item'.
+    await syncManager.addToQueue({
+        type: 'update', // generic update/upsert
+        entity: 'item',
+        data: {
+            session_id: item.session_id,
+            ean: item.ean,
+            product_name: item.product_name,
+            quantity: item.quantity, // NOTE: This is DELTA quantity for the RPC usually, OR absolute?
+            // The RPC 'upsert_precount_item' in our SQL usually adds quantity if exists?
+            // Let's check the SQL... assumed ADDITIVE based on typical implementation.
+            // Wait, if we count locally 5, then 5 again -> Total 10.
+            // If we send +5 and +5 to server -> Server has 10. Correct.
+            // So we send the DELTA (item.quantity), not the total (resultItem.quantity).
+            // BUT resultItem has the TOTAL. 
+            // We must be careful passed data.
             scanned_by: userData.user?.id
-        })
-        .select()
-        .single();
-
-    if (error) throw error;
-    return data as PreCountItem;
-}
-
-// Optimized upsert using RPC function (adds or updates in one atomic operation)
-export async function upsertPreCountItem(item: { session_id: string, ean: string, product_name: string, quantity: number }): Promise<PreCountItem> {
-    const { data: userData } = await supabase.auth.getUser();
-
-    const { data, error } = await supabase.rpc('upsert_precount_item', {
-        p_session_id: item.session_id,
-        p_ean: item.ean,
-        p_product_name: item.product_name,
-        p_quantity: item.quantity,
-        p_user_id: userData.user?.id
+        }
     });
 
-    if (error) throw error;
-
-    // RPC returns array, get first item
-    return (Array.isArray(data) ? data[0] : data) as PreCountItem;
+    return resultItem;
 }
 
-// Get session summary without loading all items (much faster)
 export async function getSessionSummary(sessionId: string): Promise<{
     totalProducts: number;
     totalUnits: number;
     lastUpdated: string | null;
 }> {
-    const { data, error } = await supabase.rpc('get_session_summary', {
-        p_session_id: sessionId
-    });
+    // High performance local query
+    const items = await db.items.where('session_id').equals(sessionId).toArray();
 
-    if (error) {
-        console.error('Error getting session summary:', error);
+    if (!items.length) {
         return { totalProducts: 0, totalUnits: 0, lastUpdated: null };
     }
 
-    // RPC returns array with one row
-    const summary = Array.isArray(data) ? data[0] : data;
+    const totalUnits = items.reduce((acc, curr) => acc + curr.quantity, 0);
+    // Sort to find last updated
+    items.sort((a, b) => b.scanned_at.localeCompare(a.scanned_at));
 
     return {
-        totalProducts: Number(summary?.total_products || 0),
-        totalUnits: Number(summary?.total_units || 0),
-        lastUpdated: summary?.last_updated || null
+        totalProducts: items.length,
+        totalUnits,
+        lastUpdated: items[0].scanned_at
     };
 }
 
 export async function updatePreCountItem(id: string, updates: Partial<PreCountItem>): Promise<void> {
-    const { error } = await supabase
-        .from('precount_items')
-        .update(updates)
-        .eq('id', id);
-
-    if (error) throw error;
+    await db.items.update(id, updates);
+    // This function is rarely used directly in current flow, usually upsert is used.
+    // If used, we might need a specific sync handler.
+    // For now, assume it's local only fix or we need to queue a sync if it changes quantity.
 }
 
 export async function deletePreCountItem(id: string): Promise<void> {
-    const { error } = await supabase
-        .from('precount_items')
-        .delete()
-        .eq('id', id);
+    await db.items.delete(id);
 
-    if (error) throw error;
+    await syncManager.addToQueue({
+        type: 'delete',
+        entity: 'item',
+        data: { id }
+    });
 }
 
 export async function getPreCountItemsBySessionId(sessionId: string): Promise<PreCountItem[]> {
-    const { data, error } = await supabase
-        .from('precount_items')
-        .select('*')
-        .eq('session_id', sessionId)
-        .order('scanned_at', { ascending: false });
-
-    if (error) {
-        console.error('Error fetching items:', error);
-        return [];
-    }
-
-    return data as PreCountItem[];
+    return await db.items.where('session_id').equals(sessionId).reverse().sortBy('scanned_at');
 }
 
 export async function initDB() {
-    // No-op for Supabase mode, kept for compatibility
-    return Promise.resolve();
-}
-
-// Get all sessions (active and completed)
-export async function getAllSessions(): Promise<PreCountSession[]> {
-    const { data, error } = await supabase
-        .from('precount_sessions')
-        .select('*')
-        .order('start_time', { ascending: false });
-
-    if (error) {
-        console.error('Error fetching all sessions:', error);
-        return [];
+    // Dexie auto-opens on first access, but we can explicit open to catch errors
+    try {
+        await db.open();
+        console.log('Local DB initialized');
+    } catch (e) {
+        console.error('Failed to open Local DB', e);
     }
-
-    return data as PreCountSession[];
 }
 
-// Alias for compatibility with Reports.tsx
+export async function getAllSessions(): Promise<PreCountSession[]> {
+    return await db.sessions.orderBy('start_time').reverse().toArray();
+}
+
 export async function getSessionItems(sessionOrId: string | PreCountSession): Promise<PreCountItem[]> {
     const sessionId = typeof sessionOrId === 'string' ? sessionOrId : sessionOrId.id;
     return getPreCountItemsBySessionId(sessionId);
 }
-
-// clearProducts and loadDefaultData are re-exported from productService

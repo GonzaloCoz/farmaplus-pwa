@@ -6,41 +6,23 @@ import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Clock, RefreshCw, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-interface QueueItem {
-    id: string;
-    type: 'create' | 'update' | 'delete';
-    entity: string;
-    timestamp: number;
-    status: 'pending' | 'syncing' | 'success' | 'error';
-    retries?: number;
-}
-
-// Mock data - en producción vendría de IndexedDB o similar
-const mockQueueItems: QueueItem[] = [
-    {
-        id: '1',
-        type: 'update',
-        entity: 'Producto: Paracetamol 500mg',
-        timestamp: Date.now() - 300000,
-        status: 'pending',
-    },
-    {
-        id: '2',
-        type: 'create',
-        entity: 'Inventario: Laboratorio A',
-        timestamp: Date.now() - 180000,
-        status: 'pending',
-    },
-];
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db, PendingAction } from '@/services/db';
+import { syncManager } from '@/services/syncManager';
 
 export function SyncQueuePanel() {
-    const [queueItems] = useState<QueueItem[]>(mockQueueItems);
     const [isOpen, setIsOpen] = useState(false);
 
-    const pendingCount = queueItems.filter((item) => item.status === 'pending').length;
+    // Live query to local DB
+    const queueItems = useLiveQuery(
+        () => db.pendingActions.orderBy('timestamp').reverse().toArray(),
+        []
+    );
 
-    const getStatusIcon = (status: QueueItem['status']) => {
+    const pendingCount = queueItems?.filter((item) => item.status === 'pending' || item.status === 'failed').length || 0;
+    const isSyncing = queueItems?.some(item => item.status === 'syncing');
+
+    const getStatusIcon = (status: PendingAction['status']) => {
         switch (status) {
             case 'pending':
                 return <Clock className="h-4 w-4 text-muted-foreground" />;
@@ -48,12 +30,12 @@ export function SyncQueuePanel() {
                 return <RefreshCw className="h-4 w-4 text-primary animate-spin" />;
             case 'success':
                 return <CheckCircle2 className="h-4 w-4 text-success" />;
-            case 'error':
+            case 'failed':
                 return <XCircle className="h-4 w-4 text-destructive" />;
         }
     };
 
-    const getTypeLabel = (type: QueueItem['type']) => {
+    const getTypeLabel = (type: PendingAction['type']) => {
         switch (type) {
             case 'create':
                 return 'Crear';
@@ -61,6 +43,8 @@ export function SyncQueuePanel() {
                 return 'Actualizar';
             case 'delete':
                 return 'Eliminar';
+            default:
+                return type;
         }
     };
 
@@ -75,6 +59,10 @@ export function SyncQueuePanel() {
         return `Hace ${hours} horas`;
     };
 
+    const handleRetry = () => {
+        syncManager.processQueue();
+    };
+
     return (
         <Sheet open={isOpen} onOpenChange={setIsOpen}>
             <SheetTrigger asChild>
@@ -83,7 +71,7 @@ export function SyncQueuePanel() {
                     size="sm"
                     className="relative"
                 >
-                    <RefreshCw className="h-4 w-4 mr-2" />
+                    <RefreshCw className={cn("h-4 w-4 mr-2", isSyncing && "animate-spin")} />
                     Cola de Sync
                     {pendingCount > 0 && (
                         <Badge
@@ -103,8 +91,8 @@ export function SyncQueuePanel() {
                     </SheetDescription>
                 </SheetHeader>
 
-                <div className="mt-6 space-y-4">
-                    {queueItems.length === 0 ? (
+                <div className="mt-6 space-y-4 max-h-[80vh] overflow-y-auto pr-2">
+                    {!queueItems || queueItems.length === 0 ? (
                         <div className="text-center py-12 text-muted-foreground">
                             <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-success" />
                             <p className="font-medium">Todo sincronizado</p>
@@ -122,27 +110,39 @@ export function SyncQueuePanel() {
                                 >
                                     <Card className={cn(
                                         'p-4',
-                                        item.status === 'error' && 'border-destructive'
+                                        item.status === 'failed' && 'border-destructive',
+                                        item.status === 'success' && 'border-success/50 bg-success/5'
                                     )}>
                                         <div className="flex items-start gap-3">
-                                            {getStatusIcon(item.status)}
+                                            <div className="mt-1">
+                                                {getStatusIcon(item.status)}
+                                            </div>
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 mb-1">
                                                     <Badge variant="outline" className="text-xs">
                                                         {getTypeLabel(item.type)}
                                                     </Badge>
-                                                    {item.retries && item.retries > 0 && (
+                                                    <span className="text-xs font-mono uppercase text-muted-foreground">
+                                                        {item.entity}
+                                                    </span>
+                                                    {item.retries > 0 && item.status !== 'success' && (
                                                         <Badge variant="destructive" className="text-xs">
                                                             {item.retries} reintentos
                                                         </Badge>
                                                     )}
                                                 </div>
                                                 <p className="text-sm font-medium truncate">
-                                                    {item.entity}
+                                                    {/* Intentamos mostrar algo descriptivo del payload */}
+                                                    {item.data.product_name || item.data.ean || item.data.sector || `#${item.data.id?.substring(0, 8)}`}
                                                 </p>
                                                 <p className="text-xs text-muted-foreground mt-1">
                                                     {formatTimestamp(item.timestamp)}
                                                 </p>
+                                                {item.error && (
+                                                    <p className="text-xs text-destructive mt-1 break-words">
+                                                        {item.error}
+                                                    </p>
+                                                )}
                                             </div>
                                         </div>
                                     </Card>
@@ -152,9 +152,9 @@ export function SyncQueuePanel() {
                     )}
 
                     {pendingCount > 0 && (
-                        <Button className="w-full" variant="outline">
-                            <RefreshCw className="h-4 w-4 mr-2" />
-                            Reintentar Sincronización
+                        <Button className="w-full" variant="outline" onClick={handleRetry} disabled={isSyncing}>
+                            <RefreshCw className={cn("h-4 w-4 mr-2", isSyncing && "animate-spin")} />
+                            {isSyncing ? 'Sincronizando...' : 'Forzar Sincronización'}
                         </Button>
                     )}
                 </div>

@@ -1,5 +1,8 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
+import { FixedSizeList as List } from "react-window";
+import type { ListChildComponentProps } from "react-window";
+import AutoSizer from "react-virtualized-auto-sizer";
 import { ProductImageHover } from "@/components/ProductImageHover";
 import { cn } from "@/lib/utils";
 import { CounterAnimation } from "@/components/CounterAnimation";
@@ -78,6 +81,102 @@ interface AnalysisResultsNegative {
 }
 
 type ImportMode = 'inventory' | 'negative_preview' | 'collaborative_inventory';
+
+
+// Virtualized Row Component
+const Row = ({ index, style, data }: ListChildComponentProps) => {
+  const { items, editingRow, handleStartEditing, handleStopEditing, handleQuantityChange } = data;
+  const item = items[index];
+
+  return (
+    <div style={style} className="px-4">
+      <div
+        className="grid grid-cols-12 gap-4 h-full items-center border-b border-border/40 hover:bg-muted/10 transition-colors group"
+      >
+        {/* Product Info */}
+        <div className="col-span-5 md:col-span-4 flex items-center gap-3 pl-2 min-w-0">
+          <div className={cn("p-2 rounded-lg shrink-0", item.diffQty < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success')}>
+            {item.diffQty < 0 ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
+          </div>
+          <div className="min-w-0">
+            <ProductImageHover ean={item.codebar} name={item.name}>
+              <p className="font-semibold text-sm text-foreground truncate" title={item.name}>{item.name}</p>
+            </ProductImageHover>
+            <div className="flex items-center gap-2 mt-0.5">
+              <Badge variant="outline" className="text-[10px] h-5 font-mono text-muted-foreground border-border/60 font-normal hidden sm:inline-flex">
+                {item.codebar}
+              </Badge>
+              <span className="text-[10px] text-muted-foreground sm:hidden">{item.codebar}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Price */}
+        <div className="col-span-2 text-right hidden md:block self-center">
+          <p className="text-sm font-medium">${item.cost.toLocaleString()}</p>
+          <p className="text-[10px] text-muted-foreground">Costo Unit.</p>
+        </div>
+
+        {/* Difference (Pill) */}
+        <div className="col-span-3 md:col-span-2 flex justify-center self-center">
+          <div className={cn(
+            "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold w-20 justify-center",
+            item.diffQty < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'
+          )}>
+            {item.diffQty > 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+            {item.diffQty > 0 ? '+' : ''}{item.diffQty}
+          </div>
+        </div>
+
+        {/* Physical / System */}
+        <div className="col-span-2 text-center hidden sm:block self-center">
+          <div className="flex items-center justify-center gap-1 text-sm relative">
+            {editingRow === item.rowIndex ? (
+              <Input
+                type="number"
+                autoFocus
+                className="w-16 h-7 text-right pr-2 font-bold p-0"
+                value={item.physicalCount}
+                onBlur={handleStopEditing}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleStopEditing();
+                }}
+                onChange={(e) => handleQuantityChange(item.rowIndex, e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <div
+                className="w-16 h-7 flex items-center justify-end pr-2 relative cursor-pointer group/edit rounded hover:bg-muted/50 transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleStartEditing(item.rowIndex);
+                }}
+              >
+                <span className="font-bold">{item.physicalCount}</span>
+                <Pencil className="w-3 h-3 text-muted-foreground opacity-0 group-hover/edit:opacity-100 transition-opacity absolute left-1" />
+              </div>
+            )}
+            <span className="text-muted-foreground mx-1">/</span>
+            <span className="text-muted-foreground">{item.systemStock}</span>
+          </div>
+        </div>
+
+        {/* Total Value & Actions */}
+        <div className="col-span-2 md:col-span-2 text-right pr-2 self-center">
+          <p className={cn(
+            "text-sm font-bold",
+            item.diffValue < 0 ? 'text-destructive' : 'text-success'
+          )}>
+            {item.diffValue > 0 ? '+' : ''}${Math.abs(item.diffValue).toLocaleString()}
+          </p>
+          <div className="flex justify-end mt-1 md:hidden">
+            <MoreHorizontal className="w-4 h-4 text-muted-foreground" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default function StockImport() {
   const [importMode, setImportMode] = useState<ImportMode>('inventory');
@@ -1388,110 +1487,73 @@ export default function StockImport() {
             </div>
 
             {/* List Body */}
-            <div className="divide-y divide-border/40">
+            <div className="h-[600px] w-full bg-card">
               {filteredProducts.length === 0 ? (
                 <div className="p-12 text-center text-muted-foreground">
                   <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
                   <p>No se encontraron productos</p>
                 </div>
               ) : (
-                filteredProducts.map((item, index) => (
-                  <div
-                    key={item.rowIndex}
-                    className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-muted/10 transition-colors group"
-                  >                     {/* Product Info */}
-                    <div className="col-span-5 md:col-span-4 flex items-center gap-3 pl-2 min-w-0">
-                      <div className={cn("p-2 rounded-lg shrink-0", item.diffQty < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success')}>
-                        {item.diffQty < 0 ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
-                      </div>
-                      <div className="min-w-0">
-                        <ProductImageHover ean={item.codebar} name={item.name}>
-                          <p className="font-semibold text-sm text-foreground truncate" title={item.name}>{item.name}</p>
-                        </ProductImageHover>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <Badge variant="outline" className="text-[10px] h-5 font-mono text-muted-foreground border-border/60 font-normal hidden sm:inline-flex">
-                            {item.codebar}
-                          </Badge>
-                          <span className="text-[10px] text-muted-foreground sm:hidden">{item.codebar}</span>
-                        </div>
-                      </div>
-                    </div>
+                <AutoSizer>
+                  {({ height, width }) => (
+                    <List
+                      height={height}
+                      itemCount={filteredProducts.length}
+                      itemSize={80}
+                      width={width}
+                      itemData={{
+                        items: filteredProducts,
+                        editingRow,
+                        handleStartEditing,
+                        handleStopEditing,
+                        handleQuantityChange
+                      }}
+                    >
+                      {Row}
+                    </List>
+                  )}
+                </AutoSizer>
+              )}
+            </div>
 
-                    {/* Price */}
-                    <div className="col-span-2 text-right hidden md:block self-center">
-                      <p className="text-sm font-medium">${item.cost.toLocaleString()}</p>
-                      <p className="text-[10px] text-muted-foreground">Costo Unit.</p>
-                    </div>
-
-                    {/* Difference (Pill) */}
-                    <div className="col-span-3 md:col-span-2 flex justify-center self-center">
-                      <div className={cn(
-                        "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold w-20 justify-center",
-                        item.diffQty < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'
-                      )}>
-                        {item.diffQty > 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                        {item.diffQty > 0 ? '+' : ''}{item.diffQty}
-                      </div>
-                    </div>
-
-                    {/* Physical / System */}
-                    <div className="col-span-2 text-center hidden sm:block self-center">
-                      <div className="flex items-center justify-center gap-1 text-sm relative">
-                        {editingRow === item.rowIndex ? (
-                          <Input
-                            type="number"
-                            autoFocus
-                            className="w-16 h-7 text-right pr-2 font-bold p-0"
-                            value={item.physicalCount}
-                            onBlur={handleStopEditing}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleStopEditing();
-                            }}
-                            onChange={(e) => handleQuantityChange(item.rowIndex, e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        ) : (
-                          <div
-                            className="w-16 h-7 flex items-center justify-end pr-2 relative cursor-pointer group/edit rounded hover:bg-muted/50 transition-colors"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleStartEditing(item.rowIndex);
-                            }}
-                          >
-                            <span className="font-bold">{item.physicalCount}</span>
-                            <Pencil className="w-3 h-3 text-muted-foreground opacity-0 group-hover/edit:opacity-100 transition-opacity absolute left-1" />
-                          </div>
-                        )}
-                        <span className="text-muted-foreground mx-1">/</span>
-                        <span className="text-muted-foreground">{item.systemStock}</span>
-                      </div>
-                    </div>
-
-                    {/* Total Value & Actions */}
-                    <div className="col-span-2 md:col-span-2 text-right pr-2 self-center">
-                      <p className={cn(
-                        "text-sm font-bold",
-                        item.diffValue < 0 ? 'text-destructive' : 'text-success'
-                      )}>
-                        {item.diffValue > 0 ? '+' : ''}${Math.abs(item.diffValue).toLocaleString()}
-                      </p>
-                      <div className="flex justify-end mt-1 md:hidden">
-                        <MoreHorizontal className="w-4 h-4 text-muted-foreground" />
-                      </div>
-                    </div>
-                  </div>
-                ))
+            return (
+            // ... inside the return statement ...
+            /* List Body */
+            <div className="h-[600px] w-full bg-card">
+              {filteredProducts.length === 0 ? (
+                <div className="p-12 text-center text-muted-foreground">
+                  <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                  <p>No se encontraron productos</p>
+                </div>
+              ) : (
+                <AutoSizer>
+                  {({ height, width }) => (
+                    <List
+                      height={height}
+                      itemCount={filteredProducts.length}
+                      itemSize={80}
+                      width={width}
+                      itemData={{
+                        items: filteredProducts,
+                        editingRow,
+                        handleStartEditing,
+                        handleStopEditing,
+                        handleQuantityChange
+                      }}
+                    >
+                      {Row}
+                    </List>
+                  )}
+                </AutoSizer>
               )}
             </div>
 
             {/* Footer / Pagination Mockup */}
-            <div className="p-4 border-t bg-muted/20 flex justify-between items-center text-xs text-muted-foreground">
-              <span>Mostrando {filteredProducts.length} registros</span>
-              {filteredProducts.length > 20 && (
-                <Button variant="ghost" size="sm" className="h-7 text-xs">Ver más</Button>
-              )}
+            <div className="p-4 border-t bg-muted/20 flex justify-between items-center text-xs text-muted-foreground z-10 relative">
+              <span>Mostrando {filteredProducts.length} registros (Virtualizado ⚡)</span>
             </div>
           </Card>
+
 
           <FabMenu
             actions={[

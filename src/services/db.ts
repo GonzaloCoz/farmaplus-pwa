@@ -1,0 +1,61 @@
+import Dexie, { Table } from 'dexie';
+
+// Interfaces match our Supabase schema but optimized for local usage
+export interface PendingAction {
+    id?: number;
+    type: 'create' | 'update' | 'delete';
+    entity: 'session' | 'item' | 'product';
+    data: any; // The payload to send
+    timestamp: number;
+    status: 'pending' | 'syncing' | 'failed' | 'success';
+    retries: number;
+    error?: string;
+}
+
+export interface LocalSession {
+    id: string; // UUID from Supabase or generated locally
+    sector: string;
+    start_time: string;
+    end_time?: string;
+    status: 'active' | 'completed';
+    user_id?: string;
+    is_synced: boolean; // Flag to know if this specific record is consistent with server
+}
+
+export interface LocalItem {
+    id: string; // UUID
+    session_id: string;
+    ean: string;
+    product_name: string;
+    quantity: number;
+    scanned_at: string;
+    scanned_by?: string;
+    is_synced: boolean;
+}
+
+export interface LocalProduct {
+    codebar: string;
+    name: string;
+    laboratory?: string;
+    // We can cache more details here
+}
+
+export class FarmaplusDB extends Dexie {
+    sessions!: Table<LocalSession>;
+    items!: Table<LocalItem>;
+    products!: Table<LocalProduct>;
+    pendingActions!: Table<PendingAction>;
+
+    constructor() {
+        super('FarmaplusDB');
+
+        this.version(1).stores({
+            sessions: 'id, status, start_time, is_synced', // Indexes
+            items: 'id, session_id, ean, is_synced',
+            products: 'codebar, name',
+            pendingActions: '++id, status, timestamp, entity' // ++id = auto-increment
+        });
+    }
+}
+
+export const db = new FarmaplusDB();

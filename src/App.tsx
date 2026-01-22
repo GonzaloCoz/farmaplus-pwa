@@ -82,226 +82,225 @@ const AppRoutes = () => {
   const location = useLocation();
 
   return (
-    <AnimatePresence mode="wait">
-      <Routes location={location} key={location.pathname}>
+    <Routes location={location} key={location.pathname}>
+      <Route
+        path="/login"
+        element={
+          <Suspense fallback={<DashboardSkeleton />}>
+            <PageTransition>
+              <Login />
+            </PageTransition>
+          </Suspense>
+        }
+      />
+      <Route
+        element={
+          <ProtectedRoute>
+            <AppLayout />
+          </ProtectedRoute>
+        }
+      >
         <Route
-          path="/login"
+          path="/"
           element={
             <Suspense fallback={<DashboardSkeleton />}>
               <PageTransition>
-                <Login />
+                <Dashboard />
               </PageTransition>
             </Suspense>
           }
         />
         <Route
-          element={
-            <ProtectedRoute>
-              <AppLayout />
-            </ProtectedRoute>
-          }
-        >
-          <Route
-            path="/"
-            element={
-              <Suspense fallback={<DashboardSkeleton />}>
-                <PageTransition>
-                  <Dashboard />
-                </PageTransition>
-              </Suspense>
-            }
-          />
-          <Route
-            path="/stock"
-            element={
-              <Suspense fallback={<DashboardSkeleton />}>
-                <PageTransition>
-                  <Stock />
-                </PageTransition>
-              </Suspense>
-            }
-          />
-          <Route
-            path="/stock/pre-count"
-            element={
-              <Suspense fallback={<DashboardSkeleton />}>
-                <PageTransition>
-                  <PreCount />
-                </PageTransition>
-              </Suspense>
-            }
-          />
-          <Route
-            path="/stock/import"
-            element={
-              <Suspense fallback={<DashboardSkeleton />}>
-                <PageTransition>
-                  <StockImport />
-                </PageTransition>
-              </Suspense>
-            }
-          />
-          <Route
-            path="/stock/expiration-control"
-            element={
-              <Suspense fallback={<DashboardSkeleton />}>
-                <PageTransition>
-                  <ExpirationControl />
-                </PageTransition>
-              </Suspense>
-            }
-          />
-          <Route
-            path="/cyclic-inventory"
-            element={
-              <Suspense fallback={<DashboardSkeleton />}>
-                <PageTransition>
-                  <CyclicInventory />
-                </PageTransition>
-              </Suspense>
-            }
-          />
-          <Route
-            path="/cyclic-inventory/:id"
-            element={
-              <Suspense fallback={<DashboardSkeleton />}>
-                <PageTransition>
-                  <CyclicInventoryDetail />
-                </PageTransition>
-              </Suspense>
-            }
-          />
-          <Route
-            path="/products"
-            element={
-              <Suspense fallback={<PageSkeleton />}>
-                <PageTransition>
-                  <Products />
-                </PageTransition>
-              </Suspense>
-            }
-          />
-          <Route
-            path="/reports"
-            element={
-              <Suspense fallback={<PageSkeleton />}>
-                <PageTransition>
-                  <Reports />
-                </PageTransition>
-              </Suspense>
-            }
-          />
-          <Route
-            path="/comparison"
-            element={
-              <Suspense fallback={<PageSkeleton />}>
-                <PageTransition>
-                  <BranchComparison />
-                </PageTransition>
-              </Suspense>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <Suspense fallback={<PageSkeleton />}>
-                <PageTransition>
-                  <Settings />
-                </PageTransition>
-              </Suspense>
-            }
-          />
-          <Route
-            path="/profile"
-            element={
-              <Suspense fallback={<PageSkeleton />}>
-                <PageTransition>
-                  <Profile />
-                </PageTransition>
-              </Suspense>
-            }
-          />
-          <Route
-            path="/m3-demo"
-            element={
-              <Suspense fallback={<DashboardSkeleton />}>
-                <PageTransition>
-                  <M3ComponentsDemo />
-                </PageTransition>
-              </Suspense>
-            }
-          />
-          <Route
-            path="/animations-demo"
-            element={
-              <Suspense fallback={<DashboardSkeleton />}>
-                <PageTransition>
-                  <AnimationsDemo />
-                </PageTransition>
-              </Suspense>
-            }
-          />
-          <Route
-            path="/admin/audit"
-            element={
-              <AdminRoute>
-                <Suspense fallback={<PageSkeleton />}>
-                  <PageTransition>
-                    <AdminAudit />
-                  </PageTransition>
-                </Suspense>
-              </AdminRoute>
-            }
-          />
-
-          <Route
-            path="/admin/users"
-            element={
-              <AdminRoute>
-                <Suspense fallback={<PageSkeleton />}>
-                  <PageTransition>
-                    <AdminUsers />
-                  </PageTransition>
-                </Suspense>
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/admin/branches"
-            element={
-              <AdminRoute>
-                <Suspense fallback={<PageSkeleton />}>
-                  <PageTransition>
-                    <AdminBranches />
-                  </PageTransition>
-                </Suspense>
-              </AdminRoute>
-            }
-          />
-          <Route
-            path="/smart-analyst"
-            element={
-              <Suspense fallback={<PageSkeleton />}>
-                <PageTransition>
-                  <SmartAnalystPage />
-                </PageTransition>
-              </Suspense>
-            }
-          />
-
-        </Route>
-        <Route
-          path="*"
+          path="/stock"
           element={
             <Suspense fallback={<DashboardSkeleton />}>
               <PageTransition>
-                <NotFound />
+                <Stock />
               </PageTransition>
             </Suspense>
           }
         />
-      </Routes>
-    </AnimatePresence>
+        <Route
+          path="/stock/pre-count"
+          element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <PageTransition>
+                <PreCount />
+              </PageTransition>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/stock/import"
+          element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <PageTransition>
+                <StockImport />
+              </PageTransition>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/stock/expiration-control"
+          element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <PageTransition>
+                <ExpirationControl />
+              </PageTransition>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/cyclic-inventory"
+          element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <PageTransition>
+                <CyclicInventory />
+              </PageTransition>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/cyclic-inventory/:id"
+          element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <PageTransition>
+                <CyclicInventoryDetail />
+              </PageTransition>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/products"
+          element={
+            <Suspense fallback={<PageSkeleton />}>
+              <PageTransition>
+                <Products />
+              </PageTransition>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/reports"
+          element={
+            <Suspense fallback={<PageSkeleton />}>
+              <PageTransition>
+                <Reports />
+              </PageTransition>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/comparison"
+          element={
+            <Suspense fallback={<PageSkeleton />}>
+              <PageTransition>
+                <BranchComparison />
+              </PageTransition>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <Suspense fallback={<PageSkeleton />}>
+              <PageTransition>
+                <Settings />
+              </PageTransition>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <Suspense fallback={<PageSkeleton />}>
+              <PageTransition>
+                <Profile />
+              </PageTransition>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/m3-demo"
+          element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <PageTransition>
+                <M3ComponentsDemo />
+              </PageTransition>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/animations-demo"
+          element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <PageTransition>
+                <AnimationsDemo />
+              </PageTransition>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/admin/audit"
+          element={
+            <AdminRoute>
+              <Suspense fallback={<PageSkeleton />}>
+                <PageTransition>
+                  <AdminAudit />
+                </PageTransition>
+              </Suspense>
+            </AdminRoute>
+          }
+        />
+
+        <Route
+          path="/admin/users"
+          element={
+            <AdminRoute>
+              <Suspense fallback={<PageSkeleton />}>
+                <PageTransition>
+                  <AdminUsers />
+                </PageTransition>
+              </Suspense>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin/branches"
+          element={
+            <AdminRoute>
+              <Suspense fallback={<PageSkeleton />}>
+                <PageTransition>
+                  <AdminBranches />
+                </PageTransition>
+              </Suspense>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/smart-analyst"
+          element={
+            <Suspense fallback={<PageSkeleton />}>
+              <PageTransition>
+                <SmartAnalystPage />
+              </PageTransition>
+            </Suspense>
+          }
+        />
+
+      </Route>
+      <Route
+        path="*"
+        element={
+          <Suspense fallback={<DashboardSkeleton />}>
+            <PageTransition>
+              <NotFound />
+            </PageTransition>
+          </Suspense>
+        }
+      />
+    </Routes>
+
   );
 };
 

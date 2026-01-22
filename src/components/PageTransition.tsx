@@ -25,15 +25,8 @@ const pageTransition = {
 
 export const PageTransition = ({ children }: PageTransitionProps) => {
     return (
-        <motion.div
-            initial="initial"
-            animate="in"
-            exit="out"
-            variants={pageVariants}
-            transition={pageTransition as any}
-            className="h-full w-full"
-        >
+        <div className="h-full w-full">
             {children}
-        </motion.div>
+        </div>
     );
 };

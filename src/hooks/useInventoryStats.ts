@@ -50,8 +50,23 @@ export function useInventoryStats(items: CyclicItem[], initialCategory = "Medica
         });
     };
 
-    const controlledItems = useMemo(() => sortItemsByDifference(filteredItems.filter(i => i.status === 'controlled')), [filteredItems]);
-    const adjustedItems = useMemo(() => sortItemsByDifference(filteredItems.filter(i => i.status === 'adjusted')), [filteredItems]);
+    // Filter controlled items by CURRENT CATEGORY
+    const controlledItems = useMemo(() => {
+        const filtered = filteredItems.filter(i =>
+            i.status === 'controlled' &&
+            (i.category === currentCategory || (!i.category && currentCategory === "Varios"))
+        );
+        return sortItemsByDifference(filtered);
+    }, [filteredItems, currentCategory]);
+
+    // Filter adjusted items by CURRENT CATEGORY
+    const adjustedItems = useMemo(() => {
+        const filtered = filteredItems.filter(i =>
+            i.status === 'adjusted' &&
+            (i.category === currentCategory || (!i.category && currentCategory === "Varios"))
+        );
+        return sortItemsByDifference(filtered);
+    }, [filteredItems, currentCategory]);
 
     // Financial Stats Calculation
     const financialStats = useMemo(() => {

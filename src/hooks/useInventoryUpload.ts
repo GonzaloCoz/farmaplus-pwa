@@ -61,8 +61,29 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                     }
                 }
 
-                // Merge Logic
-                const finalItems: CyclicItem[] = [...currentItems];
+                // --- NEW: Identify categories in the uploaded file to clear residue ---
+                const categoriesInFile = new Set<string>();
+                for (let i = 1; i < data.length; i++) {
+                    const row: any = data[i];
+                    if (!row || !row[3]) continue;
+                    let category = row[9]?.toString().trim();
+                    if (category === "Medicamento") category = "Medicamentos";
+                    if (category === "Perfumeria") category = "Perfumería";
+                    if (!category || !CATEGORIES.includes(category)) category = "Varios";
+                    categoriesInFile.add(category);
+                }
+
+                // Merge Logic - Filter out 'pending' residues from incoming categories
+                const finalItems: CyclicItem[] = currentItems.filter(item => {
+                    // If the item is pending AND its category is being re-uploaded, we discard it 
+                    // (because the Excel is the new source of truth for that lab/category)
+                    if (item.status === 'pending') {
+                        const itemCat = item.category || 'Varios';
+                        if (categoriesInFile.has(itemCat)) return false;
+                    }
+                    return true;
+                });
+
                 const eanMap = new Map();
                 finalItems.forEach((item, index) => {
                     eanMap.set(String(item.ean).trim(), index);
@@ -70,7 +91,6 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
 
                 let addedCount = 0;
                 let updatedCount = 0;
-                let ignoredCount = 0;
 
                 for (let i = 1; i < data.length; i++) {
                     const row: any = data[i];
@@ -92,35 +112,25 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                     const rawCost = row[12]; // Column M
                     const costValue = Number(rawCost) || 0;
 
-                    // Debug logging
-                    console.log(`📊 EAN: ${ean}, Name: ${row[3]}, Raw Cost (Col M): ${rawCost}, Parsed Cost: ${costValue}`);
-
                     if (eanMap.has(ean)) {
                         const index = eanMap.get(ean);
                         const existingItem = finalItems[index];
 
-                        // Skip adjusted items completely (they are finalized)
-                        if (existingItem.status === 'adjusted') {
-                            ignoredCount++;
-                            continue;
-                        }
-
-                        // For controlled items: update cost and system quantity, but keep counted quantity and status
-                        if (existingItem.status === 'controlled') {
+                        // For adjusted or controlled items: update cost and system quantity, but keep counted quantity and status
+                        if (existingItem.status === 'controlled' || existingItem.status === 'adjusted') {
                             finalItems[index] = {
                                 ...existingItem,
                                 name: row[3], // Column D
                                 systemQuantity: Number(row[4]) || 0, // Column E
                                 cost: costValue, // Column M - UPDATE COST
                                 category: category
-                                // Keep: countedQuantity, status: 'controlled'
+                                // Keep: countedQuantity, status
                             };
-                            console.log(`✅ Updated CONTROLLED item: ${ean}, Old Cost: ${existingItem.cost}, New Cost: ${costValue}`);
                             updatedCount++;
                             continue;
                         }
 
-                        // For pending items: reset everything
+                        // For pending items: reset everything (shouldn't happen often now because we filtered them above)
                         finalItems[index] = {
                             ...existingItem,
                             name: row[3], // Column D
@@ -158,7 +168,7 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 if (addedCount > 0 || updatedCount > 0) {
                     notify.success("Carga exitosa", `${addedCount} nuevos, ${updatedCount} actualizados`);
                 } else {
-                    notify.info("Sin cambios", `${ignoredCount} productos ya estaban procesados`);
+                    notify.info("Sin cambios", `Todos los productos ya estaban procesados`);
                 }
 
             } catch (error) {

@@ -200,9 +200,10 @@ export default function CyclicInventoryDetail() {
 
         setIsSaving(true);
         try {
-            // Update status of controlled items to adjusted, BUT KEEP pending items
+            // Update status of controlled items to adjusted ONLY for the current category
             const updatedItems = items.map(item => {
-                if (item.status === 'controlled') {
+                const isInCategory = (item.category === currentCategory) || (!item.category && currentCategory === "Varios");
+                if (item.status === 'controlled' && isInCategory) {
                     return { ...item, status: 'adjusted' as const };
                 }
                 return item;
@@ -221,15 +222,25 @@ export default function CyclicInventoryDetail() {
                 surplus_value: surplusValue,
                 total_units_adjusted: controlledItems.length,
                 user_name: user?.name,
-                items_snapshot: updatedItems // Send full snapshot
+                user_id: user?.id,
+                items_snapshot: updatedItems,
+                category: currentCategory // Pass the category being finalized
             });
 
-            notify.success("Operación exitosa", "Inventario finalizado y guardado en historial.");
+            notify.success("Operación exitosa", `${currentCategory} finalizado y guardado en historial.`);
             setShowSaveDialog(false);
             setShortageId("");
             setSurplusId("");
 
-            navigate('/cyclic-inventory'); // Navigate back after finalize
+            // Reload History
+            const newHistory = await cyclicInventoryService.getAdjustmentHistory(branchName, labName);
+            setHistory(newHistory);
+
+            // OPTIONAL: Navigate back if this was the last category or just stay to finish others?
+            // User requirement: "si regreso mas tarde a controlar los productos de ese laboratorio".
+            // So maybe DON'T navigate back, just let them see the updated status.
+            // navigate('/cyclic-inventory'); 
+
 
         } catch (error) {
             console.error("Error saving inventory:", error);
@@ -496,7 +507,14 @@ export default function CyclicInventoryDetail() {
                                                                 <p className="text-sm font-bold text-primary">
                                                                     {new Date(h.created_at).toLocaleDateString()} {new Date(h.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                                 </p>
-                                                                <p className="text-xs text-muted-foreground">Por: {h.user_name || 'Desconocido'}</p>
+                                                                <div className="flex gap-2 items-center">
+                                                                    <p className="text-xs text-muted-foreground">Por: {h.user_name || 'Desconocido'}</p>
+                                                                    {h.category && (
+                                                                        <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold">
+                                                                            {h.category}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                             <div className="text-right">
                                                                 <div className="text-xs font-mono bg-muted px-2 py-1 rounded">

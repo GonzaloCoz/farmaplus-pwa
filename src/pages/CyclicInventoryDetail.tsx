@@ -1,13 +1,11 @@
 import { useState, useCallback } from 'react';
-import confetti from 'canvas-confetti';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Upload, Search, Info, Trash2, Loader2, CheckCircle2 } from 'lucide-react';
-import { notify } from '@/lib/notifications';
-import { CyclicInventoryList, CyclicItem } from '@/components/CyclicInventoryList';
+import { Upload, Search, Info, Loader2, CheckCircle2, RotateCcw, DollarSign } from 'lucide-react';
+import { CyclicInventoryList } from '@/components/CyclicInventoryList';
 import { CounterAnimation } from '@/components/CounterAnimation';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -21,295 +19,63 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Onboarding } from '@/components/Onboarding';
 import { cn } from '@/lib/utils';
-import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { FabMenu } from '@/components/FabMenu';
-import { useUser } from '@/contexts/UserContext';
-import { FileText, RotateCcw } from 'lucide-react';
 import { DeleteConfirmationDialog } from '@/components/cyclic/DeleteConfirmationDialog';
-
-// Hooks & Components
-import { useInventorySync } from '@/hooks/useInventorySync';
-import { useInventoryUpload } from '@/hooks/useInventoryUpload';
-import { useInventoryStats } from '@/hooks/useInventoryStats';
-import { InventorySkeleton } from '@/components/InventorySkeleton';
 import { PageLayout } from "@/components/layout/PageLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
+
+// Hooks & Components
+import { useCyclicInventoryController } from '@/hooks/useCyclicInventoryController';
+import { InventorySkeleton } from '@/components/InventorySkeleton';
 
 const CATEGORIES = ["Medicamentos", "Perfumería", "Accesorios", "Varios"];
 
 export default function CyclicInventoryDetail() {
     const { id } = useParams(); // This will be the Lab Name
-    const navigate = useNavigate();
-    const { user } = useUser();
-
     const labName = id ? decodeURIComponent(id) : '';
-    const branchName = user?.branchName || 'Sucursal Desconocida';
 
-    // State for items is managed here to be shared
-    const [items, setItems] = useState<CyclicItem[]>([]);
-
-    // 1. Sync Logic (Load/Save/AutoSave/Reset)
-    const { isLoading, setIsLoading, isSaving, setIsSaving, saveProgress } = useInventorySync({
-        branchName,
-        labName,
-        items,
-        onItemsLoaded: setItems
-    });
-
-    // 2. Upload Logic
-    const { isUploading, handleFileUpload } = useInventoryUpload({
-        branchName,
-        labName,
-        currentItems: items,
-        onItemsUpdated: setItems
-    });
-
-    // 3. Stats & Filter Logic
     const {
-        searchTerm, setSearchTerm,
-        showDifferencesOnly, setShowDifferencesOnly,
-        currentCategory, setCurrentCategory,
-        pendingItems, controlledItems, adjustedItems
-    } = useInventoryStats(items, CATEGORIES[0]);
+        // State
+        items,
+        isLoading,
+        isUploading,
+        isSaving,
+        branchName,
 
-    // Save Dialog State
-    const [showSaveDialog, setShowSaveDialog] = useState(false);
-    const [shortageId, setShortageId] = useState("");
-    const [surplusId, setSurplusId] = useState("");
+        // Stats
+        stats: {
+            searchTerm, setSearchTerm,
+            showDifferencesOnly, setShowDifferencesOnly,
+            currentCategory, setCurrentCategory,
+            pendingItems, controlledItems, adjustedItems
+        },
+        history,
 
-    // Delete Confirmation State
-    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-    const [verificationText, setVerificationText] = useState("");
-    const [isDeleting, setIsDeleting] = useState(false);
+        // Dialogs
+        showSaveDialog, setShowSaveDialog,
+        shortageId, setShortageId,
+        surplusId, setSurplusId,
+        shortageValue, surplusValue,
 
-    // History State
-    const [history, setHistory] = useState<any[]>([]);
+        showDeleteDialog, setShowDeleteDialog,
+        verificationText,
+        isDeleting,
 
-    // Load History
-    useState(() => {
-        if (branchName && labName) {
-            cyclicInventoryService.getAdjustmentHistory(branchName, labName).then(setHistory);
-        }
-    });
+        // Actions
+        handleFileUpload,
+        handleUpdateQuantity,
+        handleCheck,
+        handleRevertItem,
+        handleFinalizeClick,
+        handleSaveInventory,
+        handleResetData,
+        handleConfirmDelete,
 
-    // Load from Supabase on mount
+        // Advanced Logic
+        sortBy, setSortBy,
+        getSortedItems
 
-
-    // Confetti Effect when reaching 100%
-    if (items.length > 0) {
-        const total = items.length;
-        const complete = items.filter(i => i.status === 'controlled' || i.status === 'adjusted').length;
-        if (total === complete && total > 0) {
-            // Use a distinct key or ref to prevent loop, but for now checking if the LAST action triggered it
-            // A better way is checking if we just transitioned to 100%
-            // But simpler: just fire it. The user will likely save or leave.
-            // To avoid loop, we can use a ref or just rely on the fact that this render won't happen infinitely unless state changes.
-            // Actually, useEffect is better.
-        }
-    }
-
-    const handleUpdateQuantity = useCallback((id: string, quantity: number) => {
-        setItems(prev => prev.map(item => {
-            if (item.id === id) {
-                const diff = quantity - item.systemQuantity;
-                if (diff !== 0 && navigator.vibrate) {
-                    navigator.vibrate([50, 50, 50]);
-                } else if (navigator.vibrate) {
-                    navigator.vibrate(50);
-                }
-
-                // Logic: 
-                // If it was ALREADY adjusted (finalized previously), then this is a RE-ADJUSTMENT -> set flag.
-                // If it is just 'controlled' (in process), it's a normal correction -> NO flag.
-                const isReadjustment = item.status === 'adjusted';
-
-                return {
-                    ...item,
-                    countedQuantity: quantity,
-                    // If it was adjusted, keep it adjusted. If pending, make it controlled.
-                    status: item.status === 'adjusted' ? 'adjusted' : 'controlled',
-                    wasReadjusted: isReadjustment ? true : item.wasReadjusted
-                };
-            }
-            return item;
-        }));
-    }, []);
-
-
-    const handleCheck = useCallback((id: string) => {
-        if (navigator.vibrate) navigator.vibrate(50);
-
-        // Confetti removed from here as per user request
-        // Only trigger at 100% completion (handled by useEffect below)
-
-        setItems(prev => prev.map(item =>
-            item.id === id
-                ? { ...item, status: 'controlled', countedQuantity: item.systemQuantity }
-                : item
-        ));
-        notify.success("Operación exitosa", 'Producto controlado');
-    }, []);
-
-    const handleRevertItem = useCallback((id: string) => {
-        setItems(prev => prev.map(item =>
-            item.id === id ? { ...item, status: 'pending' } : item
-        ));
-        notify.info("Información", 'Producto devuelto a pendientes');
-    }, []);
-
-
-    // Effect for 100% completion confetti
-    const [confettiFired, setConfettiFired] = useState(false);
-    const progressPercentage = items.length > 0
-        ? Math.round((items.filter(i => i.status === 'controlled' || i.status === 'adjusted').length / items.length) * 100)
-        : 0;
-
-    // Reset confetti flag if progress drops below 100
-    if (progressPercentage < 100 && confettiFired) {
-        setConfettiFired(false);
-    }
-
-    if (progressPercentage === 100 && !confettiFired && items.length > 0) {
-        confetti({
-            particleCount: 150,
-            spread: 70,
-            origin: { y: 0.6 }
-        });
-        setConfettiFired(true);
-        notify.success("¡Excelente!", "Has completado el 100% del laboratorio.");
-    }
-
-
-    const handleSaveInventory = async () => {
-        // Calculate totals for validation
-        const shortages = controlledItems.filter(i => i.countedQuantity < i.systemQuantity);
-        const surpluses = controlledItems.filter(i => i.countedQuantity > i.systemQuantity);
-
-        const hasShortages = shortages.length > 0;
-        const hasSurpluses = surpluses.length > 0;
-
-        if (hasShortages && !shortageId.trim()) {
-            notify.error("Error", "Por favor ingresa el ID de ajuste para Faltantes");
-            return;
-        }
-
-        if (hasSurpluses && !surplusId.trim()) {
-            notify.error("Error", "Por favor ingresa el ID de ajuste para Sobrantes");
-            return;
-        }
-
-        setIsSaving(true);
-        try {
-            // Update status of controlled items to adjusted ONLY for the current category
-            const updatedItems = items.map(item => {
-                const isInCategory = (item.category === currentCategory) || (!item.category && currentCategory === "Varios");
-                if (item.status === 'controlled' && isInCategory) {
-                    return { ...item, status: 'adjusted' as const };
-                }
-                return item;
-            });
-
-            setItems(updatedItems);
-
-            // 1. Save to Cloud (Status Update)
-            await cyclicInventoryService.saveInventory(branchName, labName, updatedItems);
-
-            // 2. Save History Log
-            await cyclicInventoryService.saveAdjustmentHistory(branchName, labName, {
-                adjustment_id_shortage: shortageId,
-                adjustment_id_surplus: surplusId,
-                shortage_value: shortageValue,
-                surplus_value: surplusValue,
-                total_units_adjusted: controlledItems.length,
-                user_name: user?.name,
-                user_id: user?.id,
-                items_snapshot: updatedItems,
-                category: currentCategory // Pass the category being finalized
-            });
-
-            notify.success("Operación exitosa", `${currentCategory} finalizado y guardado en historial.`);
-            setShowSaveDialog(false);
-            setShortageId("");
-            setSurplusId("");
-
-            // Reload History
-            const newHistory = await cyclicInventoryService.getAdjustmentHistory(branchName, labName);
-            setHistory(newHistory);
-
-            // OPTIONAL: Navigate back if this was the last category or just stay to finish others?
-            // User requirement: "si regreso mas tarde a controlar los productos de ese laboratorio".
-            // So maybe DON'T navigate back, just let them see the updated status.
-            // navigate('/cyclic-inventory'); 
-
-
-        } catch (error) {
-            console.error("Error saving inventory:", error);
-            notify.error("Error", "Error al guardar en la nube.");
-        } finally {
-            setIsSaving(false);
-        }
-    };
-
-    const handleFinalizeClick = async () => {
-        // First save current progress
-        await saveProgress();
-        // Then open dialog
-        setShowSaveDialog(true);
-    };
-
-    // Calculate values for the dialog
-    const shortageValue = controlledItems
-        .filter(i => i.countedQuantity < i.systemQuantity)
-        .reduce((acc, i) => acc + ((i.systemQuantity - i.countedQuantity) * i.cost), 0);
-
-    const surplusValue = controlledItems
-        .filter(i => i.countedQuantity > i.systemQuantity)
-        .reduce((acc, i) => acc + ((i.countedQuantity - i.systemQuantity) * i.cost), 0);
-
-    const handleResetData = () => {
-        // 1. Select a random item name for verification
-        let challenge = "CONFIRMAR";
-        if (items.length > 0) {
-            // Filter valid names (longer than 3 chars) to avoid weird challenges
-            const validItems = items.filter(i => i.name && i.name.length > 4);
-            if (validItems.length > 0) {
-                const randomItem = validItems[Math.floor(Math.random() * validItems.length)];
-                challenge = randomItem.name.toUpperCase(); // Ensure uppercase for consistency
-            }
-        }
-
-        setVerificationText(challenge);
-        setShowDeleteDialog(true);
-    };
-
-    const handleConfirmDelete = async () => {
-        setIsDeleting(true);
-        try {
-            // 1. Clear local state immediately
-            setItems([]);
-
-            // 2. Wait for auto-saves (safety buffer)
-            await new Promise(resolve => setTimeout(resolve, 1500));
-
-            // 3. Delete from server
-            await cyclicInventoryService.deleteInventory(branchName, labName);
-
-            // 4. Delete adjustment history
-            await cyclicInventoryService.deleteAdjustmentHistory(branchName, labName);
-
-            setShowDeleteDialog(false);
-            notify.success("Operación exitosa", "Datos reiniciados correctamente.");
-            navigate('/cyclic-inventory');
-
-        } catch (error) {
-            console.error("Error resetting data:", error);
-            notify.error("Error", "Error al reiniciar datos. Intente de nuevo.");
-        } finally {
-            setIsDeleting(false);
-        }
-    };
-
-
+    } = useCyclicInventoryController({ labName });
 
     return (
         <PageLayout className="pb-32 lg:pb-10">
@@ -324,7 +90,20 @@ export default function CyclicInventoryDetail() {
                 <InventorySkeleton />
             ) : (
                 <>
-                    {/* Upload Section (if empty) */}
+                    {/* Header Info Bar */}
+                    {items.length > 0 && (
+                        <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 p-2 rounded-lg border border-dashed">
+                            <Info className="w-3.5 h-3.5" />
+                            <span>
+                                Última actualización del inventario:
+                                <span className="font-mono ml-1 font-medium text-foreground">
+                                    {new Date(Math.max(...items.map(i => new Date(i.updatedAt || new Date()).getTime()))).toLocaleString()}
+                                </span>
+                            </span>
+                        </div>
+                    )}
+
+                    {/* Upload Section (if completely empty) */}
                     {items.length === 0 ? (
                         <Card className="p-12 border-dashed border-2 flex flex-col items-center justify-center text-center space-y-4 bg-muted/20">
                             <div className="p-4 bg-primary/10 rounded-full">
@@ -360,25 +139,25 @@ export default function CyclicInventoryDetail() {
                                 <Card className="p-4 flex flex-col items-center justify-center bg-warning/5 border-warning/20">
                                     <span className="text-muted-foreground text-xs uppercase font-bold">Pendientes</span>
                                     <span className="text-2xl font-bold text-warning">
-                                        <CounterAnimation value={items.filter(i => i.status === 'pending').length} />
+                                        <CounterAnimation value={pendingItems.length} />
                                     </span>
                                 </Card>
                                 <Card className="p-4 flex flex-col items-center justify-center bg-success/5 border-success/20">
                                     <span className="text-muted-foreground text-xs uppercase font-bold">Controlados</span>
                                     <span className="text-2xl font-bold text-success">
-                                        <CounterAnimation value={items.filter(i => i.status === 'controlled').length} />
+                                        <CounterAnimation value={controlledItems.length} />
                                     </span>
                                 </Card>
                                 <Card className="p-4 flex flex-col items-center justify-center bg-blue-500/5 border-blue-500/20">
                                     <span className="text-muted-foreground text-xs uppercase font-bold">Ajustados</span>
                                     <span className="text-2xl font-bold text-blue-500">
-                                        <CounterAnimation value={items.filter(i => i.status === 'adjusted').length} />
+                                        <CounterAnimation value={adjustedItems.length} />
                                     </span>
                                 </Card>
                                 <Card className="p-4 flex flex-col items-center justify-center">
                                     <span className="text-muted-foreground text-xs uppercase font-bold">Avance</span>
                                     <span className="text-2xl font-bold">
-                                        <CounterAnimation value={Math.round((items.filter(i => i.status === 'controlled' || i.status === 'adjusted').length / items.length) * 100)} />%
+                                        <CounterAnimation value={Math.round(((controlledItems.length + adjustedItems.length) / (pendingItems.length + controlledItems.length + adjustedItems.length || 1)) * 100)} />%
                                     </span>
                                 </Card>
                             </div>
@@ -403,6 +182,15 @@ export default function CyclicInventoryDetail() {
                                         />
                                         <Label htmlFor="diff-mode" className="cursor-pointer">Solo Diferencias</Label>
                                     </div>
+                                    <Button
+                                        variant={sortBy === 'financial' ? "default" : "outline"}
+                                        onClick={() => setSortBy(prev => prev === 'default' ? 'financial' : 'default')}
+                                        className="h-10"
+                                        title="Ordenar por Impacto Financiero"
+                                    >
+                                        <DollarSign className="w-4 h-4 mr-2" />
+                                        {sortBy === 'financial' ? 'Impacto $' : 'Orden A-Z'}
+                                    </Button>
                                 </div>
                                 {/* Category Tabs (Rubros) */}
                                 <div className="mb-6 overflow-x-auto pb-2">
@@ -468,7 +256,7 @@ export default function CyclicInventoryDetail() {
                                             </AlertDescription>
                                         </Alert>
                                         <CyclicInventoryList
-                                            items={pendingItems}
+                                            items={getSortedItems(pendingItems)}
                                             onUpdateQuantity={handleUpdateQuantity}
                                             onCheck={handleCheck}
                                         />
@@ -476,7 +264,7 @@ export default function CyclicInventoryDetail() {
 
                                     <TabsContent value="controlled" className="space-y-4">
                                         <CyclicInventoryList
-                                            items={controlledItems}
+                                            items={getSortedItems(controlledItems)}
                                             onUpdateQuantity={handleUpdateQuantity}
                                             onCheck={handleCheck}
                                             onRevert={handleRevertItem}
@@ -486,7 +274,7 @@ export default function CyclicInventoryDetail() {
 
                                     <TabsContent value="adjusted" className="space-y-4">
                                         <CyclicInventoryList
-                                            items={adjustedItems}
+                                            items={getSortedItems(adjustedItems)}
                                             onUpdateQuantity={handleUpdateQuantity}
                                             onCheck={() => { }} // No check needed for adjusted
                                             readOnly={false} // Enable editing for readjustments
@@ -656,7 +444,7 @@ export default function CyclicInventoryDetail() {
                     }
                 ].filter(action => {
                     // Filter out Finalize if no items (optional, or just disable it)
-                    if (action.label === "Finalizar" && items.length === 0) return false;
+                    if (action.label === "Finalizar" && (pendingItems.length === 0 && controlledItems.length === 0 && adjustedItems.length === 0)) return false;
                     return true;
                 })}
             />

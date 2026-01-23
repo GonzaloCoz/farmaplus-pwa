@@ -160,10 +160,23 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
 
                 onItemsUpdated(finalItems);
 
-                // Save immediately
-                cyclicInventoryService.saveInventory(branchName, labName, finalItems)
-                    .then(() => console.log("Auto-save after upload success"))
-                    .catch(err => console.error("Auto-save failed", err));
+                // Save immediately with residue cleanup
+                const categoriesList = Array.from(categoriesInFile);
+
+                const saveWithCleanup = async () => {
+                    try {
+                        // 1. Clear residues in DB for the categories we just uploaded
+                        await cyclicInventoryService.clearPendingResidue(branchName, labName, categoriesList);
+                        // 2. Save the new items
+                        await cyclicInventoryService.saveInventory(branchName, labName, finalItems);
+                        console.log("Uploaded and saved successfully with residue clearing");
+                    } catch (err) {
+                        console.error("Failed to save after upload:", err);
+                        notify.error("Error al guardar", "Se cargó el archivo pero hubo un problema al sincronizar con la nube.");
+                    }
+                };
+
+                saveWithCleanup();
 
                 if (addedCount > 0 || updatedCount > 0) {
                     notify.success("Carga exitosa", `${addedCount} nuevos, ${updatedCount} actualizados`);

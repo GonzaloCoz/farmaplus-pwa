@@ -35,6 +35,7 @@ export interface CyclicItem {
     status: 'pending' | 'controlled' | 'adjusted';
     category?: string;
     wasReadjusted?: boolean;
+    updatedAt?: string;
 }
 
 export const cyclicInventoryService = {
@@ -50,6 +51,10 @@ export const cyclicInventoryService = {
                     system_quantity,
                     status,
                     was_readjusted,
+                    status,
+                    was_readjusted,
+                    category,
+                    updated_at,
                     products (
                         name,
                         cost,
@@ -73,8 +78,9 @@ export const cyclicInventoryService = {
                 countedQuantity: item.quantity,
                 cost: item.products?.cost || 0,
                 status: item.status as 'pending' | 'controlled' | 'adjusted',
-                category: item.products?.category,
-                wasReadjusted: item.was_readjusted
+                category: item.category || item.products?.category, // Prefer category from inventory record
+                wasReadjusted: item.was_readjusted,
+                updatedAt: item.updated_at
             }));
         } catch (e) {
             console.error(`Error loading inventory for ${labName}`, e);
@@ -97,17 +103,17 @@ export const cyclicInventoryService = {
                 wasReadjusted: item.wasReadjusted || false
             }));
 
-            // Call the database function (RPC)
-            // This handles BOTH product creation (if missing) and inventory upsert atomically
+            // Call the database function (RPC V2)
+            // This handles BOTH product creation/update and inventory upsert atomically
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { error } = await supabase.rpc('save_cyclic_inventory', {
+            const { error } = await (supabase as any).rpc('save_cyclic_inventory_v2', {
                 p_branch_name: branchName,
                 p_laboratory: labName,
-                p_items: rpcItems as any // Keeping 'as any' for complex Json mapping for now to avoid specific Json type errors
+                p_items: rpcItems as any
             });
 
             if (error) {
-                console.error('Error calling save_cyclic_inventory RPC:', error);
+                console.error('Error calling save_cyclic_inventory_v2 RPC:', error);
                 throw error;
             }
 
@@ -142,6 +148,20 @@ export const cyclicInventoryService = {
 
         if (error) {
             console.error("Error deleting adjustment history:", error);
+            throw error;
+        }
+    },
+
+    // New: Clear pending residues for specific categories
+    clearPendingResidue: async (branchName: string, labName: string, categories: string[]) => {
+        const { error } = await (supabase as any).rpc('clear_lab_pending_residue', {
+            p_branch_name: branchName,
+            p_laboratory: labName,
+            p_categories: categories
+        });
+
+        if (error) {
+            console.error("Error clearing pending residue:", error);
             throw error;
         }
     },
@@ -282,7 +302,7 @@ export const cyclicInventoryService = {
             .in('status', ['pending', 'controlled', 'adjusted']); // Explicitly include all statuses
 
         if (branchName) {
-            query = query.eq('branch_name', branchName);
+            query = query.ilike('branch_name', branchName);
         }
 
         const { data, error } = await query;
@@ -312,7 +332,7 @@ export const cyclicInventoryService = {
                 countedQuantity: row.quantity,
                 cost: row.products?.cost || 0,
                 status: row.status,
-                category: cat
+                category: row.category || cat // Prefer category from inventory record
             });
         });
 

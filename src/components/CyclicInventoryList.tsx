@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, Package, DollarSign, Pencil, Trash2, AlertTriangle, Calculator as CalculatorIcon } from 'lucide-react';
+import { CheckCircle2, Package, DollarSign, Pencil, Trash2, AlertTriangle, Calculator as CalculatorIcon, ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { SwipeableItem } from './SwipeableItem';
@@ -83,10 +83,11 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
         const diff = item.countedQuantity - item.systemQuantity;
         const hasDiff = diff !== 0;
         const isControlled = item.status === 'controlled';
-        const isExact = diff === 0;
+
+        const diffValue = diff * item.cost;
 
         return (
-            <div style={{ ...style, marginBottom: '0.75rem', paddingLeft: '2px', paddingRight: '2px' }}>
+            <div style={style} className="px-4">
                 <SwipeableItem
                     disabled={readOnly}
                     {...(!isControlled ? {
@@ -121,134 +122,76 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                         } : undefined
                     })}
                 >
-                    <Card
-                        className={cn(
-                            "p-4 hover:shadow-md transition-shadow border-0 rounded-none sm:rounded-xl sm:border h-full",
-                        )}
+                    <div
+                        className="grid grid-cols-12 gap-4 h-full items-center border-b border-border/40 hover:bg-muted/10 transition-colors group cursor-pointer"
                         onClick={() => handleStartEdit(item)}
                     >
-                        <div className="flex items-start gap-3">
+                        {/* Product Info */}
+                        <div className="col-span-5 md:col-span-4 flex items-center gap-3 pl-2 min-w-0">
                             <div className={cn(
-                                "p-2 rounded-lg flex-shrink-0 transition-colors",
-                                isControlled ? "bg-success/10" : "bg-primary/10"
+                                "p-2 rounded-lg shrink-0",
+                                diff < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'
                             )}>
-                                {isControlled ? (
-                                    <CheckCircle2 className="w-5 h-5 text-success" />
-                                ) : (
-                                    <Package className="w-5 h-5 text-primary" />
-                                )}
+                                {diff < 0 ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
                             </div>
-
-                            <div className="flex-1 min-w-0">
+                            <div className="min-w-0">
                                 <ProductImageHover ean={item.ean} name={item.name}>
-                                    <h4 className="font-medium text-foreground truncate" title={item.name}>
-                                        {item.name}
-                                    </h4>
+                                    <p className="font-semibold text-sm text-foreground truncate" title={item.name}>{item.name}</p>
                                 </ProductImageHover>
-                                <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                                    <span className="font-mono bg-muted px-1.5 py-0.5 rounded">
+                                <div className="flex items-center gap-2 mt-0.5">
+                                    <Badge variant="outline" className="text-[10px] h-5 font-mono text-muted-foreground border-border/60 font-normal hidden sm:inline-flex">
                                         {item.ean}
-                                    </span>
-                                    {item.cost > 0 && (
-                                        <span className="flex items-center text-muted-foreground">
-                                            <DollarSign className="w-3 h-3 mr-0.5" />
-                                            {item.cost.toFixed(2)}
-                                        </span>
-                                    )}
-                                    {(item.status === 'controlled' || item.status === 'adjusted') && item.category && (
-                                        <Badge variant="outline" className="text-[10px] h-5 px-1.5 ml-auto">
-                                            {item.category}
+                                    </Badge>
+                                    <span className="text-[10px] text-muted-foreground sm:hidden">{item.ean}</span>
+                                    {item.wasReadjusted && (
+                                        <Badge variant="outline" className="text-[10px] h-5 bg-purple-100/50 text-purple-700 border-purple-200 font-normal">
+                                            Modif.
                                         </Badge>
                                     )}
                                 </div>
-
-                                <div className="flex items-center gap-4 mt-3">
-                                    <div className="flex flex-col">
-                                        <span className="text-[10px] uppercase text-muted-foreground font-semibold">Sistema</span>
-                                        <span className="text-sm font-medium">{item.systemQuantity}</span>
-                                    </div>
-
-                                    <div className="flex flex-col">
-                                        <span className="text-[10px] uppercase text-muted-foreground font-semibold">Físico</span>
-                                        <span
-                                            className={cn(
-                                                "text-sm font-bold",
-                                                hasDiff ? "text-warning" : "text-success"
-                                            )}
-                                        >
-                                            {item.countedQuantity}
-                                        </span>
-                                    </div>
-
-                                    {hasDiff && (
-                                        <div className="flex flex-col">
-                                            <span className="text-[10px] uppercase text-muted-foreground font-semibold">Diferencia</span>
-                                            <Badge variant={diff > 0 ? "default" : "destructive"} className="h-5 px-1.5 text-[10px]">
-                                                {diff > 0 ? `+${diff}` : diff}
-                                            </Badge>
-                                        </div>
-                                    )}
-
-                                    {item.wasReadjusted && (
-                                        <div className="flex flex-col" title="Este producto fue re-ajustado">
-                                            <span className="text-[10px] uppercase text-muted-foreground font-semibold">Re-Ajuste</span>
-                                            <Badge variant="outline" className="h-5 px-1.5 text-[10px] bg-purple-100 text-purple-700 border-purple-200">
-                                                <CalculatorIcon className="w-3 h-3 mr-0.5" /> Modif.
-                                            </Badge>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="flex items-center gap-1">
-                                <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-8 w-8 text-muted-foreground hover:text-primary"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleStartEdit(item);
-                                    }}
-                                >
-                                    <Pencil className="w-4 h-4" />
-                                </Button>
-
-                                {item.status === 'pending' && (
-                                    <Button
-                                        size="icon"
-                                        variant={isExact ? "default" : "secondary"}
-                                        className={cn(
-                                            "h-10 w-10 rounded-full shadow-sm flex-shrink-0 transition-all ml-1",
-                                            isExact
-                                                ? "bg-success hover:bg-success/90 text-white"
-                                                : "hover:bg-warning/20 text-warning"
-                                        )}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            onCheck(item.id);
-                                        }}
-                                    >
-                                        <CheckCircle2 className="w-5 h-5" />
-                                    </Button>
-                                )}
-
-                                {item.status === 'controlled' && onRevert && (
-                                    <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            onRevert(item.id);
-                                        }}
-                                        title="Volver a pendientes"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                )}
                             </div>
                         </div>
-                    </Card>
+
+                        {/* Price */}
+                        <div className="col-span-2 text-right hidden md:block self-center">
+                            <p className="text-sm font-medium">${item.cost.toLocaleString()}</p>
+                            <p className="text-[10px] text-muted-foreground">Costo Unit.</p>
+                        </div>
+
+                        {/* Difference (Pill) */}
+                        <div className="col-span-3 md:col-span-2 flex justify-center self-center">
+                            <div className={cn(
+                                "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold w-20 justify-center",
+                                diff < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success',
+                                diff === 0 && 'bg-muted text-muted-foreground'
+                            )}>
+                                {diff > 0 ? <ArrowUpRight className="w-3 h-3" /> : (diff < 0 ? <ArrowDownRight className="w-3 h-3" /> : null)}
+                                {diff > 0 ? '+' : ''}{diff}
+                            </div>
+                        </div>
+
+                        {/* Physical / System */}
+                        <div className="col-span-2 text-center hidden sm:block self-center">
+                            <div className="flex items-center justify-center gap-1 text-sm relative">
+                                <span className={cn(
+                                    "font-bold",
+                                    hasDiff ? "text-warning" : "text-success"
+                                )}>{item.countedQuantity}</span>
+                                <span className="text-muted-foreground mx-1">/</span>
+                                <span className="text-muted-foreground">{item.systemQuantity}</span>
+                            </div>
+                        </div>
+
+                        {/* Total Value */}
+                        <div className="col-span-2 md:col-span-2 text-right pr-2 self-center">
+                            <p className={cn(
+                                "text-sm font-bold",
+                                diffValue < 0 ? 'text-destructive' : 'text-success'
+                            )}>
+                                {diffValue > 0 ? '+' : ''}${Math.abs(diffValue).toLocaleString()}
+                            </p>
+                        </div>
+                    </div>
                 </SwipeableItem>
             </div>
         );
@@ -256,22 +199,31 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
 
     if (items.length === 0) {
         return (
-            <div className="text-center py-8 text-muted-foreground">
+            <div className="text-center py-12 text-muted-foreground bg-muted/20 rounded-xl border border-dashed">
                 <Package className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                <p>No hay productos en esta lista</p>
+                <p>No se encontraron productos</p>
             </div>
         );
     }
 
     return (
-        <>
-            <div className="h-[600px] w-full">
+        <Card className="border-muted/40 shadow-sm overflow-hidden bg-card">
+            {/* Table Header */}
+            <div className="grid grid-cols-12 gap-4 p-4 border-b bg-muted/30 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                <div className="col-span-5 md:col-span-4 pl-2">Producto</div>
+                <div className="col-span-2 text-right hidden md:block">Precio</div>
+                <div className="col-span-3 md:col-span-2 text-center">Diferencia</div>
+                <div className="col-span-2 text-center hidden sm:block">Físico / Sistema</div>
+                <div className="col-span-2 md:col-span-2 text-right pr-2">Total ($)</div>
+            </div>
+
+            <div className="h-[600px] w-full bg-card">
                 <AutoSizer>
                     {({ height, width }) => (
                         <List
                             height={height}
                             itemCount={items.length}
-                            itemSize={165} // Fixed height estimate
+                            itemSize={80}
                             width={width}
                             className="no-scrollbar"
                         >
@@ -279,6 +231,10 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                         </List>
                     )}
                 </AutoSizer>
+            </div>
+
+            <div className="p-4 border-t bg-muted/20 flex justify-between items-center text-xs text-muted-foreground">
+                <span>Mostrando {items.length} registros</span>
             </div>
 
             <Dialog open={editingId !== null} onOpenChange={(open) => !open && handleCancelEdit()}>
@@ -342,6 +298,6 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </>
+        </Card>
     );
 });

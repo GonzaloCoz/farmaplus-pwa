@@ -389,7 +389,7 @@ export default function StockImport() {
     }
 
     setAnalyzing(true);
-    notify.info("Información", "Fusionando inventarios...", { id: "merge-toast" });
+    notify.info("Información", "Fusionando inventarios (v2)...", { id: "merge-toast" }); // Update text to confirm reload
 
     try {
       // 1. Process Partial File (Our Count)
@@ -401,8 +401,6 @@ export default function StockImport() {
       const headersPartial = rawRowsPartial[0];
       const codeIndexPartial = getColumnIndex(headersPartial, ['codebar', 'código', 'codigo', 'ean'], 6);
       const qtyIndexPartial = getColumnIndex(headersPartial, ['físico', 'fisico', 'cantidad', 'physical'], 13);
-
-      console.log(`Debug: Partial File - Code Code: ${codeIndexPartial}, Col Qty: ${qtyIndexPartial}`);
 
       // Map: Codebar -> Quantity
       const partialMap = new Map<string, number>();
@@ -419,117 +417,142 @@ export default function StockImport() {
       const dataComplete = await fileComplete.arrayBuffer();
       const wbComplete = XLSX.read(dataComplete);
       const wsComplete = wbComplete.Sheets[wbComplete.SheetNames[0]];
-      const rowsComplete: any[][] = XLSX.utils.sheet_to_json(wsComplete, { header: 1 }); // Includes Headers at 0
+      const rowsComplete: any[][] = XLSX.utils.sheet_to_json(wsComplete, { header: 1 });
 
       const headers = rowsComplete[0];
-      const dataRows = rowsComplete.slice(1);
-
       const codeIndexComplete = getColumnIndex(headers, ['codebar', 'código', 'codigo', 'ean'], 6);
       const qtyIndexComplete = getColumnIndex(headers, ['físico', 'fisico', 'cantidad', 'physical'], 13);
       const systemIndexComplete = getColumnIndex(headers, ['sistema', 'system'], 15);
       const costIndexComplete = getColumnIndex(headers, ['costo', 'cost'], 19);
 
-      console.log(`Debug: Complete File - Col Code: ${codeIndexComplete}, Col Qty: ${qtyIndexComplete}`);
+      // Aggregate Branch Data by EAN to prevent duplicates
+      // Map: Codebar -> { branchQty, systemStock, rowData }
+      const branchMap = new Map<string, { branchQty: number, systemStock: number, rowData: any[] }>();
 
-      // 3. Merge Logic & Partitioning
-
-      // A. General (Merged) Rows
-      const rowsGeneral = dataRows.map((row) => {
-        const newRow = [...row];
+      rowsComplete.slice(1).forEach(row => {
         const code = cleanEAN(row[codeIndexComplete]);
-        const partialQty = partialMap.get(code) || 0;
-        const branchQty = Number(row[qtyIndexComplete]) || 0;
-        const totalQty = branchQty + partialQty;
+        if (!code) return; // Skip empty EANs
 
-        newRow[13] = totalQty; // Force put into standard index 13 for internal consistency if using standard analysis
+        const qty = Number(row[qtyIndexComplete]) || 0;
+        const system = Number(row[systemIndexComplete]) || 0;
 
-        // However, standard analysis relies on HARDCODED indices (13, 15, 17, etc.)
-        // We should map our found indices to the "Analyzed Product" structure, 
-        // BUT calculateAnalysisResults parses raw rows using HARDCODED indices.
-        // We must update calculateAnalysisResults to use DYNAMIC indices too, or normalize the row structure here.
-        // Normalizing row structure is safer for `calculateAnalysisResults`.
-
-        // Let's NORMALIZE the row to fit `ProductData` expectation:
-        // Col 6: Codebar, 10: Name, 13: Physical, 15: System, 17: Diff, 19: Cost, 22: DiffValue
-        // We'll preserve the original row but overwrite these indices.
-        // Actually, if we overwrite, we might overwrite original data if indices differ.
-        // BUT calculateAnalysisResults reads from specific indices.
-        // So we MUST ensure data is at those indices.
-
-        // Let's use the found values to populate the fields correctly.
-
-        newRow[6] = code;
-        newRow[13] = totalQty;
-        newRow[15] = Number(row[systemIndexComplete]) || 0;
-        newRow[17] = totalQty - (Number(row[systemIndexComplete]) || 0);
-        newRow[19] = Number(row[costIndexComplete]) || 0;
-        newRow[22] = (totalQty - (Number(row[systemIndexComplete]) || 0)) * (Number(row[costIndexComplete]) || 0);
-
-        return newRow;
+        if (branchMap.has(code)) {
+          const current = branchMap.get(code)!;
+          // Sum Physical Quantity
+          current.branchQty += qty;
+          // For System Stock, usually it's per SKU, so we assume the first non-zero or just the first is correct.
+          // If the file has duplicates with split system stock, we might want to sum it?
+          // Standard safe bet: If it's the SAME product, the system stock reported on line 2 should be the same as line 1.
+          // If it's 0 on one and X on another, taking Max is safer.
+          current.systemStock = Math.max(current.systemStock, system);
+        } else {
+          branchMap.set(code, {
+            branchQty: qty,
+            systemStock: system,
+            rowData: row
+          });
+        }
       });
 
-      // B. Partial Rows
-      const rowsPartial = dataRows
-        .filter(row => {
-          const code = cleanEAN(row[codeIndexComplete]);
-          return partialMap.has(code);
-        })
-        .map(row => {
-          const newRow = [...row];
-          const code = cleanEAN(row[codeIndexComplete]);
-          const partialQty = partialMap.get(code) || 0;
+      // 3. Merge Logic & Row Generation (Union of both maps)
+      const allEans = new Set([...partialMap.keys(), ...branchMap.keys()]);
+      const rowsGeneral: any[][] = [];
 
-          const systemStock = Number(row[systemIndexComplete]) || 0;
-          const cost = Number(row[costIndexComplete]) || 0;
+      console.log(`Debug Fusion: Partial Keys: ${partialMap.size}, Branch Keys: ${branchMap.size}, Unique EANs: ${allEans.size}`);
 
-          newRow[6] = code;
+      allEans.forEach(ean => {
+        const partialQty = partialMap.get(ean) || 0;
+        const branchData = branchMap.get(ean);
+
+        let newRow: any[];
+
+        if (branchData) {
+          // Product exists in Branch File (Master)
+          newRow = [...branchData.rowData];
+
+          // Logic Change: Prioritize Partial Count (Our Count) if it exists.
+          // If we counted it, our count overrides the branch count (Audit/Correction mode).
+          // If we didn't count it (not in partial map), we keep the branch count.
+          // Previous 'Sum' logic caused duplicates when files overlapped.
+          const totalQty = partialMap.has(ean) ? partialQty : branchData.branchQty;
+
+          // Normalize Data based on standard indices expectation
+          newRow[6] = ean; // Ensure clean EAN
+          newRow[13] = totalQty; // Total Physical
+          newRow[15] = branchData.systemStock; // System
+          newRow[17] = totalQty - branchData.systemStock; // Diff
+
+          const cost = Number(newRow[19]) || 0; // Cost from original row
+          newRow[22] = (totalQty - branchData.systemStock) * cost; // DiffVal
+        } else {
+          // Orphan in Partial (Not in Branch File)
+          // We have to construct a row. We might lack Name/Cost/Price.
+          // We'll initialize an empty row and fill what we can.
+          newRow = new Array(30).fill(""); // arbitrary size sufficient for indices
+          newRow[6] = ean;
           newRow[13] = partialQty;
-          newRow[15] = systemStock;
-          newRow[17] = partialQty - systemStock;
-          newRow[19] = cost;
-          newRow[22] = (partialQty - systemStock) * cost;
+          newRow[15] = 0; // No system stock known
+          newRow[17] = partialQty; // Diff is full qty
+          newRow[19] = 0; // No cost known
+          newRow[22] = 0; // No diff val possible
 
-          return newRow;
-        });
+          // Try to find Name if possible? No easy way unless we scan Partial file for Name col.
+          // Let's mark it as "Unknown" or leave blank.
+          newRow[10] = `(Extra) ${ean}`; // Placeholder name
+        }
 
-      // C. Branch Rows
-      const rowsBranch = dataRows
-        .filter(row => {
-          const code = cleanEAN(row[codeIndexComplete]);
-          return !partialMap.has(code);
-        })
-        .map(row => {
-          const newRow = [...row];
-          const code = cleanEAN(row[codeIndexComplete]);
-          const branchQty = Number(row[qtyIndexComplete]) || 0;
-          const systemStock = Number(row[systemIndexComplete]) || 0;
-          const cost = Number(row[costIndexComplete]) || 0;
-
-          newRow[6] = code;
-          newRow[13] = branchQty;
-          newRow[15] = systemStock;
-          newRow[17] = branchQty - systemStock;
-          newRow[19] = cost;
-          newRow[22] = (branchQty - systemStock) * cost;
-
-          return newRow;
-        });
+        rowsGeneral.push(newRow);
+      });
 
       // 4. Calculate Results
       const resGeneral = calculateAnalysisResults(rowsGeneral);
+
+      // Recalculate Partial/Branch Views based on Aggregated Data for consistency
+      // Branch-only View
+      const rowsBranch = Array.from(branchMap.values()).map(data => {
+        const newRow = [...data.rowData];
+        newRow[13] = data.branchQty;
+        newRow[15] = data.systemStock;
+        newRow[17] = data.branchQty - data.systemStock;
+        const cost = Number(newRow[19]) || 0;
+        newRow[22] = (data.branchQty - data.systemStock) * cost;
+        return newRow;
+      });
+
+      // Partial-only View (Items that were in Partial)
+      // We can iterate the partialMap and try to match with branchData for details
+      const rowsPartial: any[][] = [];
+      partialMap.forEach((qty, ean) => {
+        const branchData = branchMap.get(ean);
+        let newRow: any[];
+        if (branchData) {
+          newRow = [...branchData.rowData];
+          newRow[13] = qty; // Just Partial Qty
+          newRow[15] = branchData.systemStock;
+          newRow[17] = qty - branchData.systemStock;
+          const cost = Number(newRow[19]) || 0;
+          newRow[22] = (qty - branchData.systemStock) * cost;
+        } else {
+          newRow = new Array(30).fill("");
+          newRow[6] = ean;
+          newRow[10] = `(Extra) ${ean}`;
+          newRow[13] = qty;
+          newRow[15] = 0;
+          newRow[17] = qty;
+          newRow[22] = 0;
+        }
+        rowsPartial.push(newRow);
+      });
+
       const resPartial = calculateAnalysisResults(rowsPartial);
       const resBranch = calculateAnalysisResults(rowsBranch);
 
       if (partialMap.size === 0) {
         notify.warning("Advertencia", "No se encontraron productos en el Archivo Parcial (Codebar col G).");
-      } else if (resPartial.totalProducts === 0) {
-        notify.warning("Advertencia", "El Archivo Parcial no tuvo coincidencias con el Archivo Completo.");
-        console.log("Debug: Partial Map Keys Sample:", [...partialMap.keys()].slice(0, 5));
-        console.log("Debug: Complete File Keys Sample:", dataRows.slice(0, 5).map(r => r[6]));
       }
 
       if (resGeneral.totalProducts === 0) {
-        notify.error("Error", "No se encontraron productos en el Archivo Completo.");
+        notify.error("Error", "No se encontraron productos para analizar.");
       }
 
       setCollaborativeResults({
@@ -538,14 +561,14 @@ export default function StockImport() {
         branch: resBranch
       });
 
-      // Set initial view based on current tab, defaults to general if not set or just force update
+      // Set initial view
       if (collaborativeTab === 'partial') setResults(resPartial);
       else if (collaborativeTab === 'branch') setResults(resBranch);
       else setResults(resGeneral);
 
-      setOriginalData({ headers, rows: rowsGeneral }); // Keep General as "Original" for now
+      setOriginalData({ headers, rows: rowsGeneral });
 
-      notify.success("Operación exitosa", "Fusión completada", { id: "merge-toast" });
+      notify.success("Operación exitosa", "Fusión completada y duplicados unificados", { id: "merge-toast" });
       setTimeout(() => {
         resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 300);
@@ -1516,37 +1539,7 @@ export default function StockImport() {
               )}
             </div>
 
-            return (
-            // ... inside the return statement ...
-            /* List Body */
-            <div className="h-[600px] w-full bg-card">
-              {filteredProducts.length === 0 ? (
-                <div className="p-12 text-center text-muted-foreground">
-                  <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                  <p>No se encontraron productos</p>
-                </div>
-              ) : (
-                <AutoSizer>
-                  {({ height, width }) => (
-                    <List
-                      height={height}
-                      itemCount={filteredProducts.length}
-                      itemSize={80}
-                      width={width}
-                      itemData={{
-                        items: filteredProducts,
-                        editingRow,
-                        handleStartEditing,
-                        handleStopEditing,
-                        handleQuantityChange
-                      }}
-                    >
-                      {Row}
-                    </List>
-                  )}
-                </AutoSizer>
-              )}
-            </div>
+
 
             {/* Footer / Pagination Mockup */}
             <div className="p-4 border-t bg-muted/20 flex justify-between items-center text-xs text-muted-foreground z-10 relative">

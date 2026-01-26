@@ -307,6 +307,8 @@ const AppRoutes = () => {
 
 
 
+import { WindowManagerProvider } from "./contexts/WindowManagerContext";
+
 const App = () => {
   useEffect(() => {
     // Inicializar DB al cargar la app
@@ -327,16 +329,18 @@ const App = () => {
         <SnackbarProvider>
           <NotificationPreferencesProvider>
             <UserProvider>
-              <NotificationProvider>
-                <Sonner />
-                <OfflineIndicator />
-                <InstallPrompt />
-                <ErrorBoundary>
-                  <MemoryRouter>
-                    <AppRoutes />
-                  </MemoryRouter>
-                </ErrorBoundary>
-              </NotificationProvider>
+              <WindowManagerProvider>
+                <NotificationProvider>
+                  <Sonner />
+                  <OfflineIndicator />
+                  <InstallPrompt />
+                  <ErrorBoundary>
+                    <MemoryRouter>
+                      <AppRoutes />
+                    </MemoryRouter>
+                  </ErrorBoundary>
+                </NotificationProvider>
+              </WindowManagerProvider>
             </UserProvider>
           </NotificationPreferencesProvider>
         </SnackbarProvider>

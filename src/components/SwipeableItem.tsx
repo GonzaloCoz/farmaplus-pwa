@@ -80,7 +80,7 @@ export function SwipeableItem({
     };
 
     return (
-        <div className={cn("relative overflow-hidden rounded-xl", className)}>
+        <div className={cn("relative h-full", className)}>
             {/* Background Actions Layer */}
             <motion.div
                 className="absolute inset-0 flex items-center justify-between px-4 pointer-events-none"
@@ -108,7 +108,7 @@ export function SwipeableItem({
                 onDrag={handleDrag}
                 onDragEnd={handleDragEnd}
                 style={{ x, touchAction: "none" }}
-                className="relative bg-card z-10"
+                className="relative bg-card z-10 h-full"
                 whileTap={{ cursor: disabled ? "default" : "grabbing" }}
             >
                 {children}

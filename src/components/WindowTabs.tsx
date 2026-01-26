@@ -1,6 +1,4 @@
-
-import { useState, useEffect } from "react";
-import { useLocation, useNavigate, Link } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Search, Plus, X, MoreHorizontal, LayoutDashboard, Database, ClipboardList, Package, FileText, Settings, User, BarChart2, ShieldCheck, Microscope, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -12,6 +10,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { NotificationsMenu } from "@/components/HeaderMenus";
 
 
 export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
@@ -35,16 +34,11 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
     };
 
     return (
-        <div className="flex items-center w-full h-full gap-2 px-4 sm:px-6 lg:px-8 overflow-hidden bg-transparent">
-            {/* Logo Button */}
-            <div className="flex items-center justify-center h-10 w-10 rounded-xl shrink-0 bg-muted/50 border border-border/40 transition-colors">
-                <img src={Logo} alt="Farmaplus" className="w-5 h-5 object-contain" />
-            </div>
-
+        <div className="flex items-center w-full h-full gap-2 px-6 overflow-hidden bg-transparent">
             {/* Search Button */}
             <Button
                 variant="ghost"
-                className="h-10 gap-3 px-4 rounded-xl bg-muted/50 hover:bg-muted/80 text-foreground/80 shrink-0 ml-1.5 border border-border/40 transition-all font-medium"
+                className="h-10 gap-3 px-4 rounded-xl bg-muted/50 hover:bg-muted/80 text-foreground/80 shrink-0 border border-border/40 transition-all font-medium"
                 onClick={onSearchClick}
             >
                 <Search className="w-4 h-4" />
@@ -65,7 +59,7 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
             <div className="w-[1px] h-6 bg-border/40 mx-2 shrink-0" />
 
             {/* Tabs List */}
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2 mask-linear-fade">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2 mask-linear-fade flex-1">
                 {windows.map((win) => {
                     const isActive = activeWindowId === win.id;
                     return (
@@ -101,7 +95,7 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
                     );
                 })}
 
-                {/* More Button - Moved here to be next to tabs */}
+                {/* More Button */}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full shrink-0 text-muted-foreground hover:bg-muted/60 data-[state=open]:bg-muted/60">
@@ -115,6 +109,26 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
+            </div>
+
+            {/* Right Side Actions */}
+            <div className="flex items-center gap-2 ml-4 shrink-0">
+                <NotificationsMenu />
+                <button
+                    onClick={() => navigate('/settings')}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-muted/50 border border-border/40 hover:bg-muted/80 dark:hover:bg-zinc-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+                >
+                    <Settings className="w-4 h-4 text-muted-foreground" />
+                </button>
+                <div className="w-[1px] h-4 bg-border/40 mx-1" />
+                <button
+                    onClick={() => navigate('/profile')}
+                    className="group flex items-center justify-center h-10 w-10 rounded-xl overflow-hidden hover:ring-2 hover:ring-primary/20 transition-all bg-muted/50 border border-border/40"
+                >
+                    <div className="h-full w-full flex items-center justify-center text-[11px] font-bold text-blue-600 transition-colors group-hover:bg-blue-600 group-hover:text-white">
+                        GC
+                    </div>
+                </button>
             </div>
         </div>
     );

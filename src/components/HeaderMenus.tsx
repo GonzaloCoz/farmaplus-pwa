@@ -1,5 +1,6 @@
+
 import { useState, useEffect } from "react";
-import { Bell, Settings, User, ChevronRight, Moon, Sun, Trash2, BellRing, Check } from "lucide-react";
+import { Bell, Settings, User, ChevronRight, Moon, Sun, Trash2, BellRing, Check, MessageSquare } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -15,13 +16,35 @@ const DUMMY_USER = {
   role: "Administrador",
 };
 
+export function MessagesMenu() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <div className="inline-block relative">
+        <button onClick={() => setOpen(true)} aria-label="Mensajes" className="inline-flex h-10 w-10 items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+          <MessageSquare className="w-4 h-4 text-muted-foreground" />
+        </button>
+      </div>
+      <DialogContent className="w-[420px] p-0">
+        <DialogHeader className="p-4 border-b">
+          <DialogTitle>Mensajes</DialogTitle>
+        </DialogHeader>
+        <div className="p-8 text-center">
+          <MessageSquare className="w-12 h-12 text-muted/20 mx-auto mb-4" />
+          <p className="text-muted-foreground">No tienes mensajes nuevos en este momento.</p>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function NotificationsMenu() {
   const [open, setOpen] = useState(false);
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
 
   useEffect(() => {
-    // Check notification permission status
     if (pushNotificationService.isSupported()) {
       setNotificationPermission(pushNotificationService.getPermissionStatus());
     }
@@ -38,7 +61,6 @@ export function NotificationsMenu() {
 
     if (permission === 'granted') {
       notify.success("Notificaciones habilitadas", "Ahora recibirás alertas de eventos próximos");
-      // Mostrar notificación de prueba
       await pushNotificationService.showNotification({
         title: "¡Notificaciones activadas!",
         body: "Ahora recibirás alertas de eventos próximos",
@@ -51,11 +73,15 @@ export function NotificationsMenu() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <div className="inline-block relative">
-        <button onClick={() => setOpen(true)} aria-label="Notificaciones" className="inline-flex h-10 w-10 items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+        <button
+          onClick={() => setOpen(true)}
+          aria-label="Notificaciones"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-muted/50 border border-border/40 hover:bg-muted/80 dark:hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+        >
           <Bell className={`w-4 h-4 ${unreadCount > 0 ? 'text-accent' : 'text-muted-foreground'}`} />
           {unreadCount > 0 && (
             <span
-              className="absolute top-0 right-0 -mt-1 -mr-1 min-w-[18px] h-4 px-1.5 rounded-full bg-accent text-white text-xs font-medium flex items-center justify-center ring-1 ring-accent/60"
+              className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-accent text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-background shadow-sm"
               role="status"
               aria-label={`${unreadCount} notificaciones nuevas`}
             >
@@ -116,12 +142,6 @@ export function NotificationsMenu() {
         ) : (
           <div className="p-6 text-center">
             <p className="text-muted-foreground mb-4">No tienes notificaciones nuevas.</p>
-            {notificationPermission !== 'granted' && pushNotificationService.isSupported() && (
-              <Button onClick={handleEnableNotifications} variant="outline" size="sm">
-                <BellRing className="w-4 h-4 mr-2" />
-                Habilitar notificaciones push
-              </Button>
-            )}
           </div>
         )}
       </DialogContent>
@@ -155,8 +175,12 @@ export function SettingsMenu() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <div className="inline-block">
-        <button onClick={() => setOpen(true)} aria-label="Configuración" className="inline-flex h-12 w-12 items-center justify-center rounded-full">
-          <Settings className="w-5 h-5 text-muted-foreground" />
+        <button
+          onClick={() => setOpen(true)}
+          aria-label="Configuración"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-muted/50 border border-border/40 hover:bg-muted/80 dark:hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+        >
+          <Settings className="w-4 h-4 text-muted-foreground" />
         </button>
       </div>
       <DialogContent className="w-[420px] p-0">
@@ -182,15 +206,6 @@ export function SettingsMenu() {
                 )}
               </button>
             </li>
-            {DUMMY_SETTINGS.map(s => (
-              <li key={s.id} className="py-3 flex items-center justify-between">
-                <div>
-                  <div className="font-medium">{s.title}</div>
-                  <div className="text-xs text-muted-foreground">{s.value}</div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
-              </li>
-            ))}
           </ul>
         </div>
       </DialogContent>
@@ -204,8 +219,14 @@ export function UserMenu() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <div className="inline-block">
-        <button onClick={() => setOpen(true)} aria-label="Usuario" className="inline-flex h-12 w-12 items-center justify-center rounded-full">
-          <User className="w-6 h-6 text-muted-foreground" />
+        <button
+          onClick={() => setOpen(true)}
+          aria-label="Usuario"
+          className="group flex items-center justify-center h-10 w-10 rounded-xl overflow-hidden hover:ring-2 hover:ring-primary/20 transition-all bg-muted/50 border border-border/40"
+        >
+          <div className="h-full w-full flex items-center justify-center text-[11px] font-bold text-blue-600 transition-colors group-hover:bg-blue-600 group-hover:text-white">
+            GC
+          </div>
         </button>
       </div>
       <DialogContent className="w-[360px] p-0">
@@ -214,7 +235,7 @@ export function UserMenu() {
         </DialogHeader>
         <div className="p-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-full bg-primary/10 w-12 h-12 flex items-center justify-center">ML</div>
+            <div className="rounded-full bg-primary/10 w-12 h-12 flex items-center justify-center font-bold">GC</div>
             <div>
               <div className="font-medium">{DUMMY_USER.name}</div>
               <div className="text-xs text-muted-foreground">{DUMMY_USER.email}</div>
@@ -222,10 +243,10 @@ export function UserMenu() {
           </div>
           <div className="mt-4 divide-y">
             <div className="py-3">
-              <button className="w-full text-left">Ver perfil</button>
+              <button className="w-full text-left hover:text-primary transition-colors font-medium">Ver perfil</button>
             </div>
             <div className="py-3">
-              <button className="w-full text-left">Cerrar sesión</button>
+              <button className="w-full text-left hover:text-destructive transition-colors font-medium">Cerrar sesión</button>
             </div>
           </div>
         </div>

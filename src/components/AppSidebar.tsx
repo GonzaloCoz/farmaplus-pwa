@@ -100,52 +100,6 @@ export function AppSidebar() {
           {menuItems.map((item) => <AppSidebarMenuItem key={item.title} item={item} end={item.url === '/'} />)}
         </nav>
 
-        {/* Separator Bottom */}
-        <div className="flex w-full justify-center pl-2 my-2 mt-auto">
-          <div className="h-px w-8 bg-border/40" />
-        </div>
-
-        <nav className="py-3 flex flex-col items-center gap-3 pl-2">
-          <NotificationsMenu />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="inline-flex h-10 w-10 items-center justify-center rounded-full">
-                <NavLink
-                  to="/settings"
-                  aria-label="Configuración"
-                  className={({ isActive }) => cn(
-                    "flex h-full w-full items-center justify-center rounded-xl text-foreground/60 transition-all duration-200 hover:bg-muted hover:text-foreground hover:shadow-sm",
-                    isActive && "bg-muted text-foreground shadow-sm"
-                  )}
-                >
-                  <Settings className="h-4 w-4 leading-none" />
-                </NavLink>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              <p>Configuración</p>
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="inline-flex h-10 w-10 items-center justify-center rounded-full">
-                <NavLink
-                  to="/profile"
-                  aria-label="Perfil"
-                  className={({ isActive }) => cn(
-                    "flex h-full w-full items-center justify-center rounded-xl text-foreground/60 transition-all duration-200 hover:bg-muted hover:text-foreground hover:shadow-sm",
-                    isActive && "bg-muted text-foreground shadow-sm"
-                  )}
-                >
-                  <User className="h-4 w-4 leading-none" />
-                </NavLink>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              <p>Perfil</p>
-            </TooltipContent>
-          </Tooltip>
-        </nav>
       </aside>
     </>
   )

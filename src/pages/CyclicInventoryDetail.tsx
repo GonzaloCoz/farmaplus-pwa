@@ -40,6 +40,7 @@ export default function CyclicInventoryDetail() {
         isLoading,
         isUploading,
         isSaving,
+        progressPercentage,
         branchName,
 
         // Stats
@@ -157,7 +158,7 @@ export default function CyclicInventoryDetail() {
                                 <Card className="p-4 flex flex-col items-center justify-center">
                                     <span className="text-muted-foreground text-xs uppercase font-bold">Avance</span>
                                     <span className="text-2xl font-bold">
-                                        <CounterAnimation value={Math.round(((controlledItems.length + adjustedItems.length) / (pendingItems.length + controlledItems.length + adjustedItems.length || 1)) * 100)} />%
+                                        <CounterAnimation value={progressPercentage} />%
                                     </span>
                                 </Card>
                             </div>

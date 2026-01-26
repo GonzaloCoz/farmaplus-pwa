@@ -55,6 +55,13 @@ export class FarmaplusDB extends Dexie {
             products: 'codebar, name',
             pendingActions: '++id, status, timestamp, entity' // ++id = auto-increment
         });
+
+        this.version(2).stores({
+            sessions: 'id, status, start_time, is_synced',
+            items: 'id, session_id, ean, [session_id+ean], is_synced', // Added compound index
+            products: 'codebar, name',
+            pendingActions: '++id, status, timestamp, entity'
+        });
     }
 }
 

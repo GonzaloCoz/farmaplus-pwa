@@ -42,7 +42,7 @@ export async function createSession(sector: string): Promise<PreCountSession> {
         start_time: now,
         status: 'active',
         user_id: userId,
-        is_synced: false
+        synced: 0
     };
 
     // 1. Save to Local DB
@@ -145,7 +145,7 @@ export async function upsertPreCountItem(item: { session_id: string, ean: string
         await db.items.update(existingItem.id, {
             quantity: newQuantity,
             scanned_at: now,
-            is_synced: false
+            synced: 0
         });
         resultItem = { ...existingItem, quantity: newQuantity, scanned_at: now };
     } else {
@@ -158,7 +158,7 @@ export async function upsertPreCountItem(item: { session_id: string, ean: string
             quantity: item.quantity,
             scanned_at: now,
             scanned_by: userData.user?.id,
-            is_synced: false
+            synced: 0
         };
         await db.items.add(newItem);
         resultItem = newItem;

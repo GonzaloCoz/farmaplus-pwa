@@ -19,7 +19,7 @@ export interface LocalSession {
     end_time?: string;
     status: 'active' | 'completed';
     user_id?: string;
-    is_synced: boolean; // Flag to know if this specific record is consistent with server
+    synced: number; // 0 = false, 1 = true
 }
 
 export interface LocalItem {
@@ -30,7 +30,7 @@ export interface LocalItem {
     quantity: number;
     scanned_at: string;
     scanned_by?: string;
-    is_synced: boolean;
+    synced: number;
 }
 
 export interface LocalProduct {
@@ -59,6 +59,13 @@ export class FarmaplusDB extends Dexie {
         this.version(2).stores({
             sessions: 'id, status, start_time, is_synced',
             items: 'id, session_id, ean, [session_id+ean], is_synced', // Added compound index
+            products: 'codebar, name',
+            pendingActions: '++id, status, timestamp, entity'
+        });
+
+        this.version(3).stores({
+            sessions: 'id, status, start_time, synced',
+            items: 'id, session_id, ean, [session_id+ean], synced',
             products: 'codebar, name',
             pendingActions: '++id, status, timestamp, entity'
         });

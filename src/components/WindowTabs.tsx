@@ -34,25 +34,30 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
     };
 
     return (
-        <div className="flex items-center w-full h-full gap-2 px-6 overflow-hidden bg-transparent">
+        <div className="flex items-center w-full h-full gap-2 px-4 xl:px-8 lg:px-6 overflow-hidden bg-transparent">
+            {/* Logo */}
+            <div className="flex items-center justify-center h-11 w-11 shrink-0 bg-muted/50 border border-border/40 rounded-xl">
+                <img src={Logo} alt="Logo" className="h-[24px] w-auto opacity-100" />
+            </div>
+
             {/* Search Button */}
             <Button
                 variant="ghost"
-                className="h-10 gap-3 px-4 rounded-xl bg-muted/50 hover:bg-muted/80 text-foreground/80 shrink-0 border border-border/40 transition-all font-medium"
+                className="h-11 gap-3 px-5 rounded-xl bg-[#f0eeef] dark:bg-[#2a2a2a] hover:bg-muted/80 text-gray-700 dark:text-gray-200 hover:text-black dark:hover:text-white shrink-0 border border-border/40 transition-all font-medium"
                 onClick={onSearchClick}
             >
-                <Search className="w-4 h-4" />
-                <span className="text-sm">Buscar</span>
+                <Search className="w-[18px] h-[18px]" />
+                <span className="text-[15px]">Buscar</span>
             </Button>
 
             {/* Create Job Button */}
             <Button
                 variant="ghost"
-                className="h-10 gap-2 px-4 rounded-xl bg-muted/50 hover:bg-muted/80 text-foreground/80 shrink-0 border border-border/40 transition-all font-medium"
+                className="h-11 gap-2 px-5 rounded-xl bg-[#f0eeef] dark:bg-[#2a2a2a] hover:bg-muted/80 text-gray-700 dark:text-gray-200 hover:text-black dark:hover:text-white shrink-0 border border-border/40 transition-all font-medium"
                 onClick={handleCreateJob}
             >
-                <Plus className="w-4 h-4" />
-                <span className="text-sm whitespace-nowrap">Nueva</span>
+                <Plus className="w-[18px] h-[18px]" />
+                <span className="text-[15px] whitespace-nowrap">Nueva</span>
             </Button>
 
             {/* Separator */}
@@ -66,17 +71,20 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
                         <div
                             key={win.id}
                             className={cn(
-                                "group relative flex items-center h-10 px-4 gap-3 rounded-xl border transition-all cursor-pointer shrink-0 select-none",
+                                "group relative flex items-center h-11 px-5 gap-3 rounded-xl border transition-all cursor-pointer shrink-0 select-none",
                                 isActive
-                                    ? "bg-white dark:bg-zinc-800 border-border/60 shadow-md text-foreground ring-1 ring-black/[0.01] dark:ring-white/[0.03] elevation-2 animate-in fade-in zoom-in-95 duration-200"
-                                    : "bg-muted/50 border-transparent text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors"
+                                    ? "bg-white dark:bg-[#1e1e1e] border-border/60 shadow-md text-black dark:text-white ring-1 ring-black/[0.01] dark:ring-white/[0.03] elevation-3 animate-in fade-in zoom-in-95 duration-200"
+                                    : "bg-[#f0eeef] dark:bg-[#2a2a2a] border-transparent text-gray-500 dark:text-zinc-400 hover:bg-muted/80 hover:text-black dark:hover:text-white transition-colors"
                             )}
                             onClick={() => handleTabClick(win.id, win.path)}
                         >
-                            <span className={cn("shrink-0 transition-colors", isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground")}>
+                            <span className={cn("shrink-0 transition-colors", isActive ? "text-primary" : "text-gray-500 dark:text-zinc-400 group-hover:text-black dark:group-hover:text-white")}>
                                 {win.icon || <FileText className="w-4 h-4" />}
                             </span>
-                            <span className="text-sm font-semibold truncate max-w-[160px]">
+                            <span className={cn(
+                                "text-[15px] font-semibold truncate max-w-[160px] transition-colors",
+                                isActive ? "text-black dark:text-white" : "text-gray-600 dark:text-zinc-400 group-hover:text-black dark:group-hover:text-white"
+                            )}>
                                 {win.title}
                             </span>
                             <button
@@ -89,7 +97,7 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
                                     isActive ? "opacity-40" : "" // Show faint close on active
                                 )}
                             >
-                                <X className="w-3 h-3" />
+                                <X className="w-[16px] h-[16px]" />
                             </button>
                         </div>
                     );
@@ -98,8 +106,8 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
                 {/* More Button */}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full shrink-0 text-muted-foreground hover:bg-muted/60 data-[state=open]:bg-muted/60">
-                            <MoreHorizontal className="w-4 h-4" />
+                        <Button variant="ghost" size="icon" className="h-11 w-11 rounded-xl shrink-0 text-muted-foreground bg-[#f0eeef] dark:bg-[#2a2a2a] hover:bg-muted/80 border border-border/40 data-[state=open]:bg-muted/80">
+                            <MoreHorizontal className="w-[18px] h-[18px]" />
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start">

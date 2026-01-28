@@ -79,7 +79,7 @@ export class SyncManager {
         const { entity, type, data } = action;
 
         if (entity === 'session') {
-            const { is_synced, ...sessionData } = data; // Strip local-only fields
+            const { synced, ...sessionData } = data; // Strip local-only fields
 
             if (type === 'create') {
                 const { error } = await supabase.from('precount_sessions').insert(sessionData);

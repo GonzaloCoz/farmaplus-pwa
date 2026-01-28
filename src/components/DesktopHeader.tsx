@@ -7,8 +7,8 @@ export function DesktopHeader() {
 
     return (
         <>
-            <header className="h-16 border-b border-border/40 bg-background sticky top-0 z-30">
-                <div className="max-w-7xl mx-auto w-full h-full">
+            <header className="h-16 bg-transparent sticky top-0 z-30 transition-all flex items-center py-2">
+                <div className="w-full h-full">
                     <WindowTabs onSearchClick={() => setSearchOpen(true)} />
                 </div>
             </header>

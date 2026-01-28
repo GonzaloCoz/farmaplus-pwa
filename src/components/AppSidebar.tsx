@@ -35,26 +35,35 @@ interface AppSidebarMenuItemProps {
 
 function AppSidebarMenuItem({ item, end }: AppSidebarMenuItemProps) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div className="inline-flex h-10 w-10 items-center justify-center rounded-full">
-          <NavLink
-            to={item.url}
-            end={end}
-            aria-label={item.title}
-            className={({ isActive }) => cn(
-              "flex h-full w-full items-center justify-center rounded-xl text-foreground/60 transition-all duration-200 hover:bg-muted hover:text-foreground hover:shadow-sm",
-              isActive && "bg-muted text-foreground shadow-sm"
-            )}
-          >
-            <item.icon className="h-4 w-4 leading-none" />
-          </NavLink>
-        </div>
-      </TooltipTrigger>
-      <TooltipContent side="right">
-        <p>{item.title}</p>
-      </TooltipContent>
-    </Tooltip>
+    <NavLink
+      to={item.url}
+      end={end}
+      aria-label={item.title}
+      className={({ isActive }) => cn(
+        "group flex items-center gap-[14px] px-[18px] py-[10px] mx-3 rounded-[12px] transition-all duration-200",
+        "text-gray-900 dark:text-gray-100 font-semibold",
+        isActive
+          ? "bg-white dark:bg-[#1e1e1e] text-black dark:text-white shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.3)] ring-1 ring-gray-100/50 dark:ring-white/5"
+          : "hover:bg-gray-100/80 dark:hover:bg-white/5 hover:text-black dark:hover:text-white"
+      )}
+    >
+      {({ isActive }) => (
+        <>
+          <item.icon className={cn(
+            "h-5 w-5 transition-colors",
+            isActive
+              ? "text-black dark:text-white"
+              : "text-gray-500 dark:text-zinc-400 group-hover:text-black dark:group-hover:text-white"
+          )} />
+          <span className={cn(
+            "text-sm tracking-tight transition-colors",
+            isActive
+              ? "text-black dark:text-white"
+              : "text-gray-600 dark:text-zinc-400 group-hover:text-black dark:group-hover:text-white"
+          )}>{item.title}</span>
+        </>
+      )}
+    </NavLink>
   );
 }
 
@@ -71,35 +80,33 @@ function AppSidebarMenuItemMobile({ item, end }: AppSidebarMenuItemProps) {
     >
       <item.icon className="h-5 w-5" />
       <span className="flex-1 whitespace-nowrap">{item.title}</span>
-      {/* Sin puntos de notificación aquí para evitar elementos decorativos inesperados */}
     </NavLink>
   );
 }
 
 import { useUser } from "@/contexts/UserContext";
 
-// ... (existing imports)
-
 export function AppSidebar() {
   const { user } = useUser();
-  const isAdmin = user?.role === 'admin';
 
   return (
     <>
-      <aside className="hidden lg:flex flex-col w-[72px] fixed inset-y-0 left-0 z-20 bg-transparent pt-6 pb-6">
-        <div className="flex h-16 items-center justify-center pl-2">
-          <img src={LogoCollapsed} alt="Logo Farmaplus" className="h-10 w-10" />
+      <aside className="hidden lg:flex flex-col w-[260px] bg-transparent pt-3 pb-6 h-full transition-all">
+        <div className="px-8 mb-4">
+          <h2 className="text-[11px] font-bold text-gray-500 uppercase tracking-[0.1em]">
+            Menú Principal
+          </h2>
         </div>
 
-        {/* Separator Top */}
-        <div className="flex w-full justify-center pl-2 my-2">
-          <div className="h-px w-8 bg-border/40" />
-        </div>
-
-        <nav className="flex-1 overflow-auto py-2 flex flex-col items-center gap-3 pl-2">
-          {menuItems.map((item) => <AppSidebarMenuItem key={item.title} item={item} end={item.url === '/'} />)}
+        <nav className="flex-1 overflow-auto py-2 flex flex-col gap-1">
+          {menuItems.map((item) => (
+            <AppSidebarMenuItem
+              key={item.title}
+              item={item}
+              end={item.url === '/'}
+            />
+          ))}
         </nav>
-
       </aside>
     </>
   )

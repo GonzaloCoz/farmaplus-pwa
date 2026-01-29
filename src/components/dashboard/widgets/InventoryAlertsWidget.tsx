@@ -3,7 +3,7 @@ import { AlertCircle as AlertCircleIcon } from 'lucide-react';
 
 export function InventoryAlertsWidget() {
     return (
-        <Card className="p-6 h-full">
+        <div className="p-6 h-full">
             <div className="flex items-center justify-between mb-6">
                 <h2 className="text-sm font-medium text-muted-foreground">Alertas de Inventario</h2>
                 <span className="px-3 py-1 bg-warning/10 text-warning text-xs font-medium rounded-full">
@@ -36,6 +36,6 @@ export function InventoryAlertsWidget() {
                     </div>
                 </div>
             </div>
-        </Card>
+        </div>
     );
 }

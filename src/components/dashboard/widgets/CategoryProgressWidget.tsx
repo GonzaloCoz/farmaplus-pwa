@@ -149,14 +149,14 @@ export function CategoryProgressWidget() {
 
     if (loading) {
         return (
-            <Card className="h-full border-none shadow-none flex items-center justify-center">
+            <div className="h-full flex items-center justify-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-            </Card>
+            </div>
         );
     }
 
     return (
-        <Card className="h-full flex flex-col border-border/50 bg-card/50 backdrop-blur-sm overflow-hidden">
+        <div className="h-full flex flex-col overflow-hidden">
             <CardHeader className="pb-0 pt-4 px-5 flex flex-row items-center justify-between space-y-0 text-foreground">
                 <CardTitle className="text-xl font-medium tracking-tight">
                     {selectedCategory ? `Rubro: ${selectedCategory}` : 'Progreso de Inventario'}
@@ -297,6 +297,6 @@ export function CategoryProgressWidget() {
                     </div>
                 </div>
             </CardContent>
-        </Card>
+        </div>
     );
 }

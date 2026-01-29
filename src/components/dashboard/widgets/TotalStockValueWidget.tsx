@@ -11,7 +11,7 @@ export function TotalStockValueWidget({ totalValue, changePercentage }: TotalSto
     const isPositive = changePercentage !== undefined && changePercentage >= 0;
 
     return (
-        <Card className="h-full flex flex-col justify-between">
+        <div className="h-full flex flex-col justify-between">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">Valor Total</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
@@ -30,6 +30,6 @@ export function TotalStockValueWidget({ totalValue, changePercentage }: TotalSto
                     </div>
                 )}
             </CardContent>
-        </Card>
+        </div>
     );
 }

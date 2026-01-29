@@ -77,7 +77,7 @@ export function ActivityTimelineWidget({ activities = [] }: ActivityTimelineWidg
     };
 
     return (
-        <Card className="h-full">
+        <div className="h-full">
             <CardHeader className="pb-3">
                 <CardTitle className="text-lg font-semibold">Actividad Reciente</CardTitle>
                 <p className="text-sm text-muted-foreground">Últimas acciones realizadas</p>
@@ -115,6 +115,6 @@ export function ActivityTimelineWidget({ activities = [] }: ActivityTimelineWidg
                     ))}
                 </div>
             </CardContent>
-        </Card>
+        </div>
     );
 }

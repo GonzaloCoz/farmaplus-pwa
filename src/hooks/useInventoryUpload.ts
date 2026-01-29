@@ -61,11 +61,17 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                     }
                 }
 
-                // --- NEW: Identify categories in the uploaded file to clear residue ---
+                // --- NEW: Identify categories and EANs in the uploaded file to clear residue ---
                 const categoriesInFile = new Set<string>();
+                const eansInFile = new Set<string>();
+
                 for (let i = 1; i < data.length; i++) {
                     const row: any = data[i];
                     if (!row || !row[3]) continue;
+
+                    const ean = String(row[2] || '').trim();
+                    if (ean) eansInFile.add(ean);
+
                     let category = row[9]?.toString().trim();
                     if (category === "Medicamento") category = "Medicamentos";
                     if (category === "Perfumeria") category = "Perfumería";
@@ -73,15 +79,19 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                     categoriesInFile.add(category);
                 }
 
-                // Merge Logic - Filter out 'pending' residues from incoming categories
+                // Lab-Wide Master Sync Logic: Treat Excel as source of truth for the ENTIRE LABORATORY
                 const finalItems: CyclicItem[] = currentItems.filter(item => {
-                    // If the item is pending AND its category is being re-uploaded, we discard it 
-                    // (because the Excel is the new source of truth for that lab/category)
-                    if (item.status === 'pending') {
-                        const itemCat = item.category || 'Varios';
-                        if (categoriesInFile.has(itemCat)) return false;
+                    // 1. Pending items are always removed (the Excel has the new pendants for the lab)
+                    if (item.status === 'pending') return false;
+
+                    // 2. Controlled/Adjusted items are kept ONLY if their EAN is in the new Excel
+                    // This prevents residues from products that no longer belong to this laboratory in any rubric
+                    if (eansInFile.has(String(item.ean).trim())) {
+                        return true;
                     }
-                    return true;
+
+                    console.log(`Removing laboratory residue item: ${item.name} (${item.ean}) - No presente en el nuevo archivo`);
+                    return false;
                 });
 
                 const eanMap = new Map();
@@ -165,11 +175,10 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
 
                 const saveWithCleanup = async () => {
                     try {
-                        // 1. Clear residues in DB for the categories we just uploaded
-                        await cyclicInventoryService.clearPendingResidue(branchName, labName, categoriesList);
-                        // 2. Save the new items
-                        await cyclicInventoryService.saveInventory(branchName, labName, finalItems);
-                        console.log("Uploaded and saved successfully with residue clearing");
+                        // 1. Algoritmo de Sincronización de Hierro (Ironclad Sync)
+                        // Borra TODO el laboratorio de la DB antes de guardar el nuevo estado del Excel
+                        await cyclicInventoryService.purgeAndSaveLabInventory(branchName, labName, finalItems);
+                        console.log("Ironclad Sync completado con éxito.");
                     } catch (err) {
                         console.error("Failed to save after upload:", err);
                         notify.error("Error al guardar", "Se cargó el archivo pero hubo un problema al sincronizar con la nube.");

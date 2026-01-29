@@ -9,7 +9,7 @@ interface ActiveUsersWidgetProps {
 
 export function ActiveUsersWidget({ activeCount, activeBranches }: ActiveUsersWidgetProps) {
     return (
-        <Card className="h-full flex flex-col justify-between">
+        <div className="h-full flex flex-col justify-between">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Activos</CardTitle>
                 <div className="relative">
@@ -41,6 +41,6 @@ export function ActiveUsersWidget({ activeCount, activeBranches }: ActiveUsersWi
                     </div>
                 )}
             </CardContent>
-        </Card>
+        </div>
     );
 }

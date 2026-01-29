@@ -31,7 +31,7 @@ export function CategoryDistributionWidget({ data = [] }: CategoryDistributionWi
     const total = chartData.reduce((sum, item) => sum + item.value, 0);
 
     return (
-        <Card className="h-full">
+        <div className="h-full">
             <CardHeader className="pb-3">
                 <CardTitle className="text-lg font-semibold">Distribución por Categoría</CardTitle>
                 <p className="text-sm text-muted-foreground">Productos por categoría</p>
@@ -70,6 +70,6 @@ export function CategoryDistributionWidget({ data = [] }: CategoryDistributionWi
                     ))}
                 </div>
             </CardContent>
-        </Card>
+        </div>
     );
 }

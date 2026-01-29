@@ -44,45 +44,43 @@ export const WidgetContainer = memo(({ widget, isEditMode, onRemove, onSizeChang
                 WIDGET_HEIGHTS[widget.size] // Altura según el tamaño del widget
             )}
         >
-            <AnimatedCard hoverEffect={isEditMode ? 'none' : 'lift'} className="h-full">
-                <div className={cn(
-                    'relative h-full transition-all rounded-lg',
-                    isEditMode && 'ring-2 ring-primary/20 hover:ring-primary/40'
-                )}>
-                    {isEditMode && (
-                        <div className="absolute top-2 right-2 z-10 flex gap-1">
-                            {onSizeChange && (
-                                <WidgetSizeSelector
-                                    currentSize={widget.size}
-                                    onChange={onSizeChange}
-                                />
-                            )}
+            <Card className={cn(
+                "h-full transition-all duration-300 border-border/50 bg-card/40 dark:bg-card/20 backdrop-blur-sm rounded-2xl overflow-hidden relative group/card shadow-sm hover:shadow-md",
+                isEditMode && "ring-2 ring-primary/20 hover:ring-primary/40 cursor-move"
+            )}>
+                {isEditMode && (
+                    <div className="absolute top-2 right-2 z-50 flex gap-1">
+                        {onSizeChange && (
+                            <WidgetSizeSelector
+                                currentSize={widget.size}
+                                onChange={onSizeChange}
+                            />
+                        )}
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 cursor-grab active:cursor-grabbing"
+                            {...attributes}
+                            {...listeners}
+                        >
+                            <GripVertical className="h-4 w-4" />
+                        </Button>
+                        {!widget.mandatory && onRemove && (
                             <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-6 w-6 cursor-grab active:cursor-grabbing"
-                                {...attributes}
-                                {...listeners}
+                                className="h-6 w-6 hover:bg-destructive hover:text-destructive-foreground"
+                                onClick={onRemove}
                             >
-                                <GripVertical className="h-4 w-4" />
+                                <X className="h-4 w-4" />
                             </Button>
-                            {!widget.mandatory && onRemove && (
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6 hover:bg-destructive hover:text-destructive-foreground"
-                                    onClick={onRemove}
-                                >
-                                    <X className="h-4 w-4" />
-                                </Button>
-                            )}
-                        </div>
-                    )}
-                    <div className="h-full">
-                        {children}
+                        )}
                     </div>
+                )}
+                <div className="h-full overflow-auto">
+                    {children}
                 </div>
-            </AnimatedCard>
+            </Card>
         </div>
     );
 });

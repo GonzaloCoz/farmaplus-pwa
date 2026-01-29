@@ -28,7 +28,7 @@ export function TrendsChartWidget({ data = [] }: TrendsChartWidgetProps) {
     const chartData = data.length > 0 ? data : sampleData;
 
     return (
-        <Card className="h-full">
+        <div className="h-full">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
                 <CardTitle className="text-lg font-semibold">Tendencias</CardTitle>
                 <div className="flex gap-2">
@@ -73,6 +73,6 @@ export function TrendsChartWidget({ data = [] }: TrendsChartWidgetProps) {
                     </LineChart>
                 </ResponsiveContainer>
             </CardContent>
-        </Card>
+        </div>
     );
 }

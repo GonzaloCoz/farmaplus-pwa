@@ -98,7 +98,7 @@ export function UpcomingInventoriesWidget({ onDateClick }: Props) {
     };
 
     return (
-        <Card className="p-0 h-full flex flex-col relative overflow-hidden bg-card">
+        <div className="p-0 h-full flex flex-col relative overflow-hidden">
             {/* Header Section with Date & Actions */}
             <div className="p-5 pb-2 flex items-center justify-between">
                 <div>
@@ -178,6 +178,6 @@ export function UpcomingInventoriesWidget({ onDateClick }: Props) {
                 onOpenChange={setShowAddDialog}
                 onEventAdded={() => loadData()}
             />
-        </Card>
+        </div>
     );
 }

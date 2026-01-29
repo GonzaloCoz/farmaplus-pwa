@@ -3,7 +3,7 @@ import { AnimatedProgressBar } from '@/components/AnimatedProgressBar';
 
 export function InventorySummaryWidget() {
     return (
-        <Card className="p-6 h-full">
+        <div className="p-6 h-full">
             <div className="flex items-center justify-between mb-6">
                 <h2 className="text-sm font-medium text-muted-foreground">Resumen de Inventario</h2>
                 <button className="text-sm text-muted-foreground hover:text-foreground">
@@ -36,6 +36,6 @@ export function InventorySummaryWidget() {
                     <AnimatedProgressBar value={3} variant="destructive" />
                 </div>
             </div>
-        </Card>
+        </div>
     );
 }

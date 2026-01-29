@@ -138,8 +138,8 @@ export function SmartAnalystWidget() {
             transition={{ duration: 0.5 }}
             className="h-full"
         >
-            <Card
-                className="flex flex-col h-full bg-card justify-between relative overflow-hidden group hover:shadow-md transition-all cursor-pointer"
+            <div
+                className="flex flex-col h-full justify-between relative overflow-hidden group hover:shadow-md transition-all cursor-pointer"
                 onClick={() => navigate('/smart-analyst')}
                 role="button"
                 tabIndex={0}
@@ -218,7 +218,7 @@ export function SmartAnalystWidget() {
                         </Button>
                     )}
                 </CardContent>
-            </Card>
+            </div>
         </motion.div>
     );
 }

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import confetti from 'canvas-confetti';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { notify } from '@/lib/notifications';
 import { CyclicItem } from '@/components/CyclicInventoryList';
@@ -82,26 +82,10 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         }
     }, [branchName, labName]);
 
-    // Confetti Effect
-    const [confettiFired, setConfettiFired] = useState(false);
     const progressPercentage = items.length > 0
         ? Math.round((items.filter(i => i.status === 'controlled' || i.status === 'adjusted').length / items.length) * 100)
         : 0;
 
-    useEffect(() => {
-        if (progressPercentage < 100 && confettiFired) {
-            setConfettiFired(false);
-        }
-        if (progressPercentage === 100 && !confettiFired && items.length > 0) {
-            confetti({
-                particleCount: 150,
-                spread: 70,
-                origin: { y: 0.6 }
-            });
-            setConfettiFired(true);
-            notify.success("¡Excelente!", "Has completado el 100% del laboratorio.");
-        }
-    }, [progressPercentage, confettiFired, items.length]);
 
     // -- Actions --
 
@@ -196,13 +180,9 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         try {
             const categoryToFinalize = currentCategory;
 
-            const itemsToKeep = items.filter(item => {
-                const isInCategory = (item.category === categoryToFinalize) || (!item.category && categoryToFinalize === "Varios");
-                if (isInCategory && item.status === 'pending') {
-                    return false;
-                }
-                return true;
-            });
+            // Ironclad Finalization Purge: Cualquier cosa que haya quedado pendiente en CUALQUIER rubro se elimina
+            // El usuario está dando por cerrado el control del laboratorio para el estado actual.
+            const itemsToKeep = items.filter(item => item.status !== 'pending');
 
             const updatedItems = itemsToKeep.map(item => {
                 if (item.status === 'controlled') {
@@ -213,7 +193,8 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
 
             setItems(updatedItems);
 
-            await cyclicInventoryService.clearPendingResidue(branchName, labName, [categoryToFinalize]);
+            // Limpieza TOTAL de pendientes en la base de datos para este laboratorio
+            await cyclicInventoryService.clearAllLabResidue(branchName, labName);
             await cyclicInventoryService.saveInventory(branchName, labName, updatedItems);
             await cyclicInventoryService.saveAdjustmentHistory(branchName, labName, {
                 adjustment_id_shortage: shortageId,

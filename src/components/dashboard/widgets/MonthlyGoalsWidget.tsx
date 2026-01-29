@@ -25,7 +25,7 @@ export function MonthlyGoalsWidget({ goals = [] }: MonthlyGoalsWidgetProps) {
     const displayGoals = goals.length > 0 ? goals : sampleGoals;
 
     return (
-        <Card className="h-full">
+        <div className="h-full">
             <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                     <div>
@@ -61,6 +61,6 @@ export function MonthlyGoalsWidget({ goals = [] }: MonthlyGoalsWidgetProps) {
                     })}
                 </div>
             </CardContent>
-        </Card>
+        </div>
     );
 }

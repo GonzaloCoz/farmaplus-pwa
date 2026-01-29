@@ -63,7 +63,7 @@ export function QuickActionsWidget({ actions = [] }: QuickActionsWidgetProps) {
     const displayActions = actions.length > 0 ? actions : defaultActions;
 
     return (
-        <Card className="h-full">
+        <div className="h-full">
             <CardHeader className="pb-3">
                 <CardTitle className="text-lg font-semibold">Acciones Rápidas</CardTitle>
                 <p className="text-sm text-muted-foreground">Tareas frecuentes</p>
@@ -91,6 +91,6 @@ export function QuickActionsWidget({ actions = [] }: QuickActionsWidgetProps) {
                     })}
                 </div>
             </CardContent>
-        </Card>
+        </div>
     );
 }

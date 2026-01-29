@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { motion } from "framer-motion";
 import { notify } from '@/lib/notifications';
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,7 @@ import { Search, ArrowUpDown, BarChart3, CheckCircle2, AlertCircle, DollarSign, 
 import { LaboratoryCard, LaboratoryStatus } from "@/components/LaboratoryCard";
 import { CounterAnimation } from "@/components/CounterAnimation";
 import { MetricCarousel } from "@/components/MetricCarousel";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +19,8 @@ import {
 import { getLaboratoriesForBranch } from "@/services/preCountDB";
 import { cyclicInventoryService, CyclicInventoryStats } from "@/services/cyclicInventoryService";
 import { useUser } from "@/contexts/UserContext";
+
+import { maintenanceService } from "@/services/maintenanceService";
 
 type SortOption = "name-asc" | "name-desc" | "value-asc" | "value-desc";
 type FilterCategory = "MEDICAMENTOS" | "PERFUMERIA" | "ACCESORIOS" | "VARIOS";
@@ -172,36 +176,66 @@ export default function CyclicInventory() {
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
       {/* Dashboard Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="p-4 flex flex-col justify-between bg-primary/5 border-primary/10">
-          <div className="flex items-center gap-2 text-primary mb-2">
-            <BarChart3 className="w-4 h-4" />
-            <span className="text-xs font-bold uppercase tracking-wider">Avance Global</span>
+        <Card className="p-6 flex flex-col justify-between bg-card/40 dark:bg-card/20 backdrop-blur-sm border border-border/50 shadow-sm rounded-2xl overflow-hidden relative group transition-all duration-300">
+          <div className="flex items-center gap-3 text-primary mb-4 relative z-10">
+            <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
+              <BarChart3 className="w-5 h-5" />
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground/80">Avance Global</span>
           </div>
-          <div className="text-2xl font-bold">
-            <CounterAnimation value={progressPercentage} />%
-          </div>
-          <div className="text-xs text-muted-foreground mt-1">
-            {controlledLabs} de {totalLabs} laboratorios
+
+          <div className="space-y-1 relative z-10">
+            <div className="text-4xl font-black tracking-tighter flex items-baseline gap-1.5 text-foreground">
+              <CounterAnimation value={progressPercentage} />
+              <span className="text-xl font-bold opacity-30">%</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-1.5 bg-muted/50 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progressPercentage}%` }}
+                  transition={{ duration: 1, ease: "easeOut" }}
+                  className="h-full bg-primary"
+                />
+              </div>
+              <span className="text-[10px] font-bold text-muted-foreground/60 whitespace-nowrap uppercase tracking-wider tabular-nums">
+                {controlledLabs}/{totalLabs}
+              </span>
+            </div>
           </div>
         </Card>
 
-        <Card className="p-4 flex flex-col justify-between bg-success/5 border-success/10">
-          <div className="flex items-center gap-2 text-success mb-2">
-            <CheckCircle2 className="w-4 h-4" />
-            <span className="text-xs font-bold uppercase tracking-wider">Controlados</span>
+        <Card className="p-6 flex flex-col justify-between bg-card/40 dark:bg-card/20 backdrop-blur-sm border border-border/50 shadow-sm rounded-2xl overflow-hidden relative group transition-all duration-300">
+          <div className="flex items-center gap-3 text-success mb-4 relative z-10">
+            <div className="p-2 rounded-xl bg-success/10 border border-success/20">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground/80">Controlados</span>
           </div>
-          <div className="text-2xl font-bold text-success">
+
+          <div className="text-4xl font-black tracking-tighter text-success relative z-10">
             <CounterAnimation value={controlledLabs} />
           </div>
+
+          <div className="mt-2 h-1.5 w-full bg-success/10 rounded-full relative z-10 overflow-hidden">
+            <div className="h-full bg-success w-full opacity-30" />
+          </div>
         </Card>
 
-        <Card className="p-4 flex flex-col justify-between bg-muted/50 border-muted">
-          <div className="flex items-center gap-2 text-muted-foreground mb-2">
-            <AlertCircle className="w-4 h-4" />
-            <span className="text-xs font-bold uppercase tracking-wider">Pendientes</span>
+        <Card className="p-6 flex flex-col justify-between bg-card/40 dark:bg-card/20 backdrop-blur-sm border border-border/50 shadow-sm rounded-2xl overflow-hidden relative group transition-all duration-300">
+          <div className="flex items-center gap-3 text-muted-foreground mb-4 relative z-10">
+            <div className="p-2 rounded-xl bg-muted/50 border border-border/40">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground/80">Pendientes</span>
           </div>
-          <div className="text-2xl font-bold text-muted-foreground">
+
+          <div className="text-4xl font-black tracking-tighter text-muted-foreground relative z-10">
             <CounterAnimation value={pendingLabs} />
+          </div>
+
+          <div className="mt-2 h-1.5 w-full bg-muted/50 rounded-full relative z-10 overflow-hidden">
+            <div className="h-full bg-muted-foreground w-full opacity-20" />
           </div>
         </Card>
 
@@ -238,8 +272,8 @@ export default function CyclicInventory() {
         />
       </div>
 
-      {/* Filters and Search */}
-      <div className="flex flex-col gap-4 sticky top-0 bg-background/95 backdrop-blur z-10 py-2">
+      {/* Filters and Search - Sticky with Blur */}
+      <div className="flex flex-col gap-4 sticky top-0 bg-[#f0eeef]/80 dark:bg-[#2a2a2a]/80 backdrop-blur-xl z-20 py-4 -mx-4 px-4 md:-mx-6 md:px-6 transition-all border-b border-gray-200/30 dark:border-white/5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
@@ -252,31 +286,50 @@ export default function CyclicInventory() {
           </div>
 
           <div className="flex gap-2">
-            {/* Migration Button (Admin Only likely, but public for now as requested) */}
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={async () => {
-                if (!confirm("¿Sincronizar metas desde el Excel maestro a la base de datos?")) return;
-                const toastId = notify.info("Información", "Sincronizando metas...");
-                try {
-                  await cyclicInventoryService.migrateGoalsFromExcel();
-                  notify.success("Operación exitosa", "Metas sincronizadas con éxito.");
-                  // Reload to reflect changes
-                  window.location.reload();
-                } catch (e) {
-                  notify.error("Error", "Error al sincronizar metas.");
-                }
-              }}
-            >
-              <Database className="w-4 h-4 mr-2" />
-              Sincronizar Metas
-            </Button>
+            {/* Migration Button (Admin Only) */}
+            {user?.role === 'admin' && (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 px-4 rounded-xl bg-white dark:bg-[#1e1e1e] border-gray-100/50 dark:border-white/5 shadow-sm hover:shadow-md transition-all font-semibold"
+                  onClick={() => {
+                    if (confirm("¿Ejecutar mantenimiento profundo de inventarios? Esto eliminará registros huérfanos y normalizará categorías.")) {
+                      maintenanceService.performDeepCleanup();
+                    }
+                  }}
+                >
+                  <AlertCircle className="w-4 h-4 mr-2 text-warning" />
+                  Mantenimiento DB
+                </Button>
+
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-9 px-4 rounded-xl bg-white dark:bg-[#1e1e1e] border-gray-100/50 dark:border-white/5 shadow-sm hover:shadow-md transition-all font-semibold"
+                  onClick={async () => {
+                    if (!confirm("¿Sincronizar metas desde el Excel maestro a la base de datos?")) return;
+                    const toastId = notify.info("Información", "Sincronizando metas...");
+                    try {
+                      await cyclicInventoryService.migrateGoalsFromExcel();
+                      notify.success("Operación exitosa", "Metas sincronizadas con éxito.");
+                      // Reload to reflect changes
+                      window.location.reload();
+                    } catch (e) {
+                      notify.error("Error", "Error al sincronizar metas.");
+                    }
+                  }}
+                >
+                  <Database className="w-4 h-4 mr-2 text-primary" />
+                  Sincronizar Metas
+                </Button>
+              </div>
+            )}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="whitespace-nowrap">
-                  <ArrowUpDown className="w-4 h-4 mr-2" />
+                <Button variant="outline" size="sm" className="h-9 rounded-xl border-gray-100/50 dark:border-white/5 bg-white dark:bg-[#1e1e1e] shadow-sm font-semibold px-4">
+                  <ArrowUpDown className="w-4 h-4 mr-2 text-muted-foreground" />
                   {getSortLabel(sortBy)}
                 </Button>
               </DropdownMenuTrigger>
@@ -299,14 +352,19 @@ export default function CyclicInventory() {
         </div>
 
         {/* Category Filters */}
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
           {categories.map((cat) => (
             <Button
               key={cat}
-              variant={categoryFilter === cat ? "default" : "outline"}
+              variant="ghost"
               size="sm"
               onClick={() => setCategoryFilter(cat)}
-              className="whitespace-nowrap rounded-full px-4"
+              className={cn(
+                "whitespace-nowrap rounded-xl px-5 h-9 font-semibold transition-all",
+                categoryFilter === cat
+                  ? "bg-white dark:bg-[#1e1e1e] text-primary shadow-sm ring-1 ring-black/[0.03] dark:ring-white/[0.05]"
+                  : "text-muted-foreground hover:bg-white/50 dark:hover:bg-white/5"
+              )}
             >
               {cat === "MEDICAMENTOS" ? "Medicamentos" : cat.charAt(0) + cat.slice(1).toLowerCase()}
             </Button>

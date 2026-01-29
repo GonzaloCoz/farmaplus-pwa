@@ -34,7 +34,7 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
     };
 
     return (
-        <div className="flex items-center w-full h-full gap-2 px-4 xl:px-8 lg:px-6 overflow-hidden bg-transparent">
+        <div className="flex items-center w-full h-full gap-2 px-2 lg:px-4 overflow-hidden bg-transparent">
             {/* Logo */}
             <div className="flex items-center justify-center h-11 w-11 shrink-0 bg-muted/50 border border-border/40 rounded-xl">
                 <img src={Logo} alt="Logo" className="h-[24px] w-auto opacity-100" />

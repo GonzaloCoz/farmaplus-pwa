@@ -28,7 +28,7 @@ export function TopProductsWidget({ products = [] }: TopProductsWidgetProps) {
     const displayProducts = products.length > 0 ? products : sampleProducts;
 
     return (
-        <Card className="h-full">
+        <div className="h-full">
             <CardHeader className="pb-3">
                 <CardTitle className="text-lg font-semibold">Top Diferencias</CardTitle>
                 <p className="text-sm text-muted-foreground">Productos con mayores discrepancias</p>
@@ -62,6 +62,6 @@ export function TopProductsWidget({ products = [] }: TopProductsWidgetProps) {
                     ))}
                 </div>
             </CardContent>
-        </Card>
+        </div>
     );
 }

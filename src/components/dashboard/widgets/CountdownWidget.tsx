@@ -91,7 +91,7 @@ export function CountdownWidget({
     };
 
     return (
-        <Card className="h-full flex flex-col overflow-hidden relative group/card border-border/50 bg-card/50 backdrop-blur-sm">
+        <div className="h-full flex flex-col overflow-hidden relative group/card">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 px-5 pt-4 pb-2">
                 <CardTitle className="text-sm font-semibold tracking-tight">Plazo de Inventario</CardTitle>
                 <div className="flex items-center gap-2">
@@ -194,7 +194,7 @@ export function CountdownWidget({
                     </div>
                 </div>
             </CardContent>
-        </Card>
+        </div>
     );
 }
 

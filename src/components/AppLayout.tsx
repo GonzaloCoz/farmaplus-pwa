@@ -39,20 +39,20 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen w-full bg-[#dadada] dark:bg-[#0a0a0a] overflow-hidden transition-all duration-500">
-      <div className="flex-1 h-full relative p-2 md:p-4 lg:px-6 lg:py-4 xl:px-10 xl:py-6">
+      <div className="flex-1 h-full relative p-1 md:p-1 lg:px-2 lg:py-2 xl:px-2 xl:py-2">
         {/* Outer container with #f7f5f6 background */}
-        <div className="relative h-full w-full bg-[#f7f5f6] dark:bg-[#1a1a1a] rounded-[2rem] shadow-lg border border-gray-200/30 dark:border-zinc-800 overflow-hidden flex flex-col">
+        <div className="relative h-full w-full bg-[#f7f5f6] dark:bg-[#1a1a1a] rounded-[1.5rem] shadow-lg border border-gray-200/30 dark:border-zinc-800 overflow-hidden flex flex-col">
           {/* Header inside outer container */}
-          <div className="hidden lg:block px-4 pt-2">
+          <div className="hidden lg:block px-2 pt-1">
             <DesktopHeader />
           </div>
 
           {/* Inner container with #f0eeef background - contains sidebar and main content */}
-          <div className="flex-1 bg-[#f0eeef] dark:bg-[#2a2a2a] rounded-[1.5rem] mx-4 mb-4 mt-1 overflow-hidden flex p-4 gap-3">
+          <div className="flex-1 bg-[#f0eeef] dark:bg-[#2a2a2a] rounded-[1.25rem] mx-2 mb-2 mt-1 overflow-hidden flex p-1 lg:p-1.5 gap-1 lg:gap-2">
             <AppSidebar />
 
             {/* White main-content card */}
-            <div className="flex-1 bg-white dark:bg-[#1e1e1e] rounded-[1.5rem] shadow-md overflow-hidden flex flex-col">
+            <div className="flex-1 bg-white dark:bg-[#1e1e1e] rounded-[1rem] shadow-md overflow-hidden flex flex-col">
               <main id="main-content" className="flex-1 overflow-y-auto w-full relative">
                 <div className="lg:hidden h-16" /> {/* Spacer for mobile TopAppBar */}
                 <div className="w-full h-full relative px-1 md:px-0">

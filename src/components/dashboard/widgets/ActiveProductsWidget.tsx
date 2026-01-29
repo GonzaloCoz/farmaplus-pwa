@@ -8,7 +8,7 @@ interface ActiveProductsWidgetProps {
 
 export function ActiveProductsWidget({ activeProducts }: ActiveProductsWidgetProps) {
     return (
-        <Card className="h-full flex flex-col justify-between">
+        <div className="h-full flex flex-col justify-between">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Productos Activos</CardTitle>
                 <Activity className="h-4 w-4 text-muted-foreground" />
@@ -34,6 +34,6 @@ export function ActiveProductsWidget({ activeProducts }: ActiveProductsWidgetPro
                 })()}
                 <p className="text-xs text-muted-foreground">Total en base de datos</p>
             </CardContent>
-        </Card>
+        </div>
     );
 }

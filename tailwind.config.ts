@@ -125,6 +125,9 @@ export default {
         "scale-in": "scale-in 0.2s ease-out",
         "bounce-subtle": "bounce-subtle 1s ease-in-out infinite",
       },
+      fontFamily: {
+        sans: ["Roboto", "sans-serif"],
+      },
     },
   },
   plugins: [require("tailwindcss-animate")],

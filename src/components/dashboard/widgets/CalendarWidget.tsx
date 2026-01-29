@@ -90,7 +90,7 @@ export function CalendarWidget() {
     };
 
     return (
-        <Card className="h-full flex flex-col">
+        <div className="h-full flex flex-col">
             <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -169,6 +169,6 @@ export function CalendarWidget() {
                     </div>
                 </div>
             </CardContent>
-        </Card>
+        </div>
     );
 }

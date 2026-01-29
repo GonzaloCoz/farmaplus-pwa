@@ -17,7 +17,7 @@ export function SyncStatusWidget({
     onSync
 }: SyncStatusWidgetProps) {
     return (
-        <Card className="h-full">
+        <div className="h-full">
             <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                     <CardTitle className="text-lg font-semibold">Sincronización</CardTitle>
@@ -70,6 +70,6 @@ export function SyncStatusWidget({
                     {pendingCount > 0 ? 'Sincronizar Ahora' : 'Actualizar'}
                 </Button>
             </CardContent>
-        </Card>
+        </div>
     );
 }

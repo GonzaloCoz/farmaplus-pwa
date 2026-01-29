@@ -1,10 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, Search, Info, Loader2, CheckCircle2, RotateCcw, DollarSign } from 'lucide-react';
+import { Upload, Search, Info, Loader2, CheckCircle2, RotateCcw, DollarSign, ClipboardList } from 'lucide-react';
 import { CyclicInventoryList } from '@/components/CyclicInventoryList';
 import { CounterAnimation } from '@/components/CounterAnimation';
 import { Switch } from "@/components/ui/switch";
@@ -27,12 +27,21 @@ import { PageHeader } from "@/components/layout/PageHeader";
 // Hooks & Components
 import { useCyclicInventoryController } from '@/hooks/useCyclicInventoryController';
 import { InventorySkeleton } from '@/components/InventorySkeleton';
+import { useWindowManager } from '@/contexts/WindowManagerContext';
 
 const CATEGORIES = ["Medicamentos", "Perfumería", "Accesorios", "Varios"];
 
 export default function CyclicInventoryDetail() {
     const { id } = useParams(); // This will be the Lab Name
     const labName = id ? decodeURIComponent(id) : '';
+    const { activeWindowId, updateWindowMeta } = useWindowManager();
+
+    // Update window tab title with lab name
+    useEffect(() => {
+        if (activeWindowId && labName) {
+            updateWindowMeta(activeWindowId, labName, <ClipboardList className="w-4 h-4" />);
+        }
+    }, [activeWindowId, labName, updateWindowMeta]);
 
     const {
         // State

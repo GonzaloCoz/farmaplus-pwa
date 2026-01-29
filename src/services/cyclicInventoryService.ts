@@ -152,7 +152,7 @@ export const cyclicInventoryService = {
         }
     },
 
-    // New: Clear pending residues for specific categories
+    // Clear pending residues for specific categories
     clearPendingResidue: async (branchName: string, labName: string, categories: string[]) => {
         const { error } = await (supabase as any).rpc('clear_lab_pending_residue', {
             p_branch_name: branchName,
@@ -162,6 +162,51 @@ export const cyclicInventoryService = {
 
         if (error) {
             console.error("Error clearing pending residue:", error);
+            throw error;
+        }
+    },
+
+    // Clear ALL pending residues for a laboratory (ignore category)
+    clearAllLabResidue: async (branchName: string, labName: string) => {
+        const { error } = await supabase.from('inventories')
+            .delete()
+            .eq('branch_name', branchName)
+            .eq('laboratory', labName)
+            .eq('status', 'pending');
+
+        if (error) {
+            console.error("Error clearing all lab residues:", error);
+            throw error;
+        }
+    },
+
+    /**
+     * Algoritmo de Sincronización de Hierro (Ironclad Sync)
+     * Borra TODO el laboratorio de la base de datos y guarda los nuevos items.
+     * Esto elimina cualquier residuo de cualquier rubro que no esté en el archivo.
+     */
+    purgeAndSaveLabInventory: async (branchName: string, labName: string, items: CyclicItem[]) => {
+        try {
+            // 1. Borrado TOTAL preventivo del laboratorio para esta sucursal
+            const { error: deleteError } = await (supabase as any)
+                .from('inventories')
+                .delete()
+                .eq('branch_name', branchName)
+                .eq('laboratory', labName);
+
+            if (deleteError) {
+                console.error("Error purging lab inventory:", deleteError);
+                throw deleteError;
+            }
+
+            // 2. Guardado de los nuevos items (Insert masivo)
+            if (items.length > 0) {
+                await cyclicInventoryService.saveInventory(branchName, labName, items);
+            }
+
+            console.log(`Ironclad Sync completado para ${labName}: Purga total e inserción de ${items.length} items.`);
+        } catch (error) {
+            console.error("Error in purgeAndSaveLabInventory:", error);
             throw error;
         }
     },

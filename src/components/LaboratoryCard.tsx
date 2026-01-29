@@ -65,61 +65,64 @@ export function LaboratoryCard({
 
     return (
         <Card
-            className={`group hover:shadow-md transition-all duration-200 border cursor-pointer overflow-hidden relative`}
+            className={`group hover:shadow-md transition-all duration-300 border border-border/50 cursor-pointer overflow-hidden relative rounded-2xl bg-card/40 dark:bg-card/20 backdrop-blur-sm active:scale-[0.98]`}
             onClick={onClick}
         >
-            {/* Status Stripe */}
-            <div className={`absolute left-0 top-0 bottom-0 w-1 ${config.barColor}`} />
 
-            <CardContent className="p-4 pl-5">
-                <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2 min-w-0">
-                        <div className={`p-1.5 rounded-full ${config.bgColor}`}>
-                            <Icon className={`w-4 h-4 ${config.color}`} />
+            <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3.5 min-w-0">
+                        <div className={`p-2.5 rounded-2xl ${config.bgColor} border ${config.borderColor} transition-transform group-hover:scale-105 duration-300`}>
+                            <Icon className={`w-5 h-5 ${config.color}`} />
                         </div>
-                        <h3 className="font-semibold text-base truncate" title={name}>
-                            {name}
-                        </h3>
+                        <div className="flex flex-col min-w-0">
+                            <h3 className="font-bold text-[15px] tracking-tight truncate pr-2 text-foreground group-hover:text-primary transition-colors" title={name}>
+                                {name}
+                            </h3>
+                            <span className={`text-[9px] font-bold uppercase tracking-[0.05em] ${config.color} opacity-80`}>
+                                {config.label}
+                            </span>
+                        </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
 
-                <div className="space-y-3">
-                    <div className="flex flex-col gap-1">
-                        <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Valorizado (Diferencias)</span>
-
-                        <div className="flex items-baseline gap-2">
-                            {/* Difference (Sum) */}
-                            <span className={`text-lg font-bold font-mono tracking-tight ${differenceValue < 0 ? 'text-destructive' : differenceValue > 0 ? 'text-success' : 'text-foreground'}`}>
+                <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4 items-end">
+                        <div className="flex flex-col gap-1">
+                            <span className="text-[10px] text-muted-foreground/50 font-black uppercase tracking-[0.15em]">Diferencia Neta</span>
+                            <div className={`text-2xl font-black tracking-tighter ${differenceValue < 0 ? 'text-destructive' : differenceValue > 0 ? 'text-success' : 'text-foreground'}`}>
                                 {differenceValue > 0 ? '+' : ''}<CounterAnimation value={differenceValue} prefix="$" />
-                            </span>
+                            </div>
                         </div>
 
-                        <div className="flex items-center gap-3 text-xs font-mono mt-1">
-                            {/* Negative */}
-                            <span className="text-destructive flex items-center">
-                                <span className="w-1.5 h-1.5 rounded-full bg-destructive mr-1"></span>
-                                <CounterAnimation value={negativeValue} prefix="$" />
-                            </span>
-
-                            {/* Positive */}
-                            <span className="text-success flex items-center">
-                                <span className="w-1.5 h-1.5 rounded-full bg-success mr-1"></span>
-                                +<CounterAnimation value={positiveValue} prefix="$" />
-                            </span>
+                        <div className="flex flex-col gap-1 items-end">
+                            <span className="text-[10px] text-muted-foreground/50 font-black uppercase tracking-[0.15em]">Avance</span>
+                            <div className="text-2xl font-black tracking-tighter text-foreground flex items-baseline gap-0.5">
+                                <CounterAnimation value={displayProgress} />
+                                <span className="text-xs font-bold opacity-30">%</span>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="space-y-1.5 pt-2">
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                            <div className="flex items-center gap-2">
-                                <Badge variant="outline" className={`${config.color} ${config.borderColor} bg-transparent h-5 px-1.5 text-[10px]`}>
-                                    {config.label}
-                                </Badge>
+                    <div className="space-y-2.5 pt-2">
+                        <div className="flex items-center gap-3">
+                            <div className="flex-1 px-3 py-2 rounded-xl bg-muted/30 border border-border/40 flex flex-col items-center">
+                                <span className="text-[8px] font-bold text-destructive/60 uppercase tracking-widest">Negativo</span>
+                                <span className="text-xs font-black text-destructive">
+                                    <CounterAnimation value={negativeValue} prefix="$" />
+                                </span>
                             </div>
-                            <span>{displayProgress}%</span>
+                            <div className="flex-1 px-3 py-2 rounded-xl bg-muted/30 border border-border/40 flex flex-col items-center">
+                                <span className="text-[8px] font-bold text-success/60 uppercase tracking-widest">Positivo</span>
+                                <span className="text-xs font-black text-success">
+                                    +<CounterAnimation value={positiveValue} prefix="$" />
+                                </span>
+                            </div>
                         </div>
-                        <Progress value={displayProgress} className="h-1.5" indicatorClassName={config.barColor} />
+
+                        <div className="relative h-1.5 w-full bg-muted/40 rounded-full overflow-hidden mt-2">
+                            <Progress value={displayProgress} className="h-full w-full" indicatorClassName={`${config.barColor} rounded-full transition-all duration-1000`} />
+                        </div>
                     </div>
                 </div>
             </CardContent>

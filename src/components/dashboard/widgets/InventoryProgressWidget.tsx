@@ -17,7 +17,7 @@ export function InventoryProgressWidget({ completedCount, totalCount }: Inventor
     };
 
     return (
-        <Card className="h-full flex flex-col justify-between">
+        <div className="h-full flex flex-col justify-between">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Progreso</CardTitle>
                 <TrendingUp className="h-4 w-4 text-muted-foreground" />
@@ -31,6 +31,6 @@ export function InventoryProgressWidget({ completedCount, totalCount }: Inventor
                 </p>
                 <Progress value={percentage} className="mt-2" />
             </CardContent>
-        </Card>
+        </div>
     );
 }

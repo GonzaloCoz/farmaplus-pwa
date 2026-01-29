@@ -151,7 +151,7 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
             transition={{ duration: 0.6, ease: "easeOut" }}
             className="w-full h-full"
         >
-            <Card className="h-full flex flex-col">
+            <div className="h-full flex flex-col">
                 <CardHeader className="p-6">
                     <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                         <div>
@@ -329,7 +329,7 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                         </div>
                     )}
                 </CardContent>
-            </Card>
+            </div>
         </motion.div>
     );
 }

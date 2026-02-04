@@ -41,9 +41,32 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
     // 3. Stats & Filter Logic
     const stats = useInventoryStats(items, CATEGORIES[0]);
     const {
-        controlledItems,
+        controlledItems: localControlled,
         currentCategory
     } = stats;
+
+    // 4. Persistent Stats (DB)
+    const [persistentStats, setPersistentStats] = useState<{
+        pendingItems: number;
+        progress: number;
+        controlledItems: number;
+        adjustedItems: number;
+        totalItems: number;
+    } | null>(null);
+
+    // Fetch Persistent Stats on Mount / Category Change / Save
+    const fetchPersistentStats = useCallback(async () => {
+        if (branchName && labName && currentCategory) {
+            const dbStats = await cyclicInventoryService.getLabStats(branchName, labName, currentCategory);
+            if (dbStats) {
+                setPersistentStats(dbStats);
+            }
+        }
+    }, [branchName, labName, currentCategory]);
+
+    useEffect(() => {
+        fetchPersistentStats();
+    }, [fetchPersistentStats]);
 
     // Advanced Logic State
     const [sortBy, setSortBy] = useState<'default' | 'financial'>('default');
@@ -81,8 +104,18 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         }
     }, [branchName, labName]);
 
-    const progressPercentage = items.length > 0
-        ? Math.round((items.filter(i => i.status === 'controlled' || i.status === 'adjusted').length / items.length) * 100)
+    // --- GLOBAL LABORATORY STATS (Standard Header) ---
+    // These metrics are calculated from the full items array to ensure 100% consistency
+    // and correctly represent the entire lab regardless of the filtered category tab.
+
+    const globalTotal = items.length;
+    const globalControlled = items.filter(i => i.status === 'controlled').length;
+    const globalAdjusted = items.filter(i => i.status === 'adjusted').length;
+    const globalPending = items.filter(i => i.status === 'pending').length;
+
+    // Progress capped at 100%
+    const globalProgress = globalTotal > 0
+        ? Math.min(100, Math.round(((globalControlled + globalAdjusted) / globalTotal) * 100))
         : 0;
 
 
@@ -147,6 +180,7 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
     // Save & Finalize Logic
     const handleFinalizeClick = async () => {
         await saveProgress();
+        await fetchPersistentStats(); // Refresh stats from DB to ensure sync
         setShowSaveDialog(true);
     };
 
@@ -264,11 +298,24 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         isLoading,
         isSaving,
         isUploading,
-        progressPercentage,
         branchName,
 
-        // Stats
-        stats,
+        // Stats (Overriden by Global Logic)
+        stats: {
+            ...stats,
+            // Keep original arrays for UI lists
+            pendingItems: stats.pendingItems,
+            controlledItems: stats.controlledItems,
+            adjustedItems: stats.adjustedItems,
+            // Global Metrics for Header (Standardized)
+            globalPending,
+            globalControlled,
+            globalAdjusted,
+            globalProgress,
+            pendingCount: globalPending,
+            progress: globalProgress,
+        },
+        progressPercentage: globalProgress, // Export global progress
         history,
 
         // Dialogs State

@@ -1,5 +1,5 @@
 import { MetricCarousel } from '@/components/MetricCarousel';
-import { DollarSign, TrendingDown, TrendingUp } from 'lucide-react';
+import { Activity, ArrowDown, ArrowUp, ArrowUpRight } from 'lucide-react';
 
 interface MetricsCarouselWidgetProps {
     metrics: {
@@ -34,17 +34,17 @@ export function MetricsCarouselWidget({ metrics }: MetricsCarouselWidgetProps) {
                     id: "net",
                     label: "Diferencia Neta",
                     value: metrics.totalStock,
-                    color: metrics.totalStock < 0 ? "text-destructive" : metrics.totalStock > 0 ? "text-success" : "text-foreground",
-                    icon: DollarSign,
-                    prefix: "$",
+                    color: "violet",
+                    icon: ArrowUpRight,
+                    // Remove prefix as requested by user
                     trend: netTrend
                 },
                 {
                     id: "negative",
                     label: "Negativo Total",
                     value: metrics.negativeStock,
-                    color: "text-destructive",
-                    icon: TrendingDown,
+                    color: "red",
+                    icon: ArrowDown,
                     prefix: "$",
                     trend: negativeTrend
                 },
@@ -52,8 +52,8 @@ export function MetricsCarouselWidget({ metrics }: MetricsCarouselWidgetProps) {
                     id: "positive",
                     label: "Positivo Total",
                     value: metrics.positiveStock,
-                    color: "text-success",
-                    icon: TrendingUp,
+                    color: "green",
+                    icon: ArrowUp,
                     prefix: "$",
                     trend: positiveTrend
                 }

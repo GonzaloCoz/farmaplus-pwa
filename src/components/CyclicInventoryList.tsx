@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, Package, DollarSign, Pencil, Trash2, AlertTriangle, Calculator as CalculatorIcon, ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown } from 'lucide-react';
+import { CheckCircle2, Package, DollarSign, Pencil, Trash2, AlertTriangle, Calculator as CalculatorIcon, ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown, Copy, Check } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { SwipeableItem } from './SwipeableItem';
@@ -38,6 +38,7 @@ interface CyclicInventoryListProps {
     onCheck: (id: string) => void;
     onRevert?: (id: string) => void;
     readOnly?: boolean;
+    isPending?: boolean;
 }
 
 export const CyclicInventoryList = memo(function CyclicInventoryList({
@@ -45,7 +46,8 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
     onUpdateQuantity,
     onCheck,
     onRevert,
-    readOnly = false
+    readOnly = false,
+    isPending = false
 }: CyclicInventoryListProps) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editQuantity, setEditQuantity] = useState('');
@@ -75,6 +77,11 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
 
     const handleCalculatorResult = (result: number) => {
         setEditQuantity(Math.floor(result).toString());
+    };
+
+    const copyToClipboard = (text: string) => {
+        navigator.clipboard.writeText(text);
+        // We could add a notification here or local state feedback
     };
 
     // Row component for react-window
@@ -123,26 +130,27 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                     })}
                 >
                     <div
-                        className="grid grid-cols-12 gap-4 h-full items-center border-b border-border/40 hover:bg-muted/10 transition-colors group cursor-pointer"
+                        className="grid grid-cols-12 gap-0 h-full items-center border-b border-border/40 hover:bg-muted/10 transition-colors group cursor-pointer"
                         onClick={() => handleStartEdit(item)}
                     >
                         {/* Product Info */}
-                        <div className="col-span-5 md:col-span-4 flex items-center gap-3 pl-2 min-w-0">
+                        <div className={cn(
+                            "flex items-center gap-3 pl-2 pr-4 min-w-0 transition-all",
+                            isPending ? "col-span-4" : "col-span-3"
+                        )}>
                             <div className={cn(
                                 "p-2 rounded-lg shrink-0",
                                 diff < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'
                             )}>
                                 {diff < 0 ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
                             </div>
-                            <div className="min-w-0">
+                            <div className="flex flex-col gap-0.5 min-w-0">
                                 <ProductImageHover ean={item.ean} name={item.name}>
-                                    <p className="font-semibold text-sm text-foreground truncate" title={item.name}>{item.name}</p>
+                                    <p className="font-semibold text-sm text-foreground line-clamp-2 leading-tight" title={item.name}>
+                                        {item.name}
+                                    </p>
                                 </ProductImageHover>
                                 <div className="flex items-center gap-2 mt-0.5">
-                                    <Badge variant="outline" className="text-[10px] h-5 font-mono text-muted-foreground border-border/60 font-normal hidden sm:inline-flex">
-                                        {item.ean}
-                                    </Badge>
-                                    <span className="text-[10px] text-muted-foreground sm:hidden">{item.ean}</span>
                                     {item.wasReadjusted && (
                                         <Badge variant="outline" className="text-[10px] h-5 bg-purple-100/50 text-purple-700 border-purple-200 font-normal">
                                             Modif.
@@ -152,45 +160,79 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                             </div>
                         </div>
 
-                        {/* Price */}
-                        <div className="col-span-2 text-right hidden md:block self-center">
-                            <p className="text-sm font-medium">${item.cost.toLocaleString()}</p>
-                            <p className="text-[10px] text-muted-foreground">Costo Unit.</p>
+                        {/* EAN Column */}
+                        <div className={cn(
+                            "flex items-center gap-2 self-center transition-all px-2",
+                            isPending ? "col-span-3" : "col-span-2"
+                        )}>
+                            <span className="text-sm font-mono text-muted-foreground truncate">{item.ean}</span>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    copyToClipboard(item.ean);
+                                }}
+                            >
+                                <Copy className="w-3 h-3" />
+                            </Button>
                         </div>
 
-                        {/* Difference (Pill) */}
-                        <div className="col-span-3 md:col-span-2 flex justify-center self-center">
-                            <div className={cn(
-                                "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold w-20 justify-center",
-                                diff < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success',
-                                diff === 0 && 'bg-muted text-muted-foreground'
-                            )}>
-                                {diff > 0 ? <ArrowUpRight className="w-3 h-3" /> : (diff < 0 ? <ArrowDownRight className="w-3 h-3" /> : null)}
-                                {diff > 0 ? '+' : ''}{diff}
-                            </div>
+                        {/* Price */}
+                        <div className={cn(
+                            "text-left self-center transition-all px-2",
+                            isPending ? "col-span-2" : "hidden md:block md:col-span-1"
+                        )}>
+                            <p className="text-sm font-medium">${item.cost.toLocaleString()}</p>
                         </div>
 
                         {/* Physical / System */}
-                        <div className="col-span-2 text-center hidden sm:block self-center">
-                            <div className="flex items-center justify-center gap-1 text-sm relative">
-                                <span className={cn(
-                                    "font-bold",
-                                    hasDiff ? "text-warning" : "text-success"
-                                )}>{item.countedQuantity}</span>
-                                <span className="text-muted-foreground mx-1">/</span>
-                                <span className="text-muted-foreground">{item.systemQuantity}</span>
+                        <div className={cn(
+                            "text-left self-center transition-all pl-8 pr-2",
+                            isPending ? "col-span-3 block" : "hidden sm:block sm:col-span-2"
+                        )}>
+                            <div className="flex items-center justify-start gap-1.5 text-sm relative">
+                                {isPending ? (
+                                    <div className="w-10 h-8 rounded-md bg-muted/20 border border-dashed border-muted-foreground/30 flex items-center justify-center text-muted-foreground/40 text-xs shadow-inner">
+                                        -
+                                    </div>
+                                ) : (
+                                    <span className={cn(
+                                        "font-bold",
+                                        hasDiff ? "text-warning" : "text-success"
+                                    )}>{item.countedQuantity}</span>
+                                )}
+                                <span className="text-muted-foreground/60 mx-0.5">/</span>
+                                <span className="text-muted-foreground font-medium">{item.systemQuantity}</span>
                             </div>
                         </div>
 
+                        {/* Difference (Pill) */}
+                        {!isPending && (
+                            <div className="col-span-2 flex justify-start self-center px-2">
+                                <div className={cn(
+                                    "flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold w-full max-w-[80px] justify-center whitespace-nowrap",
+                                    diff < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success',
+                                    diff === 0 && 'bg-muted text-muted-foreground'
+                                )}>
+                                    {diff > 0 ? <ArrowUpRight className="w-3.5 h-3.5" /> : (diff < 0 ? <ArrowDownRight className="w-3.5 h-3.5" /> : null)}
+                                    {diff > 0 ? '+' : ''}{diff}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Total Value */}
-                        <div className="col-span-2 md:col-span-2 text-right pr-2 self-center">
-                            <p className={cn(
-                                "text-sm font-bold",
-                                diffValue < 0 ? 'text-destructive' : 'text-success'
-                            )}>
-                                {diffValue > 0 ? '+' : ''}${Math.abs(diffValue).toLocaleString()}
-                            </p>
-                        </div>
+                        {!isPending && (
+                            <div className="col-span-2 text-left pr-2 self-center">
+                                <p className={cn(
+                                    "text-sm font-bold",
+                                    diffValue < 0 ? 'text-destructive' : 'text-success'
+                                )}>
+                                    {diffValue > 0 ? '+' : ''}${Math.abs(diffValue).toLocaleString()}
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </SwipeableItem>
             </div>
@@ -209,12 +251,29 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
     return (
         <Card className="border-muted/40 shadow-sm overflow-hidden bg-card">
             {/* Table Header */}
-            <div className="grid grid-cols-12 gap-4 p-4 border-b bg-muted/30 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                <div className="col-span-5 md:col-span-4 pl-2">Producto</div>
-                <div className="col-span-2 text-right hidden md:block">Precio</div>
-                <div className="col-span-3 md:col-span-2 text-center">Diferencia</div>
-                <div className="col-span-2 text-center hidden sm:block">Físico / Sistema</div>
-                <div className="col-span-2 md:col-span-2 text-right pr-2">Total ($)</div>
+            <div className="grid grid-cols-12 gap-0 p-4 border-b bg-muted/30 text-[10px] md:text-xs font-semibold text-muted-foreground uppercase tracking-wider items-center">
+                <div className={cn(
+                    "pl-2 text-left pr-4",
+                    isPending ? "col-span-4" : "col-span-3"
+                )}>Producto</div>
+                <div className={cn(
+                    "text-left px-2",
+                    isPending ? "col-span-3" : "col-span-2"
+                )}>EAN</div>
+                <div className={cn(
+                    "text-left px-2",
+                    isPending ? "col-span-2" : "hidden md:block md:col-span-1"
+                )}>Precio</div>
+                {!isPending && (
+                    <>
+                        <div className="col-span-2 text-left pl-8 pr-2">Físico / Sistema</div>
+                        <div className="col-span-2 text-left px-2">Diferencia</div>
+                        <div className="col-span-2 text-left pr-2 pl-2">Total ($)</div>
+                    </>
+                )}
+                {isPending && (
+                    <div className="col-span-3 text-left px-2">Físico / Sistema</div>
+                )}
             </div>
 
             <div className="h-[600px] w-full bg-card">
@@ -223,7 +282,7 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                         <List
                             height={height}
                             itemCount={items.length}
-                            itemSize={80}
+                            itemSize={90}
                             width={width}
                             className="no-scrollbar"
                         >

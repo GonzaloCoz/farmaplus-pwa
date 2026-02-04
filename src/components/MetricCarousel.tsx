@@ -23,27 +23,37 @@ interface MetricCarouselProps {
     className?: string;
 }
 
-// Generate smooth chart data with guaranteed continuity
-const generateChartData = (isPositive: boolean) => {
+// Generate smooth chart data with guaranteed continuity and organic feel
+const generateChartData = (isPositive: boolean, actualValue: number) => {
     const points: [number, number][] = [];
     const width = 100;
     const height = 50;
-    const numPoints = 30; // Many points for ultra-smooth curve
+    const numPoints = 40;
+
+    const baseline = height / 2;
+    // Reduce amplitude for a more "stable" and professional look
+    const amplitude = 8;
 
     for (let i = 0; i <= numPoints; i++) {
         const x = (i / numPoints) * width;
         const progress = i / numPoints;
 
-        let y;
-        if (isPositive) {
-            // Upward trend
-            y = height - (progress * height * 0.5) + Math.sin(progress * Math.PI * 3) * 4;
-        } else {
-            // Downward trend
-            y = (height * 0.5) + (progress * height * 0.3) + Math.sin(progress * Math.PI * 3) * 4;
-        }
+        // Controlled multi-frequency sine waves for organic but professional look
+        const wave1 = Math.sin(progress * Math.PI * 3) * amplitude;
+        const wave2 = Math.sin(progress * Math.PI * 6) * (amplitude / 4);
 
-        y = Math.max(10, Math.min(height - 10, y));
+        // Very subtle noise
+        const noise = (Math.random() - 0.5) * 1.5;
+
+        // Directional trend: strictly follow the sign of the value at the end
+        // Positive value -> ends above baseline, Negative value -> ends below
+        const targetTrend = actualValue > 0 ? -12 : (actualValue < 0 ? 12 : 0);
+        const trendFactor = Math.pow(progress, 1.5) * targetTrend;
+
+        let y = baseline + wave1 + wave2 + noise + trendFactor;
+
+        // Clamp to view with padding
+        y = Math.max(5, Math.min(height - 5, y));
         points.push([x, y]);
     }
 
@@ -57,10 +67,19 @@ const generatePath = (points: [number, number][]) => {
     let path = `M ${points[0][0]} ${points[0][1]}`;
 
     for (let i = 1; i < points.length; i++) {
-        path += ` L ${points[i][0]} ${points[i][1]}`;
+        const xc = (points[i - 1][0] + points[i][0]) / 2;
+        const yc = (points[i - 1][1] + points[i][1]) / 2;
+        path += ` Q ${points[i - 1][0]} ${points[i - 1][1]}, ${xc} ${yc}`;
     }
 
     return path;
+};
+
+// Generate fill path for gradient
+const generateFillPath = (points: [number, number][]) => {
+    if (points.length === 0) return "";
+    const path = generatePath(points);
+    return `${path} L ${points[points.length - 1][0]} 50 L 0 50 Z`;
 };
 
 export function MetricCarousel({ items, className }: MetricCarouselProps) {
@@ -69,30 +88,61 @@ export function MetricCarousel({ items, className }: MetricCarouselProps) {
     const [showInfo, setShowInfo] = useState(false);
 
     const currentItem = items[currentIndex];
-    const isPositiveTheme = currentItem.color.includes("success") || (currentItem.value >= 0 && !currentItem.color.includes("destructive"));
-    const themeColor = isPositiveTheme ? "#10b981" : "#ef4444";
-    const themeClass = isPositiveTheme ? "text-emerald-500" : "text-red-500";
+
+    // Theme mapping for "Liquid Glass" style
+    const themeConfig = {
+        red: {
+            color: "#ef4444",
+            text: "text-red-500",
+            bg: "bg-red-500/10",
+            glassBg: "from-red-400/30 to-red-600/10",
+            shadow: "shadow-red-500/20",
+            glow: "bg-red-500/20"
+        },
+        green: {
+            color: "#10b981",
+            text: "text-emerald-500",
+            bg: "bg-emerald-500/10",
+            glassBg: "from-emerald-400/30 to-emerald-600/10",
+            shadow: "shadow-emerald-500/20",
+            glow: "bg-emerald-500/20"
+        },
+        violet: {
+            color: "#c084fc", // More lila/lavender
+            text: "text-purple-400",
+            bg: "bg-purple-500/10",
+            glassBg: "from-purple-300/30 to-purple-500/10",
+            shadow: "shadow-purple-500/20",
+            glow: "bg-purple-500/20"
+        }
+    };
+
+    const colorKey = currentItem.color === "green" || currentItem.color.includes("success") ? "green" :
+        currentItem.color === "red" || currentItem.color.includes("destructive") ? "red" :
+            "violet";
+
+    const activeTheme = themeConfig[colorKey as keyof typeof themeConfig] || themeConfig.violet;
+    const themeColor = activeTheme.color;
+    const themeClass = activeTheme.text;
 
     // Get trend data
     const trend = currentItem.trend || {
         value: (Math.random() * 15 + 5).toFixed(1) as any,
-        isPositive: isPositiveTheme
+        isPositive: true
     };
 
     useEffect(() => {
-        const points = generateChartData(isPositiveTheme);
+        const points = generateChartData(trend.isPositive, currentItem.value);
         setChartPoints(points);
-    }, [currentIndex, isPositiveTheme]);
+    }, [currentIndex, trend.isPositive, currentItem.value]);
 
     const nextSlide = () => setCurrentIndex((prev) => (prev + 1) % items.length);
     const prevSlide = () => setCurrentIndex((prev) => (prev - 1 + items.length) % items.length);
 
-    // Calculate highlight point (70% along the curve)
-    const highlightIndex = Math.floor(chartPoints.length * 0.7);
-    const highlightPoint = chartPoints[highlightIndex];
+    const Icon = currentItem.icon;
 
     return (
-        <div className={`relative overflow-hidden group ${className} h-full min-h-[160px] flex flex-col rounded-2xl`}>
+        <div className={`relative overflow-hidden group ${className} h-full min-h-[180px] flex flex-col rounded-[2rem] bg-card border-none shadow-sm`}>
             {/* Info Overlay */}
             <AnimatePresence>
                 {showInfo && (
@@ -108,7 +158,6 @@ export function MetricCarousel({ items, className }: MetricCarouselProps) {
                             <h4 className="font-semibold text-base">{currentItem.label}</h4>
                             <p className="text-xs text-muted-foreground leading-relaxed">
                                 Esta métrica representa el estado actual de {currentItem.label.toLowerCase()}.
-                                Utilice esta información para tomar decisiones informadas sobre su inventario.
                             </p>
                         </div>
                     </motion.div>
@@ -116,181 +165,123 @@ export function MetricCarousel({ items, className }: MetricCarouselProps) {
             </AnimatePresence>
 
             {/* Content Container */}
-            <div className="p-5 flex flex-col h-full relative z-10">
-                {/* Header */}
-                <div className="flex items-start justify-between relative z-50">
-                    <span className="text-sm font-medium text-muted-foreground tracking-tight">
-                        {currentItem.label}
-                    </span>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 rounded-full hover:bg-muted transition-colors -mr-2 -mt-1"
-                        onClick={() => setShowInfo(!showInfo)}
-                    >
-                        <AnimatePresence mode="wait">
-                            {showInfo ? (
+            <div className="p-6 flex flex-col h-full relative z-10">
+                {/* Upper Section with Chart and Icon */}
+                <div className="flex justify-between items-start mb-4">
+                    {/* Professional Wave Chart with Baseline and Gradient */}
+                    <div className="w-[70%] h-14 relative opacity-90 mt-1">
+                        <svg viewBox="0 0 100 50" className="w-full h-full" preserveAspectRatio="none">
+                            <defs>
+                                <linearGradient id={`grad-${currentIndex}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                                    <stop offset="0%" stopColor={themeColor} stopOpacity="0.3" />
+                                    <stop offset="100%" stopColor={themeColor} stopOpacity="0" />
+                                </linearGradient>
+                            </defs>
+
+                            {/* Horizontal Rule / Baseline */}
+                            <line
+                                x1="0" y1="25" x2="100" y2="25"
+                                stroke="currentColor"
+                                strokeWidth="0.5"
+                                strokeDasharray="2,4"
+                                className="text-muted-foreground/30"
+                            />
+
+                            <AnimatePresence mode="wait">
+                                <motion.g key={`chart-group-${currentIndex}`}>
+                                    {/* Fill Path */}
+                                    <motion.path
+                                        d={generateFillPath(chartPoints)}
+                                        fill={`url(#grad-${currentIndex})`}
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        transition={{ duration: 1 }}
+                                    />
+
+                                    {/* Line Path */}
+                                    <motion.path
+                                        d={generatePath(chartPoints)}
+                                        fill="none"
+                                        stroke={themeColor}
+                                        strokeWidth="2.5"
+                                        strokeLinecap="round"
+                                        initial={{ pathLength: 0 }}
+                                        animate={{ pathLength: 1 }}
+                                        transition={{ duration: 1.5, ease: "easeInOut" }}
+                                        style={{ filter: `drop-shadow(0 2px 4px ${themeColor}44)` }}
+                                    />
+                                </motion.g>
+                            </AnimatePresence>
+                        </svg>
+                    </div>
+
+                    {/* Liquid Glass Icon on the right */}
+                    <div className="relative">
+                        <motion.div
+                            key={`icon-bg-${currentIndex}`}
+                            initial={{ scale: 0.8, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            className={`w-12 h-12 rounded-full flex items-center justify-center relative z-10 shadow-lg ${activeTheme.shadow} bg-gradient-to-br ${activeTheme.glassBg} backdrop-blur-md border border-white/20`}
+                        >
+                            {Icon && (
                                 <motion.div
-                                    key="close"
-                                    initial={{ rotate: -90, opacity: 0 }}
-                                    animate={{ rotate: 0, opacity: 1 }}
-                                    exit={{ rotate: 90, opacity: 0 }}
-                                    transition={{ duration: 0.2 }}
+                                    initial={{ scale: 0.8 }}
+                                    animate={{ scale: 1 }}
                                 >
-                                    <X className="w-4 h-4 text-foreground" />
-                                </motion.div>
-                            ) : (
-                                <motion.div
-                                    key="info"
-                                    initial={{ rotate: 90, opacity: 0 }}
-                                    animate={{ rotate: 0, opacity: 1 }}
-                                    exit={{ rotate: -90, opacity: 0 }}
-                                    transition={{ duration: 0.2 }}
-                                >
-                                    <Info className="w-4 h-4 text-muted-foreground/40" />
+                                    <Icon className={`w-5 h-5 ${themeClass} stroke-[2.5px]`} />
                                 </motion.div>
                             )}
-                        </AnimatePresence>
-                    </Button>
+                        </motion.div>
+                        {/* Shadow/Glow behind icon */}
+                        <div className={`absolute inset-0 blur-xl opacity-40 rounded-full ${activeTheme.bg}`} />
+                    </div>
                 </div>
 
 
-                {/* Main Value */}
-                <div className="mt-1 relative z-30">
+                {/* Label and Value */}
+                <div className="flex flex-col gap-0.5 mt-auto">
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-muted-foreground/80">
+                            {currentItem.label}
+                        </span>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 rounded-full hover:bg-muted/50 p-0"
+                            onClick={() => setShowInfo(!showInfo)}
+                        >
+                            <Info className="w-3 h-3 text-muted-foreground/30" />
+                        </Button>
+                    </div>
+
                     <AnimatePresence mode="wait">
                         <motion.div
                             key={currentItem.id}
-                            initial={{ opacity: 0, y: 5 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -5 }}
-                            transition={{ duration: 0.2 }}
-                            className="flex flex-col gap-1"
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: 10 }}
+                            transition={{ duration: 0.3 }}
+                            className="flex items-center gap-3"
                         >
-                            <div className="flex items-baseline gap-2 flex-wrap">
-                                {(() => {
-                                    // Format the number to check its length
-                                    const prefix = currentItem.prefix || "";
-                                    const sign = currentItem.value > 0 && prefix === "$" ? "+" : "";
-                                    const formattedValue = new Intl.NumberFormat('es-AR').format(Math.abs(currentItem.value));
-                                    const fullText = `${sign}${prefix}${formattedValue}`;
+                            <div className="text-3xl font-bold tracking-tight text-foreground">
+                                {currentItem.value > 0 && currentItem.prefix === "$" ? "+" : ""}
+                                <CounterAnimation value={currentItem.value} prefix={currentItem.prefix} />
+                            </div>
 
-                                    // Determine font size based on length
-                                    let fontSize = "text-3xl";
-                                    if (fullText.length > 15) {
-                                        fontSize = "text-xl";
-                                    } else if (fullText.length > 10) {
-                                        fontSize = "text-2xl";
-                                    }
-
-                                    return (
-                                        <div className={`${fontSize} font-bold tracking-tight text-foreground`}>
-                                            {currentItem.value > 0 && currentItem.prefix === "$" ? "+" : ""}
-                                            <CounterAnimation value={currentItem.value} prefix={currentItem.prefix} />
-                                        </div>
-                                    );
-                                })()}
-                                <div className="flex items-center gap-1">
-                                    <span className={`text-sm font-bold flex items-center ${themeClass}`}>
-                                        {isPositiveTheme ? "▲" : "▼"} {trend.value}%
-                                    </span>
-                                </div>
+                            <div className={`text-[10px] font-bold ${themeClass}`}>
+                                {trend.isPositive ? "+" : "-"}{trend.value}%
                             </div>
                         </motion.div>
                     </AnimatePresence>
                 </div>
             </div>
 
-            {/* Chart Area - 42% height at bottom */}
-            <div className="absolute bottom-0 left-0 right-0 h-[42%] pointer-events-none z-20">
-                <svg viewBox="0 0 100 50" className="w-full h-full" preserveAspectRatio="none">
-                    <defs>
-                        <linearGradient id={`gradient-${currentIndex}`} x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor={themeColor} stopOpacity="0.15" />
-                            <stop offset="100%" stopColor={themeColor} stopOpacity="0" />
-                        </linearGradient>
-                    </defs>
-
-                    {/* Render paths only if we have data to prevent invalid 'd' attribute error */}
-                    {chartPoints.length > 0 && (
-                        <>
-                            {/* Area fill */}
-                            <motion.path
-                                key={`area-${currentIndex}`}
-                                d={`${generatePath(chartPoints)} L 100 50 L 0 50 Z`}
-                                fill={`url(#gradient-${currentIndex})`}
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                transition={{ duration: 0.5 }}
-                            />
-
-                            {/* Line stroke */}
-                            <motion.path
-                                key={`line-${currentIndex}`}
-                                d={generatePath(chartPoints)}
-                                fill="none"
-                                stroke={themeColor}
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                initial={{ pathLength: 0 }}
-                                animate={{ pathLength: 1 }}
-                                transition={{ duration: 1.5, ease: "easeInOut" }}
-                            />
-                        </>
-                    )}
-                </svg>
-
-                {/* Guide lines and dot */}
-                {highlightPoint && (
-                    <div className="absolute inset-0 pointer-events-none">
-                        <div className="absolute bottom-0 left-0 right-0 h-full">
-                            {/* Vertical line */}
-                            <motion.div
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: "100%" }}
-                                transition={{ delay: 0.8, duration: 0.4 }}
-                                className="absolute border-l border-dashed border-primary/30 top-0"
-                                style={{ left: `${highlightPoint[0]}%` }}
-                            />
-
-                            {/* Horizontal line */}
-                            <motion.div
-                                initial={{ opacity: 0, width: 0 }}
-                                animate={{ opacity: 1, width: "100%" }}
-                                transition={{ delay: 0.8, duration: 0.4 }}
-                                className="absolute border-t border-dashed border-primary/30 left-0"
-                                style={{ top: `${(highlightPoint[1] / 50) * 100}%` }}
-                            />
-
-                            {/* Dot - Perfectly centered */}
-                            <motion.div
-                                initial={{ scale: 0, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                transition={{ delay: 1.2, type: "spring" }}
-                                className="absolute bg-background border-2 rounded-full shadow-sm"
-                                style={{
-                                    left: `${highlightPoint[0]}%`,
-                                    top: `${(highlightPoint[1] / 50) * 100}%`,
-                                    width: '14px',
-                                    height: '14px',
-                                    marginLeft: '-7px',
-                                    marginTop: '-7px',
-                                    borderColor: themeColor
-                                }}
-                            >
-                                <div className="absolute inset-0 rounded-full opacity-20 animate-pulse" style={{ backgroundColor: themeColor }} />
-                            </motion.div>
-                        </div>
-                    </div>
-                )}
-            </div>
-
             {/* Navigation Arrows */}
             <div className="absolute top-1/2 -translate-y-1/2 left-2 opacity-0 group-hover:opacity-100 transition-opacity z-30">
                 <Button
-                    variant="secondary"
+                    variant="ghost"
                     size="icon"
-                    className="h-8 w-8 rounded-full shadow-sm bg-background/80 backdrop-blur-sm hover:bg-background"
+                    className="h-8 w-8 rounded-full bg-background/20 backdrop-blur-md hover:bg-background/40"
                     onClick={(e) => {
                         e.stopPropagation();
                         prevSlide();
@@ -301,9 +292,9 @@ export function MetricCarousel({ items, className }: MetricCarouselProps) {
             </div>
             <div className="absolute top-1/2 -translate-y-1/2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-30">
                 <Button
-                    variant="secondary"
+                    variant="ghost"
                     size="icon"
-                    className="h-8 w-8 rounded-full shadow-sm bg-background/80 backdrop-blur-sm hover:bg-background"
+                    className="h-8 w-8 rounded-full bg-background/20 backdrop-blur-md hover:bg-background/40"
                     onClick={(e) => {
                         e.stopPropagation();
                         nextSlide();

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Pencil, Trash2, Package } from 'lucide-react';
+import { Pencil, Trash2, Package, Copy, Check } from 'lucide-react';
 import { UIPreCountItem } from '@/hooks/usePreCount';
 import {
     Dialog,
@@ -22,6 +22,7 @@ interface PreCountListProps {
 export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editQuantity, setEditQuantity] = useState('');
+    const [copiedId, setCopiedId] = useState<string | null>(null);
     const [visibleRange, setVisibleRange] = useState({ start: 0, end: 15 });
     const containerRef = useRef<HTMLDivElement>(null);
     const ITEMS_PER_VIEW = 15; // Show 15 items at a time
@@ -46,6 +47,12 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
     const handleCancelEdit = () => {
         setEditingId(null);
         setEditQuantity('');
+    };
+
+    const copyToClipboard = (text: string, id: string) => {
+        navigator.clipboard.writeText(text);
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
     };
 
     // removed handleConfirmDelete
@@ -123,62 +130,83 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
                                 transition={{ duration: 0.15 }}
                                 layout
                             >
-                                <Card className={`h-full relative overflow-hidden group border-muted/60 shadow-sm hover:shadow-md transition-all ${item.synced === 0 ? 'ring-2 ring-primary/20' : ''}`}>
-                                    {/* Status Indicator Strip */}
-                                    <div className={`absolute top-0 left-0 w-1 h-full ${item.synced === 0 ? 'bg-primary' : 'bg-primary/20 group-hover:bg-primary transition-colors'}`} />
-
-                                    <div className="p-3 pl-4 flex flex-col h-full gap-2">
-                                        {/* Header: Name & Menu */}
+                                <Card className={`h-full relative overflow-hidden group transition-all duration-300 bg-card border ${item.productName.startsWith('Producto ')
+                                        ? 'border-destructive shadow-[0_0_0_0.5px_inset_hsl(var(--destructive)/0.1)] bg-destructive/[0.02]'
+                                        : item.synced === 0
+                                            ? 'border-warning shadow-[0_0_0_0.5px_inset_hsl(var(--warning)/0.2)] bg-warning/[0.03]'
+                                            : 'border-muted/40 elevation-1 hover:elevation-2 hover:bg-muted/5'
+                                    }`}>
+                                    <div className="p-4 flex flex-col h-full gap-3">
+                                        {/* Header: Name */}
                                         <div className="flex justify-between items-start gap-2">
-                                            <h4 className="font-medium text-sm leading-tight line-clamp-2 text-foreground/90" title={item.productName}>
+                                            <h4 className="text-title-small md:text-title-medium leading-tight line-clamp-2 text-foreground/90 font-semibold tracking-tight" title={item.productName}>
                                                 {item.productName}
                                             </h4>
                                         </div>
 
-                                        {/* Meta: EAN */}
-                                        <div className="flex items-center gap-2 mt-auto">
-                                            <div className="flex items-center gap-1.5 text-muted-foreground bg-muted/40 px-2 py-1 rounded-md border border-border/40">
-                                                <span className="text-[10px] font-bold opacity-70 uppercase tracking-widest">EAN</span>
-                                                <span className="text-xs sm:text-sm font-mono tracking-wide font-medium border-l border-border/30 pl-1.5 ml-0.5">
+                                        {/* Meta: EAN with Copy functionality */}
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={() => copyToClipboard(item.ean, item.id)}
+                                                className="flex items-center gap-2 text-muted-foreground hover:text-primary bg-muted/30 hover:bg-primary/5 px-2.5 py-1.5 rounded-lg border border-border/40 transition-all group/ean active:scale-95"
+                                                title="Copiar EAN"
+                                            >
+                                                <span className="text-[10px] font-bold opacity-60 uppercase tracking-widest border-r border-border/40 pr-2">EAN</span>
+                                                <span className="text-xs sm:text-sm font-mono tracking-wider font-medium">
                                                     {item.ean}
                                                 </span>
-                                            </div>
-                                            {item.synced === 0 && (
-                                                <span className="text-[10px] text-warning flex items-center gap-1 font-medium bg-warning/5 px-1.5 rounded">
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-warning animate-pulse" />
-                                                    Sin sinc.
-                                                </span>
+                                                {copiedId === item.id ? (
+                                                    <Check className="w-3.5 h-3.5 text-success animate-bounce-in" />
+                                                ) : (
+                                                    <Copy className="w-3.5 h-3.5 opacity-0 group-hover/ean:opacity-100 transition-opacity" />
+                                                )}
+                                            </button>
+
+                                            {item.productName.startsWith('Producto ') ? (
+                                                <div className="ml-auto">
+                                                    <span className="text-[10px] text-destructive flex items-center gap-1.5 font-bold bg-destructive/10 px-2 py-1 rounded-full border border-destructive/20">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-destructive" />
+                                                        NO ENCONTRADO
+                                                    </span>
+                                                </div>
+                                            ) : item.synced === 0 && (
+                                                <div className="ml-auto">
+                                                    <span className="text-[10px] text-warning flex items-center gap-1.5 font-bold bg-warning/10 px-2 py-1 rounded-full border border-warning/20">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-warning animate-pulse" />
+                                                        SINCRONIZANDO
+                                                    </span>
+                                                </div>
                                             )}
                                         </div>
 
                                         {/* Footer: Qty & Actions */}
-                                        <div className="flex items-center justify-between pt-2 mt-1 border-t border-border/30">
-                                            <div className="flex items-baseline gap-1">
-                                                <span className="text-2xl font-bold tracking-tight text-foreground">
+                                        <div className="flex items-center justify-between pt-3 mt-auto border-t border-border/30">
+                                            <div className="flex items-baseline gap-1.5">
+                                                <span className="text-3xl font-black tracking-tighter text-foreground">
                                                     {item.quantity}
                                                 </span>
-                                                <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                                                <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em] opacity-80">
                                                     unid.
                                                 </span>
                                             </div>
 
-                                            <div className="flex items-center gap-1">
+                                            <div className="flex items-center gap-1.5">
                                                 <Button
                                                     size="icon"
                                                     variant="ghost"
-                                                    className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/5"
+                                                    className="h-9 w-9 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full transition-colors"
                                                     onClick={() => handleStartEdit(item)}
                                                 >
-                                                    <Pencil className="w-4 h-4" />
+                                                    <Pencil className="w-4.5 h-4.5" />
                                                 </Button>
                                                 <Button
                                                     size="icon"
                                                     variant="ghost"
-                                                    className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/5"
+                                                    className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full transition-colors"
                                                     onClick={() => onDelete(item.id)}
-                                                    title="Eliminar (Instantáneo)"
+                                                    title="Eliminar"
                                                 >
-                                                    <Trash2 className="w-4 h-4" />
+                                                    <Trash2 className="w-4.5 h-4.5" />
                                                 </Button>
                                             </div>
                                         </div>

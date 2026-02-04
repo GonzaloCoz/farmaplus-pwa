@@ -2,6 +2,7 @@
 import { LaboratoryStatus } from "@/components/LaboratoryCard";
 import { supabase } from "@/integrations/supabase/client";
 import { getAllBranchLabCounts } from './preCountDB';
+import { getProductCountByLab } from './productService';
 import { BRANCH_NAMES } from "@/config/users";
 
 export interface CyclicInventoryStats {
@@ -231,10 +232,32 @@ export const cyclicInventoryService = {
                 const adjustedItems = catItems.filter(i => i.status === 'adjusted').length;
                 const pendingItems = catItems.filter(i => i.status === 'pending').length;
 
+                // --- REAL PROGRESS CALCULATION ---
+                // Fetch Master Count for this Lab AND Category (Denominator)
+                // Note: We might want to cache this or fetch it once before the loop if performance is an issue,
+                // but for now, distinct lab/category updates are sparse enough.
+                const totalMasterItems = await getProductCountByLab(labName, category);
+
+                // Calculate Progress relative to Master
+                const totalProcessed = controlledItems + adjustedItems;
+
+                let realProgress = 0;
+                if (totalMasterItems > 0) {
+                    realProgress = (totalProcessed / totalMasterItems) * 100;
+                } else {
+                    // Fallback if master count is 0 (shouldn't happen if items exist)
+                    realProgress = stats.progress;
+                }
+
+                // Round to 1 decimal
+                realProgress = Number(realProgress.toFixed(1));
+                // Cap at 100% just in case
+                if (realProgress > 100) realProgress = 100;
+
                 // Determine overall status
                 let status: 'pending' | 'in_progress' | 'completed' = 'pending';
-                if (stats.progress === 100) status = 'completed';
-                else if (stats.progress > 0) status = 'in_progress';
+                if (realProgress === 100) status = 'completed';
+                else if (realProgress > 0) status = 'in_progress';
 
                 // Upsert to metadata table with composite key (Branch + Lab + Category)
                 return supabase
@@ -243,11 +266,11 @@ export const cyclicInventoryService = {
                         branch_name: branchName,
                         laboratory: labName,
                         category: category, // NEW: Include Category in unique identifier
-                        total_items: catItems.length,
-                        controlled_items: controlledItems,
+                        total_items: totalMasterItems > 0 ? totalMasterItems : catItems.length, // Save Master Total if available
+                        controlled_items: controlledItems + adjustedItems, // Save total processed
                         adjusted_items: adjustedItems,
                         pending_items: pendingItems,
-                        progress_percentage: stats.progress,
+                        progress_percentage: realProgress, // SAVE REAL PROGRESS
                         total_system_units: stats.totalSystemUnits,
                         net_units: stats.netUnits,
                         net_value: stats.net,
@@ -286,20 +309,43 @@ export const cyclicInventoryService = {
         let totalSystemUnits = 0;
 
         items.forEach(item => {
-            if (item.status === 'controlled' || item.status === 'adjusted') {
+            const isControlled = item.status === 'controlled' || item.status === 'adjusted';
+
+            if (isControlled) {
                 controlledCount++;
-                const diff = item.countedQuantity - item.systemQuantity;
+            }
+
+            // Include in financials if it's controlled OR if it's pending but has a difference (user input)
+            // This ensures real-time visibility of potential adjustments
+            const diff = item.countedQuantity - item.systemQuantity;
+
+            if (diff !== 0) {
                 const value = diff * item.cost;
 
-                totalSystemUnits += item.systemQuantity;
+                // Only add to system units if we consider this item "processed" or if we want total inventory value?
+                // Actually totalSystemUnits is usually sum of all system quantities regardless of count.
+                // But here we are summing inside the loop. Let's make sure we sum system units for ALL items if desired, 
+                // or just keep the logic consistent. 
+                // The original code only summed totalSystemUnits if controlled.
+                // Let's sum totalSystemUnits for ALL items to be safe, or at least consistent with financials.
+
+                // However, to keep it simple and safe:
+                // We calculate financials for ANYTHING with a diff.
 
                 if (diff < 0) {
                     negative += value;
                     negativeUnits += diff;
-                } else if (diff > 0) {
+                } else {
                     positive += value;
                     positiveUnits += diff;
                 }
+            }
+
+            // Create a separate loop or logic for totalSystemUnits if needed, 
+            // but original code only added to totalSystemUnits if controlled. 
+            // Let's stick to adding to totals if it contributes to the diff or is controlled.
+            if (isControlled || diff !== 0) {
+                totalSystemUnits += item.systemQuantity;
             }
         });
 
@@ -329,86 +375,84 @@ export const cyclicInventoryService = {
     },
 
     // Get all inventories (aggregated or filtered by branch)
+    // Helper to get single lab status for Detail View
+    getLabStats: async (branchName: string, labName: string, category: string) => {
+        try {
+            const { data, error } = await supabase
+                .from('branch_laboratories')
+                .select('*')
+                .eq('branch_name', branchName)
+                .ilike('laboratory', labName)
+                .ilike('category', category)
+                .maybeSingle();
+
+            if (error) {
+                console.error('Error fetching lab stats:', error);
+                return null;
+            }
+
+            if (!data) return null;
+
+            const total = Number(data.total_items) || 0;
+            const controlled = Number(data.controlled_items) || 0;
+            const adjusted = Number(data.adjusted_items) || 0;
+            const progress = Number(data.progress_percentage) || 0;
+
+            return {
+                totalItems: total,
+                controlledItems: controlled,
+                adjustedItems: adjusted,
+                // Calculate Pending from Total (Master) - Processed
+                pendingItems: Math.max(0, total - (controlled + adjusted)),
+                progress: progress
+            };
+        } catch (error) {
+            console.error('Unexpected error in getLabStats:', error);
+            return null;
+        }
+    },
+
+    // Get all inventories (aggregated from branch_laboratories metadata)
     getAllCyclicInventories: async (branchName?: string): Promise<CyclicInventoryStats[]> => {
-        // Fetch inventories
         let query = supabase
-            .from('inventories')
-            .select(`
-                branch_name,
-                laboratory,
-                quantity,
-                system_quantity,
-                status,
-                products (
-                    cost,
-                    category
-                )
-            `)
-            .in('status', ['pending', 'controlled', 'adjusted']); // Explicitly include all statuses
+            .from('branch_laboratories')
+            .select(`*`);
 
         if (branchName) {
-            query = query.ilike('branch_name', branchName);
+            query = query.eq('branch_name', branchName);
         }
 
         const { data, error } = await query;
 
         if (error || !data) return [];
 
-        // Group by LABORATORY (since we are already filtered by branch or just want all labs for this branch)
-        // Note: The previous logic grouped by branch_name because branch_name WAS the lab name.
-        // Now branch_name is the Store. So we group by 'laboratory'.
+        return data.map((row: any) => {
+            // Map DB status to UI Status
+            let status: LaboratoryStatus = 'pendiente';
+            if (row.status === 'completed') status = 'controlado';
+            else if (row.status === 'in_progress') status = 'por_controlar';
 
-        const grouped: Record<string, CyclicItem[]> = {};
+            return {
+                labName: row.laboratory,
+                category: row.category,
+                status: status,
+                totalItems: row.total_items,
+                controlledItems: row.controlled_items,
+                progress: row.progress_percentage, // Retrieve persisted REAL progress
 
-        data.forEach((row: any) => {
-            const lab = row.laboratory || 'Desconocido';
-            const cat = row.products?.category || 'Varios';
-            // GROUP KEY: Lab Name + Category
-            // This ensures logic splits "Abbott (Medicamentos)" from "Abbott (Perfumeria)"
-            const groupKey = `${lab}|${cat}`;
+                // Financials
+                negativeValue: row.negative_value,
+                positiveValue: row.positive_value,
+                netValue: row.net_value, // Map net_value to netValue
+                differenceValue: row.net_value, // Using net_value as differenceValue or sum of abs? usually net_value
 
-            if (!grouped[groupKey]) grouped[groupKey] = [];
-
-            grouped[groupKey].push({
-                id: '',
-                ean: '',
-                name: row.products?.name || '',
-                systemQuantity: row.system_quantity || 0,
-                countedQuantity: row.quantity,
-                cost: row.products?.cost || 0,
-                status: row.status,
-                category: row.category || cat // Prefer category from inventory record
-            });
+                // Units
+                totalSystemUnits: row.total_system_units,
+                negativeUnits: row.net_units < 0 ? row.net_units : 0,
+                positiveUnits: row.net_units > 0 ? row.net_units : 0,
+                netUnits: row.net_units
+            };
         });
-
-        const stats: CyclicInventoryStats[] = [];
-
-        Object.entries(grouped).forEach(([key, items]) => {
-            // Extract Name and Category from composite key
-            // Format: "Name|Category"
-            const [labName, category] = key.split('|');
-
-            const calc = cyclicInventoryService.calculateStats(items);
-
-            stats.push({
-                labName,
-                category,
-                status: calc.status,
-                totalItems: items.length,
-                controlledItems: Math.round((calc.progress / 100) * items.length),
-                progress: calc.progress,
-                negativeValue: calc.negative,
-                positiveValue: calc.positive,
-                netValue: items.reduce((acc, i) => acc + (i.countedQuantity * i.cost), 0),
-                differenceValue: calc.net,
-                totalSystemUnits: calc.totalSystemUnits,
-                negativeUnits: calc.negativeUnits,
-                positiveUnits: calc.positiveUnits,
-                netUnits: calc.netUnits
-            });
-        });
-
-        return stats;
     },
 
 

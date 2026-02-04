@@ -211,6 +211,32 @@ export async function getLaboratoriesForBranch(branchName: string): Promise<{ na
     }
 }
 
+// Get total count of products for a specific laboratory AND category (Master Denominator)
+export async function getProductCountByLab(labName: string, category?: string): Promise<number> {
+    try {
+        let query = supabase
+            .from('products')
+            .select('*', { count: 'exact', head: true })
+            .ilike('laboratory', labName);
+
+        if (category) {
+            query = query.ilike('category', category);
+        }
+
+        const { count, error } = await query;
+
+        if (error) {
+            console.error(`Error counting products for lab ${labName} items:`, error);
+            return 0;
+        }
+
+        return count || 0;
+    } catch (error) {
+        console.error(`Error in getProductCountByLab for ${labName}:`, error);
+        return 0;
+    }
+}
+
 // Get count of laboratories per branch
 export async function getAllBranchLabCounts(): Promise<Record<string, number>> {
     try {

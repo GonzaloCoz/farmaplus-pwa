@@ -1,166 +1,137 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { useUser } from "@/contexts/UserContext";
-import { cyclicInventoryService } from "@/services/cyclicInventoryService";
+
+import { useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useUser } from '@/contexts/UserContext';
+import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { getProductCount } from "@/services/preCountDB";
-import { notify } from "@/lib/notifications";
 import { auditService } from "@/services/auditService";
 
-export const useDashboardMetrics = () => {
+export function useDashboardMetrics() {
     const { user } = useUser();
+    const queryClient = useQueryClient();
 
-    // Metrics State
-    const [metrics, setMetrics] = useState({
-        totalStock: 0,
-        activeProducts: 0,
-        negativeStock: 0,
-        positiveStock: 0,
-        negativeUnits: 0,
-        positiveUnits: 0,
-        totalSystemUnits: 0
+    // 1. Fetch Inventories & Config using React Query
+    const { data: inventories = [], isLoading: isLoadingInventories } = useQuery({
+        queryKey: ['cyclic-inventories', user?.branchName],
+        queryFn: async () => {
+            if (!user?.branchName) return [];
+            try {
+                return await cyclicInventoryService.getAllCyclicInventories(user.branchName);
+            } catch (error) {
+                console.error("Error loading inventories:", error);
+                return [];
+            }
+        },
+        enabled: !!user?.branchName,
+        staleTime: 1000 * 60 * 5, // 5 minutes cache
     });
 
-    const [globalProgress, setGlobalProgress] = useState(0);
-    const [isLoading, setIsLoading] = useState(true);
-
-    // Config State
-    const [assignedDays, setAssignedDays] = useState(0);
-    const [cycleStartDate, setCycleStartDate] = useState<string | null>(null);
-
-    // Load Config
-    useEffect(() => {
-        const loadConfig = async () => {
-            if (user?.branchName) {
-                try {
-                    const config = await cyclicInventoryService.getBranchConfig(user.branchName);
-                    setAssignedDays(config.days);
-                    setCycleStartDate(config.startDate);
-                } catch (error) {
-                    console.error("Error loading branch config:", error);
-                }
-            }
-        };
-        loadConfig();
-    }, [user]);
-
-    // Load Metrics
-    useEffect(() => {
-        const loadMetrics = async () => {
-            setIsLoading(true);
-            const [currentActiveProducts, allInventories] = await Promise.all([
-                getProductCount().catch(e => {
-                    console.error("Error fetching product count:", e);
-                    return 0;
-                }),
-                user.branchSheet
-                    ? cyclicInventoryService.getAllCyclicInventories(user.branchSheet).catch(e => {
-                        console.error('Error loading inventories:', e);
-                        return [];
-                    })
-                    : Promise.resolve([])
-            ]);
-
-            if (!user?.branchSheet) {
-                setMetrics({
-                    totalStock: 0,
-                    activeProducts: currentActiveProducts,
-                    negativeStock: 0,
-                    positiveStock: 0,
-                    negativeUnits: 0,
-                    positiveUnits: 0,
-                    totalSystemUnits: 0
-                });
-                setIsLoading(false);
-                return;
-            }
-
+    const { data: config = {}, isLoading: isLoadingConfig } = useQuery({
+        queryKey: ['branch-config', user?.branchName],
+        queryFn: async () => {
+            if (!user?.branchName) return {};
             try {
-                // allInventories is already fetched in parallel above
-
-                const aggregated = allInventories.reduce((acc, inv) => ({
-                    negativeStock: acc.negativeStock + inv.negativeValue,
-                    positiveStock: acc.positiveStock + inv.positiveValue,
-                    totalStock: acc.totalStock + inv.differenceValue,
-                    negativeUnits: acc.negativeUnits + inv.negativeUnits,
-                    positiveUnits: acc.positiveUnits + inv.positiveUnits,
-                    totalSystemUnits: acc.totalSystemUnits + inv.totalSystemUnits,
-                    controlledCount: acc.controlledCount + (inv.status === 'controlado' ? 1 : 0)
-                }), {
-                    negativeStock: 0,
-                    positiveStock: 0,
-                    totalStock: 0,
-                    negativeUnits: 0,
-                    positiveUnits: 0,
-                    totalSystemUnits: 0,
-                    controlledCount: 0
-                });
-
-                const progress = allInventories.length > 0 ? Math.round((aggregated.controlledCount / allInventories.length) * 100) : 0;
-                setGlobalProgress(progress);
-
-                setMetrics({
-                    totalStock: aggregated.totalStock,
-                    activeProducts: currentActiveProducts,
-                    negativeStock: aggregated.negativeStock,
-                    positiveStock: aggregated.positiveStock,
-                    negativeUnits: aggregated.negativeUnits,
-                    positiveUnits: aggregated.positiveUnits,
-                    totalSystemUnits: aggregated.totalSystemUnits
-                });
+                return await cyclicInventoryService.getBranchConfig(user.branchName);
             } catch (error) {
-                console.error('Error loading metrics:', error);
-            } finally {
-                setIsLoading(false);
+                console.error("Error loading config:", error);
+                return {};
             }
-        };
+        },
+        enabled: !!user?.branchName,
+        staleTime: 1000 * 60 * 30, // 30 minutes cache
+    });
 
-        loadMetrics();
-    }, [user]);
+    const { data: activeProductCount = 0 } = useQuery({
+        queryKey: ['active-products-count'],
+        queryFn: async () => {
+            try {
+                return await getProductCount();
+            } catch (e) {
+                return 0;
+            }
+        },
+        staleTime: 1000 * 60 * 60, // 1 hour
+    });
 
-    // Config Update Handler
-    const updateConfig = useCallback(async (branch: string, days: number, startDate?: string) => {
-        try {
-            await cyclicInventoryService.saveBranchConfig(branch, days, startDate);
+    const isLoading = isLoadingInventories || isLoadingConfig;
+
+    // Mutation to update config
+    const updateConfigMutation = useMutation({
+        mutationFn: async (variables: { branch: string, days: number, startDate?: string }) => {
+            await cyclicInventoryService.saveBranchConfig(variables.branch, variables.days, variables.startDate);
 
             // Audit Log
             await auditService.logAction({
                 action: 'CONFIG_UPDATE',
                 entityType: 'BRANCH_CONFIG',
-                branchId: branch,
-                userId: user?.id, // Pass explicit User ID
-                details: { days, startDate }
+                branchId: variables.branch,
+                userId: user?.id,
+                details: { days: variables.days, startDate: variables.startDate }
             });
-
-            // Update local state if it's the current user's branch
-            if (user?.branchName === branch) {
-                setAssignedDays(days);
-                if (startDate) setCycleStartDate(startDate);
-            }
-            return true;
-        } catch (e) {
-            console.error("Error saving config:", e);
-            throw e;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['branch-config', user?.branchName] });
         }
-    }, [user]);
+    });
 
-    const returnValue = useMemo(() => ({
+    const updateConfig = async (branch: string, days: number, startDate?: string) => {
+        if (!user?.branchName) return;
+        await updateConfigMutation.mutateAsync({ branch, days, startDate });
+    };
+
+    // 2. Metrics Calculation - Returning Object structure as expected by consumers
+    const metrics = useMemo(() => {
+        if (!inventories.length) {
+            return {
+                totalStock: 0,
+                activeProducts: activeProductCount,
+                negativeStock: 0,
+                positiveStock: 0,
+                negativeUnits: 0,
+                positiveUnits: 0,
+                totalSystemUnits: 0
+            };
+        }
+
+        const aggregated = inventories.reduce((acc: any, inv: any) => ({
+            negativeStock: acc.negativeStock + (inv.negativeValue || 0),
+            positiveStock: acc.positiveStock + (inv.positiveValue || 0),
+            totalStock: acc.totalStock + (inv.differenceValue || 0), // Assuming differenceValue is the net impact $
+            negativeUnits: acc.negativeUnits + (inv.negativeUnits || 0),
+            positiveUnits: acc.positiveUnits + (inv.positiveUnits || 0),
+            totalSystemUnits: acc.totalSystemUnits + (inv.totalSystemUnits || 0)
+        }), {
+            negativeStock: 0,
+            positiveStock: 0,
+            totalStock: 0,
+            negativeUnits: 0,
+            positiveUnits: 0,
+            totalSystemUnits: 0
+        });
+
+        return {
+            totalStock: aggregated.totalStock,
+            activeProducts: activeProductCount,
+            negativeStock: aggregated.negativeStock,
+            positiveStock: aggregated.positiveStock,
+            negativeUnits: aggregated.negativeUnits,
+            positiveUnits: aggregated.positiveUnits,
+            totalSystemUnits: aggregated.totalSystemUnits
+        };
+    }, [inventories, activeProductCount]);
+
+    const globalProgress = useMemo(() => {
+        if (!inventories.length) return 0;
+        const controlled = inventories.filter((i: any) => i.status === 'controlado').length;
+        return Math.round((controlled / inventories.length) * 100);
+    }, [inventories]);
+
+    return {
         metrics,
         globalProgress,
-        assignedDays,
-        cycleStartDate,
+        assignedDays: (config as any)?.days || 0,
+        cycleStartDate: (config as any)?.startDate ? new Date((config as any).startDate) : undefined,
         updateConfig,
         isLoading
-    }), [metrics, globalProgress, assignedDays, cycleStartDate, isLoading]); // updateConfig is async func, stable? technically no if it's recreated. But it's defined inside component? Wait, line 115 is const updateConfig = async... inside the hook. It should be wrapped in useCallback?
-
-    // Ah, updateConfig is defined at line 115. Let's wrap it in useCallback first, OR just omit it from dependency array if we assume it's stable enough (but it's not).
-    // Better: wrap updateConfig in useCallback, then useMemo result.
-    // Actually, to minimize changes in this specific call, I will just wrap the return.
-
-    return useMemo(() => ({
-        metrics,
-        globalProgress,
-        assignedDays,
-        cycleStartDate,
-        updateConfig,
-        isLoading
-    }), [metrics, globalProgress, assignedDays, cycleStartDate, updateConfig, isLoading]);
-};
+    };
+}

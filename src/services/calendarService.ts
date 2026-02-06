@@ -21,7 +21,7 @@ export const calendarService = {
 
         // Admin sees all. Branch sees only theirs.
         if (!isAdmin && branchName) {
-            query = query.eq('branch_name', branchName);
+            query = query.ilike('branch_name', branchName.trim());
         }
 
         const { data, error } = await query;

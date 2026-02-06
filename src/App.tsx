@@ -320,8 +320,13 @@ const App = () => {
       }
     }, 1000);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+    };
   }, []);
+
+
+  /* Splash screen removed */
 
   return (
     <QueryClientProvider client={queryClient}>

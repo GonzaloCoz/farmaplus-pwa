@@ -28,7 +28,7 @@ export function useInventoryStats(items: CyclicItem[], initialCategory = "Medica
     // Filter pending items by CURRENT CATEGORY
     const pendingItems = useMemo(() => filteredItems.filter(i =>
         i.status === 'pending' &&
-        (i.category === currentCategory || (!i.category && currentCategory === "Varios")) // Default to Varios if no category
+        ((i.category || '').toUpperCase() === currentCategory.toUpperCase() || (!(i.category || '').trim() && currentCategory.toUpperCase() === "VARIOS"))
     ), [filteredItems, currentCategory]);
 
     // Controlled and Adjusted items are GLOBAL (not filtered by category tab, usually)
@@ -54,7 +54,7 @@ export function useInventoryStats(items: CyclicItem[], initialCategory = "Medica
     const controlledItems = useMemo(() => {
         const filtered = filteredItems.filter(i =>
             i.status === 'controlled' &&
-            (i.category === currentCategory || (!i.category && currentCategory === "Varios"))
+            ((i.category || '').toUpperCase() === currentCategory.toUpperCase() || (!(i.category || '').trim() && currentCategory.toUpperCase() === "VARIOS"))
         );
         return sortItemsByDifference(filtered);
     }, [filteredItems, currentCategory]);
@@ -63,7 +63,7 @@ export function useInventoryStats(items: CyclicItem[], initialCategory = "Medica
     const adjustedItems = useMemo(() => {
         const filtered = filteredItems.filter(i =>
             i.status === 'adjusted' &&
-            (i.category === currentCategory || (!i.category && currentCategory === "Varios"))
+            ((i.category || '').toUpperCase() === currentCategory.toUpperCase() || (!(i.category || '').trim() && currentCategory.toUpperCase() === "VARIOS"))
         );
         return sortItemsByDifference(filtered);
     }, [filteredItems, currentCategory]);

@@ -18,8 +18,7 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
         'EDIT_SETTINGS',
         'IMPERSONATE_BRANCH',
         'EDIT_DASHBOARD_LAYOUT',
-        'MANAGE_CALENDAR_EVENTS',
-        'MANAGE_USERS'
+        'MANAGE_CALENDAR_EVENTS'
     ],
     'mod': [
         'VIEW_BRANCH_MONITOR',

@@ -36,7 +36,8 @@ VALUES
     ('ediaz', 'Emanuel Diaz', 'admin', 'Casa Central'),
     ('ebustos', 'Ezequiel Bustos', 'admin', 'Casa Central'),
     ('nmomeno', 'Nicolas Momeño', 'admin', 'Casa Central'),
-    ('cfraga', 'Carlos Fraga', 'admin', 'Casa Central')
+    ('cfraga', 'Carlos Fraga', 'admin', 'Casa Central'),
+    ('jgallegos', 'Jorge Gallegos', 'admin', 'Casa Central')
 ON CONFLICT (username) 
 DO UPDATE SET 
     full_name = EXCLUDED.full_name,
@@ -46,5 +47,5 @@ DO UPDATE SET
 -- 7. Limpiar administradores antiguos (Opcional)
 -- DELETE FROM public.profiles 
 -- WHERE role = 'admin' 
--- AND username NOT IN ('gcoz', 'ediaz', 'ebustos', 'nmomeno', 'cfraga');
+-- AND username NOT IN ('gcoz', 'ediaz', 'ebustos', 'nmomeno', 'cfraga', 'jgallegos');
 

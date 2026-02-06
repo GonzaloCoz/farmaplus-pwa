@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useNavigate } from 'react-router-dom';
+import { WidgetSkeleton } from '../WidgetSkeleton';
 
 interface AlertItem {
     productName: string;
@@ -125,7 +126,7 @@ export function SmartAnalystWidget() {
         }
     };
 
-    if (isLoading) return null; // Or skeleton
+    if (isLoading) return <WidgetSkeleton variant="analyst" />;
 
     const alertCount = alerts.length;
     const isClean = alertCount === 0;

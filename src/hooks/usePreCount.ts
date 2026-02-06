@@ -243,16 +243,23 @@ export function usePreCount(): UsePreCountReturn {
 
         try {
             if (existingItem) {
-                // Update optimistically
-                setItems(prev => prev.map(item =>
-                    item.ean === ean
-                        ? { ...item, quantity: item.quantity + quantity, synced: 0 }
-                        : item
-                ));
+                // Update quantity and MOVE TO TOP
+                const updatedItem = {
+                    ...existingItem,
+                    quantity: existingItem.quantity + quantity,
+                    synced: 0,
+                    timestamp: Date.now() // Update timestamp to reflect re-scan
+                };
 
-                notify.success("Cantidad actualizada", `${productName} (+${quantity})`);
+                // Remove from current position and add to top
+                setItems(prev => [
+                    updatedItem,
+                    ...prev.filter(item => item.ean !== ean)
+                ]);
+
+                notify.success("Cantidad actualizada", `${productName} (+${quantity}) - Movido al inicio`);
             } else {
-                // Add optimistically
+                // Add new item at the top
                 setItems(prev => [optimisticItem, ...prev]);
                 notify.success("Producto agregado", `${productName} - ${quantity} unidades`);
                 playSound('success');

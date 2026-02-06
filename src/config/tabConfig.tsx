@@ -1,19 +1,20 @@
 
 import React from "react";
-import { LayoutDashboard, Database, ClipboardList, Package, FileText, Settings, User, BarChart2, ShieldCheck, Microscope } from "lucide-react";
+import { LayoutDashboard, Database, ClipboardList, Package, FileText, Settings, User, BarChart2, ShieldCheck, Clock } from "lucide-react";
 
 export const TAB_CONFIG: Record<string, { title: string, icon: React.ReactNode }> = {
     "/": { title: "Dashboard", icon: <LayoutDashboard className="w-4 h-4" /> },
     "/stock": { title: "Gestión de Stock", icon: <Database className="w-4 h-4" /> },
     "/stock/pre-count": { title: "Pre-Conteo", icon: <ClipboardList className="w-4 h-4" /> },
     "/stock/import": { title: "Importar", icon: <Package className="w-4 h-4" /> },
+    "/stock/expiration-control": { title: "Control de Vencimiento", icon: <Clock className="w-4 h-4" /> },
     "/cyclic-inventory": { title: "Inv. Cíclicos", icon: <ClipboardList className="w-4 h-4" /> },
     "/products": { title: "Productos", icon: <Package className="w-4 h-4" /> },
     "/reports": { title: "Reportes", icon: <BarChart2 className="w-4 h-4" /> },
     "/settings": { title: "Configuración", icon: <Settings className="w-4 h-4" /> },
     "/profile": { title: "Perfil", icon: <User className="w-4 h-4" /> },
     "/admin/audit": { title: "Auditoría", icon: <ShieldCheck className="w-4 h-4" /> },
-    "/smart-analyst": { title: "Analista", icon: <Microscope className="w-4 h-4" /> },
+    "/smart-analyst": { title: "Control de Vencimiento", icon: <Clock className="w-4 h-4" /> },
 };
 
 export const getTabMetaForPath = (path: string) => {

@@ -62,7 +62,7 @@ export const cyclicInventoryService = {
                         category
                     )
                 `)
-                .eq('branch_name', branchName)
+                .ilike('branch_name', branchName.trim())
                 .eq('laboratory', labName);
 
             if (error) {
@@ -131,7 +131,7 @@ export const cyclicInventoryService = {
     deleteInventory: async (branchName: string, labName: string) => {
         const { error } = await supabase.from('inventories')
             .delete()
-            .eq('branch_name', branchName)
+            .ilike('branch_name', branchName.trim())
             .eq('laboratory', labName);
 
         if (error) {
@@ -144,7 +144,7 @@ export const cyclicInventoryService = {
     deleteAdjustmentHistory: async (branchName: string, labName: string) => {
         const { error } = await supabase.from('inventory_adjustments')
             .delete()
-            .eq('branch_name', branchName)
+            .ilike('branch_name', branchName.trim())
             .eq('laboratory', labName);
 
         if (error) {
@@ -171,7 +171,7 @@ export const cyclicInventoryService = {
     clearAllLabResidue: async (branchName: string, labName: string) => {
         const { error } = await supabase.from('inventories')
             .delete()
-            .eq('branch_name', branchName)
+            .ilike('branch_name', branchName.trim())
             .eq('laboratory', labName)
             .eq('status', 'pending');
 
@@ -192,7 +192,7 @@ export const cyclicInventoryService = {
             const { error: deleteError } = await (supabase as any)
                 .from('inventories')
                 .delete()
-                .eq('branch_name', branchName)
+                .ilike('branch_name', branchName.trim())
                 .eq('laboratory', labName);
 
             if (deleteError) {
@@ -265,7 +265,7 @@ export const cyclicInventoryService = {
                     .upsert({
                         branch_name: branchName,
                         laboratory: labName,
-                        category: category, // NEW: Include Category in unique identifier
+                        category: category.trim().toUpperCase(), // Normalización: Siempre guardar categoría en mayúsculas
                         total_items: totalMasterItems > 0 ? totalMasterItems : catItems.length, // Save Master Total if available
                         controlled_items: controlledItems + adjustedItems, // Save total processed
                         adjusted_items: adjustedItems,
@@ -382,8 +382,8 @@ export const cyclicInventoryService = {
                 .from('branch_laboratories')
                 .select('*')
                 .eq('branch_name', branchName)
-                .ilike('laboratory', labName)
-                .ilike('category', category)
+                .ilike('laboratory', labName.trim())
+                .ilike('category', category.trim())
                 .maybeSingle();
 
             if (error) {
@@ -419,7 +419,7 @@ export const cyclicInventoryService = {
             .select(`*`);
 
         if (branchName) {
-            query = query.eq('branch_name', branchName);
+            query = query.ilike('branch_name', branchName.trim());
         }
 
         const { data, error } = await query;
@@ -590,7 +590,7 @@ export const cyclicInventoryService = {
         const { data } = await supabase
             .from('inventories')
             .select('ean, quantity')
-            .eq('branch_name', branchName)
+            .eq('branch_name', branchName.trim())
             .eq('laboratory', '_CONFIG_');
 
         if (!data || (data as any).length === 0) return { days: 0, startDate: null };
@@ -682,7 +682,7 @@ export const cyclicInventoryService = {
             const { error: error1 } = await supabase.from('inventory_adjustments').insert({
                 branch_name: branchName,
                 laboratory: labName,
-                category: data.category || null, // NEW: Save Category
+                category: data.category ? data.category.trim().toUpperCase() : null, // Normalización
                 adjustment_id_shortage: data.adjustment_id_shortage,
                 adjustment_id_surplus: data.adjustment_id_surplus,
                 shortage_value: data.shortage_value,
@@ -801,7 +801,7 @@ export const cyclicInventoryService = {
         const { data, error } = await supabase
             .from('inventories')
             .select('ean, quantity')
-            .eq('branch_name', branchName)
+            .eq('branch_name', branchName.trim())
             .eq('laboratory', '_CONFIG_')
             .ilike('ean', `CLOSURE_${period}_%`);
 

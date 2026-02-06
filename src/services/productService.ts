@@ -194,17 +194,27 @@ export async function getLaboratoriesForBranch(branchName: string): Promise<{ na
         const { data, error } = await supabase
             .from('branch_laboratories')
             .select('laboratory, category')
-            .eq('branch_name', branchName);
+            .ilike('branch_name', branchName.trim());
 
         if (error) {
             console.error('Error fetching laboratories for branch:', error);
             return [];
         }
 
-        return (data || []).map(item => ({
-            name: item.laboratory,
-            category: item.category || 'Sin categoría'
-        }));
+        // Deduplicate and normalize in-memory to be extra safe
+        const uniqueLabs = new Map<string, string>();
+        (data || []).forEach(item => {
+            const name = (item.laboratory || '').trim();
+            const cat = (item.category || 'VARIOS').trim().toUpperCase();
+            if (name) {
+                const key = `${name.toUpperCase()}|${cat}`;
+                if (!uniqueLabs.has(key)) {
+                    uniqueLabs.set(key, JSON.stringify({ name, category: cat }));
+                }
+            }
+        });
+
+        return Array.from(uniqueLabs.values()).map(v => JSON.parse(v));
     } catch (error) {
         console.error('Error in getLaboratoriesForBranch:', error);
         return [];
@@ -214,13 +224,14 @@ export async function getLaboratoriesForBranch(branchName: string): Promise<{ na
 // Get total count of products for a specific laboratory AND category (Master Denominator)
 export async function getProductCountByLab(labName: string, category?: string): Promise<number> {
     try {
+        // Use ilike and case-insensitive matching for robustness
         let query = supabase
             .from('products')
             .select('*', { count: 'exact', head: true })
-            .ilike('laboratory', labName);
+            .ilike('laboratory', labName.trim());
 
         if (category) {
-            query = query.ilike('category', category);
+            query = query.ilike('category', category.trim());
         }
 
         const { count, error } = await query;

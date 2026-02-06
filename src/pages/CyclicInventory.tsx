@@ -52,16 +52,19 @@ export default function CyclicInventory() {
         const mergedData: CyclicInventoryStats[] = [...inventoryStats];
 
         // Create lookup Set to prevent duplicates (Key: Name|Category)
-        const activeLabsSet = new Set(inventoryStats.map(s => `${s.labName}|${s.category}`));
+        // Normalize category to UPPERCASE for comparison
+        const activeLabsSet = new Set(inventoryStats.map(s => `${s.labName.trim().toUpperCase()}|${(s.category || '').trim().toUpperCase()}`));
 
         allowedLabs.forEach(labInfo => {
-          const key = `${labInfo.name}|${labInfo.category}`;
+          const labName = labInfo.name.trim().toUpperCase();
+          const category = labInfo.category.trim().toUpperCase();
+          const key = `${labName}|${category}`;
 
           // If this specific combination (Name+Category) doesn't exist in active inventory, add as Pending
           if (!activeLabsSet.has(key)) {
             mergedData.push({
               labName: labInfo.name,
-              category: labInfo.category,
+              category: labInfo.category.trim().toUpperCase(), // Save normalized category for pending items
               status: 'pendiente',
               totalItems: 0,
               controlledItems: 0,
@@ -89,22 +92,45 @@ export default function CyclicInventory() {
     loadLabs();
   }, [user]);
 
-  // Dashboard Stats
-  const currentViewLabs = laboratories.filter(l => l.category === categoryFilter);
+  // Group laboratories by name to deduplicate
+  // IMPORTANT: Do NOT sum values - just take the first entry to avoid counting duplicates
+  const groupedLaboratories = useMemo(() => {
+    // First, filter by selected category
+    const filteredByCategory = categoryFilter
+      ? laboratories.filter(lab => (lab.category || '').toUpperCase() === categoryFilter.toUpperCase())
+      : laboratories;
 
-  const totalLabs = currentViewLabs.length;
-  const controlledLabs = currentViewLabs.filter(l => l.status === 'controlado').length;
-  const pendingLabs = currentViewLabs.filter(l => l.status === 'pendiente').length;
+    // Then deduplicate by name (take first entry only)
+    const grouped = new Map<string, CyclicInventoryStats>();
 
-  // Financial Stats (Global for current view)
-  const totalDifference = currentViewLabs.reduce((acc, curr) => acc + curr.differenceValue, 0);
-  const totalNegative = currentViewLabs.reduce((acc, curr) => acc + curr.negativeValue, 0);
-  const totalPositive = currentViewLabs.reduce((acc, curr) => acc + curr.positiveValue, 0);
+    filteredByCategory.forEach(lab => {
+      const key = lab.labName.trim().toUpperCase();
+
+      // Only add if not already present (take first entry, ignore duplicates)
+      if (!grouped.has(key)) {
+        grouped.set(key, { ...lab });
+      }
+      // If duplicate exists, we IGNORE it instead of summing
+      // This prevents counting duplicate products multiple times
+    });
+
+    return Array.from(grouped.values());
+  }, [laboratories, categoryFilter]);
+
+  // Dashboard Stats - Using grouped laboratories
+  const totalLabs = groupedLaboratories.length;
+  const controlledLabs = groupedLaboratories.filter(l => l.status === 'controlado').length;
+  const pendingLabs = groupedLaboratories.filter(l => l.status === 'pendiente').length;
+
+  // Financial Stats (Global - all grouped labs)
+  const totalDifference = groupedLaboratories.reduce((acc, curr) => acc + curr.differenceValue, 0);
+  const totalNegative = groupedLaboratories.reduce((acc, curr) => acc + curr.negativeValue, 0);
+  const totalPositive = groupedLaboratories.reduce((acc, curr) => acc + curr.positiveValue, 0);
 
   // Calculate Unit Totals for Trend percentages
-  const totalSystemUnits = currentViewLabs.reduce((acc, curr) => acc + curr.totalSystemUnits, 0);
-  const totalNegativeUnits = currentViewLabs.reduce((acc, curr) => acc + curr.negativeUnits, 0);
-  const totalPositiveUnits = currentViewLabs.reduce((acc, curr) => acc + curr.positiveUnits, 0);
+  const totalSystemUnits = groupedLaboratories.reduce((acc, curr) => acc + curr.totalSystemUnits, 0);
+  const totalNegativeUnits = groupedLaboratories.reduce((acc, curr) => acc + curr.negativeUnits, 0);
+  const totalPositiveUnits = groupedLaboratories.reduce((acc, curr) => acc + curr.positiveUnits, 0);
 
   const calculateTrend = (value: number, total: number) => {
     if (total === 0) return { value: 0, isPositive: true };
@@ -122,7 +148,7 @@ export default function CyclicInventory() {
   const progressPercentage = totalLabs > 0 ? Math.round((controlledLabs / totalLabs) * 100) : 0;
 
   const filteredAndSortedLabs = useMemo(() => {
-    let result = [...laboratories];
+    let result = [...groupedLaboratories];
 
     // Filter by search term
     if (searchTerm) {
@@ -130,9 +156,6 @@ export default function CyclicInventory() {
         lab.labName.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
-
-    // Filter by category (Strict)
-    result = result.filter((lab) => lab.category === categoryFilter);
 
     // Sort
     result.sort((a, b) => {
@@ -151,7 +174,7 @@ export default function CyclicInventory() {
     });
 
     return result;
-  }, [searchTerm, categoryFilter, sortBy, laboratories]);
+  }, [searchTerm, sortBy, groupedLaboratories]);
 
   const getSortLabel = (sort: SortOption) => {
     switch (sort) {

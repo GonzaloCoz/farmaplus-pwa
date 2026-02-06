@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChevronUp, Info, MoreHorizontal } from 'lucide-react';
+import { WidgetSkeleton } from '../WidgetSkeleton';
 import { cn } from '@/lib/utils';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { getLaboratoriesForBranch } from '@/services/preCountDB';
@@ -30,16 +31,18 @@ export function CategoryProgressWidget() {
                 return;
             }
 
+            const branchName = user.branchSheet.trim(); // Normalización de entrada
+
             try {
                 // 1. Get Master List of Labs
-                const allLabs = await getLaboratoriesForBranch(user.branchSheet);
+                const allLabs = await getLaboratoriesForBranch(branchName);
 
                 // 2. Get Current Statuses
-                const inventories = await cyclicInventoryService.getAllCyclicInventories(user.branchSheet) || [];
-                const labStatusMap = new Map(inventories.map(i => [i.labName, i.status]));
+                const inventories = await cyclicInventoryService.getAllCyclicInventories(branchName) || [];
+                const labStatusMap = new Map(inventories.map(i => [`${i.labName.trim().toUpperCase()}|${(i.category || '').trim().toUpperCase()}`, i.status]));
 
                 // 3. Get Configuration & Historical Closures
-                const config = await cyclicInventoryService.getBranchConfig(user.branchSheet);
+                const config = await cyclicInventoryService.getBranchConfig(branchName);
 
                 // Calculate Days Elapsed
                 let daysElapsed = 0;
@@ -67,7 +70,7 @@ export function CategoryProgressWidget() {
                                 percentage: stats.total > 0 ? Math.round((stats.controlled / stats.total) * 100) : 0
                             }));
 
-                            await cyclicInventoryService.saveCycleClosure(user.branchSheet!, period, dataToSave);
+                            await cyclicInventoryService.saveCycleClosure(branchName, period, dataToSave);
                             notify.success(`Cierre automático del Periodo ${period} completado.`);
                             return true; // We performed a save
                         }
@@ -86,13 +89,16 @@ export function CategoryProgressWidget() {
                 // Aggregate Data
                 allLabs.forEach(lab => {
                     let catKey = 'Varios';
-                    const labCat = (lab.category || '').toUpperCase();
+                    const labCat = (lab.category || '').trim().toUpperCase()
+                        .normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // Remove accents for comparison
 
                     if (labCat === 'MEDICAMENTOS') catKey = 'Medicamentos';
                     else if (labCat === 'PERFUMERIA') catKey = 'Perfumería';
                     else if (labCat === 'ACCESORIOS') catKey = 'Accesorios';
 
-                    const status = labStatusMap.get(lab.name);
+                    const labName = (lab.name || '').trim().toUpperCase();
+                    const statusKey = `${labName}|${(lab.category || '').trim().toUpperCase()}`;
+                    const status = labStatusMap.get(statusKey);
                     const isControlled = status === 'controlado';
 
                     cats[catKey].total += 1;
@@ -105,12 +111,20 @@ export function CategoryProgressWidget() {
                 await checkAndRunAutoClosure(2, 60, cats);
 
                 // Reload closures for display (Period 1 is currently the base for the chart)
-                const closures = await cyclicInventoryService.getCycleClosures(user.branchSheet || '', 1);
+                const closuresRaw = await cyclicInventoryService.getCycleClosures(branchName, 1);
+
+                // Normalizar llaves de cierres para comparación sin acentos
+                const closures: Record<string, number> = {};
+                Object.entries(closuresRaw).forEach(([k, v]) => {
+                    const normalizedKey = k.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+                    closures[normalizedKey] = v;
+                });
 
                 // Map to final data structure
                 const categoryData: CategoryData[] = Object.entries(cats).map(([name, stats]) => {
                     const percentage = stats.total > 0 ? Math.round((stats.controlled / stats.total) * 100) : 0;
-                    const prevPerc = closures[name.toUpperCase()] || 0;
+                    const lookupName = name.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                    const prevPerc = closures[lookupName] || 0;
                     return {
                         name,
                         totalItems: stats.total,
@@ -148,11 +162,7 @@ export function CategoryProgressWidget() {
     }, [categories, selectedCategory]);
 
     if (loading) {
-        return (
-            <div className="h-full flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-            </div>
-        );
+        return <WidgetSkeleton variant="progress" />;
     }
 
     return (

@@ -61,7 +61,7 @@ export function LaboratoryCard({
     const Icon = config.icon;
 
     // Simulate progress if not provided based on status
-    const displayProgress = status === 'controlado' ? 100 : status === 'pendiente' ? 0 : progress || 0;
+    const displayProgress = status === 'controlado' ? 100 : progress || 0;
 
     return (
         <Card

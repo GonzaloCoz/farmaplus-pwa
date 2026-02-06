@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Home, Upload, BarChart3, Package, FileText, Settings, User, Bell, LucideIcon, TrendingUp, Archive, ChevronLeft } from "lucide-react";
+import { Home, Upload, BarChart3, Package, FileText, Settings, User, Bell, LucideIcon, TrendingUp, Archive, ChevronLeft, Clock } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { NavLink } from "@/components/NavLink";
 import { cn } from "@/lib/utils";
@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 const menuItems = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Stock", url: "/stock", icon: Upload },
+  { title: "Control de Vencimiento", url: "/smart-analyst", icon: Clock },
   { title: "Inventarios Cíclicos", url: "/cyclic-inventory", icon: BarChart3 },
   { title: "Comparativa", url: "/comparison", icon: TrendingUp },
   { title: "Productos", url: "/products", icon: Package },

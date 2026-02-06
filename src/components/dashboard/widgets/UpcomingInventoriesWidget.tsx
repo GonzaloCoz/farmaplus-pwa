@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { CalendarClock, Plus, ChevronRight, MoreHorizontal } from 'lucide-react';
+import { WidgetSkeleton } from '../WidgetSkeleton';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/contexts/UserContext';
 import { hasPermission } from '@/config/permissions';
@@ -96,6 +97,8 @@ export function UpcomingInventoriesWidget({ onDateClick }: Props) {
             setIsLoading(false);
         }
     };
+
+    if (isLoading) return <WidgetSkeleton variant="analyst" />;
 
     return (
         <div className="p-0 h-full flex flex-col relative overflow-hidden">

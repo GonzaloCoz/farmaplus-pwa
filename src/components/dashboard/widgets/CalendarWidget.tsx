@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { WidgetSkeleton } from '../WidgetSkeleton';
 import { Button } from '@/components/ui/button';
 import { Calendar as CalendarIcon, Plus } from 'lucide-react';
 import CustomCalendar from "@/components/CustomCalendar";
@@ -27,6 +28,7 @@ export function CalendarWidget() {
     const [newBranch, setNewBranch] = useState("");
     const [newSector, setNewSector] = useState("");
     const [newDate, setNewDate] = useState<string>(new Date().toISOString().slice(0, 10));
+    const [isLoading, setIsLoading] = useState(true);
 
     // Load Events
     useEffect(() => {
@@ -52,8 +54,12 @@ export function CalendarWidget() {
             setEvents(mappedEvents);
         } catch (error) {
             console.error("Error loading events:", error);
+        } finally {
+            setIsLoading(false);
         }
     };
+
+    if (isLoading) return <WidgetSkeleton variant="default" />;
 
     const handleAddEvent = async () => {
         if (!newTitle || !newBranch || !newSector || !newDate) {

@@ -67,20 +67,22 @@ export const maintenanceService = {
      */
     standardizeCategories: async () => {
         try {
-            // Ejemplo: "Medicamento" -> "Medicamentos"
-            const { error: err1 } = await (supabase as any)
-                .from('inventories')
-                .update({ category: 'Medicamentos' })
-                .eq('category', 'Medicamento');
+            // Normalización masiva a mayúsculas y sin espacios extras
+            const { error } = await (supabase as any).rpc('normalize_inventory_categories');
 
-            if (err1) console.warn("Error normalizando 'Medicamento'", err1);
+            if (error) {
+                // Si la RPC no existe aún, intentamos via update directo (fallback)
+                console.warn("RPC normalize_inventory_categories no encontrada, usando fallback");
+                await (supabase as any)
+                    .from('inventories')
+                    .update({ category: 'MEDICAMENTOS' })
+                    .ilike('category', 'Medicamento%');
 
-            const { error: err2 } = await (supabase as any)
-                .from('inventories')
-                .update({ category: 'Perfumería' })
-                .eq('category', 'Perfumeria');
-
-            if (err2) console.warn("Error normalizando 'Perfumeria'", err2);
+                await (supabase as any)
+                    .from('inventories')
+                    .update({ category: 'PERFUMERIA' })
+                    .ilike('category', 'Perfumer%');
+            }
 
             return true;
         } catch (error) {

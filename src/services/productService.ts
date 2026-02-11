@@ -6,10 +6,11 @@ export interface Product {
     ean: string;
     name: string;
     cost: number;
-    salePrice: number;
+    salePrice?: number;
     category?: string;
     laboratory?: string;
-    stock: number;
+    stock?: number;
+    id_producto?: string;
 }
 
 // Get all products from Supabase
@@ -29,10 +30,11 @@ export async function getAllProducts(): Promise<Product[]> {
             ean: item.ean,
             name: item.name,
             cost: item.cost || 0,
-            salePrice: item.sale_price || 0,
+            salePrice: (item as any).sale_price || 0,
             category: item.category || undefined,
             laboratory: item.laboratory || undefined,
-            stock: item.stock || 0
+            stock: (item as any).stock || 0,
+            id_producto: item.id_producto || undefined
         }));
     } catch (error) {
         console.error('Error in getAllProducts:', error);
@@ -65,7 +67,8 @@ export async function searchProducts(query: string, limit: number = 50): Promise
             salePrice: item.sale_price || 0,
             category: item.category || undefined,
             laboratory: item.laboratory || undefined,
-            stock: item.stock || 0
+            stock: item.stock || 0,
+            id_producto: item.id_producto || undefined
         }));
 
         // Cache results for future use
@@ -96,7 +99,8 @@ export async function getProductByEAN(ean: string): Promise<Product | undefined>
                 salePrice: cached.salePrice,
                 category: cached.category,
                 laboratory: cached.laboratory,
-                stock: cached.stock
+                stock: cached.stock,
+                id_producto: cached.id_producto
             };
         }
 
@@ -124,7 +128,8 @@ export async function getProductByEAN(ean: string): Promise<Product | undefined>
             salePrice: productData.sale_price || 0,
             category: productData.category || undefined,
             laboratory: productData.laboratory || undefined,
-            stock: 0 // Column doesn't exist in actual database
+            stock: 0, // Column doesn't exist in actual database
+            id_producto: productData.id_producto || undefined
         };
 
         // Cache for future use
@@ -144,10 +149,9 @@ export async function addProducts(products: Product[]): Promise<void> {
             ean: p.ean,
             name: p.name,
             cost: p.cost,
-            sale_price: p.salePrice,
             category: p.category || null,
             laboratory: p.laboratory || null,
-            stock: p.stock || 0
+            id_producto: p.id_producto || null
         }));
 
         const { error } = await supabase
@@ -275,13 +279,21 @@ export async function getAllBranchLabCounts(): Promise<Record<string, number>> {
 // Clear all products (admin only)
 export async function clearProducts(): Promise<void> {
     try {
+        // First clear inventories to avoid FK constraint violations
+        await supabase.from('inventories').delete().neq('ean', '');
+
         const { error } = await supabase
             .from('products')
             .delete()
-            .neq('ean', ''); // Delete all
+            .neq('ean', ''); // Use EAN as filter, as ID column seems missing
 
         if (error) {
-            console.error('Error clearing products:', error);
+            console.error('Error clearing products:', {
+                message: error.message,
+                details: error.details,
+                hint: error.hint,
+                code: error.code
+            });
             throw error;
         }
     } catch (error) {

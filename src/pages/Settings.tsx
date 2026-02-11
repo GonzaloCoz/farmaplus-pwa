@@ -85,11 +85,30 @@ export default function Settings() {
       let totalLabs = 0;
       const labAssignments: Array<{ branch: string; lab: string; category: string }> = [];
 
-      // Process each branch
+      // Process each branch in BRANCH_NAMES
       for (const branchName of BRANCH_NAMES) {
-        const sheetName = sheetMap.get(branchName.toLowerCase().trim());
+        const nBranch = branchName.toLowerCase().trim();
+        let sheetName = sheetMap.get(nBranch);
+
+        // Fallback: Try matching "San Isidro I" with "San Isidro" or vice versa
         if (!sheetName) {
-          console.warn(`No sheet found for branch: ${branchName}`);
+          // Try finding a sheet that is contained in the branch name or vice versa
+          for (const [sKey, sName] of sheetMap.entries()) {
+            // Example: Branch "San Isidro I" (nBranch='san isidro i') contains Sheet "San Isidro" (sKey='san isidro')
+            // OR Sheet "Belgrano V" contains Branch "Belgrano" (dangerous? No, usually specific to general)
+
+            // Safer Strategy:
+            // 1. Check if Branch Name starts with Sheet Name (Sheet: "San Isidro", Branch: "San Isidro I")
+            if (nBranch.startsWith(sKey) && sKey.length > 3) {
+              sheetName = sName;
+              break;
+            }
+            // 2. Check if Sheet Name starts with Branch Name (Sheet: "Belgrano V1", Branch: "Belgrano") -- wait, strict
+          }
+        }
+
+        if (!sheetName) {
+          // console.warn(`Skipping branch ${branchName}: No matching sheet found.`);
           continue;
         }
 
@@ -109,7 +128,7 @@ export default function Settings() {
               const labName = String(row[c]).trim();
               if (labName.length > 0) {
                 labAssignments.push({
-                  branch: branchName,
+                  branch: branchName, // Utilize the SYSTEM branch name "San Isidro I"
                   lab: labName.toUpperCase(),
                   category: category.toUpperCase()
                 });
@@ -126,46 +145,39 @@ export default function Settings() {
         return;
       }
 
-      // First, clear all existing data
-      const { error: deleteError } = await supabase
-        .from('branch_laboratories')
-        .delete()
-        .gte('created_at', '1970-01-01T00:00:00Z');
-
-      if (deleteError) {
-        console.warn("Could not delete existing records:", deleteError);
-        // Continue anyway, upsert will handle it
-      }
+      // 1. Build list of operations
+      const branchesProcessed = new Set<string>();
+      const validLabIds = new Map<string, Set<string>>(); // Branch -> Set of "Laboratory|Category"
 
       // Deduplicate assignments (in case Excel has duplicates)
       const uniqueAssignments = new Map<string, typeof labAssignments[0]>();
       labAssignments.forEach(a => {
-        // Fix: Include Category in key to allow multiple categories per lab
         const key = `${a.branch}|${a.lab}|${a.category}`;
         if (!uniqueAssignments.has(key)) {
           uniqueAssignments.set(key, a);
         }
+
+        // Track valid IDs for cleanup
+        branchesProcessed.add(a.branch);
+        if (!validLabIds.has(a.branch)) {
+          validLabIds.set(a.branch, new Set());
+        }
+        // We track "Laboratory|Category" as the composite key for validity
+        validLabIds.get(a.branch)?.add(`${a.lab}|${a.category}`);
       });
 
-      // Insert new assignments using UPSERT
+      // 2. Insert/Update new assignments using UPSERT (Non-destructive to progress)
       const insertData = Array.from(uniqueAssignments.values()).map(a => ({
         branch_name: a.branch,
         laboratory: a.lab,
         category: a.category,
-        total_items: 0,
-        controlled_items: 0,
-        adjusted_items: 0,
-        pending_items: 0,
-        progress_percentage: 0,
-        total_system_units: 0,
-        net_units: 0,
-        net_value: 0,
-        negative_value: 0,
-        positive_value: 0,
-        status: 'pending' as const
+        // Status might be reset to default or kept? 
+        // If we want to ensure visibility, defaulting to 'pending' is safe for configuration updates.
+        status: 'pending' as const,
+        // No updated_at col
       }));
 
-      // Insert in chunks using UPSERT to avoid payload limit and handle duplicates
+      // Insert in chunks
       const chunkSize = 500;
       let insertedCount = 0;
 
@@ -178,24 +190,51 @@ export default function Settings() {
             ignoreDuplicates: false
           });
 
-        if (error) {
-          throw new Error(`Error insertando chunk ${i}: ${error.message}`);
-        }
+        if (error) throw new Error(`Error insertando chunk ${i}: ${error.message}`);
         insertedCount += chunk.length;
       }
 
-      // Now update with real progress data from inventories
-      const { error: updateError } = await (supabase as any).rpc('update_lab_progress_from_inventories');
+      // 3. CLEANUP ORPHANS (The "Exact Sync" Step)
+      // For each branch we touched, delete rows that match the branch but constitute an "Orphan" (not in our valid set)
+      let deletedCount = 0;
 
-      // If RPC doesn't exist, do it manually
-      if (updateError) {
-        console.warn("RPC not available, updating manually...");
-        // This would require a more complex update, but for now we'll skip it
+      for (const branch of branchesProcessed) {
+        // We need to fetch ALL labs for this branch to compare
+        // (Doing it via SQL delete directly with NOT IN might be complex due to composite key)
+        // Simplest strategy: Fetch IDs for this branch, filter locally, delete by ID.
+
+        const { data: existingLabs, error: fetchError } = await supabase
+          .from('branch_laboratories')
+          .select('id, laboratory, category')
+          .eq('branch_name', branch);
+
+        if (fetchError) throw new Error(`Error fetching labs for cleanup: ${fetchError.message}`);
+
+        const validSet = validLabIds.get(branch);
+        const idsToDelete: string[] = [];
+
+        existingLabs?.forEach(row => {
+          const key = `${row.laboratory}|${row.category}`;
+          if (!validSet?.has(key)) {
+            idsToDelete.push(row.id);
+          }
+        });
+
+        if (idsToDelete.length > 0) {
+          // Delete in batches if necessary
+          const { error: deleteError } = await supabase
+            .from('branch_laboratories')
+            .delete()
+            .in('id', idsToDelete);
+
+          if (deleteError) throw new Error(`Error deleting orphans: ${deleteError.message}`);
+          deletedCount += idsToDelete.length;
+        }
       }
 
       notify.success(
-        "Importación exitosa",
-        `${insertedCount} laboratorios importados/actualizados correctamente.`
+        "Sincronización Exacta Completada",
+        `${insertedCount} laboratorios asegurados. ${deletedCount} laboratorios obsoletos eliminados de las sucursales procesadas.`
       );
 
       event.target.value = '';
@@ -234,20 +273,33 @@ export default function Settings() {
 
       const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: "A" });
       const products: Product[] = [];
+      const headerRow: any = jsonData[0] || {};
+
+      // Encontrar índices de columnas por nombre
+      let colId = "A";
+      let colName = "B";
+      let colEan = "C";
+
+      Object.entries(headerRow).forEach(([key, value]) => {
+        const val = String(value).toLowerCase().trim();
+        if (val.includes("idproducto")) colId = key;
+        if (val === "producto" || val === "nombre") colName = key;
+        if (val.includes("barcode") || val.includes("codigo") || val.includes("ean")) colEan = key;
+      });
 
       for (let i = 1; i < jsonData.length; i++) {
         const row: any = jsonData[i];
-        const rawName = row["D"];
-        const rawLab = row["O"];
-        const rawEans = row["Q"];
+        const rawId = row[colId];
+        const rawName = row[colName];
+        const rawEans = row[colEan];
 
         if (!rawName || !rawEans) continue;
 
+        const idProducto = rawId ? String(rawId).trim() : undefined;
         const name = String(rawName).trim();
-        const laboratory = rawLab ? String(rawLab).trim() : undefined;
         const eanString = String(rawEans).trim();
 
-        const eanList = eanString.split('-').map(e => e.trim()).filter(e => e.length > 0);
+        const eanList = eanString.split(/[-,\s;]+/).map(e => e.trim()).filter(e => e.length > 0);
 
         eanList.forEach(ean => {
           products.push({
@@ -255,27 +307,34 @@ export default function Settings() {
             name: name,
             cost: 0,
             salePrice: 0,
-            laboratory: laboratory,
+            laboratory: undefined,
             category: '',
-            stock: 0
+            stock: 0,
+            id_producto: idProducto
           });
         });
       }
 
       if (products.length === 0) {
-        notify.error("Error", "No se encontraron productos válidos. Verifica las columnas (D=Producto, Q=EAN).");
+        notify.error("Error", "No se encontraron productos válidos. Verifica las columnas (IDProducto, Producto, Barcodes).");
         return;
       }
 
-      if (confirm(`Se encontraron ${products.length} códigos EAN (de ${jsonData.length - 1} filas). ¿Deseas reemplazar la base de datos actual?`)) {
+      // Deduplicar productos por EAN para evitar el error "ON CONFLICT DO UPDATE command cannot affect row a second time"
+      const uniqueProductsMap = new Map<string, Product>();
+      products.forEach(p => uniqueProductsMap.set(p.ean, p));
+      const uniqueProducts = Array.from(uniqueProductsMap.values());
+
+      if (confirm(`Se encontraron ${uniqueProducts.length} códigos EAN únicos (de ${jsonData.length - 1} filas). ¿Deseas reemplazar la base de datos actual?`)) {
         await clearProducts();
-        await addProducts(products);
-        notify.success("Operación exitosa", `${products.length} productos importados correctamente.`);
+        await addProducts(uniqueProducts);
+        notify.success("Operación exitosa", `${uniqueProducts.length} productos con IDProducto importados correctamente.`);
       }
       event.target.value = '';
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error importing products:", error);
-      notify.error("Error", "Error al importar el archivo. Asegúrate de que sea un Excel válido.");
+      const errorDetail = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
+      notify.error("Error", `Error al importar: ${errorDetail.substring(0, 100)}`);
     } finally {
       setIsImporting(false);
     }
@@ -487,7 +546,7 @@ export default function Settings() {
                     <div>
                       <h3 className="font-medium mb-1">Importar Productos desde Excel</h3>
                       <p className="text-sm text-muted-foreground mb-3">
-                        Actualiza la base de datos con un archivo .xlsx. El archivo debe tener columnas "EAN" y "Descripcion".
+                        Actualiza la base de datos con un archivo .xlsx. El archivo debe tener columnas "A: IDProducto", "B: Producto" y "C: Barcodes" (EANs separados por guiones o comas).
                       </p>
 
                       <div className="flex gap-2">

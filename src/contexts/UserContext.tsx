@@ -113,7 +113,6 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                         };
 
                         persistUser(newUser);
-                        setIsLoading(false);
                         return true;
                     }
                 } else {
@@ -133,6 +132,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
             // AND the Auth attempt failed above, then this is a bad login.
             // UNLESS the user is strictly legacy and uses the global password.
             // For safety during migration, we reject if not 'farmaplus' only if we assume all legacy users use it.
+            setIsLoading(false); // Ensure loading state is reset on failure
             return false;
         }
 
@@ -151,6 +151,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
                 if (profile.active === false && profile.username.toLowerCase() !== 'gcoz') {
                     notify.error("Acceso Denegado", "Tu cuenta se encuentra inactiva. Contacta al administrador (gcoz).");
+                    setIsLoading(false); // Ensure loading state is reset on failure
                     return false;
                 }
 
@@ -231,12 +232,14 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
             return true;
         }
 
+        setIsLoading(false); // Ensure loading state is reset on failure
         return false;
     };
 
     const persistUser = (user: User) => {
         setUser(user);
         localStorage.setItem('farmaplus_user', JSON.stringify(user));
+        setIsLoading(false); // <--- Reset global loading state once user is ready
     };
 
     const selectBranch = (branchName: string) => {

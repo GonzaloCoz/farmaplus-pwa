@@ -16,7 +16,6 @@ import {
 } from '@/services/preCountDB';
 import { notify } from '@/lib/notifications';
 
-// Mapped interface for internal component use (camelCase)
 export interface UIPreCountItem {
     id: string;
     sessionId: string;
@@ -25,6 +24,7 @@ export interface UIPreCountItem {
     quantity: number;
     timestamp: number;
     synced?: number;
+    id_producto?: string;
 }
 
 interface UsePreCountReturn {
@@ -38,7 +38,7 @@ interface UsePreCountReturn {
     startSession: (sector: string) => Promise<void>;
     resumeSession: (session: PreCountSession) => Promise<void>;
     deleteSession: (id: string) => Promise<void>;
-    addItem: (ean: string, productName: string, quantity: number) => Promise<void>;
+    addItem: (ean: string, productName: string, quantity: number, id_producto?: string) => Promise<void>;
     updateItem: (id: string, quantity: number) => Promise<void>;
     removeItem: (id: string) => Promise<void>;
     finishSession: () => Promise<void>;
@@ -164,7 +164,8 @@ export function usePreCount(): UsePreCountReturn {
         productName: dbItem.product_name,
         quantity: dbItem.quantity,
         timestamp: new Date(dbItem.scanned_at).getTime(),
-        synced: dbItem.synced ?? 1
+        synced: dbItem.synced ?? 1,
+        id_producto: dbItem.id_producto
     });
 
     // Calcular totales con memoization
@@ -219,7 +220,7 @@ export function usePreCount(): UsePreCountReturn {
     };
 
     // Agregar item con optimistic update
-    const addItem = useCallback(async (ean: string, productName: string, quantity: number) => {
+    const addItem = useCallback(async (ean: string, productName: string, quantity: number, id_producto?: string) => {
         if (!session) {
             notify.error("Sesión requerida", "No hay una sesión activa");
             return;
@@ -238,7 +239,8 @@ export function usePreCount(): UsePreCountReturn {
             productName,
             quantity,
             timestamp: Date.now(),
-            synced: 0 // Marca como no sincronizado
+            synced: 0, // Marca como no sincronizado
+            id_producto: id_producto || existingItem?.id_producto
         };
 
         try {
@@ -272,6 +274,7 @@ export function usePreCount(): UsePreCountReturn {
                 ean,
                 product_name: productName,
                 quantity,
+                id_producto: id_producto || existingItem?.id_producto
             });
 
             // La actualización real vendrá por realtime subscription

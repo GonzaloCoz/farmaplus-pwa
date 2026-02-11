@@ -421,6 +421,7 @@ export interface Database {
                     stock: number
                     created_at: string
                     updated_at: string
+                    id_producto: string | null
                 }
                 Insert: {
                     id?: string
@@ -433,6 +434,7 @@ export interface Database {
                     stock?: number
                     created_at?: string
                     updated_at?: string
+                    id_producto?: string | null
                 }
                 Update: {
                     id?: string
@@ -445,6 +447,7 @@ export interface Database {
                     stock?: number
                     created_at?: string
                     updated_at?: string
+                    id_producto?: string | null
                 }
                 Relationships: []
             }
@@ -650,6 +653,7 @@ export interface Database {
                     sale_price: number
                     category: string | null
                     laboratory: string | null
+                    id_producto: string | null
                 }[]
             }
             get_product_by_ean: {
@@ -663,6 +667,7 @@ export interface Database {
                     sale_price: number
                     category: string | null
                     laboratory: string | null
+                    id_producto: string | null
                 }[]
             }
         }

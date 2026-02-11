@@ -1,4 +1,4 @@
-import { MemoryRouter, Route, Routes, Outlet, useLocation, Navigate } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Outlet, useLocation, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, lazy, Suspense } from "react";
 import { AnimatePresence } from "framer-motion";
@@ -311,18 +311,16 @@ import { WindowManagerProvider } from "./contexts/WindowManagerContext";
 
 const App = () => {
   useEffect(() => {
-    // Inicializar DB al cargar la app
-    const timer = setTimeout(async () => {
+    // Inicializar DB inmediatamente al cargar la app
+    const initialize = async () => {
       try {
         await initDB();
       } catch (error) {
         console.error("Error initializing DB:", error);
       }
-    }, 1000);
-
-    return () => {
-      clearTimeout(timer);
     };
+
+    initialize();
   }, []);
 
 
@@ -340,9 +338,9 @@ const App = () => {
                   <OfflineIndicator />
                   <InstallPrompt />
                   <ErrorBoundary>
-                    <MemoryRouter>
+                    <BrowserRouter>
                       <AppRoutes />
-                    </MemoryRouter>
+                    </BrowserRouter>
                   </ErrorBoundary>
                 </NotificationProvider>
               </WindowManagerProvider>

@@ -127,7 +127,7 @@ export async function addPreCountItem(item: { session_id: string, ean: string, p
     return upsertPreCountItem(item);
 }
 
-export async function upsertPreCountItem(item: { session_id: string, ean: string, product_name: string, quantity: number }): Promise<PreCountItem> {
+export async function upsertPreCountItem(item: { session_id: string, ean: string, product_name: string, quantity: number, id_producto?: string }): Promise<PreCountItem> {
     const { data: userData } = await supabase.auth.getUser();
 
     // Check if item exists locally (deduplication/update logic)
@@ -145,9 +145,10 @@ export async function upsertPreCountItem(item: { session_id: string, ean: string
         await db.items.update(existingItem.id, {
             quantity: newQuantity,
             scanned_at: now,
-            synced: 0
+            synced: 0,
+            id_producto: item.id_producto || existingItem.id_producto
         });
-        resultItem = { ...existingItem, quantity: newQuantity, scanned_at: now };
+        resultItem = { ...existingItem, quantity: newQuantity, scanned_at: now, id_producto: item.id_producto || existingItem.id_producto };
     } else {
         // Create new
         const newItem: LocalItem = {
@@ -158,7 +159,8 @@ export async function upsertPreCountItem(item: { session_id: string, ean: string
             quantity: item.quantity,
             scanned_at: now,
             scanned_by: userData.user?.id,
-            synced: 0
+            synced: 0,
+            id_producto: item.id_producto
         };
         await db.items.add(newItem);
         resultItem = newItem;
@@ -175,15 +177,9 @@ export async function upsertPreCountItem(item: { session_id: string, ean: string
             session_id: item.session_id,
             ean: item.ean,
             product_name: item.product_name,
-            quantity: item.quantity, // NOTE: This is DELTA quantity for the RPC usually, OR absolute?
-            // The RPC 'upsert_precount_item' in our SQL usually adds quantity if exists?
-            // Let's check the SQL... assumed ADDITIVE based on typical implementation.
-            // Wait, if we count locally 5, then 5 again -> Total 10.
-            // If we send +5 and +5 to server -> Server has 10. Correct.
-            // So we send the DELTA (item.quantity), not the total (resultItem.quantity).
-            // BUT resultItem has the TOTAL. 
-            // We must be careful passed data.
-            scanned_by: userData.user?.id
+            quantity: item.quantity,
+            scanned_by: userData.user?.id,
+            id_producto: item.id_producto || existingItem?.id_producto
         }
     });
 

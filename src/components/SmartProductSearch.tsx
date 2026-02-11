@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface SmartProductSearchProps {
-    onSelect: (product: { name: string, ean: string }) => void;
+    onSelect: (product: { name: string, ean: string, id_producto?: string }) => void;
     autoFocus?: boolean;
     className?: string;
 }
@@ -93,7 +93,7 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
         }
     };
 
-    const handleSelect = (product: { name: string, ean: string }) => {
+    const handleSelect = (product: { name: string, ean: string, id_producto?: string }) => {
         onSelect(product);
         setQuery(''); // Clear after select? Or keep? Usually clear to be ready for next or to show selected.
         // For this flow (Search -> Qty -> Next), clearing is better as the "Selected Product" info is shown elsewhere usually.

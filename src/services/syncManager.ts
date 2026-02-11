@@ -97,7 +97,8 @@ export class SyncManager {
                     p_ean: data.ean,
                     p_product_name: data.product_name,
                     p_quantity: data.quantity,
-                    p_user_id: data.scanned_by
+                    p_user_id: data.scanned_by,
+                    p_id_producto: data.id_producto
                 });
                 if (error) throw error;
             } else if (type === 'delete') {

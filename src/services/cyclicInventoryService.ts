@@ -218,10 +218,24 @@ export const cyclicInventoryService = {
             // Group items by category to split metadata records
             const grouped: Record<string, CyclicItem[]> = {};
             items.forEach(item => {
-                const cat = item.category || 'Varios';
+                const cat = (item.category || 'Varios').trim().toUpperCase();
                 if (!grouped[cat]) grouped[cat] = [];
                 grouped[cat].push(item);
             });
+
+            // --- GLOBAL PROGRESS CALCULATION (Forced Consistency) ---
+            // Calculate progress based on the ENTIRE passed inventory list (which represents the full Lab).
+            // This ensures that the percentage stored in 'branch_laboratories' matches exactly what the user sees
+            // in the Detail View (28%), instead of a partial category progress (e.g. 39%).
+            const globalTotal = items.length;
+            const globalProcessed = items.filter(i => i.status === 'controlled' || i.status === 'adjusted').length;
+
+            let globalProgress = 0;
+            if (globalTotal > 0) {
+                globalProgress = Number(((globalProcessed / globalTotal) * 100).toFixed(1));
+                if (globalProgress > 100) globalProgress = 100;
+            }
+            // -------------------------------------------------------
 
             // Iterate each category and upsert its own stats
             const upsertPromises = Object.entries(grouped).map(async ([category, catItems]) => {
@@ -232,32 +246,13 @@ export const cyclicInventoryService = {
                 const adjustedItems = catItems.filter(i => i.status === 'adjusted').length;
                 const pendingItems = catItems.filter(i => i.status === 'pending').length;
 
-                // --- REAL PROGRESS CALCULATION ---
-                // Fetch Master Count for this Lab AND Category (Denominator)
-                // Note: We might want to cache this or fetch it once before the loop if performance is an issue,
-                // but for now, distinct lab/category updates are sparse enough.
-                const totalMasterItems = await getProductCountByLab(labName, category);
+                // Category-specific counts (for accurate data)
+                const totalInventoryItems = catItems.length;
 
-                // Calculate Progress relative to Master
-                const totalProcessed = controlledItems + adjustedItems;
-
-                let realProgress = 0;
-                if (totalMasterItems > 0) {
-                    realProgress = (totalProcessed / totalMasterItems) * 100;
-                } else {
-                    // Fallback if master count is 0 (shouldn't happen if items exist)
-                    realProgress = stats.progress;
-                }
-
-                // Round to 1 decimal
-                realProgress = Number(realProgress.toFixed(1));
-                // Cap at 100% just in case
-                if (realProgress > 100) realProgress = 100;
-
-                // Determine overall status
+                // Determine overall status based on GLOBAL progress
                 let status: 'pending' | 'in_progress' | 'completed' = 'pending';
-                if (realProgress === 100) status = 'completed';
-                else if (realProgress > 0) status = 'in_progress';
+                if (globalProgress === 100) status = 'completed';
+                else if (globalProgress > 0) status = 'in_progress';
 
                 // Upsert to metadata table with composite key (Branch + Lab + Category)
                 return supabase
@@ -265,12 +260,12 @@ export const cyclicInventoryService = {
                     .upsert({
                         branch_name: branchName,
                         laboratory: labName,
-                        category: category.trim().toUpperCase(), // Normalización: Siempre guardar categoría en mayúsculas
-                        total_items: totalMasterItems > 0 ? totalMasterItems : catItems.length, // Save Master Total if available
-                        controlled_items: controlledItems + adjustedItems, // Save total processed
+                        category: category,
+                        total_items: totalInventoryItems, // Correct Category Count
+                        controlled_items: controlledItems + adjustedItems, // Correct Category Processed
                         adjusted_items: adjustedItems,
                         pending_items: pendingItems,
-                        progress_percentage: realProgress, // SAVE REAL PROGRESS
+                        progress_percentage: globalProgress, // <--- FORCED GLOBAL PROGRESS (28%)
                         total_system_units: stats.totalSystemUnits,
                         net_units: stats.netUnits,
                         net_value: stats.net,
@@ -278,7 +273,6 @@ export const cyclicInventoryService = {
                         positive_value: stats.positive,
                         status: status
                     }, {
-                        // Crucial: This requires the DB constraint to be updated to (branch_name, laboratory, category)
                         onConflict: 'branch_name,laboratory,category'
                     });
             });

@@ -31,6 +31,7 @@ export interface LocalItem {
     scanned_at: string;
     scanned_by?: string;
     synced: number;
+    id_producto?: string;
 }
 
 export interface LocalProduct {
@@ -66,6 +67,13 @@ export class FarmaplusDB extends Dexie {
         this.version(3).stores({
             sessions: 'id, status, start_time, synced',
             items: 'id, session_id, ean, [session_id+ean], synced',
+            products: 'codebar, name',
+            pendingActions: '++id, status, timestamp, entity'
+        });
+
+        this.version(4).stores({
+            sessions: 'id, status, start_time, synced',
+            items: 'id, session_id, ean, [session_id+ean], synced, id_producto',
             products: 'codebar, name',
             pendingActions: '++id, status, timestamp, entity'
         });

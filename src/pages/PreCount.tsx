@@ -103,7 +103,8 @@ export default function PreCount() {
                     salePrice: cached.salePrice,
                     stock: cached.stock,
                     category: cached.category,
-                    laboratory: cached.laboratory
+                    laboratory: cached.laboratory,
+                    id_producto: cached.id_producto
                 });
                 setManualEAN(code);
                 notify.success("Operación exitosa", `Producto encontrado: ${cached.name}`);
@@ -131,7 +132,6 @@ export default function PreCount() {
         }
     };
 
-    // Manejar selección de producto desde búsqueda
     const handleProductSelect = (product: Product) => {
         setSelectedProduct(product);
         setManualEAN(product.ean);
@@ -172,11 +172,14 @@ export default function PreCount() {
         }
 
         // Si aún no hay nombre, usar genérico
-        if (!productName) {
-            productName = `Producto ${manualEAN}`;
+        // Obtener IDProducto de la selección o del caché
+        let idProducto = selectedProduct?.id_producto;
+        if (!idProducto) {
+            const cached = await enhancedProductCache.get(manualEAN.trim());
+            if (cached) idProducto = cached.id_producto;
         }
 
-        await addItem(manualEAN, productName, qty);
+        await addItem(manualEAN, productName, qty, idProducto);
 
         // Limpiar formulario y devolver foco al buscador
         setManualEAN('');
@@ -201,6 +204,37 @@ export default function PreCount() {
     };
 
 
+
+    // Exportar a TXT (Formato solicitado: IDProducto;EAN;Cantidad;0)
+    const handleExportTXT = () => {
+        if (items.length === 0) {
+            notify.error("Error", 'No hay productos para exportar');
+            return;
+        }
+
+        try {
+            const lines = items.map(item => {
+                const idProd = item.id_producto || '';
+                return `${idProd};${item.ean};${item.quantity};0`;
+            });
+
+            const content = lines.join('\n');
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `PreConteo_${sector}_${new Date().toISOString().split('T')[0]}.txt`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            notify.success("Operación exitosa", 'Archivo TXT generado correctamente');
+        } catch (error) {
+            console.error('Error generating TXT:', error);
+            notify.error("Error", 'Error al generar el archivo TXT');
+        }
+    };
 
     // Exportar a PDF
     const handleExportPDF = () => {
@@ -585,7 +619,7 @@ export default function PreCount() {
 
                                                     // Set EAN and Name
                                                     setManualEAN(p.ean);
-                                                    setSelectedProduct({ ...p, stock: 0, salePrice: 0, cost: 0 }); // partial product
+                                                    setSelectedProduct({ ...p, stock: 0, salePrice: 0, cost: 0, id_producto: p.id_producto }); // partial product
 
                                                     // Auto-focus quantity input after short delay to allow state update
                                                     setTimeout(() => {
@@ -721,6 +755,12 @@ export default function PreCount() {
                                 label: "Exportar PDF",
                                 icon: <FileText className="w-5 h-5" />,
                                 onClick: handleExportPDF,
+                                variant: 'outline'
+                            },
+                            {
+                                label: "Exportar TXT",
+                                icon: <Upload className="w-5 h-5" />,
+                                onClick: handleExportTXT,
                                 variant: 'secondary'
                             }
                         ]}

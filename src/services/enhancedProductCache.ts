@@ -7,10 +7,11 @@ interface CachedProduct {
     ean: string;
     name: string;
     cost: number;
-    salePrice: number;
+    salePrice?: number;
     category?: string;
     laboratory?: string;
-    stock: number;
+    stock?: number;
+    id_producto?: string;
     cachedAt: number;
     accessCount: number;
     lastAccessed: number;
@@ -323,6 +324,7 @@ export async function cacheProduct(ean: string, name: string): Promise<void> {
         cost: 0,
         salePrice: 0,
         stock: 0,
+        id_producto: undefined,
     });
 }
 
@@ -334,6 +336,7 @@ export async function cacheProducts(products: Array<{ ean: string; name: string;
             cost: p.cost || 0,
             salePrice: p.salePrice || 0,
             stock: p.stock || 0,
+            id_producto: (p as any).id_producto || undefined,
         }))
     );
 }

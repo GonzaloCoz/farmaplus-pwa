@@ -23,16 +23,20 @@ interface WindowManagerContextType {
 const WindowContext = createContext<WindowManagerContextType | undefined>(undefined);
 
 export const WindowManagerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [windows, setWindows] = useState<WindowInstance[]>([]);
-    const [activeWindowId, setActiveWindowId] = useState<string | null>(null);
+    const [windows, setWindows] = useState<WindowInstance[]>(() => {
+        // Inicialización síncrona para evitar flash de carga y race conditions
+        const initialPath = window.location.pathname === '/' ? '/' : window.location.pathname;
+        const { title, icon } = getTabMetaForPath(initialPath);
+        return [{
+            id: uuidv4(),
+            path: initialPath,
+            title,
+            icon
+        }];
+    });
+    const [activeWindowId, setActiveWindowId] = useState<string | null>(() => windows[0]?.id || null);
 
-    // Initial window (e.g. Dashboard)
-    useEffect(() => {
-        if (windows.length === 0) {
-            const { title, icon } = getTabMetaForPath('/');
-            openWindow('/', title, icon, false);
-        }
-    }, [windows.length]);
+    // No necesitamos el useEffect inicial ya que inicializamos en el state
 
     const openWindow = (path: string, title?: string, icon?: React.ReactNode, forceNew: boolean = true) => {
         // If not forcing new, check if a window with this path exists
@@ -48,16 +52,22 @@ export const WindowManagerProvider: React.FC<{ children: React.ReactNode }> = ({
         const meta = getTabMetaForPath(path);
         const newWindow: WindowInstance = {
             id,
-            path,
+            path: path,
             title: title || meta.title,
             icon: icon || meta.icon
         };
+
         setWindows(prev => {
             // Final check to avoid race conditions/duplicates in mount
-            if (!forceNew && prev.find(w => w.path === path)) return prev;
+            const existing = prev.find(w => w.path === path);
+            if (!forceNew && existing) {
+                // Use current ID instead of creating a ghost one
+                setActiveWindowId(existing.id);
+                return prev;
+            }
+            setActiveWindowId(id);
             return [...prev, newWindow];
         });
-        setActiveWindowId(id);
     };
 
     const closeWindow = (id: string) => {

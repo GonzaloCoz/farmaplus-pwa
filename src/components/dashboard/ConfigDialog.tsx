@@ -12,7 +12,7 @@ interface ConfigDialogProps {
     onOpenChange: (open: boolean) => void;
     user: User | null;
     currentAssignedDays: number;
-    currentStartDate: string | null;
+    currentStartDate: Date | string | null;
     onSave: (branch: string, days: number, startDate?: string) => Promise<any>;
 }
 
@@ -39,7 +39,14 @@ export function ConfigDialog({
             setConfigBranch(user?.branchName || '');
             setConfigDays(foundBase);
             setExtensionDays(Math.max(0, currentTotal - foundBase));
-            setConfigStartDate(currentStartDate ? currentStartDate.split('T')[0] : new Date().toISOString().split('T')[0]);
+
+            // Safe date parsing
+            if (currentStartDate) {
+                const dateStr = currentStartDate instanceof Date ? currentStartDate.toISOString() : String(currentStartDate);
+                setConfigStartDate(dateStr.split('T')[0]);
+            } else {
+                setConfigStartDate(new Date().toISOString().split('T')[0]);
+            }
         }
     }, [open, currentAssignedDays, currentStartDate, user]);
 

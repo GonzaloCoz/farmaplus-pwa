@@ -38,6 +38,9 @@ export default function Dashboard() {
     assignedDays,
     cycleStartDate,
     updateConfig,
+    isLocked,
+    lockReason,
+    toggleLock,
     isLoading
   } = useDashboardMetrics();
 
@@ -156,6 +159,9 @@ export default function Dashboard() {
                       cycleStartDate={cycleStartDate}
                       onDateClick={openCalendarForIso}
                       onEditConfig={handleEditConfig}
+                      isLocked={isLocked}
+                      lockReason={lockReason}
+                      onToggleLock={toggleLock}
                     />
                   </WidgetErrorBoundary>
                 </WidgetContainer>

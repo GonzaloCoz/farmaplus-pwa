@@ -33,6 +33,9 @@ interface WidgetRendererProps {
     cycleStartDate: string | null;
     onDateClick: (iso?: string) => void;
     onEditConfig: () => void;
+    isLocked?: boolean;
+    lockReason?: 'manual' | 'deadline' | null;
+    onToggleLock?: (isLocked: boolean) => void;
 }
 
 export const WidgetRenderer = memo(({
@@ -43,7 +46,10 @@ export const WidgetRenderer = memo(({
     assignedDays,
     cycleStartDate,
     onDateClick,
-    onEditConfig
+    onEditConfig,
+    isLocked,
+    lockReason,
+    onToggleLock
 }: WidgetRendererProps) => {
 
     switch (widgetType) {
@@ -103,6 +109,10 @@ export const WidgetRenderer = memo(({
                     totalProgress={globalProgress}
                     isEditable={hasPermission(user, 'MANAGE_INVENTORY_CONFIG')}
                     onEdit={onEditConfig}
+                    isLocked={isLocked}
+                    lockReason={lockReason}
+                    onToggleLock={onToggleLock}
+                    canManageLock={user?.role === 'admin' || user?.role === 'mod'}
                 />
             );
         case 'category-progress':

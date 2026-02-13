@@ -53,7 +53,25 @@ export function useDashboardMetrics() {
         staleTime: 1000 * 60 * 60, // 1 hour
     });
 
-    const isLoading = isLoadingInventories || isLoadingConfig;
+    // Fetch lock status
+    const { data: lockStatus = { isLocked: false, reason: null }, isLoading: isLoadingLock } = useQuery({
+        queryKey: ['branch-lock-status', user?.branchName, config],
+        queryFn: async () => {
+            if (!user?.branchName) return { isLocked: false, reason: null };
+            try {
+                const days = (config as any)?.days || 0;
+                const startDate = (config as any)?.startDate || null;
+                return await cyclicInventoryService.isInventoryLocked(user.branchName, days, startDate);
+            } catch (error) {
+                console.error('Error checking lock status:', error);
+                return { isLocked: false, reason: null };
+            }
+        },
+        enabled: !!user?.branchName && !!config,
+        staleTime: 1000 * 60 * 5, // 5 minutes cache
+    });
+
+    const isLoading = isLoadingInventories || isLoadingConfig || isLoadingLock;
 
     // Mutation to update config
     const updateConfigMutation = useMutation({
@@ -77,6 +95,30 @@ export function useDashboardMetrics() {
     const updateConfig = async (branch: string, days: number, startDate?: string) => {
         if (!user?.branchName) return;
         await updateConfigMutation.mutateAsync({ branch, days, startDate });
+    };
+
+    // Mutation to toggle lock
+    const toggleLockMutation = useMutation({
+        mutationFn: async (variables: { branch: string, isLocked: boolean }) => {
+            await cyclicInventoryService.toggleBranchLock(variables.branch, variables.isLocked);
+
+            // Audit Log
+            await auditService.logAction({
+                action: variables.isLocked ? 'INVENTORY_LOCKED' : 'INVENTORY_UNLOCKED',
+                entityType: 'BRANCH_INVENTORY',
+                branchId: variables.branch,
+                userId: user?.id,
+                details: { isLocked: variables.isLocked }
+            });
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['branch-lock-status', user?.branchName] });
+        }
+    });
+
+    const toggleLock = async (isLocked: boolean) => {
+        if (!user?.branchName) return;
+        await toggleLockMutation.mutateAsync({ branch: user.branchName, isLocked });
     };
 
     // 2. Metrics Calculation - Returning Object structure as expected by consumers
@@ -132,6 +174,9 @@ export function useDashboardMetrics() {
         assignedDays: (config as any)?.days || 0,
         cycleStartDate: (config as any)?.startDate ? new Date((config as any).startDate) : undefined,
         updateConfig,
+        isLocked: lockStatus.isLocked,
+        lockReason: lockStatus.reason,
+        toggleLock,
         isLoading
     };
 }

@@ -582,10 +582,11 @@ export const cyclicInventoryService = {
 
     // Configuration System
     getBranchConfig: async (branchName: string): Promise<{ days: number, startDate: string | null }> => {
+        const cleanBranch = normalizeString(branchName);
         const { data } = await supabase
             .from('inventories')
             .select('ean, quantity')
-            .eq('branch_name', branchName.trim())
+            .eq('branch_name', cleanBranch)
             .eq('laboratory', '_CONFIG_');
 
         if (!data || (data as any).length === 0) return { days: 0, startDate: null };
@@ -607,52 +608,82 @@ export const cyclicInventoryService = {
     },
 
     saveBranchConfig: async (branchName: string, days: number, startDate?: string): Promise<void> => {
-        const cleanBranch = branchName.trim();
         try {
             await import('./preCountDB').then(m => m.ensureConfigProduct());
 
-            // 1. Delete previous config records for this branch
-            const { error: deleteError } = await supabase.from('inventories')
-                .delete()
-                .eq('branch_name', cleanBranch)
-                .eq('laboratory', '_CONFIG_');
+            // Convert date to seconds
+            const seconds = startDate ? Math.floor(new Date(startDate).getTime() / 1000) : null;
 
-            if (deleteError) {
-                console.error("Error deleting old config:", deleteError);
+            // Use the NEW ROBUST RPC to avoid 409 Conflicts and handle normalization on the server
+            const { error } = await (supabase as any).rpc('save_branch_config', {
+                p_branch_name: branchName,
+                p_days: days,
+                p_start_date_seconds: seconds
+            });
+
+            if (error) {
+                console.error("Error calling save_branch_config RPC:", error);
+                throw error;
             }
-
-            // 2. Prepare new records
-            const insertData = [
-                {
-                    laboratory: '_CONFIG_',
-                    branch_name: cleanBranch,
-                    ean: 'CONFIG_DAYS',
-                    quantity: days,
-                    system_quantity: 0,
-                    status: 'pending' as const
-                }
-            ];
-
-            if (startDate) {
-                // Store as seconds to fit in Postgres integer column (32-bit)
-                const seconds = Math.floor(new Date(startDate).getTime() / 1000);
-                insertData.push({
-                    laboratory: '_CONFIG_',
-                    branch_name: cleanBranch,
-                    ean: 'CONFIG_START_DATE',
-                    quantity: seconds,
-                    system_quantity: 0,
-                    status: 'pending' as const
-                });
-            }
-
-            // 3. Insert and check for error
-            const { error } = await supabase.from('inventories').insert(insertData);
-            if (error) throw error;
         } catch (e) {
-            console.error("Error saving branch config:", e);
+            console.error("Error in saveBranchConfig:", e);
             throw e;
         }
+    },
+
+    // Lock System
+    getBranchLockStatus: async (branchName: string): Promise<boolean> => {
+        const cleanBranch = normalizeString(branchName);
+        const { data } = await supabase
+            .from('inventories')
+            .select('quantity')
+            .eq('branch_name', cleanBranch)
+            .eq('laboratory', '_CONFIG_')
+            .eq('ean', 'CONFIG_LOCK')
+            .maybeSingle();
+
+        // If no lock record exists, branch is unlocked (0 or null = unlocked, 1 = locked)
+        return data?.quantity === 1;
+    },
+
+    toggleBranchLock: async (branchName: string, isLocked: boolean): Promise<void> => {
+        try {
+            const { error } = await (supabase as any).rpc('toggle_branch_lock', {
+                p_branch_name: branchName,
+                p_is_locked: isLocked
+            });
+
+            if (error) {
+                console.error('Error calling toggle_branch_lock RPC:', error);
+                throw error;
+            }
+        } catch (e) {
+            console.error('Error in toggleBranchLock:', e);
+            throw e;
+        }
+    },
+
+    isInventoryLocked: async (branchName: string, assignedDays: number, startDate: string | null): Promise<{ isLocked: boolean, reason: 'manual' | 'deadline' | null }> => {
+        // Check manual lock first
+        const manuallyLocked = await cyclicInventoryService.getBranchLockStatus(branchName);
+        if (manuallyLocked) {
+            return { isLocked: true, reason: 'manual' };
+        }
+
+        // Check automatic lock (deadline expired)
+        if (startDate && assignedDays > 0) {
+            const start = new Date(startDate);
+            const today = new Date();
+            const diffTime = today.getTime() - start.getTime();
+            const daysElapsed = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+            const daysRemaining = Math.max(0, assignedDays - daysElapsed);
+
+            if (daysRemaining <= 0) {
+                return { isLocked: true, reason: 'deadline' };
+            }
+        }
+
+        return { isLocked: false, reason: null };
     },
 
     // History System

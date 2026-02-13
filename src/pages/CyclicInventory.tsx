@@ -16,6 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getLaboratoriesForBranch } from "@/services/preCountDB";
 import { cyclicInventoryService, CyclicInventoryStats } from "@/services/cyclicInventoryService";
 import { useUser } from "@/contexts/UserContext";
@@ -33,6 +34,7 @@ export default function CyclicInventory() {
   const [sortBy, setSortBy] = useState<SortOption>("name-asc");
   const [laboratories, setLaboratories] = useState<CyclicInventoryStats[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [lockStatus, setLockStatus] = useState<{ isLocked: boolean, reason: 'manual' | 'deadline' | null }>({ isLocked: false, reason: null });
 
   useEffect(() => {
     const loadLabs = async () => {
@@ -90,6 +92,25 @@ export default function CyclicInventory() {
     };
 
     loadLabs();
+  }, [user]);
+
+  // Fetch lock status
+  useEffect(() => {
+    const checkLockStatus = async () => {
+      if (!user?.branchName) return;
+      try {
+        const config = await cyclicInventoryService.getBranchConfig(user.branchName);
+        const status = await cyclicInventoryService.isInventoryLocked(
+          user.branchName,
+          config.days,
+          config.startDate
+        );
+        setLockStatus(status);
+      } catch (error) {
+        console.error('Error checking lock status:', error);
+      }
+    };
+    checkLockStatus();
   }, [user]);
 
   // Group laboratories by name to deduplicate
@@ -197,6 +218,19 @@ export default function CyclicInventory() {
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
+      {/* Lock Status Alert */}
+      {lockStatus.isLocked && user?.role === 'branch' && (
+        <Alert className="border-destructive/50 bg-destructive/10">
+          <AlertCircle className="h-4 w-4 text-destructive" />
+          <AlertTitle className="text-destructive font-semibold">Inventario Bloqueado</AlertTitle>
+          <AlertDescription className="text-destructive/90">
+            {lockStatus.reason === 'manual'
+              ? 'El inventario ha sido bloqueado manualmente. No puedes cargar nuevos archivos hasta que sea desbloqueado.'
+              : 'El plazo de inventario ha vencido. No puedes cargar nuevos archivos. Contacta al administrador si necesitas una extensión.'}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Dashboard Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card className="p-6 flex flex-col justify-between bg-card/40 dark:bg-card/20 backdrop-blur-sm border border-border/50 shadow-sm rounded-2xl overflow-hidden relative group transition-all duration-300">

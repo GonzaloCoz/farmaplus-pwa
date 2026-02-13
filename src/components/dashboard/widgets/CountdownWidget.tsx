@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, AlertCircle, CheckCircle2, Timer } from 'lucide-react';
+import { Calendar, AlertCircle, CheckCircle2, Timer, Lock, Unlock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMemo } from 'react';
 
@@ -9,6 +9,10 @@ interface CountdownWidgetProps {
     totalProgress: number;
     isEditable?: boolean;
     onEdit?: () => void;
+    isLocked?: boolean;
+    lockReason?: 'manual' | 'deadline' | null;
+    onToggleLock?: (isLocked: boolean) => void;
+    canManageLock?: boolean; // Only admin/zonal can toggle lock
 }
 
 export function CountdownWidget({
@@ -16,7 +20,11 @@ export function CountdownWidget({
     startDate,
     totalProgress = 0,
     isEditable = false,
-    onEdit
+    onEdit,
+    isLocked = false,
+    lockReason = null,
+    onToggleLock,
+    canManageLock = false
 }: CountdownWidgetProps) {
 
     const stats = useMemo(() => {
@@ -95,6 +103,29 @@ export function CountdownWidget({
             <CardHeader className="flex flex-row items-center justify-between space-y-0 px-5 pt-4 pb-2">
                 <CardTitle className="text-sm font-semibold tracking-tight">Plazo de Inventario</CardTitle>
                 <div className="flex items-center gap-2">
+                    {/* Lock Status Indicator */}
+                    {isLocked && (
+                        <div className="flex items-center gap-1 text-xs text-destructive" title={lockReason === 'manual' ? 'Bloqueado manualmente' : 'Bloqueado por vencimiento'}>
+                            <Lock className="h-3.5 w-3.5" />
+                        </div>
+                    )}
+
+                    {/* Lock Toggle Button (Admin/Zonal only) */}
+                    {canManageLock && onToggleLock && (
+                        <button
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onToggleLock(!isLocked);
+                            }}
+                            className="relative z-50 text-muted-foreground hover:text-primary transition-colors opacity-0 group-hover/card:opacity-100 cursor-pointer"
+                            title={isLocked ? 'Desbloquear inventario' : 'Bloquear inventario'}
+                        >
+                            {isLocked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                        </button>
+                    )}
+
+                    {/* Edit Button */}
                     {isEditable && (
                         <button
                             onPointerDown={(e) => e.stopPropagation()}
@@ -108,7 +139,7 @@ export function CountdownWidget({
                             <Calendar className="h-4 w-4" />
                         </button>
                     )}
-                    {!isEditable && <Calendar className="h-4 w-4 text-muted-foreground" />}
+                    {!isEditable && !canManageLock && <Calendar className="h-4 w-4 text-muted-foreground" />}
                 </div>
             </CardHeader>
             <CardContent className="flex flex-col justify-between flex-1 px-5 pb-5 pt-1 gap-4">

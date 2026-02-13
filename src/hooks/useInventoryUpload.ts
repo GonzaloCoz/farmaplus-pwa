@@ -4,6 +4,7 @@ import { notify } from '@/lib/notifications';
 import { CyclicItem } from '@/services/cyclicInventoryService';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { normalizeString } from '@/lib/utils';
+import { useUser } from '@/contexts/UserContext';
 
 // Define categories to avoid circular dependency or redefine
 const CATEGORIES = ["Medicamentos", "Perfumería", "Accesorios", "Varios"];
@@ -17,10 +18,34 @@ interface UseInventoryUploadProps {
 
 export function useInventoryUpload({ labName, branchName, currentItems, onItemsUpdated }: UseInventoryUploadProps) {
     const [isUploading, setIsUploading] = useState(false);
+    const { user } = useUser();
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+
+        // Check lock status before allowing upload (branch users only)
+        if (user?.role === 'branch') {
+            try {
+                const config = await cyclicInventoryService.getBranchConfig(branchName);
+                const lockStatus = await cyclicInventoryService.isInventoryLocked(
+                    branchName,
+                    config.days,
+                    config.startDate
+                );
+
+                if (lockStatus.isLocked) {
+                    const reason = lockStatus.reason === 'manual'
+                        ? 'El inventario ha sido bloqueado manualmente'
+                        : 'El plazo de inventario ha vencido';
+                    notify.error('Inventario Bloqueado', `${reason}. No puedes cargar archivos en este momento.`);
+                    return;
+                }
+            } catch (error) {
+                console.error('Error checking lock status:', error);
+                // Continue with upload if lock check fails (fail open)
+            }
+        }
 
         setIsUploading(true);
         const reader = new FileReader();

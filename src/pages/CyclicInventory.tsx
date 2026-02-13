@@ -9,7 +9,7 @@ import { Search, ArrowUpDown, BarChart3, CheckCircle2, AlertCircle, DollarSign, 
 import { LaboratoryCard, LaboratoryStatus } from "@/components/LaboratoryCard";
 import { CounterAnimation } from "@/components/CounterAnimation";
 import { MetricCarousel } from "@/components/MetricCarousel";
-import { cn } from "@/lib/utils";
+import { cn, normalizeString } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,19 +52,19 @@ export default function CyclicInventory() {
         const mergedData: CyclicInventoryStats[] = [...inventoryStats];
 
         // Create lookup Set to prevent duplicates (Key: Name|Category)
-        // Normalize category to UPPERCASE for comparison
-        const activeLabsSet = new Set(inventoryStats.map(s => `${s.labName.trim().toUpperCase()}|${(s.category || '').trim().toUpperCase()}`));
+        // Normalize category for robust comparison
+        const activeLabsSet = new Set(inventoryStats.map(s => `${s.labName.trim().toUpperCase()}|${normalizeString(s.category || '')}`));
 
         allowedLabs.forEach(labInfo => {
           const labName = labInfo.name.trim().toUpperCase();
-          const category = labInfo.category.trim().toUpperCase();
+          const category = normalizeString(labInfo.category);
           const key = `${labName}|${category}`;
 
           // If this specific combination (Name+Category) doesn't exist in active inventory, add as Pending
           if (!activeLabsSet.has(key)) {
             mergedData.push({
               labName: labInfo.name,
-              category: labInfo.category.trim().toUpperCase(), // Save normalized category for pending items
+              category: normalizeString(labInfo.category), // Save normalized category for pending items
               status: 'pendiente',
               totalItems: 0,
               controlledItems: 0,
@@ -97,7 +97,7 @@ export default function CyclicInventory() {
   const groupedLaboratories = useMemo(() => {
     // First, filter by selected category
     const filteredByCategory = categoryFilter
-      ? laboratories.filter(lab => (lab.category || '').toUpperCase() === categoryFilter.toUpperCase())
+      ? laboratories.filter(lab => normalizeString(lab.category || '') === normalizeString(categoryFilter))
       : laboratories;
 
     // Then deduplicate by name (take first entry only)
@@ -346,6 +346,30 @@ export default function CyclicInventory() {
                   <Database className="w-4 h-4 mr-2 text-primary" />
                   Sincronizar Metas
                 </Button>
+
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="h-9 px-4 rounded-xl shadow-sm hover:shadow-md transition-all font-semibold"
+                  onClick={async () => {
+                    if (!confirm("⚠️ ATENCIÓN: ¿Eliminar todo el avance de laboratorios de esta sucursal? Esta acción es irreversible y purgará inventarios, historial y reportes.")) return;
+
+                    const secondConfirm = confirm("¿Estás ABSOLUTAMENTE seguro? Se borrará todo el progreso de la sucursal actual.");
+                    if (!secondConfirm) return;
+
+                    const toastId = notify.info("Purgando", "Eliminando avance de la sucursal...");
+                    try {
+                      await cyclicInventoryService.purgeBranchProgress(user?.branchSheet || "");
+                      notify.success("Éxito", "Avance purgado correctamente.");
+                      window.location.reload();
+                    } catch (e) {
+                      notify.error("Error", "No se pudo purgar el avance.");
+                    }
+                  }}
+                >
+                  <TrendingDown className="w-4 h-4 mr-2" />
+                  Purgar Avance
+                </Button>
               </div>
             )}
 
@@ -389,7 +413,9 @@ export default function CyclicInventory() {
                   : "text-muted-foreground hover:bg-white/50 dark:hover:bg-white/5"
               )}
             >
-              {cat === "MEDICAMENTOS" ? "Medicamentos" : cat.charAt(0) + cat.slice(1).toLowerCase()}
+              {cat === "MEDICAMENTOS" ? "Medicamentos" :
+                cat === "PERFUMERIA" ? "Perfumería" :
+                  cat === "ACCESORIOS" ? "Accesorios" : "Varios"}
             </Button>
           ))}
         </div>

@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getAllBranchLabCounts } from './preCountDB';
 import { getProductCountByLab } from './productService';
 import { BRANCH_NAMES } from "@/config/users";
+import { normalizeString } from "@/lib/utils";
 
 export interface CyclicInventoryStats {
     labName: string;
@@ -218,7 +219,7 @@ export const cyclicInventoryService = {
             // Group items by category to split metadata records
             const grouped: Record<string, CyclicItem[]> = {};
             items.forEach(item => {
-                const cat = (item.category || 'Varios').trim().toUpperCase();
+                const cat = normalizeString(item.category || 'Varios');
                 if (!grouped[cat]) grouped[cat] = [];
                 grouped[cat].push(item);
             });
@@ -377,7 +378,7 @@ export const cyclicInventoryService = {
                 .select('*')
                 .eq('branch_name', branchName)
                 .ilike('laboratory', labName.trim())
-                .ilike('category', category.trim())
+                .ilike('category', normalizeString(category))
                 .maybeSingle();
 
             if (error) {
@@ -676,7 +677,7 @@ export const cyclicInventoryService = {
             const { error: error1 } = await supabase.from('inventory_adjustments').insert({
                 branch_name: branchName,
                 laboratory: labName,
-                category: data.category ? data.category.trim().toUpperCase() : null, // Normalización
+                category: data.category ? normalizeString(data.category) : null, // Normalización
                 adjustment_id_shortage: data.adjustment_id_shortage,
                 adjustment_id_surplus: data.adjustment_id_surplus,
                 shortage_value: data.shortage_value,
@@ -829,6 +830,28 @@ export const cyclicInventoryService = {
         } catch (error) {
             console.error("Migration failed:", error);
             throw error;
+        }
+    },
+
+    /**
+     * Purga TODO el avance de inventarios, metadatos y ajustes de una sucursal.
+     * Acción crítica para administradores.
+     */
+    purgeBranchProgress: async (branchName: string): Promise<void> => {
+        try {
+            const { error } = await (supabase as any).rpc('purge_branch_cyclic_inventory', {
+                p_branch_name: branchName
+            });
+
+            if (error) {
+                console.error("Error calling purge_branch_cyclic_inventory RPC:", error);
+                throw error;
+            }
+
+            console.log(`Purga total completada para la sucursal: ${branchName}`);
+        } catch (e) {
+            console.error("Error in purgeBranchProgress:", e);
+            throw e;
         }
     }
 };

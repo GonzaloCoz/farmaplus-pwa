@@ -1,6 +1,7 @@
 // Product Service - Supabase Integration
 
 import { supabase } from '@/integrations/supabase/client';
+import { normalizeString } from '@/lib/utils';
 
 export interface Product {
     ean: string;
@@ -209,7 +210,7 @@ export async function getLaboratoriesForBranch(branchName: string): Promise<{ na
         const uniqueLabs = new Map<string, string>();
         (data || []).forEach(item => {
             const name = (item.laboratory || '').trim();
-            const cat = (item.category || 'VARIOS').trim().toUpperCase();
+            const cat = normalizeString(item.category || 'VARIOS');
             if (name) {
                 const key = `${name.toUpperCase()}|${cat}`;
                 if (!uniqueLabs.has(key)) {

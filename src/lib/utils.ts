@@ -8,3 +8,11 @@ export function cn(...inputs: ClassValue[]) {
 export const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(amount);
 };
+
+export const normalizeString = (str: string): string => {
+  return str
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+};

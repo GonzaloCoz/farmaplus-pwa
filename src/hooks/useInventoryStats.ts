@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { CyclicItem } from '@/services/cyclicInventoryService';
+import { normalizeString } from '@/lib/utils';
 
 export function useInventoryStats(items: CyclicItem[], initialCategory = "Medicamentos") {
     const [searchTerm, setSearchTerm] = useState("");
@@ -28,7 +29,7 @@ export function useInventoryStats(items: CyclicItem[], initialCategory = "Medica
     // Filter pending items by CURRENT CATEGORY
     const pendingItems = useMemo(() => filteredItems.filter(i =>
         i.status === 'pending' &&
-        ((i.category || '').toUpperCase() === currentCategory.toUpperCase() || (!(i.category || '').trim() && currentCategory.toUpperCase() === "VARIOS"))
+        (normalizeString(i.category || '') === normalizeString(currentCategory) || (!normalizeString(i.category || '') && normalizeString(currentCategory) === "VARIOS"))
     ), [filteredItems, currentCategory]);
 
     // Controlled and Adjusted items are GLOBAL (not filtered by category tab, usually)
@@ -54,7 +55,7 @@ export function useInventoryStats(items: CyclicItem[], initialCategory = "Medica
     const controlledItems = useMemo(() => {
         const filtered = filteredItems.filter(i =>
             i.status === 'controlled' &&
-            ((i.category || '').toUpperCase() === currentCategory.toUpperCase() || (!(i.category || '').trim() && currentCategory.toUpperCase() === "VARIOS"))
+            (normalizeString(i.category || '') === normalizeString(currentCategory) || (!normalizeString(i.category || '') && normalizeString(currentCategory) === "VARIOS"))
         );
         return sortItemsByDifference(filtered);
     }, [filteredItems, currentCategory]);
@@ -63,7 +64,7 @@ export function useInventoryStats(items: CyclicItem[], initialCategory = "Medica
     const adjustedItems = useMemo(() => {
         const filtered = filteredItems.filter(i =>
             i.status === 'adjusted' &&
-            ((i.category || '').toUpperCase() === currentCategory.toUpperCase() || (!(i.category || '').trim() && currentCategory.toUpperCase() === "VARIOS"))
+            (normalizeString(i.category || '') === normalizeString(currentCategory) || (!normalizeString(i.category || '') && normalizeString(currentCategory) === "VARIOS"))
         );
         return sortItemsByDifference(filtered);
     }, [filteredItems, currentCategory]);

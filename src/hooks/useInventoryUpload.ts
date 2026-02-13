@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { notify } from '@/lib/notifications';
 import { CyclicItem } from '@/services/cyclicInventoryService';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
+import { normalizeString } from '@/lib/utils';
 
 // Define categories to avoid circular dependency or redefine
 const CATEGORIES = ["Medicamentos", "Perfumería", "Accesorios", "Varios"];
@@ -72,10 +73,7 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                     const ean = String(row[2] || '').trim();
                     if (ean) eansInFile.add(ean);
 
-                    let category = row[9]?.toString().trim();
-                    if (category === "Medicamento") category = "Medicamentos";
-                    if (category === "Perfumeria") category = "Perfumería";
-                    if (!category || !CATEGORIES.includes(category)) category = "Varios";
+                    let category = normalizeString(row[9]?.toString() || 'Varios');
                     categoriesInFile.add(category);
                 }
 
@@ -112,12 +110,7 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                     const ean = String(rawEan).trim();
                     if (!ean) continue;
 
-                    let category = row[9]?.toString().trim(); // Column J
-                    if (category) {
-                        if (category === "Medicamento") category = "Medicamentos";
-                        if (category === "Perfumeria") category = "Perfumería";
-                    }
-                    if (!category || !CATEGORIES.includes(category)) category = "Varios";
+                    let category = normalizeString(row[9]?.toString() || 'Varios');
 
                     const rawCost = row[12]; // Column M
                     const costValue = Number(rawCost) || 0;

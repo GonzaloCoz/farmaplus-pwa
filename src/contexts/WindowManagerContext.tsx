@@ -25,7 +25,13 @@ const WindowContext = createContext<WindowManagerContextType | undefined>(undefi
 export const WindowManagerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [windows, setWindows] = useState<WindowInstance[]>(() => {
         // Inicialización síncrona para evitar flash de carga y race conditions
-        const initialPath = window.location.pathname === '/' ? '/' : window.location.pathname;
+        let initialPath = window.location.pathname === '/' ? '/' : window.location.pathname;
+
+        // No crear ventanas para rutas que no son de la app (como /login)
+        if (initialPath === '/login' || initialPath === '/logout') {
+            initialPath = '/';
+        }
+
         const { title, icon } = getTabMetaForPath(initialPath);
         return [{
             id: uuidv4(),

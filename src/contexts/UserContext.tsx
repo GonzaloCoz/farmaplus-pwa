@@ -262,6 +262,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem('farmaplus_user');
         await supabase.auth.signOut();
         notify.info("Sesión Cerrada", "Has cerrado sesión correctamente.");
+        // We don't necessarily need to clear windows here as the whole App re-mounts/redirects
     };
 
     return (

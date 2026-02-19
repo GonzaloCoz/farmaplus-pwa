@@ -36,6 +36,7 @@ jobs:
         run: npm run build
         env:
           NODE_OPTIONS: --max_old_space_size=4096
+          VITE_BASE: /farmaplus-pwa/
       
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

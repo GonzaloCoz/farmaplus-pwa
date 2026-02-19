@@ -33,17 +33,19 @@ export default defineConfig(({ mode }) => {
               purpose: "any maskable"
             }
           ],
-          start_url: base,
+          start_url: "./index.html",
           display: "standalone",
           orientation: "portrait-primary",
           theme_color: "#ffffff",
           background_color: "#ffffff",
-          scope: base,
+          scope: "./",
           lang: "es-ES"
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
           globIgnores: ['**/bg.svg'],
+          navigateFallback: 'index.html',
+          navigateFallbackAllowlist: [/^(?!\/__).*/],
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,

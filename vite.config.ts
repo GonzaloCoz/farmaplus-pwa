@@ -4,8 +4,8 @@ import { VitePWA } from 'vite-plugin-pwa'
 import path from "path"
 
 // https://vitejs.dev/config/
-export default defineConfig({
-  base: '/farmaplus-pwa/',
+export default defineConfig(({ mode }) => ({
+  base: mode === 'production' ? '/farmaplus-pwa/' : '/',
   plugins: [
     react(),
     VitePWA({
@@ -140,3 +140,4 @@ export default defineConfig({
     }
   },
 })
+)

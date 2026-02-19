@@ -338,7 +338,7 @@ const App = () => {
                   <OfflineIndicator />
                   <InstallPrompt />
                   <ErrorBoundary>
-                    <BrowserRouter basename="/farmaplus-pwa/">
+                    <BrowserRouter basename={import.meta.env.MODE === 'production' ? '/farmaplus-pwa' : ''}>
                       <AppRoutes />
                     </BrowserRouter>
                   </ErrorBoundary>

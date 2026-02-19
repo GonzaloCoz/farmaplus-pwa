@@ -102,7 +102,7 @@ export default function Reports() {
       setSessions(finishedSessions);
     } catch (error) {
       console.error("Error loading sessions:", error);
-      notify.error("Error", "Error al cargar el historial de pre-conteos");
+      notify.error("Error", "Error al cargar el historial de captura de datos");
     } finally {
       setLoadingSessions(false);
     }
@@ -147,7 +147,7 @@ export default function Reports() {
       let y = margin + 15;
 
       doc.setFontSize(14);
-      doc.text(`Pre-Conteo: ${session.sector}`, margin, margin + 5);
+      doc.text(`Colector de Datos: ${session.sector}`, margin, margin + 5);
       doc.setFontSize(8);
       doc.text(`Fecha: ${new Date(session.start_time).toLocaleDateString()}`, pageWidth - margin - 30, margin + 5);
 
@@ -224,7 +224,7 @@ export default function Reports() {
         }
       });
 
-      const fileName = `PreConteo_${session.sector}_${new Date(session.start_time).toISOString().split('T')[0]}.pdf`;
+      const fileName = `ColectorDatos_${session.sector}_${new Date(session.start_time).toISOString().split('T')[0]}.pdf`;
       doc.save(fileName);
       notify.success("Operación exitosa", 'PDF generado correctamente');
 
@@ -421,12 +421,12 @@ export default function Reports() {
         <div className="flex-1 overflow-hidden">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
             <TabsList className="grid w-full grid-cols-3 max-w-[600px] mb-6 mx-auto bg-muted/50 p-1 rounded-full">
-              <TabsTrigger value="pre-count" className="rounded-full data-[state=active]:bg-background data-[state=active]:shadow-sm">Pre-Conteos</TabsTrigger>
+              <TabsTrigger value="pre-count" className="rounded-full data-[state=active]:bg-background data-[state=active]:shadow-sm">Colector</TabsTrigger>
               <TabsTrigger value="vencimientos" className="rounded-full data-[state=active]:bg-background data-[state=active]:shadow-sm">Vencimientos</TabsTrigger>
               <TabsTrigger value="audits" className="rounded-full data-[state=active]:bg-background data-[state=active]:shadow-sm">Auditorías</TabsTrigger>
             </TabsList>
 
-            {/* --- TAB: PRE-CONTEOS --- */}
+            {/* --- TAB: COLECTOR --- */}
             <TabsContent value="pre-count" className="flex-1 overflow-hidden flex flex-col data-[state=inactive]:hidden motion-safe:animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="mb-4 flex justify-end">
                 <div className="relative w-full max-w-xs">
@@ -652,11 +652,11 @@ export default function Reports() {
           </Tabs>
         </div>
 
-        {/* Dialogo de Detalles (Pre-Conteo) */}
+        {/* Dialogo de Detalles (Colector) */}
         <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
           <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col">
             <DialogHeader>
-              <DialogTitle>Detalle del Pre-Conteo</DialogTitle>
+              <DialogTitle>Detalle del Colector</DialogTitle>
               <DialogDescription>
                 {selectedSession && (
                   <span>

@@ -22,7 +22,9 @@ import {
     WifiOff,
     Package,
     FileText,
-    Calculator as CalculatorIcon
+    Calculator as CalculatorIcon,
+    Zap,
+    ZapOff
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -41,6 +43,11 @@ import jsPDF from 'jspdf';
 import JsBarcode from 'jsbarcode';
 import { FabMenu } from '@/components/FabMenu';
 import { enhancedProductCache } from '@/services/enhancedProductCache';
+import { useHardwareScanner } from '@/hooks/useHardwareScanner';
+import { useHaptic } from '@/hooks/useHaptic';
+import { playSound } from '@/utils/soundUtils';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 type Step = 'config' | 'counting';
 
@@ -53,6 +60,8 @@ export default function PreCount() {
     const [quantity, setQuantity] = useState('1');
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [showCalculator, setShowCalculator] = useState(false);
+    const [highSpeedMode, setHighSpeedMode] = useState(true);
+    const { trigger } = useHaptic();
 
     const handleCalculatorResult = (result: number) => {
         setQuantity(Math.floor(result).toString());
@@ -93,10 +102,14 @@ export default function PreCount() {
     // Manejar escaneo de código de barras
     const handleBarcodeScan = async (code: string) => {
         try {
+            console.log('Barcode scanned:', code);
+
             // Check enhanced cache first (much faster)
             const cached = await enhancedProductCache.get(code);
+            let productToUse: any = null;
+
             if (cached) {
-                setSelectedProduct({
+                productToUse = {
                     ean: code,
                     name: cached.name,
                     cost: cached.cost,
@@ -105,26 +118,46 @@ export default function PreCount() {
                     category: cached.category,
                     laboratory: cached.laboratory,
                     id_producto: cached.id_producto
-                });
-                setManualEAN(code);
-                notify.success("Operación exitosa", `Producto encontrado: ${cached.name}`);
-                return;
+                };
+            } else {
+                // Not in cache, fetch from database
+                const product = await getProductByEAN(code);
+                if (product) {
+                    productToUse = product;
+                }
             }
 
-            // Not in cache, fetch from database
-            const product = await getProductByEAN(code);
-
-            if (product) {
-                // Product is automatically cached by getProductByEAN
-                setSelectedProduct(product);
+            if (productToUse) {
+                setSelectedProduct(productToUse);
                 setManualEAN(code);
-                notify.success("Operación exitosa", `Producto encontrado: ${product.name}`);
+
+                if (highSpeedMode) {
+                    // Fast flow: Add immediately with 1
+                    await addItem(code, productToUse.name, 1, productToUse.id_producto);
+                    setManualEAN('');
+                    setSelectedProduct(null);
+                    trigger('success');
+                    playSound('success');
+                } else {
+                    notify.success("Operación exitosa", `Producto encontrado: ${productToUse.name}`);
+                    trigger('success');
+                    // Focus quantity input for manual adjustment
+                    setTimeout(() => {
+                        const qtyInput = document.getElementById('quantity-input') as HTMLInputElement;
+                        if (qtyInput) {
+                            qtyInput.focus();
+                            qtyInput.select();
+                        }
+                    }, 100);
+                }
             } else {
                 setManualEAN(code);
                 notify.warning("Advertencia", 'Producto no encontrado en la base de datos', {
                     description: 'Puedes agregarlo manualmente',
                 });
                 registerError();
+                trigger('warning');
+                playSound('error');
             }
         } catch (error) {
             console.error('Error fetching product:', error);
@@ -132,12 +165,22 @@ export default function PreCount() {
         }
     };
 
+    // Hardware Scanner Listener
+    useHardwareScanner({
+        onScan: (code) => {
+            if (step === 'counting') {
+                handleBarcodeScan(code);
+            }
+        },
+        minChars: 6
+    });
+
     const handleProductSelect = (product: Product) => {
         setSelectedProduct(product);
         setManualEAN(product.ean);
     };
 
-    // Agregar producto al pre-conteo
+    // Agregar producto al colector
     const handleAddProduct = async () => {
         if (!manualEAN.trim()) {
             notify.error("Error", 'Por favor, ingresa o escanea un código EAN');
@@ -223,7 +266,7 @@ export default function PreCount() {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = `PreConteo_${sector}_${new Date().toISOString().split('T')[0]}.txt`;
+            link.download = `ColectorDatos_${sector}_${new Date().toISOString().split('T')[0]}.txt`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -258,7 +301,7 @@ export default function PreCount() {
 
             // Título del documento
             doc.setFontSize(14);
-            doc.text(`Pre-Conteo: ${sector}`, margin, margin + 5);
+            doc.text(`Colector de Datos: ${sector}`, margin, margin + 5);
             doc.setFontSize(8);
             doc.text(`Fecha: ${new Date().toLocaleDateString()}`, pageWidth - margin - 30, margin + 5);
 
@@ -354,7 +397,7 @@ export default function PreCount() {
                 }
             });
 
-            const fileName = `PreConteo_${sector}_${new Date().toISOString().split('T')[0]}.pdf`;
+            const fileName = `ColectorDatos_${sector}_${new Date().toISOString().split('T')[0]}.pdf`;
             doc.save(fileName);
             notify.success("Operación exitosa", 'PDF generado correctamente');
 
@@ -589,7 +632,13 @@ export default function PreCount() {
                                     </div>
 
                                     {/* Right: Status Icons */}
-                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                    <div className="flex items-center gap-4 flex-shrink-0">
+                                        <div className="flex flex-col items-center gap-1 group cursor-pointer" onClick={() => setHighSpeedMode(!highSpeedMode)}>
+                                            <div className={`p-2 rounded-full transition-all ${highSpeedMode ? 'bg-primary/20 text-primary shadow-glow' : 'bg-muted text-muted-foreground'}`}>
+                                                {highSpeedMode ? <Zap className="w-4 h-4" /> : <ZapOff className="w-4 h-4" />}
+                                            </div>
+                                            <span className="text-[8px] uppercase font-bold tracking-tighter">Zebra</span>
+                                        </div>
                                         <div
                                             className={`p-2 rounded-full bg-success/10 text-success`}
                                             title="En línea (Cloud Sync)"

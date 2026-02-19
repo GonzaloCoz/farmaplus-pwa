@@ -338,7 +338,7 @@ const App = () => {
                   <OfflineIndicator />
                   <InstallPrompt />
                   <ErrorBoundary>
-                    <BrowserRouter>
+                    <BrowserRouter basename="/farmaplus-pwa/">
                       <AppRoutes />
                     </BrowserRouter>
                   </ErrorBoundary>

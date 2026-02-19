@@ -61,7 +61,7 @@ export function usePreCount(): UsePreCountReturn {
                 setAvailableSessions(sessions);
             } catch (error) {
                 console.error('Error initializing pre-count:', error);
-                notify.error("Error de conexión", "No se pudo cargar el pre-conteo");
+                notify.error("Error de conexión", "No se pudo cargar el colector");
             } finally {
                 setIsLoading(false);
             }
@@ -180,7 +180,7 @@ export function usePreCount(): UsePreCountReturn {
             setSession(newSession);
             setItems([]);
             setErrorCount(0);
-            notify.success("Sesión iniciada", `Pre-conteo de ${sector} comenzado (En la Nube)`);
+            notify.success("Sesión iniciada", `Captura de datos de ${sector} comenzado (En la Nube)`);
         } catch (error) {
             console.error('Error starting session:', error);
             notify.error("Error", "No se pudo iniciar la sesión");
@@ -399,7 +399,7 @@ export function usePreCount(): UsePreCountReturn {
             await endSession(session.id);
             setSession(null);
             setItems([]);
-            notify.success("Sesión finalizada", "El pre-conteo se guardó y finalizó");
+            notify.success("Sesión finalizada", "La captura de datos se guardó y finalizó");
         } catch (error) {
             console.error('Error finishing session:', error);
             notify.error("Error", "No se pudo finalizar la sesión");

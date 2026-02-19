@@ -24,10 +24,10 @@ interface QuickActionsWidgetProps {
 export function QuickActionsWidget({ actions = [] }: QuickActionsWidgetProps) {
     const defaultActions: QuickAction[] = [
         {
-            title: 'Nuevo Pre-Conteo',
-            description: 'Iniciar nuevo pre-conteo',
+            title: 'Nuevo Colector',
+            description: 'Iniciar captura de datos',
             icon: Plus,
-            onClick: () => console.log('Nuevo Pre-Conteo'),
+            onClick: () => console.log('Nuevo Colector'),
             variant: 'default'
         },
         {

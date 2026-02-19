@@ -18,7 +18,7 @@ export {
     loadDefaultData
 } from '@/services/productService';
 
-// ============ PRE-CONTEO (OFFLINE FIRST) ============
+// ============ COLECTOR DE DATOS (OFFLINE FIRST) ============
 
 export interface PreCountSession extends LocalSession {
     totalProducts?: number;

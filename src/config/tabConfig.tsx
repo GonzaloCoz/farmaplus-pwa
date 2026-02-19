@@ -1,11 +1,12 @@
 
 import React from "react";
 import { LayoutDashboard, Database, ClipboardList, Package, FileText, Settings, User, BarChart2, ShieldCheck, Clock } from "lucide-react";
+import { ZebraIcon } from "@/components/icons/ZebraIcon";
 
 export const TAB_CONFIG: Record<string, { title: string, icon: React.ReactNode }> = {
     "/": { title: "Dashboard", icon: <LayoutDashboard className="w-4 h-4" /> },
     "/stock": { title: "Gestión de Stock", icon: <Database className="w-4 h-4" /> },
-    "/stock/pre-count": { title: "Pre-Conteo", icon: <ClipboardList className="w-4 h-4" /> },
+    "/stock/pre-count": { title: "Colector de Datos", icon: <ZebraIcon className="w-4 h-4" /> },
     "/stock/import": { title: "Importar", icon: <Package className="w-4 h-4" /> },
     "/stock/expiration-control": { title: "Control de Vencimiento", icon: <Clock className="w-4 h-4" /> },
     "/cyclic-inventory": { title: "Inv. Cíclicos", icon: <ClipboardList className="w-4 h-4" /> },

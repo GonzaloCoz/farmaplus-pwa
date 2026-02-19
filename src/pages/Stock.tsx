@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { ClipboardList, Upload, ArrowRight, Clock } from 'lucide-react';
+import { ZebraIcon } from '@/components/icons/ZebraIcon';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 
@@ -10,9 +11,9 @@ export default function Stock() {
 
     const options = [
         {
-            title: 'Pre-Conteo Sucursal',
-            description: 'Realiza el conteo previo de productos antes de la auditoría. Funciona sin conexión.',
-            icon: ClipboardList,
+            title: 'Colector de Datos',
+            description: 'Una forma simple de contar productos, incluso sin internet. Escaneá rápido y sincronizá todo al final.',
+            icon: ZebraIcon,
             path: '/stock/pre-count',
             color: 'primary',
             gradient: 'from-primary/20 to-primary/5',
@@ -88,15 +89,14 @@ export default function Stock() {
             <Card className="p-6 bg-muted/30">
                 <div className="flex items-start gap-3">
                     <div className="p-2 bg-primary/10 rounded-lg">
-                        <ClipboardList className="w-5 h-5 text-primary" />
+                        <ZebraIcon className="w-5 h-5 text-primary" />
                     </div>
                     <div>
-                        <h3 className="font-medium text-foreground mb-2">¿Qué es el Pre-Conteo?</h3>
+                        <h3 className="font-medium text-foreground mb-2">¿Qué es el Colector de Datos?</h3>
                         <p className="text-sm text-muted-foreground leading-relaxed">
-                            El Pre-Conteo permite a los empleados de las sucursales realizar un conteo previo de productos
-                            antes de que llegue el equipo de auditoría. Esta herramienta funciona completamente sin conexión
-                            a internet, ideal para depósitos con señal limitada. Los datos se sincronizan automáticamente
-                            cuando se restaura la conexión.
+                            Es una herramienta alternativa muy fácil de usar para contar mercadería en el depósito o salón.
+                            Podés trabajar tranquilo aunque no tengas señal, y al terminar se guarda todo
+                            automáticamente para que no pierdas ningún dato.
                         </p>
                     </div>
                 </div>

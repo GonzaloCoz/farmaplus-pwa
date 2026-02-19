@@ -45,7 +45,7 @@ export function ActivityTimelineWidget({ activities = [] }: ActivityTimelineWidg
         {
             id: '4',
             type: 'completed',
-            title: 'Pre-conteo finalizado',
+            title: 'Captura de datos finalizada',
             branch: 'Microcentro',
             timestamp: 'Hace 2 horas',
             user: 'Ana Martínez'

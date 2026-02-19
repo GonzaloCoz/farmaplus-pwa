@@ -5,8 +5,13 @@ import path from "path"
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
+  // Detect if we are building for Vercel or GH Pages
+  // Vercel usually sets VERCEL=true, but in Vite we check process.env or just prioritize root if not specified
+  const isVercel = process.env.VERCEL === 'true';
+  const base = isVercel ? '/' : (mode === 'production' ? '/farmaplus-pwa/' : '/');
+
   return {
-    base: mode === 'production' ? '/farmaplus-pwa/' : '/',
+    base,
     plugins: [
       react(),
       VitePWA({

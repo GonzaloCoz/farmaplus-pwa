@@ -338,7 +338,7 @@ const App = () => {
                   <OfflineIndicator />
                   <InstallPrompt />
                   <ErrorBoundary>
-                    <BrowserRouter basename={import.meta.env.MODE === 'production' ? '/farmaplus-pwa' : ''}>
+                    <BrowserRouter basename={import.meta.env.MODE === 'production' && !window.location.hostname.includes('vercel.app') ? '/farmaplus-pwa' : ''}>
                       <AppRoutes />
                     </BrowserRouter>
                   </ErrorBoundary>

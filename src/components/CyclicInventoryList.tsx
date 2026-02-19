@@ -184,7 +184,7 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                             "text-left self-center transition-all px-2",
                             isPending ? "col-span-2" : "hidden md:block md:col-span-1"
                         )}>
-                            <p className="text-sm font-medium">${item.cost.toLocaleString()}</p>
+                            <p className="text-sm font-medium">${item.cost.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                         </div>
 
                         {/* Physical / System */}
@@ -229,7 +229,7 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                                     "text-sm font-bold",
                                     diffValue < 0 ? 'text-destructive' : 'text-success'
                                 )}>
-                                    {diffValue > 0 ? '+' : ''}${Math.abs(diffValue).toLocaleString()}
+                                    {diffValue > 0 ? '+' : ''}${Math.abs(diffValue).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </p>
                             </div>
                         )}

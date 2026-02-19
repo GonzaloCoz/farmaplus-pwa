@@ -1,19 +1,19 @@
-import { useState, useMemo, useEffect } from 'react';
-import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import { useState, useMemo } from 'react';
+import { CardHeader, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Search, ArrowUpDown, TrendingUp, CheckCircle, AlertCircle, Clock, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { useUser } from '@/contexts/UserContext';
 import { useUserBranches } from '@/hooks/useUserBranches';
+import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { formatCurrency } from '@/lib/utils'; // Assuming this exists or I'll implement inline
 
-const INITIAL_BRANCHES_TO_SHOW = 8; // Increased for better visibility
+const INITIAL_BRANCHES_TO_SHOW = 8;
 
 interface BranchSummary {
     branchName: string;
@@ -29,7 +29,6 @@ interface BranchSummary {
 }
 
 interface BranchesTableWidgetProps {
-    // Props are less relevant now as we fetch inside, but keeping for compatibility
     branches?: any[];
 }
 
@@ -38,31 +37,24 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
     const { availableBranches } = useUserBranches();
     const [searchTerm, setSearchTerm] = useState("");
     const [showAllBranches, setShowAllBranches] = useState(false);
-    const [branchSummaries, setBranchSummaries] = useState<BranchSummary[]>([]);
-    const [loading, setLoading] = useState(true);
     const [sortConfig, setSortConfig] = useState<{ key: keyof BranchSummary; direction: 'ascending' | 'descending' }>({
-        key: 'progress', // Default sort by progress
+        key: 'progress',
         direction: 'descending'
     });
 
-    useEffect(() => {
-        const loadData = async () => {
-            setLoading(true);
-            try {
-                const data = await cyclicInventoryService.getBranchesSummary();
-                // Filter branches based on user permissions
-                const filteredData = data.filter(branch =>
-                    availableBranches.length === 0 || availableBranches.includes(branch.branchName)
-                );
-                setBranchSummaries(filteredData);
-            } catch (error) {
-                console.error("Failed to load branch summaries", error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        loadData();
-    }, [availableBranches]);
+    // Implementation 2: Client-side Caching with React Query
+    const { data: branchSummaries = [], isLoading: loading } = useQuery({
+        queryKey: ['branch-summaries-lite', availableBranches],
+        queryFn: async () => {
+            const data = await cyclicInventoryService.getBranchesSummaryLite();
+            // Filter branches based on user permissions
+            return data.filter(branch =>
+                availableBranches.length === 0 || availableBranches.includes(branch.branchName)
+            );
+        },
+        staleTime: 1000 * 60 * 5, // 5 minutes cache
+        gcTime: 1000 * 60 * 30, // 30 minutes garbage collection
+    });
 
     const filteredBranches = useMemo(() => {
         return branchSummaries.filter(
@@ -106,18 +98,11 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
         return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(amount);
     };
 
-    const getStatusColor = (progress: number) => {
-        if (progress === 100) return "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30";
-        if (progress >= 50) return "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30";
-        return "bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/30";
-    };
-
     const handleBranchClick = (branchName: string) => {
         if (user?.branchName === branchName) {
             clearBranchSelection?.();
         } else if (selectBranch) {
             selectBranch(branchName);
-            // Optional: Scroll to top smoothly
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     };
@@ -146,7 +131,7 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
 
     return (
         <motion.div
-            initial={{ opacity: 0, y: 50 }} // Animation from bottom
+            initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, ease: "easeOut" }}
             className="w-full h-full"
@@ -186,7 +171,6 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                     </div>
                 </CardHeader>
                 <CardContent className="p-6 pt-0">
-
                     <div className="rounded-xl border bg-card/50 overflow-hidden">
                         <Table>
                             <TableHeader className="bg-muted/40 hover:bg-muted/50 transition-colors">
@@ -247,7 +231,6 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                                             )}
                                         >
                                             <TableCell className="font-medium text-foreground relative">
-                                                {/* Indicator if active */}
                                                 {isActiveBranch(branch.branchName) && (
                                                     <motion.div
                                                         layoutId="active-indicator"
@@ -333,6 +316,3 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
         </motion.div>
     );
 }
-
-// Helper to make Table parts motion-compatible if needed, though usually standard HTML elements work with framer-motion props if cast,
-// strictly passing motion components to TableBody children is better but TableRow is already motion.tr above.

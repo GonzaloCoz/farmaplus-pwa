@@ -130,14 +130,26 @@ export const cyclicInventoryService = {
 
     // Delete inventory
     deleteInventory: async (branchName: string, labName: string) => {
-        const { error } = await supabase.from('inventories')
+        // 1. Delete from inventories
+        const { error: invError } = await supabase.from('inventories')
             .delete()
             .ilike('branch_name', branchName.trim())
             .eq('laboratory', labName);
 
-        if (error) {
-            console.error("Error deleting inventory:", error);
-            throw error;
+        if (invError) {
+            console.error("Error deleting inventory:", invError);
+            throw invError;
+        }
+
+        // 2. Delete from metadata (branch_laboratories) to prevent ghost data
+        const { error: metaError } = await supabase.from('branch_laboratories')
+            .delete()
+            .ilike('branch_name', branchName.trim())
+            .eq('laboratory', labName);
+
+        if (metaError) {
+            console.error("Error deleting lab metadata:", metaError);
+            // Don't throw, just log. The main delete succeeded.
         }
     },
 
@@ -409,6 +421,28 @@ export const cyclicInventoryService = {
 
     // Get all inventories (aggregated from branch_laboratories metadata)
     getAllCyclicInventories: async (branchName?: string): Promise<CyclicInventoryStats[]> => {
+        // 1. First, identify ACTIVE laboratories (the "open session")
+        let activeLabsQuery = supabase
+            .from('inventories')
+            .select('laboratory')
+            .neq('laboratory', '_CONFIG_');
+
+        if (branchName) {
+            activeLabsQuery = activeLabsQuery.ilike('branch_name', branchName.trim());
+        }
+
+        const { data: activeLabsData, error: activeError } = await activeLabsQuery;
+
+        if (activeError) {
+            console.error("Error fetching active labs:", activeError);
+        }
+
+        // Normalize for the set
+        const activeLabsSet = new Set((activeLabsData || []).map(row =>
+            (row.laboratory || '').toUpperCase().trim()
+        ));
+
+        // 2. Fetch metadata
         let query = supabase
             .from('branch_laboratories')
             .select(`*`);
@@ -421,61 +455,134 @@ export const cyclicInventoryService = {
 
         if (error || !data) return [];
 
-        return data.map((row: any) => {
-            // Map DB status to UI Status
-            let status: LaboratoryStatus = 'pendiente';
-            if (row.status === 'completed') status = 'controlado';
-            else if (row.status === 'in_progress') status = 'por_controlar';
+        // 3. Filter metadata by active labs to exclude GHOST records
+        return data
+            .filter((row: any) => activeLabsSet.has((row.laboratory || '').toUpperCase().trim()))
+            .map((row: any) => {
+                // Map DB status to UI Status
+                let status: LaboratoryStatus = 'pendiente';
+                if (row.status === 'completed') status = 'controlado';
+                else if (row.status === 'in_progress') status = 'por_controlar';
 
-            return {
-                labName: row.laboratory,
-                category: row.category,
-                status: status,
-                totalItems: row.total_items,
-                controlledItems: row.controlled_items,
-                progress: row.progress_percentage, // Retrieve persisted REAL progress
+                return {
+                    labName: row.laboratory,
+                    category: row.category,
+                    status: status,
+                    totalItems: row.total_items,
+                    controlledItems: row.controlled_items,
+                    progress: row.progress_percentage, // Retrieve persisted REAL progress
 
-                // Financials
-                negativeValue: row.negative_value,
-                positiveValue: row.positive_value,
-                netValue: row.net_value, // Map net_value to netValue
-                differenceValue: row.net_value, // Using net_value as differenceValue or sum of abs? usually net_value
+                    // Financials
+                    negativeValue: row.negative_value,
+                    positiveValue: row.positive_value,
+                    netValue: row.net_value, // Map net_value to netValue
+                    differenceValue: row.net_value, // Using net_value as differenceValue or sum of abs? usually net_value
 
-                // Units
-                totalSystemUnits: row.total_system_units,
-                negativeUnits: row.net_units < 0 ? row.net_units : 0,
-                positiveUnits: row.net_units > 0 ? row.net_units : 0,
-                netUnits: row.net_units
-            };
-        });
+                    // Units
+                    totalSystemUnits: row.total_system_units,
+                    negativeUnits: row.net_units < 0 ? row.net_units : 0,
+                    positiveUnits: row.net_units > 0 ? row.net_units : 0,
+                    netUnits: row.net_units
+                };
+            });
+    },
+
+    // Get Super-Lite summary for ALL branches (Admin View)
+    // This is the fastest method, as it uses the pre-calculated branch_summaries table.
+    getBranchesSummaryLite: async (): Promise<any[]> => {
+        try {
+            // 1. Fetch pre-calculated summaries
+            const { data: summaries, error: sumError } = await (supabase as any)
+                .from('branch_summaries')
+                .select('*');
+
+            if (sumError) throw sumError;
+
+            // 2. Fetch Goals
+            let labCounts: Record<string, number> = {};
+            const { data: goalsData, error: goalsError } = await supabase
+                .from('branch_goals')
+                .select('branch_name, total_labs_goal');
+
+            if (!goalsError && goalsData) {
+                goalsData.forEach(g => {
+                    labCounts[g.branch_name] = g.total_labs_goal;
+                });
+            } else {
+                labCounts = await getAllBranchLabCounts();
+            }
+
+            // 3. Map to UI format
+            return BRANCH_NAMES.map(branchName => {
+                const summary = summaries?.find(s =>
+                    (s.branch_name || '').toLowerCase().trim() === branchName.toLowerCase().trim()
+                );
+
+                const totalLabsGoal = labCounts[branchName] || 0;
+                const controlledCount = summary?.controlled_labs_count || 0;
+                const progress = totalLabsGoal > 0 ? Number(((controlledCount / totalLabsGoal) * 100).toFixed(1)) : 0;
+
+                let status = 'pendiente';
+                if (controlledCount >= totalLabsGoal && totalLabsGoal > 0) status = 'controlado';
+                else if (controlledCount > 0) status = 'por_controlar';
+
+                return {
+                    branchName,
+                    deploymentDate: '01/12/2025',
+                    cyclicRound: 1,
+                    monthlyGoal: totalLabsGoal,
+                    elapsedDays: 12,
+                    progress: progress,
+                    inventoryUnits: summary?.inventory_units || 0,
+                    differenceUnits: summary?.difference_units || 0,
+                    adjustmentsValue: Math.round((summary?.adjustments_value || 0) * 100) / 100,
+                    status: status,
+                    lastUpdated: summary?.updated_at
+                };
+            }).sort((a, b) => b.progress - a.progress);
+
+        } catch (error) {
+            console.error("Error fetching Lite summary:", error);
+            return [];
+        }
     },
 
 
 
     // Get summary for ALL branches (Admin View)
     getBranchesSummary: async (): Promise<any[]> => {
-        const { data, error } = await supabase
-            .from('inventories')
-            .select(`
-                branch_name,
-                laboratory,
-                quantity,
-                system_quantity,
-                status,
-                products (
-                     cost
-                )
-            `);
+        // 1. Fetch metadata for ALL metrics with pagination
+        // Total metadata should be a few thousand rows (fast), unlike inventories (millions)
+        let allMetaData: any[] = [];
+        let from = 0;
+        const PAGE_SIZE = 1000;
+        let hasMore = true;
 
-        if (error || !data) {
-            console.error("Error fetching branches summary:", error);
-            return [];
+        try {
+            while (hasMore) {
+                const { data, error } = await supabase
+                    .from('branch_laboratories')
+                    .select('*')
+                    .range(from, from + PAGE_SIZE - 1);
+
+                if (error) throw error;
+                if (!data || data.length === 0) {
+                    hasMore = false;
+                } else {
+                    allMetaData = [...allMetaData, ...data];
+                    if (data.length < PAGE_SIZE) {
+                        hasMore = false;
+                    } else {
+                        from += PAGE_SIZE;
+                    }
+                }
+            }
+        } catch (metaError) {
+            console.error("Error fetching branches metadata with pagination:", metaError);
         }
 
-        // --- NEW LOGIC: Fetch Goals from Supabase instead of Excel ---
+        // --- Fetch Goals ---
         let labCounts: Record<string, number> = {};
-
-        // Try fetching from Supabase first
         const { data: goalsData, error: goalsError } = await supabase
             .from('branch_goals')
             .select('branch_name, total_labs_goal');
@@ -485,78 +592,42 @@ export const cyclicInventoryService = {
                 labCounts[g.branch_name] = g.total_labs_goal;
             });
         } else {
-            console.warn("No goals found in Supabase, falling back to Excel or 0.");
-            // Fallback to Excel if DB is empty (Migration phase)
             labCounts = await getAllBranchLabCounts();
         }
 
-        // Initialize with ALL valid branches to ensure they appear
-        const groupedByBranch: Record<string, {
-            totalSystemUnits: number;
-            netUnits: number;
-            netValue: number;
-            controlledLabs: Set<string>;
-            totalLabsInDB: Set<string>;
-        }> = {};
+        // --- Optimized Aggregation Logic ---
+        const summarizedBranches = BRANCH_NAMES.map(branchName => {
+            const cleanName = branchName.toLowerCase().trim();
 
-        BRANCH_NAMES.forEach(name => {
-            groupedByBranch[name] = {
-                totalSystemUnits: 0,
-                netUnits: 0,
-                netValue: 0,
-                controlledLabs: new Set(),
-                totalLabsInDB: new Set()
-            };
-        });
+            // Filter meta for this branch
+            // We TRUST branch_laboratories now, as we added cleanup to delete/purge functions.
+            // Also, we filter out records with total_items === 0 to avoid ghost data from empty labs.
+            const branchMeta = allMetaData.filter(m => {
+                const mBranch = (m.branch_name || '').toLowerCase().trim();
+                return mBranch === cleanName && (m.total_items > 0);
+            });
 
-        data.forEach((row: any) => {
-            const rawBranch = (row.branch_name || '').trim();
-            if (!rawBranch) return;
+            let inventoryUnits = 0;
+            let differenceUnits = 0;
+            let adjustmentsValue = 0;
+            const controlledLabs = new Set<string>();
 
-            // Find valid branch name case-insensitive
-            const validName = BRANCH_NAMES.find(b => b.toLowerCase() === rawBranch.toLowerCase());
+            // Aggregate data from all rubros/categories found in the metadata
+            branchMeta.forEach(m => {
+                inventoryUnits += (m.total_system_units || 0);
+                differenceUnits += (m.net_units || 0);
+                adjustmentsValue += (m.net_value || 0);
 
-            // Only aggregate if it matches a valid branch
-            if (validName) {
-                const group = groupedByBranch[validName];
-                const labName = row.laboratory || 'Unknown';
-
-                // **FIX: Only count adjusted or controlled items**
-                const isAdjustedOrControlled = row.status === 'adjusted' || row.status === 'controlled';
-
-                // Units and Values logic (Sum of items)
-                const quantity = row.quantity || 0;
-                const sysQuantity = row.system_quantity || 0;
-                const cost = row.products?.cost || 0;
-
-                // Only add to totals if item has been adjusted/controlled
-                if (isAdjustedOrControlled) {
-                    group.totalSystemUnits += sysQuantity;
-                    group.netUnits += (quantity - sysQuantity);
-                    group.netValue += (quantity - sysQuantity) * cost;
+                // Count lab as complete if ANY of its rubros is marked as completed/100%
+                if (m.status === 'completed' || m.progress_percentage >= 100) {
+                    controlledLabs.add(m.laboratory);
                 }
+            });
 
-                // Lab Stats - count all labs that have ANY items
-                group.totalLabsInDB.add(labName);
-
-                // Only count lab as controlled if ALL its items are controlled/adjusted
-                // We'll handle this differently - track controlled status per lab
-                if (row.status === 'controlled' || row.status === 'adjusted') {
-                    group.controlledLabs.add(labName);
-                }
-            }
-        });
-
-        const summaries = BRANCH_NAMES.map(branchName => {
-            const group = groupedByBranch[branchName];
-            // If goal is missing in DB (0), try Excel map, else 0.
             const totalLabsGoal = labCounts[branchName] || 0;
-            const controlledCount = group.controlledLabs.size;
+            const controlledCount = controlledLabs.size;
+            const progress = totalLabsGoal > 0 ? Number(((controlledCount / totalLabsGoal) * 100).toFixed(1)) : 0;
 
-            const rawProgress = totalLabsGoal > 0 ? (controlledCount / totalLabsGoal) * 100 : 0;
-            const progress = totalLabsGoal > 0 ? Number(rawProgress.toFixed(1)) : 0;
-
-            // Status logic based on Labs
             let status = 'pendiente';
             if (controlledCount >= totalLabsGoal && totalLabsGoal > 0) status = 'controlado';
             else if (controlledCount > 0) status = 'por_controlar';
@@ -565,17 +636,17 @@ export const cyclicInventoryService = {
                 branchName,
                 deploymentDate: '01/12/2025',
                 cyclicRound: 1,
-                monthlyGoal: totalLabsGoal, // Goal is Total Labs from Excel/DB
+                monthlyGoal: totalLabsGoal,
                 elapsedDays: 12,
                 progress: progress,
-                inventoryUnits: group.totalSystemUnits,
-                differenceUnits: group.netUnits,
-                adjustmentsValue: group.netValue,
+                inventoryUnits: inventoryUnits,
+                differenceUnits: differenceUnits,
+                adjustmentsValue: Math.round(adjustmentsValue * 100) / 100,
                 status: status
             };
         });
 
-        return summaries.sort((a, b) => b.progress - a.progress);
+        return summarizedBranches.sort((a, b) => b.progress - a.progress);
     },
 
 
@@ -870,19 +941,49 @@ export const cyclicInventoryService = {
      */
     purgeBranchProgress: async (branchName: string): Promise<void> => {
         try {
-            const { error } = await (supabase as any).rpc('purge_branch_cyclic_inventory', {
-                p_branch_name: branchName
-            });
+            const cleanName = branchName.trim();
 
-            if (error) {
-                console.error("Error calling purge_branch_cyclic_inventory RPC:", error);
-                throw error;
-            }
+            // 1. Inventories
+            await supabase.from('inventories')
+                .delete()
+                .ilike('branch_name', cleanName)
+                .neq('laboratory', '_CONFIG_');
 
-            console.log(`Purga total completada para la sucursal: ${branchName}`);
-        } catch (e) {
-            console.error("Error in purgeBranchProgress:", e);
-            throw e;
+            // 2. Adjustments
+            await supabase.from('inventory_adjustments')
+                .delete()
+                .ilike('branch_name', cleanName);
+
+            // 3. Metadata (branch_laboratories)
+            await supabase.from('branch_laboratories')
+                .delete()
+                .ilike('branch_name', cleanName);
+
+            // 4. Reports
+            await supabase.from('inventory_reports')
+                .delete()
+                .ilike('branch_name', cleanName);
+
+            console.log(`Purga completa para sucursal: ${branchName}`);
+        } catch (error) {
+            console.error("Error en purgeBranchProgress:", error);
+            throw error;
+        }
+    },
+
+    // Get Super-Lite summary for a SINGLE branch
+    getBranchSummaryLite: async (branchName: string): Promise<any | null> => {
+        try {
+            const { data, error } = await (supabase as any)
+                .from('branch_summaries')
+                .select('*')
+                .ilike('branch_name', branchName.trim())
+                .single();
+
+            if (error) return null;
+            return data;
+        } catch (error) {
+            return null;
         }
     }
 };

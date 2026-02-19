@@ -92,6 +92,64 @@ export const maintenanceService = {
     },
 
     /**
+     * Elimina registros de la tabla de metadatos (branch_laboratories) que ya no existen en el inventario real.
+     * Esto corrige discrepancias en los totales ("fantasmas").
+     */
+    cleanupGhostMetadata: async () => {
+        try {
+            console.log("Iniciando depuración de metadatos fantasma...");
+
+            // 1. Obtener todos los laboratorios activos (branch | laboratory)
+            const { data: activeLabs, error: invError } = await supabase
+                .from('inventories')
+                .select('branch_name, laboratory')
+                .neq('laboratory', '_CONFIG_');
+
+            if (invError) throw invError;
+
+            const activeKeys = new Set(activeLabs.map(l =>
+                `${(l.branch_name || '').toLowerCase().trim()}|${(l.laboratory || '').toLowerCase().trim()}`
+            ));
+
+            // 2. Obtener todos los metadatos existentes
+            const { data: metaRows, error: metaError } = await supabase
+                .from('branch_laboratories')
+                .select('branch_name, laboratory');
+
+            if (metaError) throw metaError;
+
+            // 3. Identificar fantasmas (están en meta pero NO en inventories)
+            const ghostRows = metaRows.filter(m => {
+                const key = `${(m.branch_name || '').toLowerCase().trim()}|${(m.laboratory || '').toLowerCase().trim()}`;
+                return !activeKeys.has(key);
+            });
+
+            if (ghostRows.length === 0) {
+                console.log("No se encontraron metadatos fantasma.");
+                return 0;
+            }
+
+            console.log(`Borrando ${ghostRows.length} registros de metadatos obsoletos...`);
+
+            let deletedCount = 0;
+            for (const ghost of ghostRows) {
+                const { error: delError } = await supabase
+                    .from('branch_laboratories')
+                    .delete()
+                    .eq('branch_name', ghost.branch_name)
+                    .eq('laboratory', ghost.laboratory);
+
+                if (!delError) deletedCount++;
+            }
+
+            return deletedCount;
+        } catch (error) {
+            console.error("Error en cleanupGhostMetadata:", error);
+            throw error;
+        }
+    },
+
+    /**
      * Ejecuta una limpieza profunda de la base de datos (Solo Admin).
      */
     performDeepCleanup: async () => {
@@ -99,8 +157,9 @@ export const maintenanceService = {
         try {
             const deletedOrphans = await maintenanceService.cleanupOrphanedInventories();
             await maintenanceService.standardizeCategories();
+            const deletedGhosts = await maintenanceService.cleanupGhostMetadata();
 
-            notify.success("Mantenimiento Completado", `Se eliminaron ${deletedOrphans} registros huérfanos y se normalizaron las categorías.`);
+            notify.success("Mantenimiento Completado", `Se eliminaron ${deletedOrphans} registros huérfanos, ${deletedGhosts} metadatos fantasma y se normalizaron las categorías.`);
         } catch (error) {
             notify.error("Error de Mantenimiento", "No se pudo completar la limpieza de la base de datos.");
         }

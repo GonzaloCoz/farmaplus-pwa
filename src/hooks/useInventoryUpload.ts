@@ -137,8 +137,8 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
 
                     let category = normalizeString(row[9]?.toString() || 'Varios');
 
-                    const rawCost = row[12]; // Column M
-                    const costValue = Number(rawCost) || 0;
+                    const rawCost = row[10]; // Column K
+                    const costValue = Math.round((Number(rawCost) || 0) * 100) / 100;
 
                     if (eanMap.has(ean)) {
                         const index = eanMap.get(ean);

@@ -85,7 +85,11 @@ export function useInventoryStats(items: CyclicItem[], initialCategory = "Medica
             net += value;
         });
 
-        return { negative, positive, net };
+        return {
+            negative: Math.round(negative * 100) / 100,
+            positive: Math.round(positive * 100) / 100,
+            net: Math.round(net * 100) / 100
+        };
     }, [items]);
 
     return {

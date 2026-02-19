@@ -186,18 +186,18 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
 
     const globalControlledItems = items.filter(i => i.status === 'controlled');
 
-    const shortageValue = globalControlledItems
+    const shortageValue = Math.round(globalControlledItems
         .filter(i => i.countedQuantity < i.systemQuantity)
-        .reduce((acc, i) => acc + ((i.systemQuantity - i.countedQuantity) * i.cost), 0);
+        .reduce((acc, i) => acc + ((i.systemQuantity - i.countedQuantity) * i.cost), 0) * 100) / 100;
 
-    const surplusValue = globalControlledItems
+    const surplusValue = Math.round(globalControlledItems
         .filter(i => i.countedQuantity > i.systemQuantity)
-        .reduce((acc, i) => acc + ((i.countedQuantity - i.systemQuantity) * i.cost), 0);
+        .reduce((acc, i) => acc + ((i.countedQuantity - i.systemQuantity) * i.cost), 0) * 100) / 100;
 
     const handleSaveInventory = async () => {
-        const globalControlledItems = items.filter(i => i.status === 'controlled');
-        const shortages = globalControlledItems.filter(i => i.countedQuantity < i.systemQuantity);
-        const surpluses = globalControlledItems.filter(i => i.countedQuantity > i.systemQuantity);
+        const controlledItems = items.filter(i => i.status === 'controlled');
+        const shortages = controlledItems.filter(i => i.countedQuantity < i.systemQuantity);
+        const surpluses = controlledItems.filter(i => i.countedQuantity > i.systemQuantity);
 
         if (shortages.length > 0 && !shortageId.trim()) {
             notify.error("Error", "Por favor ingresa el ID de ajuste para Faltantes");
@@ -234,7 +234,7 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
                 adjustment_id_surplus: surplusId,
                 shortage_value: shortageValue,
                 surplus_value: surplusValue,
-                total_units_adjusted: globalControlledItems.length,
+                total_units_adjusted: controlledItems.length,
                 user_name: user?.name,
                 user_id: user?.id,
                 items_snapshot: updatedItems,

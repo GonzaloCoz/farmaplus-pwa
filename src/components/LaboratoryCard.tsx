@@ -14,6 +14,7 @@ interface LaboratoryCardProps {
     status: LaboratoryStatus;
     progress?: number;
     onClick?: () => void;
+    onMouseEnter?: () => void;
 }
 
 export function LaboratoryCard({
@@ -24,6 +25,7 @@ export function LaboratoryCard({
     status,
     progress = 0,
     onClick,
+    onMouseEnter,
 }: LaboratoryCardProps) {
     const getStatusConfig = (status: LaboratoryStatus) => {
         switch (status) {
@@ -60,13 +62,14 @@ export function LaboratoryCard({
     const config = getStatusConfig(status);
     const Icon = config.icon;
 
-    // Simulate progress if not provided based on status
+    // Simular progreso si no se proporciona, basado en el estado
     const displayProgress = status === 'controlado' ? 100 : progress || 0;
 
     return (
         <Card
             className={`group hover:shadow-md transition-all duration-300 border border-border/50 cursor-pointer overflow-hidden relative rounded-2xl bg-card/40 dark:bg-card/20 backdrop-blur-sm active:scale-[0.98]`}
             onClick={onClick}
+            onMouseEnter={onMouseEnter}
         >
 
             <CardContent className="p-6">

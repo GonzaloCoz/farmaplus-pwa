@@ -20,6 +20,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getLaboratoriesForBranch } from "@/services/preCountDB";
 import { cyclicInventoryService, CyclicInventoryStats } from "@/services/cyclicInventoryService";
 import { useUser } from "@/contexts/UserContext";
+import { usePrefetchLabInventory } from "@/hooks/useInventoryQueries";
 
 import { maintenanceService } from "@/services/maintenanceService";
 
@@ -29,6 +30,7 @@ type FilterCategory = "MEDICAMENTOS" | "PERFUMERIA" | "ACCESORIOS" | "VARIOS";
 export default function CyclicInventory() {
   const navigate = useNavigate();
   const { user } = useUser();
+  const prefetchLab = usePrefetchLabInventory();
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<FilterCategory>("MEDICAMENTOS");
   const [sortBy, setSortBy] = useState<SortOption>("name-asc");
@@ -45,16 +47,16 @@ export default function CyclicInventory() {
       setIsLoading(true);
 
       try {
-        // 1. Get Master List of Labs (Allowed for this branch)
+        // 1. Obtener lista maestra de laboratorios (Autorizados para esta sucursal)
         const allowedLabs = await getLaboratoriesForBranch(user.branchSheet);
 
-        // 2. Get Current Inventory Status from Supabase (Filtered by branch)
+        // 2. Obtener estado actual del inventario desde Supabase (Filtrado por sucursal)
         const inventoryStats = await cyclicInventoryService.getAllCyclicInventories(user.branchSheet);
-        // 3. Merge Data: Union of Active Inventory + Master List (for pending)
+        // 3. Unir datos: Unión de Inventario Activo + Lista Maestra (para pendientes)
         const mergedData: CyclicInventoryStats[] = [...inventoryStats];
 
-        // Create lookup Set to prevent duplicates (Key: Name|Category)
-        // Normalize category for robust comparison
+        // Crear un Set de búsqueda para evitar duplicados (Clave: Nombre|Categoría)
+        // Normalizar categoría para una comparación robusta
         const activeLabsSet = new Set(inventoryStats.map(s => `${s.labName.trim().toUpperCase()}|${normalizeString(s.category || '')}`));
 
         allowedLabs.forEach(labInfo => {
@@ -62,11 +64,11 @@ export default function CyclicInventory() {
           const category = normalizeString(labInfo.category);
           const key = `${labName}|${category}`;
 
-          // If this specific combination (Name+Category) doesn't exist in active inventory, add as Pending
+          // Si esta combinación específica (Nombre+Categoría) no existe en el inventario activo, agregar como Pendiente
           if (!activeLabsSet.has(key)) {
             mergedData.push({
               labName: labInfo.name,
-              category: normalizeString(labInfo.category), // Save normalized category for pending items
+              category: normalizeString(labInfo.category), // Guardar categoría normalizada para ítems pendientes
               status: 'pendiente',
               totalItems: 0,
               controlledItems: 0,
@@ -94,7 +96,7 @@ export default function CyclicInventory() {
     loadLabs();
   }, [user]);
 
-  // Fetch lock status
+  // Obtener estado de bloqueo
   useEffect(() => {
     const checkLockStatus = async () => {
       if (!user?.branchName) return;
@@ -113,10 +115,10 @@ export default function CyclicInventory() {
     checkLockStatus();
   }, [user]);
 
-  // Group laboratories by name to deduplicate
-  // IMPORTANT: Do NOT sum values - just take the first entry to avoid counting duplicates
+  // Agrupar laboratorios por nombre para eliminar duplicados
+  // IMPORTANTE: NO sumar valores - solo tomar la primera entrada para evitar contar duplicados
   const groupedLaboratories = useMemo(() => {
-    // First, filter by selected category
+    // Primero, filtrar por la categoría seleccionada
     const filteredByCategory = categoryFilter
       ? laboratories.filter(lab => normalizeString(lab.category || '') === normalizeString(categoryFilter))
       : laboratories;
@@ -138,17 +140,17 @@ export default function CyclicInventory() {
     return Array.from(grouped.values());
   }, [laboratories, categoryFilter]);
 
-  // Dashboard Stats - Using grouped laboratories
+  // Estadísticas del Panel - Usando laboratorios agrupados
   const totalLabs = groupedLaboratories.length;
   const controlledLabs = groupedLaboratories.filter(l => l.status === 'controlado').length;
   const pendingLabs = groupedLaboratories.filter(l => l.status === 'pendiente').length;
 
-  // Financial Stats (Global - all grouped labs)
+  // Estadísticas Financieras (Global - todos los laboratorios agrupados)
   const totalDifference = groupedLaboratories.reduce((acc, curr) => acc + curr.differenceValue, 0);
   const totalNegative = groupedLaboratories.reduce((acc, curr) => acc + curr.negativeValue, 0);
   const totalPositive = groupedLaboratories.reduce((acc, curr) => acc + curr.positiveValue, 0);
 
-  // Calculate Unit Totals for Trend percentages
+  // Calcular Totales de Unidades para porcentajes de tendencia
   const totalSystemUnits = groupedLaboratories.reduce((acc, curr) => acc + curr.totalSystemUnits, 0);
   const totalNegativeUnits = groupedLaboratories.reduce((acc, curr) => acc + curr.negativeUnits, 0);
   const totalPositiveUnits = groupedLaboratories.reduce((acc, curr) => acc + curr.positiveUnits, 0);
@@ -171,14 +173,14 @@ export default function CyclicInventory() {
   const filteredAndSortedLabs = useMemo(() => {
     let result = [...groupedLaboratories];
 
-    // Filter by search term
+    // Filtrar por término de búsqueda
     if (searchTerm) {
       result = result.filter((lab) =>
         lab.labName.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
-    // Sort
+    // Ordenar
     result.sort((a, b) => {
       switch (sortBy) {
         case "name-asc":
@@ -231,7 +233,7 @@ export default function CyclicInventory() {
         </Alert>
       )}
 
-      {/* Dashboard Summary */}
+      {/* Resumen del Panel */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card className="p-6 flex flex-col justify-between bg-card/40 dark:bg-card/20 backdrop-blur-sm border border-border/50 shadow-sm rounded-2xl overflow-hidden relative group transition-all duration-300">
           <div className="flex items-center gap-3 text-primary mb-4 relative z-10">
@@ -329,7 +331,7 @@ export default function CyclicInventory() {
         />
       </div>
 
-      {/* Filters and Search - Sticky with Blur */}
+      {/* Filtros y Búsqueda - Sticky con Blur */}
       <div className="flex flex-col gap-4 sticky top-0 bg-[#f0eeef]/80 dark:bg-[#2a2a2a]/80 backdrop-blur-xl z-20 py-4 -mx-4 px-4 md:-mx-6 md:px-6 transition-all border-b border-gray-200/30 dark:border-white/5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="relative flex-1 max-w-md">
@@ -343,7 +345,7 @@ export default function CyclicInventory() {
           </div>
 
           <div className="flex gap-2">
-            {/* Migration Button (Admin Only) */}
+            {/* Botones de Migración (Solo Admin) */}
             {user?.role === 'admin' && (
               <div className="flex gap-2">
                 <Button
@@ -432,7 +434,7 @@ export default function CyclicInventory() {
           </div>
         </div>
 
-        {/* Category Filters */}
+        {/* Filtros de Categoría */}
         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
           {categories.map((cat) => (
             <Button
@@ -455,7 +457,7 @@ export default function CyclicInventory() {
         </div>
       </div>
 
-      {/* Grid of Cards */}
+      {/* Cuadrícula de Tarjetas */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {filteredAndSortedLabs.map((lab) => (
           <LaboratoryCard
@@ -467,6 +469,7 @@ export default function CyclicInventory() {
             status={lab.status}
             progress={lab.progress}
             onClick={() => navigate(`/cyclic-inventory/${encodeURIComponent(lab.labName)}`)}
+            onMouseEnter={() => prefetchLab(user?.branchSheet || "", lab.labName)}
           />
         ))}
       </div>

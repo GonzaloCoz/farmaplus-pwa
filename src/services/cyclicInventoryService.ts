@@ -5,6 +5,11 @@ import { getAllBranchLabCounts } from './preCountDB';
 import { getProductCountByLab } from './productService';
 import { BRANCH_NAMES } from "@/config/users";
 import { normalizeString } from "@/lib/utils";
+import {
+    CyclicItemSchema,
+    CyclicInventoryStatsSchema,
+    BranchSummaryLiteSchema
+} from "@/lib/schemas/inventory";
 
 export interface CyclicInventoryStats {
     labName: string;
@@ -72,18 +77,28 @@ export const cyclicInventoryService = {
             }
 
             // Map Supabase result to CyclicItem
-            return data.map((item: any) => ({
-                id: item.id,
-                ean: item.ean,
-                name: item.products?.name || 'Desconocido',
-                systemQuantity: item.system_quantity || 0,
-                countedQuantity: item.quantity,
-                cost: item.products?.cost || 0,
-                status: item.status as 'pending' | 'controlled' | 'adjusted',
-                category: item.category || item.products?.category, // Prefer category from inventory record
-                wasReadjusted: item.was_readjusted,
-                updatedAt: item.updated_at
-            }));
+            return data.map((item: any) => {
+                const mappedItem = {
+                    id: item.id,
+                    ean: item.ean,
+                    name: item.products?.name || 'Desconocido',
+                    systemQuantity: item.system_quantity || 0,
+                    countedQuantity: item.quantity,
+                    cost: item.products?.cost || 0,
+                    status: item.status as 'pending' | 'controlled' | 'adjusted',
+                    category: item.category || item.products?.category, // Prefer category from inventory record
+                    wasReadjusted: item.was_readjusted,
+                    updatedAt: item.updated_at
+                };
+
+                // Enterprise Validation
+                const result = CyclicItemSchema.safeParse(mappedItem);
+                if (!result.success) {
+                    console.error("Zod Validation Error (Item):", result.error.format());
+                    return mappedItem as CyclicItem; // Fallback to raw data if it fails but log it
+                }
+                return result.data as CyclicItem;
+            });
         } catch (e) {
             console.error(`Error loading inventory for ${labName}`, e);
             return [];
@@ -364,8 +379,8 @@ export const cyclicInventoryService = {
         else if (controlledCount > 0) status = 'por_controlar';
 
         const rawProgress = totalItems > 0 ? (controlledCount / totalItems) * 100 : 0;
-        // Float with 1 decimal if small, or integer if large?
-        // Let's use 1 decimal for better precision
+        // ¿Decimal con 1 lugar si es pequeño, o entero si es grande?
+        // Usemos 1 decimal para mejor precisión
         const progress = totalItems > 0 ? Number(rawProgress.toFixed(1)) : 0;
 
         return {
@@ -381,8 +396,8 @@ export const cyclicInventoryService = {
         };
     },
 
-    // Get all inventories (aggregated or filtered by branch)
-    // Helper to get single lab status for Detail View
+    // Obtener todos los inventarios (agregados o filtrados por sucursal)
+    // Ayudante para obtener el estado de un solo laboratorio para la Vista Detallada
     getLabStats: async (branchName: string, labName: string, category: string) => {
         try {
             const { data, error } = await supabase
@@ -409,7 +424,7 @@ export const cyclicInventoryService = {
                 totalItems: total,
                 controlledItems: controlled,
                 adjustedItems: adjusted,
-                // Calculate Pending from Total (Master) - Processed
+                // Calcular Pendientes desde el Total (Maestro) - Procesados
                 pendingItems: Math.max(0, total - (controlled + adjusted)),
                 progress: progress
             };
@@ -464,7 +479,7 @@ export const cyclicInventoryService = {
                 if (row.status === 'completed') status = 'controlado';
                 else if (row.status === 'in_progress') status = 'por_controlar';
 
-                return {
+                const mappedStats = {
                     labName: row.laboratory,
                     category: row.category,
                     status: status,
@@ -484,6 +499,14 @@ export const cyclicInventoryService = {
                     positiveUnits: row.net_units > 0 ? row.net_units : 0,
                     netUnits: row.net_units
                 };
+
+                // Enterprise Validation
+                const result = CyclicInventoryStatsSchema.safeParse(mappedStats);
+                if (!result.success) {
+                    console.error(`Validation Error for lab ${row.laboratory}:`, result.error.format());
+                    return mappedStats as CyclicInventoryStats;
+                }
+                return result.data as CyclicInventoryStats;
             });
     },
 
@@ -514,12 +537,30 @@ export const cyclicInventoryService = {
 
             // 3. Map to UI format
             return BRANCH_NAMES.map(branchName => {
-                const summary = summaries?.find(s =>
+                const rawSummary = summaries?.find(s =>
                     (s.branch_name || '').toLowerCase().trim() === branchName.toLowerCase().trim()
                 );
 
+                // Enterprise Validation of DB Record
+                let summary = rawSummary;
+                if (rawSummary) {
+                    const result = BranchSummaryLiteSchema.safeParse({
+                        branchName: rawSummary.branch_name,
+                        inventoryUnits: rawSummary.inventory_units,
+                        differenceUnits: rawSummary.difference_units,
+                        adjustmentsValue: rawSummary.adjustments_value,
+                        controlledLabsCount: rawSummary.controlled_labs_count,
+                        updatedAt: rawSummary.updated_at
+                    });
+                    if (result.success) {
+                        summary = result.data;
+                    } else {
+                        console.error(`Validation Error for branch ${branchName}:`, result.error.format());
+                    }
+                }
+
                 const totalLabsGoal = labCounts[branchName] || 0;
-                const controlledCount = summary?.controlled_labs_count || 0;
+                const controlledCount = summary?.controlledLabsCount || 0;
                 const progress = totalLabsGoal > 0 ? Number(((controlledCount / totalLabsGoal) * 100).toFixed(1)) : 0;
 
                 let status = 'pendiente';
@@ -533,11 +574,11 @@ export const cyclicInventoryService = {
                     monthlyGoal: totalLabsGoal,
                     elapsedDays: 12,
                     progress: progress,
-                    inventoryUnits: summary?.inventory_units || 0,
-                    differenceUnits: summary?.difference_units || 0,
-                    adjustmentsValue: Math.round((summary?.adjustments_value || 0) * 100) / 100,
+                    inventoryUnits: summary?.inventoryUnits || 0,
+                    differenceUnits: summary?.differenceUnits || 0,
+                    adjustmentsValue: Math.round((summary?.adjustmentsValue || 0) * 100) / 100,
                     status: status,
-                    lastUpdated: summary?.updated_at
+                    lastUpdated: summary?.updatedAt
                 };
             }).sort((a, b) => b.progress - a.progress);
 

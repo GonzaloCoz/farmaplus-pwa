@@ -47,7 +47,16 @@ const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const BranchComparison = lazy(() => import("./pages/BranchComparison"));
 
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutos de tiempo de expiración global
+      gcTime: 1000 * 60 * 10,   // 10 minutos para recolección de basura
+      retry: 1,
+      refetchOnWindowFocus: false, // Evita parpadeos repentinos al cambiar de pestaña
+    },
+  },
+});
 
 // Componente para proteger rutas
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {

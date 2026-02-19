@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { notify } from '@/lib/notifications';
 import { CyclicItem, cyclicInventoryService } from '@/services/cyclicInventoryService';
+import { useLabInventoryQuery } from './useInventoryQueries';
 
 interface UseInventorySyncProps {
     branchName: string;
@@ -10,46 +11,35 @@ interface UseInventorySyncProps {
 }
 
 export function useInventorySync({ branchName, labName, items, onItemsLoaded }: UseInventorySyncProps) {
-    const [isLoading, setIsLoading] = useState(false);
+    const { data: queryData, isLoading: queryLoading } = useLabInventoryQuery(branchName, labName);
     const [isSaving, setIsSaving] = useState(false);
+    const setIsLoading = (loading: boolean) => { }; // Compatibilidad con el controlador
 
-    // Initial Load
+    // Actualizar estado local cuando cambian los datos de la consulta
     useEffect(() => {
-        if (labName && branchName !== 'Sucursal Desconocida') {
-            const loadData = async () => {
-                setIsLoading(true);
-                try {
-                    const data = await cyclicInventoryService.getLabInventory(branchName, labName);
-                    if (data && data.length > 0) {
-                        onItemsLoaded(data);
-                    }
-                } catch (error) {
-                    console.error("Failed to load inventory:", error);
-                    notify.error("Error de carga", "No se pudo cargar el inventario desde la nube");
-                } finally {
-                    setIsLoading(false);
-                }
-            };
-            loadData();
+        if (queryData && queryData.length > 0) {
+            onItemsLoaded(queryData);
         }
-    }, [labName, branchName]);
+    }, [queryData, onItemsLoaded]);
 
-    // Auto-Save Effect
+    const isLoading = queryLoading;
+
+    // Efecto de Auto-Guardado
     useEffect(() => {
-        // Don't auto-save if empty or offline/unknown branch
+        // No auto-guardar si está vacío o en sucursal desconocida/offline
         if (items.length === 0 || !labName || branchName === 'Sucursal Desconocida') return;
 
         const timeoutId = setTimeout(() => {
-            // Save quietly
+            // Guardar silenciosamente
             cyclicInventoryService.saveInventory(branchName, labName, items)
-                .then(() => console.log('Auto-saved'))
-                .catch(err => console.error('Auto-save error', err));
+                .then(() => console.log('Auto-guardado exitoso'))
+                .catch(err => console.error('Error de auto-guardado', err));
         }, 2000);
 
         return () => clearTimeout(timeoutId);
     }, [items, branchName, labName]);
 
-    // Manual Save
+    // Guardado Manual
     const saveProgress = async () => {
         setIsSaving(true);
         try {

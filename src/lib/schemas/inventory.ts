@@ -13,6 +13,8 @@ export const CyclicItemSchema = z.object({
     category: z.string().optional(),
     wasReadjusted: z.boolean().optional().default(false),
     updatedAt: z.string().optional(),
+    shortageId: z.string().optional(),
+    surplusId: z.string().optional(),
 });
 
 export const CyclicInventoryStatsSchema = z.object({

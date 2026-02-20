@@ -30,6 +30,8 @@ export interface CyclicItem {
     category?: string;
     wasReadjusted?: boolean;
     updatedAt?: string;
+    shortageId?: string;
+    surplusId?: string;
 }
 
 interface CyclicInventoryListProps {
@@ -163,7 +165,7 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                                         </Badge>
                                     )}
                                     {/* Badge con el ID de Ajuste Plex */}
-                                    {item.status === 'adjusted' && lastAdjustmentIds && diff !== 0 && (
+                                    {item.status === 'adjusted' && diff !== 0 && (item.shortageId || item.surplusId) && (
                                         <Badge
                                             variant="outline"
                                             className={cn(
@@ -172,10 +174,10 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                                                     ? "bg-destructive/10 text-destructive border-destructive/30"
                                                     : "bg-success/10 text-success border-success/30"
                                             )}
-                                            title={diff < 0 ? `ID Ajuste Faltantes: ${lastAdjustmentIds.shortage}` : `ID Ajuste Sobrantes: ${lastAdjustmentIds.surplus}`}
+                                            title={diff < 0 ? `ID Ajuste Faltantes: ${item.shortageId}` : `ID Ajuste Sobrantes: ${item.surplusId}`}
                                         >
                                             <Hash className="w-2.5 h-2.5" />
-                                            {diff < 0 ? (lastAdjustmentIds.shortage || '—') : (lastAdjustmentIds.surplus || '—')}
+                                            {diff < 0 ? (item.shortageId || '—') : (item.surplusId || '—')}
                                         </Badge>
                                     )}
                                 </div>

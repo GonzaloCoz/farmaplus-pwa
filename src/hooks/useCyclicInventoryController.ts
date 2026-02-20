@@ -245,21 +245,25 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
                 console.warn('[Progress] No se pudo leer total de DB. Usando estado de React.');
             }
 
-            // Ironclad Finalization Purge: Cualquier cosa que haya quedado pendiente en CUALQUIER rubro se elimina
-            // El usuario está dando por cerrado el control del laboratorio para el estado actual.
-            const itemsToKeep = items.filter(item => item.status !== 'pending');
-
-            const updatedItems = itemsToKeep.map(item => {
+            // Optimizacion del Flujo: No eliminamos los pendientes del estado.
+            // Asi, cuando re-entren manana, siguen ahi para ser continuados.
+            const updatedItems = items.map(item => {
                 if (item.status === 'controlled') {
-                    return { ...item, status: 'adjusted' as const };
+                    const diff = item.countedQuantity - item.systemQuantity;
+                    return {
+                        ...item,
+                        status: 'adjusted' as const,
+                        shortageId: diff < 0 ? shortageId : undefined,
+                        surplusId: diff > 0 ? surplusId : undefined
+                    };
                 }
                 return item;
             });
 
             setItems(updatedItems);
 
-            // Limpieza TOTAL de pendientes en la base de datos para este laboratorio
-            await cyclicInventoryService.clearAllLabResidue(branchName, labName);
+            // Optimizacion del Flujo: Ya no purgar la base de datos de los pendientes, pero 
+            // sigue guardando (Upsert) el nuevo listado sobreescribiendo el control.
 
             // Guardar con totalDenominator = masterTotal para evitar 100% falso cuando hay pendientes
             await cyclicInventoryService.saveInventoryForFinalize(
@@ -279,6 +283,12 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
             // Fuente de verdad: recalcular progreso desde inventarios (evita 100% falso)
             await cyclicInventoryService.recomputeLabProgress(branchName, labName);
 
+            // Extraer las categorías de los items que acaban de ser controlados
+            const controlledCategories = Array.from(new Set(controlledItems.map(i => i.category || 'Varios')));
+            const historyCategoryStr = controlledCategories.length > 0
+                ? controlledCategories.join(', ')
+                : categoryToFinalize;
+
             await cyclicInventoryService.saveAdjustmentHistory(branchName, labName, {
                 adjustment_id_shortage: shortageId,
                 adjustment_id_surplus: surplusId,
@@ -288,7 +298,7 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
                 user_name: user?.name,
                 user_id: user?.id,
                 items_snapshot: updatedItems,
-                category: categoryToFinalize
+                category: historyCategoryStr
             });
 
             notify.success("Operación exitosa", `${categoryToFinalize} finalizado. Pendientes eliminados.`);

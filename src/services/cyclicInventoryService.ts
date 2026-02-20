@@ -43,6 +43,8 @@ export interface CyclicItem {
     category?: string;
     wasReadjusted?: boolean;
     updatedAt?: string;
+    shortageId?: string;
+    surplusId?: string;
 }
 
 export const cyclicInventoryService = {
@@ -58,9 +60,9 @@ export const cyclicInventoryService = {
                     system_quantity,
                     status,
                     was_readjusted,
-                    status,
-                    was_readjusted,
                     category,
+                    adjustment_id_shortage,
+                    adjustment_id_surplus,
                     updated_at,
                     products (
                         name,
@@ -88,7 +90,9 @@ export const cyclicInventoryService = {
                     status: item.status as 'pending' | 'controlled' | 'adjusted',
                     category: item.category || item.products?.category, // Prefer category from inventory record
                     wasReadjusted: item.was_readjusted,
-                    updatedAt: item.updated_at
+                    updatedAt: item.updated_at,
+                    shortageId: item.adjustment_id_shortage,
+                    surplusId: item.adjustment_id_surplus
                 };
 
                 // Enterprise Validation
@@ -117,7 +121,9 @@ export const cyclicInventoryService = {
                 countedQuantity: item.countedQuantity,
                 systemQuantity: item.systemQuantity,
                 status: item.status,
-                wasReadjusted: item.wasReadjusted || false
+                wasReadjusted: item.wasReadjusted || false,
+                shortageId: item.shortageId,
+                surplusId: item.surplusId
             }));
 
             // Call the database function (RPC V2)
@@ -161,7 +167,9 @@ export const cyclicInventoryService = {
                 countedQuantity: item.countedQuantity,
                 systemQuantity: item.systemQuantity,
                 status: item.status,
-                wasReadjusted: item.wasReadjusted || false
+                wasReadjusted: item.wasReadjusted || false,
+                shortageId: item.shortageId,
+                surplusId: item.surplusId
             }));
 
             const { error } = await (supabase as any).rpc('save_cyclic_inventory_v2', {

@@ -48,6 +48,35 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
         }
 
         setIsUploading(true);
+
+        // IRONCLAD PRE-MERGE: Leer el estado actual de Supabase ANTES de abrir el reader.
+        // Debe ejecutarse aquí (en la función async handleFileUpload) y no dentro de reader.onload
+        // que es síncrono. Esto garantiza que los items ajustados/controlados de sesiones anteriores
+        // se preserven aunque el estado de React esté vacío (e.g., tras recargar la app).
+        let mergedCurrentItems: CyclicItem[] = [...currentItems];
+        try {
+            const dbItems = await cyclicInventoryService.getLabInventory(branchName, labName);
+            if (dbItems.length > 0) {
+                // React state toma prioridad (puede tener cambios no guardados recientes),
+                // pero la DB es el fallback para items que no están en el estado.
+                const reactItemMap = new Map(currentItems.map(i => [String(i.ean).trim(), i]));
+                const merged: CyclicItem[] = dbItems.map(dbItem => {
+                    const reactVersion = reactItemMap.get(String(dbItem.ean).trim());
+                    return reactVersion || dbItem;
+                });
+                // Agregar cualquier item del estado React que no esté en DB (cambios pendientes de sync)
+                currentItems.forEach(rItem => {
+                    const ean = String(rItem.ean).trim();
+                    if (!merged.find(m => String(m.ean).trim() === ean)) {
+                        merged.push(rItem);
+                    }
+                });
+                mergedCurrentItems = merged;
+            }
+        } catch (fetchError) {
+            console.warn('No se pudo leer el estado de DB antes de subir Excel. Usando estado de React.', fetchError);
+        }
+
         const reader = new FileReader();
 
         reader.onload = (evt) => {
@@ -96,10 +125,11 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 worker.terminate();
             };
 
+            // Pasar la lista pre-mergeada (capturada por closure) al worker
             worker.postMessage({
                 fileData: bstr,
                 labName,
-                currentItems
+                currentItems: mergedCurrentItems
             });
         };
 

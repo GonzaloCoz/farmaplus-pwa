@@ -7,6 +7,7 @@ import { useInventorySync } from '@/hooks/useInventorySync';
 import { useInventoryUpload } from '@/hooks/useInventoryUpload';
 import { useInventoryStats } from '@/hooks/useInventoryStats';
 import { useUser } from '@/contexts/UserContext';
+import { supabase } from '@/integrations/supabase/client';
 
 const CATEGORIES = ["Medicamentos", "Perfumería", "Accesorios", "Varios"];
 
@@ -199,19 +200,50 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         const shortages = controlledItems.filter(i => i.countedQuantity < i.systemQuantity);
         const surpluses = controlledItems.filter(i => i.countedQuantity > i.systemQuantity);
 
-        if (shortages.length > 0 && !shortageId.trim()) {
-            notify.error("Error", "Por favor ingresa el ID de ajuste para Faltantes");
-            return;
+        if (shortages.length > 0) {
+            if (!shortageId.trim()) {
+                notify.error("Error", "Por favor ingresa el ID de ajuste para Faltantes");
+                return;
+            }
+            if (!/^\d+$/.test(shortageId.trim())) {
+                notify.error("Error", "El ID de Faltantes debe contener solo números, sin espacios ni símbolos.");
+                return;
+            }
         }
 
-        if (surpluses.length > 0 && !surplusId.trim()) {
-            notify.error("Error", "Por favor ingresa el ID de ajuste para Sobrantes");
-            return;
+        if (surpluses.length > 0) {
+            if (!surplusId.trim()) {
+                notify.error("Error", "Por favor ingresa el ID de ajuste para Sobrantes");
+                return;
+            }
+            if (!/^\d+$/.test(surplusId.trim())) {
+                notify.error("Error", "El ID de Sobrantes debe contener solo números, sin espacios ni símbolos.");
+                return;
+            }
         }
 
         setIsSaving(true);
         try {
             const categoryToFinalize = currentCategory;
+
+            // ⚠️ LEER EL TOTAL DE DB ANTES de que saveInventory → updateLabMetadata lo sobreescriba.
+            // Este es el denominador correcto para el progreso acumulado.
+            // Si la DB tiene 100 items (del último Excel), ese es el total real aunque solo controlemos 10.
+            let masterTotal = items.length; // Fallback al estado de React
+            try {
+                const { data: existingMeta } = await supabase
+                    .from('branch_laboratories')
+                    .select('total_items')
+                    .ilike('branch_name', branchName.trim())
+                    .eq('laboratory', labName)
+                    .limit(1)
+                    .maybeSingle();
+                const dbTotal = existingMeta?.total_items || 0;
+                // Usar el mayor entre DB y estado actual (nunca reducir el denominador)
+                masterTotal = Math.max(dbTotal, items.length);
+            } catch (e) {
+                console.warn('[Progress] No se pudo leer total de DB. Usando estado de React.');
+            }
 
             // Ironclad Finalization Purge: Cualquier cosa que haya quedado pendiente en CUALQUIER rubro se elimina
             // El usuario está dando por cerrado el control del laboratorio para el estado actual.
@@ -228,7 +260,25 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
 
             // Limpieza TOTAL de pendientes en la base de datos para este laboratorio
             await cyclicInventoryService.clearAllLabResidue(branchName, labName);
-            await cyclicInventoryService.saveInventory(branchName, labName, updatedItems);
+
+            // Guardar con totalDenominator = masterTotal para evitar 100% falso cuando hay pendientes
+            await cyclicInventoryService.saveInventoryForFinalize(
+                branchName,
+                labName,
+                updatedItems,
+                masterTotal
+            );
+
+            // Corrección extra por si hay desfase (progreso acumulativo entre sesiones)
+            await cyclicInventoryService.correctProgressAfterFinalize(
+                branchName,
+                labName,
+                masterTotal
+            );
+
+            // Fuente de verdad: recalcular progreso desde inventarios (evita 100% falso)
+            await cyclicInventoryService.recomputeLabProgress(branchName, labName);
+
             await cyclicInventoryService.saveAdjustmentHistory(branchName, labName, {
                 adjustment_id_shortage: shortageId,
                 adjustment_id_surplus: surplusId,

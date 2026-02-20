@@ -337,6 +337,10 @@ export default function CyclicInventoryDetail() {
                                             onUpdateQuantity={handleUpdateQuantity}
                                             onCheck={() => { }} // No check needed for adjusted
                                             readOnly={false} // Enable editing for readjustments
+                                            lastAdjustmentIds={history.length > 0 ? {
+                                                shortage: history[0]?.adjustment_id_shortage || '',
+                                                surplus: history[0]?.adjustment_id_surplus || ''
+                                            } : undefined}
                                         />
                                     </TabsContent>
 

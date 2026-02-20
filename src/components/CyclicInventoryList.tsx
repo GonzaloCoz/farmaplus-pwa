@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, Package, DollarSign, Pencil, Trash2, AlertTriangle, Calculator as CalculatorIcon, ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown, Copy, Check } from 'lucide-react';
+import { CheckCircle2, Package, DollarSign, Pencil, Trash2, AlertTriangle, Calculator as CalculatorIcon, ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown, Copy, Hash } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { SwipeableItem } from './SwipeableItem';
@@ -39,6 +39,11 @@ interface CyclicInventoryListProps {
     onRevert?: (id: string) => void;
     readOnly?: boolean;
     isPending?: boolean;
+    // IDs de ajuste del último cierre (para mostrar en la pestaña de Ajustados)
+    lastAdjustmentIds?: {
+        shortage: string; // ID Plex para Faltantes
+        surplus: string;  // ID Plex para Sobrantes
+    };
 }
 
 export const CyclicInventoryList = memo(function CyclicInventoryList({
@@ -47,7 +52,8 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
     onCheck,
     onRevert,
     readOnly = false,
-    isPending = false
+    isPending = false,
+    lastAdjustmentIds
 }: CyclicInventoryListProps) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editQuantity, setEditQuantity] = useState('');
@@ -150,10 +156,26 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                                         {item.name}
                                     </p>
                                 </ProductImageHover>
-                                <div className="flex items-center gap-2 mt-0.5">
+                                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                                     {item.wasReadjusted && (
                                         <Badge variant="outline" className="text-[10px] h-5 bg-purple-100/50 text-purple-700 border-purple-200 font-normal">
                                             Modif.
+                                        </Badge>
+                                    )}
+                                    {/* Badge con el ID de Ajuste Plex */}
+                                    {item.status === 'adjusted' && lastAdjustmentIds && diff !== 0 && (
+                                        <Badge
+                                            variant="outline"
+                                            className={cn(
+                                                "text-[10px] h-5 font-mono gap-1 font-semibold",
+                                                diff < 0
+                                                    ? "bg-destructive/10 text-destructive border-destructive/30"
+                                                    : "bg-success/10 text-success border-success/30"
+                                            )}
+                                            title={diff < 0 ? `ID Ajuste Faltantes: ${lastAdjustmentIds.shortage}` : `ID Ajuste Sobrantes: ${lastAdjustmentIds.surplus}`}
+                                        >
+                                            <Hash className="w-2.5 h-2.5" />
+                                            {diff < 0 ? (lastAdjustmentIds.shortage || '—') : (lastAdjustmentIds.surplus || '—')}
                                         </Badge>
                                     )}
                                 </div>

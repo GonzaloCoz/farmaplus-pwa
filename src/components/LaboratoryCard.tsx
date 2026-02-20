@@ -62,8 +62,8 @@ export function LaboratoryCard({
     const config = getStatusConfig(status);
     const Icon = config.icon;
 
-    // Simular progreso si no se proporciona, basado en el estado
-    const displayProgress = status === 'controlado' ? 100 : progress || 0;
+    // Mostrar el porcentaje real de avance (nunca forzar 100% - puede estar controlado parcialmente)
+    const displayProgress = progress || 0;
 
     return (
         <Card

@@ -3,7 +3,6 @@ import { arrayMove } from '@dnd-kit/sortable';
 import type { Widget, DashboardLayout, WidgetSize, WidgetSpan } from '@/types/dashboard';
 import {
     DollarSign,
-    Activity,
     BarChart3,
     AlertCircle as AlertCircleIcon,
     CalendarClock,
@@ -12,7 +11,6 @@ import {
     AlertTriangle,
     Users,
     Clock,
-    LineChart,
     Trophy,
     History,
     PieChart,
@@ -48,18 +46,6 @@ const DEFAULT_WIDGETS: Widget[] = [
         span: 1,
         row: 'top',
         mandatory: true
-    },
-    {
-        id: 'active-products',
-        type: 'active-products',
-        title: 'Productos Activos',
-        description: 'Total de productos en inventarios',
-        icon: Activity,
-        visible: true,
-        order: 2,
-        size: 'small',
-        span: 1,
-        row: 'top'
     },
     {
         id: 'inventory-summary',
@@ -169,18 +155,6 @@ const DEFAULT_WIDGETS: Widget[] = [
         size: 'small',
         span: 1,
         row: 'top'
-    },
-    {
-        id: 'trends-chart',
-        type: 'trends-chart',
-        title: 'Gráfico de Tendencias',
-        description: 'Evolución de diferencias en el tiempo',
-        icon: LineChart,
-        visible: true,
-        order: 11,
-        size: 'large',
-        span: 1,
-        row: 'middle'
     },
     {
         id: 'top-products',

@@ -136,6 +136,8 @@ export const cyclicInventoryService = {
 
             // Update metadata table for real-time monitoring
             await cyclicInventoryService.updateLabMetadata(branchName, labName, items);
+            // Congelar progreso real desde DB (evita 100% fantasma)
+            await cyclicInventoryService.recomputeLabProgress(branchName, labName);
 
         } catch (e) {
             console.error("Error saving inventory:", e);
@@ -143,43 +145,156 @@ export const cyclicInventoryService = {
         }
     },
 
-    // Delete inventory
-    deleteInventory: async (branchName: string, labName: string) => {
-        // 1. Delete from inventories
-        const { error: invError } = await supabase.from('inventories')
-            .delete()
-            .ilike('branch_name', branchName.trim())
-            .eq('laboratory', labName);
+    // Variante para finalizar: pasa totalDenominator para evitar 100% falso cuando hay pendientes
+    saveInventoryForFinalize: async (
+        branchName: string,
+        labName: string,
+        items: CyclicItem[],
+        totalDenominator: number
+    ) => {
+        try {
+            const rpcItems = items.map(item => ({
+                ean: item.ean,
+                name: item.name,
+                category: item.category,
+                cost: item.cost || 0,
+                countedQuantity: item.countedQuantity,
+                systemQuantity: item.systemQuantity,
+                status: item.status,
+                wasReadjusted: item.wasReadjusted || false
+            }));
 
-        if (invError) {
-            console.error("Error deleting inventory:", invError);
-            throw invError;
-        }
+            const { error } = await (supabase as any).rpc('save_cyclic_inventory_v2', {
+                p_branch_name: branchName,
+                p_laboratory: labName,
+                p_items: rpcItems as any
+            });
 
-        // 2. Delete from metadata (branch_laboratories) to prevent ghost data
-        const { error: metaError } = await supabase.from('branch_laboratories')
-            .delete()
-            .ilike('branch_name', branchName.trim())
-            .eq('laboratory', labName);
+            if (error) {
+                console.error('Error calling save_cyclic_inventory_v2 RPC:', error);
+                throw error;
+            }
 
-        if (metaError) {
-            console.error("Error deleting lab metadata:", metaError);
-            // Don't throw, just log. The main delete succeeded.
+            // Usar totalDenominator para progreso real (evita 100% falso cuando hay pendientes no controlados)
+            await cyclicInventoryService.updateLabMetadata(branchName, labName, items, totalDenominator);
+            await cyclicInventoryService.recomputeLabProgress(branchName, labName);
+
+        } catch (e) {
+            console.error("Error saving inventory (finalize):", e);
+            throw e;
         }
     },
 
-    // Delete adjustment history for a laboratory
+    // Delete inventory (Reiniciar) - Usa RPC para garantizar borrado total (ajustados incluidos)
+    deleteInventory: async (branchName: string, labName: string) => {
+        const { error } = await (supabase as any).rpc('purge_lab_inventory', {
+            p_branch_name: branchName.trim(),
+            p_laboratory: labName.trim()
+        });
+        if (error) {
+            console.error("Error purging lab inventory:", error);
+            throw error;
+        }
+    },
+
+    // Delete adjustment history (ya incluido en purge_lab_inventory RPC; mantener por compatibilidad)
     deleteAdjustmentHistory: async (branchName: string, labName: string) => {
         const { error } = await supabase.from('inventory_adjustments')
             .delete()
             .ilike('branch_name', branchName.trim())
-            .eq('laboratory', labName);
+            .ilike('laboratory', labName.trim());
 
         if (error) {
             console.error("Error deleting adjustment history:", error);
             throw error;
         }
     },
+
+    /**
+     * Corrige el progreso en branch_laboratories DESPUÉS de finalizar.
+     *
+     * Por qué se necesita: `saveInventory` → `updateLabMetadata` sobreescribe `total_items`
+     * con sólo la cantidad de items ajustados (denominador = numerador = 100%).
+     *
+     * Este método usa:
+     *   - masterTotal: el total REAL antes de que se borraran los pendientes (leído ANTES de saveInventory)
+     *   - dbAdjustedCount: cuenta TODOS los ajustados acumulados para este branch+lab en Supabase
+     *
+     * El avance es INDEPENDIENTE por sucursal (filtro por branch_name + laboratory).
+     */
+    correctProgressAfterFinalize: async (
+        branchName: string,
+        labName: string,
+        masterTotal: number   // Total leído de DB ANTES de que updateLabMetadata lo pise
+    ): Promise<void> => {
+        try {
+            if (masterTotal === 0) return;
+
+            // 1. Contar TODOS los items ajustados acumulados en Supabase para este branch+lab
+            //    (incluye ajustes de sesiones anteriores, no sólo el batch actual)
+            const { count: dbAdjustedCount, error: countError } = await supabase
+                .from('inventories')
+                .select('*', { count: 'exact', head: true })
+                .ilike('branch_name', branchName.trim())
+                .eq('laboratory', labName)
+                .eq('status', 'adjusted');
+
+            if (countError) {
+                console.error('[Progress] Error counting adjusted items:', countError);
+            }
+
+            const cumulativeAdjusted = dbAdjustedCount || 0;
+
+            // 2. Calcular el % real acumulado
+            const realProgress = Math.min(
+                100,
+                Number(((cumulativeAdjusted / masterTotal) * 100).toFixed(1))
+            );
+
+            // Status real: completed solo si llegamos genuinamente al 100%
+            const realStatus = realProgress >= 100 ? 'completed' : 'in_progress';
+
+            // 3. Persistir en branch_laboratories con el denominador correcto
+            const { error } = await supabase
+                .from('branch_laboratories')
+                .update({
+                    total_items: masterTotal,
+                    controlled_items: cumulativeAdjusted,
+                    progress_percentage: realProgress,  // % real (nunca 100% falso)
+                    status: realStatus
+                })
+                .ilike('branch_name', branchName.trim())
+                .ilike('laboratory', labName.trim());
+
+            if (error) {
+                console.error('[Progress] Error persisting real progress:', error);
+            } else {
+                console.log(`[Progress] ${labName} (${branchName}): ${realProgress}% (${cumulativeAdjusted}/${masterTotal})`);
+            }
+        } catch (e) {
+            console.error('[Progress] Unexpected error in correctProgressAfterFinalize:', e);
+        }
+    },
+
+    /**
+     * Recalcula el progreso desde inventarios (fuente de verdad en DB).
+     * Evita el 100% falso cuando hay pendientes descartados al finalizar.
+     * Requiere que exista la función SQL recompute_lab_progress en Supabase.
+     */
+    recomputeLabProgress: async (branchName: string, labName: string): Promise<void> => {
+        try {
+            const { error } = await (supabase as any).rpc('recompute_lab_progress', {
+                p_branch_name: branchName.trim(),
+                p_laboratory: labName.trim()
+            });
+            if (error) {
+                console.warn('[Progress] recompute_lab_progress no disponible o error:', error?.message);
+            }
+        } catch (e) {
+            console.warn('[Progress] Error calling recompute_lab_progress:', e);
+        }
+    },
+
 
     // Clear pending residues for specific categories
     clearPendingResidue: async (branchName: string, labName: string, categories: string[]) => {
@@ -211,29 +326,28 @@ export const cyclicInventoryService = {
 
     /**
      * Algoritmo de Sincronización de Hierro (Ironclad Sync)
-     * Borra TODO el laboratorio de la base de datos y guarda los nuevos items.
-     * Esto elimina cualquier residuo de cualquier rubro que no esté en el archivo.
+     * Usa RPC para purga garantizada, luego guarda los nuevos items.
+     * Evita residuos de ajustados y rubros fantasmas.
      */
     purgeAndSaveLabInventory: async (branchName: string, labName: string, items: CyclicItem[]) => {
         try {
-            // 1. Borrado TOTAL preventivo del laboratorio para esta sucursal
-            const { error: deleteError } = await (supabase as any)
-                .from('inventories')
-                .delete()
-                .ilike('branch_name', branchName.trim())
-                .eq('laboratory', labName);
+            // 1. Purga total vía RPC (inventarios + historial + reset metadata)
+            const { error: purgeError } = await (supabase as any).rpc('purge_lab_inventory', {
+                p_branch_name: branchName.trim(),
+                p_laboratory: labName.trim()
+            });
 
-            if (deleteError) {
-                console.error("Error purging lab inventory:", deleteError);
-                throw deleteError;
+            if (purgeError) {
+                console.error("Error purging lab:", purgeError);
+                throw purgeError;
             }
 
-            // 2. Guardado de los nuevos items (Insert masivo)
+            // 2. Guardado de los nuevos items (crea filas en branch_laboratories vía updateLabMetadata)
             if (items.length > 0) {
                 await cyclicInventoryService.saveInventory(branchName, labName, items);
             }
 
-            console.log(`Ironclad Sync completado para ${labName}: Purga total e inserción de ${items.length} items.`);
+            console.log(`Ironclad Sync completado para ${labName}: ${items.length} items.`);
         } catch (error) {
             console.error("Error in purgeAndSaveLabInventory:", error);
             throw error;
@@ -241,7 +355,14 @@ export const cyclicInventoryService = {
     },
 
     // Update laboratory metadata for real-time monitoring
-    updateLabMetadata: async (branchName: string, labName: string, items: CyclicItem[]): Promise<void> => {
+    // totalDenominator: cuando se finaliza con pendientes, items solo tiene controlados+ajustados.
+    // Pasar el total real para evitar 100% falso.
+    updateLabMetadata: async (
+        branchName: string,
+        labName: string,
+        items: CyclicItem[],
+        totalDenominator?: number
+    ): Promise<void> => {
         try {
             // Group items by category to split metadata records
             const grouped: Record<string, CyclicItem[]> = {};
@@ -251,12 +372,9 @@ export const cyclicInventoryService = {
                 grouped[cat].push(item);
             });
 
-            // --- GLOBAL PROGRESS CALCULATION (Forced Consistency) ---
-            // Calculate progress based on the ENTIRE passed inventory list (which represents the full Lab).
-            // This ensures that the percentage stored in 'branch_laboratories' matches exactly what the user sees
-            // in the Detail View (28%), instead of a partial category progress (e.g. 39%).
-            const globalTotal = items.length;
+            // --- GLOBAL PROGRESS CALCULATION ---
             const globalProcessed = items.filter(i => i.status === 'controlled' || i.status === 'adjusted').length;
+            const globalTotal = totalDenominator ?? items.length; // totalDenominator evita 100% falso al finalizar
 
             let globalProgress = 0;
             if (globalTotal > 0) {
@@ -436,28 +554,11 @@ export const cyclicInventoryService = {
 
     // Get all inventories (aggregated from branch_laboratories metadata)
     getAllCyclicInventories: async (branchName?: string): Promise<CyclicInventoryStats[]> => {
-        // 1. First, identify ACTIVE laboratories (the "open session")
-        let activeLabsQuery = supabase
-            .from('inventories')
-            .select('laboratory')
-            .neq('laboratory', '_CONFIG_');
-
-        if (branchName) {
-            activeLabsQuery = activeLabsQuery.ilike('branch_name', branchName.trim());
-        }
-
-        const { data: activeLabsData, error: activeError } = await activeLabsQuery;
-
-        if (activeError) {
-            console.error("Error fetching active labs:", activeError);
-        }
-
-        // Normalize for the set
-        const activeLabsSet = new Set((activeLabsData || []).map(row =>
-            (row.laboratory || '').toUpperCase().trim()
-        ));
-
-        // 2. Fetch metadata
+        // Fetch metadata from branch_laboratories.
+        // Note: We no longer filter by "active" inventories here because labs that were
+        // reset/finalized should still appear in the list as "pendiente". The source of
+        // truth for the master lab list is branch_laboratories, which is now reset (not deleted)
+        // when a lab is cleared. This fixes the bug where labs disappeared after reset/finalize.
         let query = supabase
             .from('branch_laboratories')
             .select(`*`);
@@ -470,9 +571,7 @@ export const cyclicInventoryService = {
 
         if (error || !data) return [];
 
-        // 3. Filter metadata by active labs to exclude GHOST records
         return data
-            .filter((row: any) => activeLabsSet.has((row.laboratory || '').toUpperCase().trim()))
             .map((row: any) => {
                 // Map DB status to UI Status
                 let status: LaboratoryStatus = 'pendiente';

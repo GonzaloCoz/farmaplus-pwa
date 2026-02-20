@@ -1,7 +1,6 @@
 import { memo } from "react";
 import { SmartAnalystWidget } from "@/components/dashboard/widgets/SmartAnalystWidget";
 import { MetricsCarouselWidget } from "@/components/dashboard/widgets/MetricsCarouselWidget";
-import { ActiveProductsWidget } from "@/components/dashboard/widgets/ActiveProductsWidget";
 import { InventorySummaryWidget } from "@/components/dashboard/widgets/InventorySummaryWidget";
 import { TeamsChatWidget } from "@/components/dashboard/widgets/TeamsChatWidget";
 import { UpcomingInventoriesWidget } from "@/components/dashboard/widgets/UpcomingInventoriesWidget";
@@ -11,7 +10,6 @@ import { CriticalProductsWidget } from "@/components/dashboard/widgets/CriticalP
 import { TotalStockValueWidget } from "@/components/dashboard/widgets/TotalStockValueWidget";
 import { ActiveUsersWidget } from "@/components/dashboard/widgets/ActiveUsersWidget";
 import { PendingInventoriesWidget } from "@/components/dashboard/widgets/PendingInventoriesWidget";
-import { TrendsChartWidget } from "@/components/dashboard/widgets/TrendsChartWidget";
 import { TopProductsWidget } from "@/components/dashboard/widgets/TopProductsWidget";
 import { ActivityTimelineWidget } from "@/components/dashboard/widgets/ActivityTimelineWidget";
 import { CategoryDistributionWidget } from "@/components/dashboard/widgets/CategoryDistributionWidget";
@@ -57,8 +55,6 @@ export const WidgetRenderer = memo(({
             return <SmartAnalystWidget />;
         case 'metrics-carousel':
             return <MetricsCarouselWidget metrics={metrics} />;
-        case 'active-products':
-            return <ActiveProductsWidget activeProducts={metrics.activeProducts} />;
         case 'inventory-summary':
             return <InventorySummaryWidget />;
         case 'inventory-alerts':
@@ -85,8 +81,6 @@ export const WidgetRenderer = memo(({
             return <ActiveUsersWidget activeCount={5} activeBranches={['Belgrano IV', 'Recoleta', 'Palermo II']} />;
         case 'pending-inventories':
             return <PendingInventoriesWidget pendingCount={7} urgentCount={2} />;
-        case 'trends-chart':
-            return <TrendsChartWidget />;
         case 'top-products':
             return <TopProductsWidget />;
         case 'activity-timeline':

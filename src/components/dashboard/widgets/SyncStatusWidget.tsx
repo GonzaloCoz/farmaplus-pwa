@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Wifi, WifiOff, RefreshCw, CheckCircle2, Clock } from 'lucide-react';
+import { Widget as Wifi, CloseCircle as WifiOff, Restart as RefreshCw, CheckCircle, ClockCircle as Clock } from '@solar-icons/react';
 
 interface SyncStatusWidgetProps {
     isOnline?: boolean;
@@ -51,7 +51,7 @@ export function SyncStatusWidget({
                     {pendingCount > 0 ? (
                         <Badge variant="warning">{pendingCount}</Badge>
                     ) : (
-                        <CheckCircle2 className="h-5 w-5 text-success" />
+                        <CheckCircle className="h-5 w-5 text-success" />
                     )}
                 </div>
 

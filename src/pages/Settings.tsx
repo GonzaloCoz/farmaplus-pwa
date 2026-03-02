@@ -6,7 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 
-import { Smartphone, Wifi, Trash2, Info, Cloud, Database, Bell, Shield, User as UserIcon, Users } from "lucide-react";
+import { Smartphone, Cloud as Wifi, TrashBinMinimalistic as Trash2, InfoCircle as Info, Cloud, Database, Bell, Shield, User as UserIcon, UsersGroupTwoRounded as Users } from "@solar-icons/react";
 import { clearProducts, addProducts, Product } from "@/services/productService";
 import { SyncStatusBottomSheet } from "@/components/SyncStatusBottomSheet";
 import { Input } from "@/components/ui/input";

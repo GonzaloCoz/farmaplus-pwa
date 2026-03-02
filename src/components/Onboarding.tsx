@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { driver } from 'driver.js';
 import "driver.js/dist/driver.css";
 import { Button } from '@/components/ui/button';
-import { HelpCircle } from 'lucide-react';
+import { QuestionCircle as HelpCircle } from '@solar-icons/react';
 
 export function Onboarding() {
     const startTour = () => {
@@ -37,7 +37,7 @@ export function Onboarding() {
                     }
                 },
                 {
-                    element: 'button:has(.lucide-save)',
+                    element: '#save-inventory-button',
                     popover: {
                         title: 'Finalizar Inventario',
                         description: 'Cuando termines, guarda el estado del inventario aquí.',

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { WifiOff, Wifi } from 'lucide-react';
+import { Cloud as WifiOff, Wireless as Wifi } from '@solar-icons/react';
 import { cn } from '@/lib/utils';
 
 export function OfflineBanner() {

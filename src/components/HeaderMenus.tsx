@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from "react";
-import { Bell, Settings, User, ChevronRight, Moon, Sun, Trash2, BellRing, Check, MessageSquare } from "lucide-react";
+import { Bell, Settings, User, AltArrowRight as ChevronRight, Moon, Sun, TrashBinMinimalistic as Trash2, BellBing as BellRing, CheckCircle as Check, ChatLine as MessageSquare } from "@solar-icons/react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";

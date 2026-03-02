@@ -2,24 +2,24 @@ import { useState, useEffect } from 'react';
 import { arrayMove } from '@dnd-kit/sortable';
 import type { Widget, DashboardLayout, WidgetSize, WidgetSpan } from '@/types/dashboard';
 import {
-    DollarSign,
-    BarChart3,
-    AlertCircle as AlertCircleIcon,
-    CalendarClock,
-    Building2,
-    TrendingUp,
-    AlertTriangle,
-    Users,
-    Clock,
-    Trophy,
-    History,
+    Dollar,
+    Chart as BarChart3,
+    DangerCircle as AlertCircleIcon,
+    CalendarSearch as CalendarClock,
+    Buildings as Building2,
+    GraphUp as TrendingUp,
+    Danger as AlertTriangle,
+    UsersGroupTwoRounded as Users,
+    ClockCircle as Clock,
+    Cup as Trophy,
+    Restart as History,
     PieChart,
     Target,
-    Wifi,
-    Zap,
+    TransmissionSquare as Wifi,
+    Bolt as Zap,
     Calendar,
-    Brain
-} from 'lucide-react';
+    Cloud as Brain
+} from '@solar-icons/react';
 
 const DEFAULT_WIDGETS: Widget[] = [
     {
@@ -39,7 +39,7 @@ const DEFAULT_WIDGETS: Widget[] = [
         type: 'metrics-carousel',
         title: 'Métricas Financieras',
         description: 'Diferencia neta, negativos y positivos',
-        icon: DollarSign,
+        icon: Dollar,
         visible: true,
         order: 1,
         size: 'small',
@@ -125,7 +125,7 @@ const DEFAULT_WIDGETS: Widget[] = [
         type: 'total-stock-value',
         title: 'Valor Total de Stock',
         description: 'Valor monetario total del inventario',
-        icon: DollarSign,
+        icon: Dollar,
         visible: false,
         order: 8,
         size: 'small',

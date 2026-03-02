@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, AlertCircle, CheckCircle2, Timer, Lock, Unlock } from 'lucide-react';
+import { Calendar, DangerCircle as AlertCircle, CheckCircle, Stopwatch as Timer, Lock, LockUnlocked as Unlock } from '@solar-icons/react';
 import { cn } from '@/lib/utils';
 import { useMemo } from 'react';
 
@@ -94,8 +94,8 @@ export function CountdownWidget({
     const getStatusIcon = () => {
         if (assignedDays === 0) return <Timer className="h-4 w-4" />;
         if (stats.status === 'behind') return <AlertCircle className="h-4 w-4" />;
-        if (stats.status === 'ahead') return <CheckCircle2 className="h-4 w-4" />;
-        return <CheckCircle2 className="h-4 w-4" />;
+        if (stats.status === 'ahead') return <CheckCircle className="h-4 w-4" />;
+        return <CheckCircle className="h-4 w-4" />;
     };
 
     return (

@@ -5,7 +5,7 @@ import {
     HoverCardContent,
     HoverCardTrigger,
 } from "@/components/ui/hover-card";
-import { Loader2, ImageOff } from "lucide-react";
+import { Restart as Loader2, GalleryWide as ImageOff } from "@solar-icons/react";
 
 interface ProductImageHoverProps {
     ean: string;

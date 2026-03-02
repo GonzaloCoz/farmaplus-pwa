@@ -5,14 +5,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import {
-    Filter,
-    Calendar as CalendarIcon,
-    Tag,
-    ChevronLeft,
-    Check,
-    X
-} from "lucide-react";
+import { Filter, Calendar as CalendarIcon, Tag, AltArrowLeft as ChevronLeft, CheckCircle as Check, CloseCircle as X } from "@solar-icons/react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 

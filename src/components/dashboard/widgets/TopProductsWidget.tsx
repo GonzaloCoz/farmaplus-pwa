@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { TrendingDown, TrendingUp, Eye } from 'lucide-react';
+import { GraphDown as TrendingDown, GraphUp as TrendingUp, Eye } from '@solar-icons/react';
 
 interface TopProduct {
     name: string;

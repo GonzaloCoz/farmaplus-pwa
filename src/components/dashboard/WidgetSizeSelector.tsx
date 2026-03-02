@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { WidgetSize } from '@/types/dashboard';
-import { Maximize2, Minimize2, Square } from 'lucide-react';
+import { Maximize, Minimize, Stop as Square } from '@solar-icons/react';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
@@ -18,7 +18,7 @@ interface WidgetSizeSelectorProps {
 const SIZE_CONFIG = {
     small: {
         label: 'Pequeño',
-        icon: Minimize2,
+        icon: Minimize,
         description: '1/4 ancho (3 cols)',
     },
     medium: {
@@ -28,12 +28,12 @@ const SIZE_CONFIG = {
     },
     large: {
         label: 'Grande',
-        icon: Maximize2,
+        icon: Maximize,
         description: '1/3 ancho (4 cols)',
     },
     full: {
         label: 'Ancho completo',
-        icon: Maximize2,
+        icon: Maximize,
         description: 'Ancho completo (12 cols)',
     },
 };

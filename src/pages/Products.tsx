@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { notify } from "@/lib/notifications";
 import { useBarcodeHistory } from "@/hooks/use-barcode-history";
 import { BarcodeDisplay } from "@/components/BarcodeDisplay";
-import { Copy, Printer, Barcode, Search, ArrowLeft, Filter, X, Upload } from "lucide-react";
+import { Copy, Printer, Widget as Barcode, Magnifer as Search, AltArrowLeft as ArrowLeft, Filter, CloseCircle as X, Upload } from "@solar-icons/react";
 import { ProductImageHover } from "@/components/ProductImageHover";
 import { useNavigate } from 'react-router-dom';
 import { getAllProducts, Product, addProducts } from '@/services/preCountDB';

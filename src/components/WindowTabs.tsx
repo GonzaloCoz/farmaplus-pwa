@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { Search, Plus, X, MoreHorizontal, LayoutDashboard, Database, ClipboardList, Package, FileText, Settings, User, BarChart2, ShieldCheck, Microscope, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
+import { Magnifer as Search, CloseCircle as X, MenuDots as MoreHorizontal, Widget as LayoutDashboard, Database, ClipboardList, Widget as Package, Document as FileText, Settings, User, Chart as BarChart2, ShieldCheck, Widget as Microscope, TrashBinMinimalistic as Trash2 } from "@solar-icons/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import Logo from "@/assets/logo.svg";

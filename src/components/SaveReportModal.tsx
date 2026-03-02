@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { notify } from "@/lib/notifications";
-import { Search, Check } from "lucide-react";
+import { Magnifer as Search, CheckCircle as Check } from "@solar-icons/react";
 
 const BRANCHES = [
   "Belgrano VI", "Barracas", "Recoleta", "Belgrano", "Belgrano II", "Belgrano III",

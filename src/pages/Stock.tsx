@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
-import { ClipboardList, Upload, ArrowRight, Clock } from 'lucide-react';
+import { ClipboardList, Upload, AltArrowRight as ArrowRight, ClockCircle as Clock } from '@solar-icons/react';
 import { ZebraIcon } from '@/components/icons/ZebraIcon';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { PageHeader } from '@/components/layout/PageHeader';

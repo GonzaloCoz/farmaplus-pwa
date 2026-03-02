@@ -1,6 +1,6 @@
 import { motion, useMotionValue, useTransform, PanInfo } from "framer-motion";
 import { ReactNode, useState } from "react";
-import { Trash2, Pencil, CheckCircle2, AlertTriangle } from "lucide-react";
+import { TrashBinMinimalistic as Trash2, Pen as Pencil, CheckCircle, Danger as AlertTriangle } from "@solar-icons/react";
 import { cn } from "@/lib/utils";
 import { useHaptic } from "@/hooks/useHaptic";
 

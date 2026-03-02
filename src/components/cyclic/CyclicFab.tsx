@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, ScanBarcode, FileSpreadsheet, Save, X, Search } from 'lucide-react';
+import { Plus } from "lucide-react";
+import { Scanner as ScanBarcode, Document as FileSpreadsheet, Diskette as Save, CloseCircle as X, Magnifer as Search } from "@solar-icons/react";
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 

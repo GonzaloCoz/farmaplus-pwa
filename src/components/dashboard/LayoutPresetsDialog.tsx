@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { LAYOUT_PRESETS } from '@/config/widgetPresets';
 import { cn } from '@/lib/utils';
-import { Check } from 'lucide-react';
+import { CheckCircle as Check } from '@solar-icons/react';
 
 interface LayoutPresetsDialogProps {
     open: boolean;

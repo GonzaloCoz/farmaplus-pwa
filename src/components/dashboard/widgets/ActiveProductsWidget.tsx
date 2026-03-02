@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CounterAnimation } from '@/components/CounterAnimation';
-import { Activity } from 'lucide-react';
+import { Pulse as Activity } from '@solar-icons/react';
 
 interface ActiveProductsWidgetProps {
     activeProducts: number;

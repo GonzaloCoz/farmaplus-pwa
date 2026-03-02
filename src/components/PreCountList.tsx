@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Pencil, Trash2, Package, Copy, Check } from 'lucide-react';
+import { Pen as Pencil, TrashBinMinimalistic as Trash2, Widget as Package, Copy, CheckCircle as Check } from '@solar-icons/react';
 import { UIPreCountItem } from '@/hooks/usePreCount';
 import {
     Dialog,

@@ -1,6 +1,6 @@
 import { motion, useScroll, useTransform } from "framer-motion";
-import { cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 
 export type FabVariant = "primary" | "secondary" | "tertiary" | "surface";

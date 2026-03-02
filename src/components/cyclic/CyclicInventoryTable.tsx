@@ -2,7 +2,7 @@ import { CyclicItem } from '@/components/CyclicInventoryList';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { Check, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Check, Danger as AlertTriangle, Refresh } from '@solar-icons/react';
 
 interface CyclicInventoryTableProps {
     items: CyclicItem[];

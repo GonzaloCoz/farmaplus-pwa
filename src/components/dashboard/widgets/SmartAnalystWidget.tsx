@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getAllExpirationItems } from '@/services/expirationDB';
-import { BrainCircuit, AlertTriangle, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Cpu as BrainCircuit, Danger as AlertTriangle, AltArrowRight as ArrowRight, CheckCircle } from '@solar-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -153,7 +153,7 @@ export function SmartAnalystWidget() {
                         <CardTitle className="text-sm font-medium text-muted-foreground">
                             Control de Vencimientos
                         </CardTitle>
-                        {isClean ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <BrainCircuit className="w-4 h-4 text-primary" />}
+                        {isClean ? <CheckCircle className="w-4 h-4 text-emerald-500" /> : <BrainCircuit className="w-4 h-4 text-primary" />}
                     </div>
                 </CardHeader>
 

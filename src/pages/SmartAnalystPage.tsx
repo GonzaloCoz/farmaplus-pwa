@@ -8,18 +8,18 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-    ArrowLeft,
-    Search,
-    AlertTriangle,
-    CheckCircle2,
-    RefreshCw,
-    PackageX,
-    Trash2,
+    AltArrowLeft as ArrowLeft,
+    Magnifer as Search,
+    Danger as AlertTriangle,
+    CheckCircle,
+    Restart as RefreshCw,
+    Widget as PackageX,
+    TrashBinMinimalistic as Trash2,
     Calendar,
     Filter,
-    ArrowUpRight,
-    FileText
-} from 'lucide-react';
+    ArrowRightUp as ArrowUpRight,
+    Document as FileText
+} from '@solar-icons/react';
 import { FabMenu } from '@/components/FabMenu';
 import { ExportOptionsModal, ExportOptions } from '@/components/modals/ExportOptionsModal';
 import { generateExport } from '@/services/ExportService';
@@ -228,7 +228,7 @@ export default function SmartAnalystPage() {
 
     const getStatusIcon = (status?: string) => {
         switch (status) {
-            case 'sold': return <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />;
+            case 'sold': return <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />;
             case 'transfer': return <RefreshCw className="w-4 h-4 text-blue-600 dark:text-blue-400" />;
             case 'return': return <PackageX className="w-4 h-4 text-amber-600 dark:text-amber-400" />;
             case 'destroyed': return <Trash2 className="w-4 h-4 text-red-600 dark:text-red-400" />;
@@ -293,7 +293,7 @@ export default function SmartAnalystPage() {
                             </Badge>
                         </TabsTrigger>
                         <TabsTrigger value="resolved" className="gap-2 h-9 text-xs">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <CheckCircle className="w-3.5 h-3.5" />
                             Resueltos
                         </TabsTrigger>
                     </TabsList>
@@ -324,7 +324,7 @@ export default function SmartAnalystPage() {
                                 className="flex flex-col items-center justify-center p-12 text-center space-y-4 border-2 border-dashed border-muted rounded-xl bg-muted/5"
                             >
                                 <div className="p-4 bg-background rounded-full shadow-sm">
-                                    <CheckCircle2 className="w-8 h-8 text-success" />
+                                    <CheckCircle className="w-8 h-8 text-success" />
                                 </div>
                                 <div>
                                     <h3 className="text-xl font-semibold">¡Todo al día!</h3>
@@ -412,7 +412,7 @@ export default function SmartAnalystPage() {
                                                                 className="h-8 w-8 rounded-full hover:bg-success/10 hover:text-success hover:scale-105 active:scale-95 transition-all text-muted-foreground/70"
                                                                 onClick={() => handleAction(batch, 'sold')}
                                                             >
-                                                                <CheckCircle2 className="w-4 h-4" />
+                                                                <CheckCircle className="w-4 h-4" />
                                                             </Button>
                                                         </ActionTooltip>
 

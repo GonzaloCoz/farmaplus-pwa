@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Target, TrendingUp, Award } from 'lucide-react';
+import { Target, GraphUp as TrendingUp, CupFirst as Award } from '@solar-icons/react';
 import { Progress } from '@/components/ui/progress';
 
 interface Goal {

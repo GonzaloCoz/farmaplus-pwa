@@ -1,5 +1,5 @@
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { WifiOff } from "lucide-react";
+import { Cloud as WifiOff } from "@solar-icons/react";
 
 export function OfflineIndicator() {
     const isOnline = useOnlineStatus();

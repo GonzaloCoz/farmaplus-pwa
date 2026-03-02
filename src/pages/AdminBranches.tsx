@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { notify } from "@/lib/notifications";
-import { Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
+import { AddCircle, Restart as Loader2, Diskette as Save, TrashBinMinimalistic as Trash2 } from "@solar-icons/react";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 

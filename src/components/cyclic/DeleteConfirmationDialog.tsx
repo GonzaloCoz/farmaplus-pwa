@@ -11,7 +11,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { Danger as AlertTriangle, Restart as Loader2 } from '@solar-icons/react';
 import { cn } from '@/lib/utils';
 
 interface DeleteConfirmationDialogProps {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { BarChart2, TrendingUp, AlertTriangle } from 'lucide-react'
+import { Chart as BarChart2, GraphUp as TrendingUp, Danger as AlertTriangle } from '@solar-icons/react';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { PageLayout } from '@/components/layout/PageLayout'

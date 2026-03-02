@@ -1,27 +1,38 @@
 import { NavLink } from "react-router-dom";
+import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import {
-    LayoutGrid,
+    Widget as LayoutGrid,
     Upload,
-    FileText,
-    Package,
-    BarChart3,
-} from "lucide-react";
+    Document as FileText,
+    Box as Package,
+    Chart as BarChart3,
+} from "@solar-icons/react";
+import { useUser } from "@/contexts/UserContext";
 
 const navItems = [
     { to: "/", icon: LayoutGrid, label: "Dashboard" },
     { to: "/stock", icon: Upload, label: "Stock" },
     { to: "/cyclic-inventory", icon: FileText, label: "Cíclico" },
-    { to: "/products", icon: Package, label: "Productos" },
-    { to: "/reports", icon: BarChart3, label: "Reportes" },
+    { to: "/products", icon: Package, label: "Productos", roles: ['admin', 'mod'] as const },
+    { to: "/reports", icon: BarChart3, label: "Reportes", roles: ['admin', 'mod'] as const },
 ];
 
 export function BottomNavBar() {
+    const { user } = useUser();
+
+    // Filtrar items según el rol del usuario
+    const filteredNavItems = useMemo(() => {
+        return navItems.filter(item => {
+            if (!('roles' in item)) return true;
+            return user?.role ? (item.roles as readonly string[]).includes(user.role) : false;
+        });
+    }, [user?.role]);
     return (
         <nav className="fixed bottom-0 left-0 right-0 z-50 w-full border-t bg-background/95 backdrop-blur-sm sm:hidden pb-[env(safe-area-inset-bottom)]">
-            <div className="grid h-20 grid-cols-5 items-center justify-center text-xs">
-                {navItems.map(({ to, icon: Icon, label }) => (
+            <div className="grid h-20 items-center justify-center text-xs" style={{ gridTemplateColumns: `repeat(${filteredNavItems.length}, 1fr)` }}>
+                {filteredNavItems.map(({ to, icon: Icon, label }) => (
                     <NavLink
                         key={to}
                         to={to}
@@ -53,6 +64,7 @@ export function BottomNavBar() {
                                         }}
                                     >
                                         <Icon
+                                            weight={isActive ? "BoldDuotone" : "LineDuotone"}
                                             className={cn(
                                                 "relative z-10 h-5 w-5",
                                                 isActive && "text-primary"

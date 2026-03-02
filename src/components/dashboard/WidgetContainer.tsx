@@ -3,7 +3,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { GripVertical, X } from 'lucide-react';
+import { MenuDots as GripVertical, CloseCircle as X } from '@solar-icons/react';
 import { cn } from '@/lib/utils';
 import type { Widget, WidgetSize } from '@/types/dashboard';
 import { WIDGET_SIZES, WIDGET_HEIGHTS } from '@/types/dashboard';

@@ -3,7 +3,7 @@ import { CardHeader, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Search, ArrowUpDown, TrendingUp, CheckCircle, AlertCircle, Clock, Download } from 'lucide-react';
+import { Magnifer as Search, SortByTime as ArrowUpDown, GraphUp as TrendingUp, CheckCircle, DangerCircle as AlertCircle, ClockCircle as Clock, Download } from '@solar-icons/react';
 import * as XLSX from 'xlsx';
 import { motion } from 'framer-motion';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';

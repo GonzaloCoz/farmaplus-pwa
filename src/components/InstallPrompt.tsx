@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { X, Download } from "lucide-react";
+import { CloseCircle as X, Download } from "@solar-icons/react";
 import { motion } from "framer-motion";
 
 export function InstallPrompt() {

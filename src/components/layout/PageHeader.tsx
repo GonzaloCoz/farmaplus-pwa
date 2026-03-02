@@ -1,4 +1,4 @@
-import { ArrowLeft } from "lucide-react";
+import { AltArrowLeft as ArrowLeft } from "@solar-icons/react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -28,7 +28,7 @@ export function PageHeader({ title, subtitle, showBackButton, actions }: PageHea
           </Button>
         )}
         <div className="space-y-1">
-          <motion.h1 
+          <motion.h1
             initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
             className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl"
@@ -36,7 +36,7 @@ export function PageHeader({ title, subtitle, showBackButton, actions }: PageHea
             {title}
           </motion.h1>
           {subtitle && (
-            <motion.p 
+            <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.1 }}

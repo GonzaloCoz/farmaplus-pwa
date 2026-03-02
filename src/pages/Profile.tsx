@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { User, Mail, Phone, MapPin, LogOut, Settings, Shield } from "lucide-react";
+import { User, Letter as Mail, Phone, MapPoint as MapPin, Logout as LogOut, Settings, Shield } from "@solar-icons/react";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useNavigate } from "react-router-dom";

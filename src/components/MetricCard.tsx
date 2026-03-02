@@ -1,5 +1,5 @@
-import { LucideIcon } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import React from "react";
 
 interface MetricCardProps {
   title: string;
@@ -7,7 +7,7 @@ interface MetricCardProps {
   subtitle?: string;
   change?: string;
   changeType?: "positive" | "negative" | "neutral";
-  icon?: LucideIcon;
+  icon?: React.ComponentType<any>;
 }
 
 export function MetricCard({
@@ -34,10 +34,10 @@ export function MetricCard({
           </div>
         )}
       </div>
-      
+
       <div className="space-y-1">
         <p className="text-3xl font-bold text-foreground">{value}</p>
-        
+
         <div className="flex items-center gap-2 text-sm">
           {subtitle && (
             <span className="text-muted-foreground">{subtitle}</span>

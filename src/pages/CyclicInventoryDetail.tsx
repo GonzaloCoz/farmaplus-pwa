@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, Search, Info, Loader2, CheckCircle2, RotateCcw, DollarSign, ClipboardList, ArrowLeft } from 'lucide-react';
+import { Upload, Magnifer as Search, InfoCircle as Info, Restart as Loader2, CheckCircle, Restart as RotateCcw, Dollar, ClipboardList, AltArrowLeft as ArrowLeft } from "@solar-icons/react";
 import { CyclicInventoryList } from '@/components/CyclicInventoryList';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
 import { Switch } from "@/components/ui/switch";
@@ -228,7 +228,7 @@ export default function CyclicInventoryDetail() {
                                         className="h-10 rounded-full transition-all duration-300 hover:scale-105 active:scale-95"
                                         title="Ordenar por Impacto Financiero"
                                     >
-                                        {sortBy === 'financial' ? <DollarSign className="w-4 h-4 mr-2" /> : <div className="w-4 h-4 mr-2 flex items-center justify-center font-bold">$</div>}
+                                        {sortBy === 'financial' ? <Dollar className="w-4 h-4 mr-2" /> : <div className="w-4 h-4 mr-2 flex items-center justify-center font-bold">$</div>}
                                         {sortBy === 'financial' ? 'Impacto $' : 'Orden A-Z'}
                                     </Button>
                                 </div>
@@ -495,7 +495,7 @@ export default function CyclicInventoryDetail() {
                     },
                     {
                         label: "Finalizar",
-                        icon: <CheckCircle2 className="w-5 h-5" />,
+                        icon: <CheckCircle className="w-5 h-5" />,
                         onClick: handleFinalizeClick,
                         disabled: isSaving,
                         variant: 'default' as const, // Primary style

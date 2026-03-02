@@ -1,5 +1,5 @@
 import { Card } from '@/components/ui/card';
-import { AlertCircle as AlertCircleIcon } from 'lucide-react';
+import { DangerCircle as AlertCircleIcon } from '@solar-icons/react';
 
 export function InventoryAlertsWidget() {
     return (

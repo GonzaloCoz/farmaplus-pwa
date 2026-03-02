@@ -2,7 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { CounterAnimation } from "./CounterAnimation";
-import { CheckCircle2, Clock, AlertCircle, ChevronRight } from "lucide-react";
+import { CheckCircle, ClockCircle as Clock, DangerCircle as AlertCircle, AltArrowRight as ChevronRight } from "@solar-icons/react";
 
 export type LaboratoryStatus = "controlado" | "por_controlar" | "pendiente";
 
@@ -34,7 +34,7 @@ export function LaboratoryCard({
                     color: "text-success",
                     bgColor: "bg-success/10",
                     borderColor: "border-success/20",
-                    icon: CheckCircle2,
+                    icon: CheckCircle,
                     label: "Controlado",
                     barColor: "bg-success"
                 };

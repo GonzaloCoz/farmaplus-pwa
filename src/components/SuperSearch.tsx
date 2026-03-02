@@ -9,21 +9,7 @@ import {
     CommandList,
     CommandSeparator,
 } from "@/components/ui/command";
-import {
-    Home,
-    Upload,
-    BarChart3,
-    Package,
-    FileText,
-    Beaker,
-    Box,
-    RefreshCw,
-    Search as SearchIcon,
-    Layers,
-    MessageSquare,
-    Files,
-    X
-} from "lucide-react";
+import { Home, Upload, Chart as BarChart3, Widget as Package, Document as FileText, Widget as Beaker, Box, Restart as RefreshCw, Magnifer as SearchIcon, Layers, ChatLine as MessageSquare, File as Files, CloseCircle as X } from "@solar-icons/react";
 import { getAllProducts } from "@/services/preCountDB";
 import { cyclicInventoryService } from "@/services/cyclicInventoryService";
 import { Button } from "@/components/ui/button";

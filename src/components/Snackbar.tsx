@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from "lucide-react";
+import { CloseCircle as X, CheckCircle, DangerCircle as AlertCircle, InfoCircle as Info, Danger as AlertTriangle } from "@solar-icons/react";
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 

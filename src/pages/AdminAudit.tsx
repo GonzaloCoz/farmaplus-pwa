@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { Loader2 } from "lucide-react";
+import { Restart as Loader2 } from "@solar-icons/react";
 import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 
 export default function AdminAudit() {

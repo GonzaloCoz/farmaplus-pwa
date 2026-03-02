@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { BatchInfo } from '@/services/expirationDB';
-import { Calendar, Package, Hash, Building2, Truck } from 'lucide-react';
+import { Calendar, Widget as Package, Hashtag as Hash, Buildings as Building2, Delivery as Truck } from '@solar-icons/react';
 
 interface TransferModalProps {
     isOpen: boolean;

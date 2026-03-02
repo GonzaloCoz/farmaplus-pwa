@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus } from 'lucide-react';
+import { Plus } from "lucide-react";
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -17,9 +17,10 @@ interface FabMenuProps {
     actions: FabAction[];
     mainIcon?: React.ReactNode;
     className?: string;
+    id?: string;
 }
 
-export function FabMenu({ actions, mainIcon = <Plus className="w-6 h-6" />, className }: FabMenuProps) {
+export function FabMenu({ actions, mainIcon = <Plus className="w-6 h-6" />, className, id }: FabMenuProps) {
     const [isOpen, setIsOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -67,7 +68,7 @@ export function FabMenu({ actions, mainIcon = <Plus className="w-6 h-6" />, clas
     };
 
     return (
-        <div ref={menuRef} className={cn("fixed bottom-24 right-4 lg:bottom-6 lg:right-6 z-50 flex flex-col items-end gap-4 transition-all duration-300", className)}>
+        <div id={id} ref={menuRef} className={cn("fixed bottom-24 right-4 lg:bottom-6 lg:right-6 z-50 flex flex-col items-end gap-4 transition-all duration-300", className)}>
             <AnimatePresence>
                 {isOpen && (
                     <motion.div

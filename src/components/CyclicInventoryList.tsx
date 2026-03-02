@@ -4,7 +4,24 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, Package, DollarSign, Pencil, Trash2, AlertTriangle, Calculator as CalculatorIcon, ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown, Copy, Hash } from 'lucide-react';
+import {
+    ClockCircle as Clock,
+    CheckCircle,
+    Box as Package,
+    Buildings as Building2,
+    AltArrowRight as ChevronRight,
+    Magnifer as Search,
+    Calculator as CalculatorIcon,
+    TrashBinMinimalistic as Trash2,
+    Danger as AlertTriangle,
+    Pen as Pencil,
+    GraphDown as TrendingDown,
+    GraphUp as TrendingUp,
+    Hashtag as Hash,
+    Copy,
+    ArrowRightUp as ArrowUpRight,
+    ArrowRightDown as ArrowDownRight
+} from '@solar-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { SwipeableItem } from './SwipeableItem';
@@ -108,7 +125,7 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                     {...(!isControlled ? {
                         leftAction: {
                             label: "Confirmar",
-                            icon: <CheckCircle2 className="w-5 h-5" />,
+                            icon: <CheckCircle className="w-5 h-5" />,
                             color: "text-green-600",
                             bgColor: "rgba(22, 163, 74, 0.2)",
                             onAction: () => onCheck(item.id)

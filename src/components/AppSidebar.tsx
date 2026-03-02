@@ -1,25 +1,27 @@
-import { useState } from "react";
-import { Home, Upload, BarChart3, Package, FileText, Settings, User, Bell, LucideIcon, TrendingUp, Archive, ChevronLeft, Clock } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Home, Upload, Chart as BarChart3, Box as Package, Document as FileText, Settings, User, Bell, GraphUp as TrendingUp, Archive, AltArrowLeft as ChevronLeft, ClockCircle as Clock } from "@solar-icons/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { NavLink } from "@/components/NavLink";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useUser } from "@/contexts/UserContext";
 
+// roles: si se omite, todos los roles pueden ver el item
 const menuItems = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Stock", url: "/stock", icon: Upload },
   { title: "Control de Vencimiento", url: "/smart-analyst", icon: Clock },
   { title: "Inventarios Cíclicos", url: "/cyclic-inventory", icon: BarChart3 },
-  { title: "Comparativa", url: "/comparison", icon: TrendingUp },
-  { title: "Productos", url: "/products", icon: Package },
-  { title: "Reportes", url: "/reports", icon: FileText },
+  { title: "Comparativa", url: "/comparison", icon: TrendingUp, roles: ['admin', 'mod'] as const },
+  { title: "Productos", url: "/products", icon: Package, roles: ['admin', 'mod'] as const },
+  { title: "Reportes", url: "/reports", icon: FileText, roles: ['admin', 'mod'] as const },
 ];
 
 interface AppSidebarMenuItemProps {
   item: {
     title: string;
     url: string;
-    icon: LucideIcon;
+    icon: React.ComponentType<any>;
     notification?: boolean;
   };
   end?: boolean;
@@ -43,10 +45,13 @@ function AppSidebarMenuItem({ item, end, isCollapsed }: AppSidebarMenuItemProps)
         <>
           {/* Constant size and position container for the icon - Matches the toggle button dimensions exactly */}
           <div className="w-12 h-10 flex items-center justify-center shrink-0">
-            <item.icon className={cn(
-              "h-5 w-5 transition-transform duration-300",
-              isActive && "scale-110"
-            )} />
+            <item.icon
+              weight={isActive ? "BoldDuotone" : "LineDuotone"}
+              className={cn(
+                "h-5 w-5 transition-transform duration-300",
+                isActive && "scale-110"
+              )}
+            />
           </div>
 
           <AnimatePresence mode="wait">
@@ -91,6 +96,15 @@ function AppSidebarMenuItem({ item, end, isCollapsed }: AppSidebarMenuItemProps)
 
 export function AppSidebar() {
   const [isCollapsed, setIsCollapsed] = useState(true);
+  const { user } = useUser();
+
+  // Filtrar items del menú según el rol del usuario
+  const filteredMenuItems = useMemo(() => {
+    return menuItems.filter(item => {
+      if (!item.roles) return true; // Sin restricción de roles = visible para todos
+      return user?.role ? (item.roles as readonly string[]).includes(user.role) : false;
+    });
+  }, [user?.role]);
 
   return (
     <motion.aside
@@ -118,7 +132,7 @@ export function AppSidebar() {
 
         {/* Navigation Items */}
         <nav className="flex-1 flex flex-col gap-1 overflow-x-hidden overflow-y-auto no-scrollbar">
-          {menuItems.map((item) => (
+          {filteredMenuItems.map((item) => (
             <AppSidebarMenuItem
               key={item.title}
               item={item}

@@ -1,13 +1,13 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
-    FileSpreadsheet,
+    FileText as FileSpreadsheet,
     Upload,
-    BarChart3,
-    Plus,
+    Chart as BarChart3,
+    AddCircle as Plus,
     Download,
     Settings
-} from 'lucide-react';
+} from '@solar-icons/react';
 
 interface QuickAction {
     title: string;

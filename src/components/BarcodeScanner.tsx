@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Camera, X, CheckCircle2, AlertCircle, Layers, Trash2 } from 'lucide-react';
+import { Camera, CloseCircle as X, CheckCircle, DangerCircle as AlertCircle, Layers, TrashBinMinimalistic as Trash2 } from "@solar-icons/react";
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { useHaptic } from '@/hooks/useHaptic';
@@ -190,7 +190,7 @@ export function BarcodeScanner({ open, onOpenChange, onScan, onBatchScan }: Barc
                                         className="absolute inset-0 bg-success/80 flex items-center justify-center z-10"
                                     >
                                         <div className="text-center text-white">
-                                            <CheckCircle2 className="w-12 h-12 mx-auto mb-2" />
+                                            {scannedCode && <CheckCircle className="w-12 h-12 mx-auto mb-2 text-white" />}
                                             <p className="font-mono font-bold">{scannedCode}</p>
                                         </div>
                                     </motion.div>

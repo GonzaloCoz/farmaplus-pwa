@@ -12,7 +12,8 @@ import {
     DrawerHeader,
     DrawerTitle,
 } from '@/components/ui/drawer';
-import { Plus, Search, Star } from 'lucide-react';
+import { Plus } from "lucide-react";
+import { Magnifer as Search, Star } from '@solar-icons/react';
 import type { Widget } from '@/types/dashboard';
 import { WIDGET_CATEGORIES, WIDGET_CATEGORY_MAP } from '@/config/widgetCategories';
 import { cn } from '@/lib/utils';

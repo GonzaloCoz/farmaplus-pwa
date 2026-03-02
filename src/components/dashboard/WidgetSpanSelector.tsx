@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { WidgetSpan } from '@/types/dashboard';
-import { Minimize2, Maximize2 } from 'lucide-react';
+import { Minimize, Maximize } from '@solar-icons/react';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
@@ -18,12 +18,12 @@ interface WidgetSpanSelectorProps {
 const SPAN_CONFIG = {
     1: {
         label: '1 Casillero',
-        icon: Minimize2,
+        icon: Minimize,
         description: 'Tamaño estándar',
     },
     2: {
         label: '2 Casilleros',
-        icon: Maximize2,
+        icon: Maximize,
         description: 'Doble ancho',
     },
 };

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { CheckCircle2, AlertCircle, AlertTriangle, Info, X, ChevronDown, ChevronUp } from "lucide-react";
+import { CheckCircle as CheckCircle2, Danger as AlertCircle, DangerCircle as AlertTriangle, InfoCircle as Info, CloseCircle as X, AltArrowDown as ChevronDown, AltArrowUp as ChevronUp } from "@solar-icons/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 

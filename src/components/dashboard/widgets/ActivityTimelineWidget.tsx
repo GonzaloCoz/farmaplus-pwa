@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, Edit, Upload, Clock } from 'lucide-react';
+import { CheckCircle, Pen as Edit, Upload, ClockCircle as Clock } from '@solar-icons/react';
 
 interface ActivityItem {
     id: string;
@@ -57,7 +57,7 @@ export function ActivityTimelineWidget({ activities = [] }: ActivityTimelineWidg
     const getIcon = (type: ActivityItem['type']) => {
         switch (type) {
             case 'completed':
-                return <CheckCircle2 className="h-4 w-4 text-success" />;
+                return <CheckCircle className="h-4 w-4 text-success" />;
             case 'adjusted':
                 return <Edit className="h-4 w-4 text-warning" />;
             case 'imported':

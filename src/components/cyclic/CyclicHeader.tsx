@@ -1,4 +1,4 @@
-import { ArrowLeft, MoreVertical, Wifi, WifiOff } from 'lucide-react';
+import { AltArrowLeft as ArrowLeft, MenuDotsVertical as MoreVertical, Wifi, WifiFixed as WifiOff } from "@solar-icons/react";
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { CounterAnimation } from '@/components/CounterAnimation';

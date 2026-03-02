@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Grid3x3, Plus, RotateCcw, Check, Edit3 } from "lucide-react";
+import { Plus } from "lucide-react";
+import { Widget as Grid3x3, Restart as RotateCcw, CheckCircle as Check, Pen as Edit3 } from "@solar-icons/react";
 import { cn } from "@/lib/utils";
 import { useUser } from "@/contexts/UserContext";
 import { hasPermission } from "@/config/permissions";

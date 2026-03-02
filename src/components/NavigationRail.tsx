@@ -1,12 +1,12 @@
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { LucideIcon } from "lucide-react";
+import type { ComponentType } from "react";
 import { Badge } from "./Badge";
 
 export interface NavigationItem {
     id: string;
     label: string;
-    icon: LucideIcon;
+    icon: ComponentType<any>;
     badge?: number;
     disabled?: boolean;
 }

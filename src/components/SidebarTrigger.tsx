@@ -1,4 +1,4 @@
-import { Menu } from "lucide-react";
+import { HamburgerMenu as Menu } from "@solar-icons/react";
 import { useSidebar } from "@/components/SidebarProvider";
 
 export function SidebarTrigger() {

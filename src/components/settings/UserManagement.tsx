@@ -8,20 +8,8 @@ import { Input } from "@/components/ui/input";
 import { notify } from "@/lib/notifications";
 import { useUser } from "@/contexts/UserContext";
 import { permissionsService } from "@/services/permissionsService";
-import {
-    Users,
-    Shield,
-    RefreshCw,
-    Search,
-    ChevronDown,
-    ChevronUp,
-    Edit2,
-    Trash2,
-    User as UserIcon,
-    Plus,
-    Mail,
-    Lock
-} from "lucide-react";
+import { Plus } from "lucide-react";
+import { UsersGroupTwoRounded as Users, Shield, Restart as RefreshCw, Magnifer as Search, AltArrowDown as ChevronDown, AltArrowUp as ChevronUp, Pen as Edit2, TrashBinMinimalistic as Trash2, User as UserIcon, Letter as Mail, Lock } from "@solar-icons/react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import React from "react";

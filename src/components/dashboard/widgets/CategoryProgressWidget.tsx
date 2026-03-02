@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ChevronUp, Info, MoreHorizontal } from 'lucide-react';
+import { AltArrowUp as ChevronUp, InfoCircle as Info, MenuDots as MoreHorizontal } from '@solar-icons/react';
 import { WidgetSkeleton } from '../WidgetSkeleton';
 import { cn } from '@/lib/utils';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';

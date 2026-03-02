@@ -1,6 +1,6 @@
 import { motion, AnimatePresence, PanInfo } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { X } from "lucide-react";
+import { CloseCircle as X } from "@solar-icons/react";
 import { useEffect } from "react";
 
 export type BottomSheetVariant = "modal" | "standard";

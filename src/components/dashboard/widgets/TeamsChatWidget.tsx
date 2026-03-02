@@ -2,7 +2,8 @@ import { useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, MessageSquare, MessageSquarePlus, AlertTriangle, FileCheck, Paperclip } from "lucide-react";
+import { Plus } from "lucide-react";
+import { Plain as Send, ChatLine as MessageSquare, Danger as AlertTriangle, FileCheck, Paperclip } from "@solar-icons/react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { useUser } from "@/contexts/UserContext";
@@ -22,7 +23,7 @@ const QUICK_ACTIONS = [
     },
     {
         label: "Solicitud Urgente",
-        icon: MessageSquarePlus,
+        icon: Plus,
         message: "Necesito autorización urgente para...",
         color: "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border-blue-200"
     }

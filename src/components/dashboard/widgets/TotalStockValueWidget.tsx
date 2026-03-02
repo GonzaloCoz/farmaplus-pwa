@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CounterAnimation } from '@/components/CounterAnimation';
-import { DollarSign, TrendingUp, TrendingDown } from 'lucide-react';
+import { Dollar, GraphUp as TrendingUp, GraphDown as TrendingDown } from '@solar-icons/react';
 
 interface TotalStockValueWidgetProps {
     totalValue: number;

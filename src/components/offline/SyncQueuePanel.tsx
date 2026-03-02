@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Clock, RefreshCw, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
+import { ClockCircle as Clock, Restart as RefreshCw, DangerCircle as AlertCircle, CheckCircle, CloseCircle as XCircle } from '@solar-icons/react';
 import { cn } from '@/lib/utils';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, PendingAction } from '@/services/db';
@@ -29,7 +29,7 @@ export function SyncQueuePanel() {
             case 'syncing':
                 return <RefreshCw className="h-4 w-4 text-primary animate-spin" />;
             case 'success':
-                return <CheckCircle2 className="h-4 w-4 text-success" />;
+                return <CheckCircle className="h-4 w-4 text-success" />;
             case 'failed':
                 return <XCircle className="h-4 w-4 text-destructive" />;
         }
@@ -94,7 +94,7 @@ export function SyncQueuePanel() {
                 <div className="mt-6 space-y-4 max-h-[80vh] overflow-y-auto pr-2">
                     {!queueItems || queueItems.length === 0 ? (
                         <div className="text-center py-12 text-muted-foreground">
-                            <CheckCircle2 className="h-12 w-12 mx-auto mb-4 text-success" />
+                            <CheckCircle className="h-12 w-12 mx-auto mb-4 text-success" />
                             <p className="font-medium">Todo sincronizado</p>
                             <p className="text-sm mt-1">No hay cambios pendientes</p>
                         </div>

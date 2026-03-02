@@ -5,27 +5,28 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-    Barcode,
-    Search,
-    Trash2,
-    Save,
+    Scanner as Barcode,
+    Magnifer as Search,
+    TrashBinMinimalistic as Trash2,
+    Diskette as Save,
     Upload,
-    ArrowLeft,
-    Plus,
-    History,
+    AltArrowLeft as ArrowLeft,
+    AddCircle as Plus,
+    Restart as History,
     Play,
     Calendar,
-    ArrowRight,
+    AltArrowRight as ArrowRight,
     Camera,
-    CheckCircle2,
-    Wifi,
-    WifiOff,
-    Package,
-    FileText,
-    Calculator as CalculatorIcon,
-    Zap,
-    ZapOff
-} from 'lucide-react';
+    CheckCircle,
+    Widget as Wifi,
+    CloseCircle as WifiOff,
+    Widget as Package,
+    Document as FileText,
+    Restart as RotateCcw,
+    Bolt as Zap,
+    Forbidden as ZapOff
+} from '@solar-icons/react';
+import { Calculator as CalculatorIcon } from '@solar-icons/react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
@@ -746,7 +747,7 @@ export default function PreCount() {
                                                 className="bg-primary/5 rounded border border-primary/10 flex items-center justify-between p-2 overflow-hidden"
                                             >
                                                 <div className="flex items-center gap-2 min-w-0">
-                                                    <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                                                    <CheckCircle className="w-4 h-4 text-primary shrink-0" />
                                                     <div className="min-w-0 flex flex-col sm:flex-row sm:items-baseline gap-1">
                                                         <span className="font-semibold text-foreground text-sm truncate">{selectedProduct.name}</span>
                                                         <span className="text-[10px] text-muted-foreground font-mono truncate">{selectedProduct.ean}</span>
@@ -795,7 +796,7 @@ export default function PreCount() {
                         actions={[
                             {
                                 label: "Finalizar",
-                                icon: <CheckCircle2 className="w-5 h-5" />,
+                                icon: <CheckCircle className="w-5 h-5" />,
                                 onClick: handleFinish,
                                 variant: 'default',
                                 color: 'bg-primary text-primary-foreground'

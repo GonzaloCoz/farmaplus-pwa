@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, Search, X, Barcode } from 'lucide-react';
+import { Restart as Loader2, Magnifer as Search, CloseCircle as X, Scanner as Barcode } from '@solar-icons/react';
 import { searchProducts, Product } from '@/services/preCountDB';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';

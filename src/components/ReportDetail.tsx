@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, FileText, TrendingUp, TrendingDown, Package, CheckCircle, Target, Calendar, MapPin, Layers } from "lucide-react";
+import { AltArrowLeft as ArrowLeft, Document as FileText, CourseUp as TrendingUp, CourseDown as TrendingDown, Widget as Package, CheckCircle, Target, Calendar, MapPoint as MapPin, Layers } from "@solar-icons/react";
 import { toast } from "sonner";
 
 // Interfaces de Reporte

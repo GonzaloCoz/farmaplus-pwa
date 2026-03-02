@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { X } from "lucide-react";
+import { CloseCircle as X } from "@solar-icons/react";
 import { cn } from "@/lib/utils";
 
 export type ChipVariant = "filter" | "input" | "suggestion" | "assist";

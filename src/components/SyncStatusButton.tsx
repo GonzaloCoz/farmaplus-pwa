@@ -1,5 +1,5 @@
 import { useSyncManager } from '@/hooks/useSyncManager';
-import { RefreshCw, WifiOff, CloudOff, CheckCircle2 } from 'lucide-react';
+import { Restart as RefreshCw, CloseCircle as WifiOff, CloudCross as CloudOff, CheckCircle } from '@solar-icons/react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -11,7 +11,7 @@ export function SyncStatusButton() {
         if (status === 'offline') return <WifiOff className="h-4 w-4" />;
         if (status === 'syncing') return <RefreshCw className="h-4 w-4 animate-spin" />;
         if (queueLength > 0) return <CloudOff className="h-4 w-4" />;
-        return <CheckCircle2 className="h-4 w-4" />;
+        return <CheckCircle className="h-4 w-4" />;
     };
 
     const getStatusText = () => {

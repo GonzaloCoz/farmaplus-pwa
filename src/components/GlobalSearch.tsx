@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
-import { Search, ArrowUp, ArrowDown, Check, Clock, X } from "lucide-react";
+import { Magnifer as Search, AltArrowUp as ArrowUp, AltArrowDown as ArrowDown, CheckCircle as Check, ClockCircle as Clock, CloseCircle as X } from "@solar-icons/react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 

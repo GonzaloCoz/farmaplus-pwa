@@ -1,4 +1,4 @@
-import { DollarSign, Activity, BarChart3, AlertCircle, Package, Zap } from 'lucide-react';
+import { Dollar, Pulse as Activity, Chart as BarChart3, DangerCircle as AlertCircle, Widget as Package, Bolt as Zap } from '@solar-icons/react';
 
 export interface WidgetCategory {
     id: string;
@@ -11,7 +11,7 @@ export const WIDGET_CATEGORIES: Record<string, WidgetCategory> = {
     metrics: {
         id: 'metrics',
         name: 'Métricas',
-        icon: DollarSign,
+        icon: Dollar,
         description: 'Indicadores financieros y de rendimiento',
     },
     inventory: {

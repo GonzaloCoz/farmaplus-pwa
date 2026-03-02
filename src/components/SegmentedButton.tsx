@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { Check } from "lucide-react";
+import { CheckCircle as Check } from "@solar-icons/react";
 
 export interface SegmentOption {
     value: string;

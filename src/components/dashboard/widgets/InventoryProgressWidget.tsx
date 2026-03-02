@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { TrendingUp } from 'lucide-react';
+import { GraphUp as TrendingUp } from '@solar-icons/react';
 
 interface InventoryProgressWidgetProps {
     completedCount: number;

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Cloud, CloudOff, RefreshCw, CheckCircle2, Wifi, WifiOff } from "lucide-react";
+import { Cloud, CloudCross as CloudOff, Restart as RefreshCw, CheckCircle, Widget as Wifi, CloseCircle as WifiOff } from "@solar-icons/react";
 import { notify } from '@/lib/notifications';
 import { cn } from "@/lib/utils";
 
@@ -121,7 +121,7 @@ export function SyncStatusBottomSheet({ children }: { children?: React.ReactNode
 
                         {unsyncedItems.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                                <CheckCircle2 className="h-12 w-12 mb-2 opacity-20" />
+                                <CheckCircle className="h-12 w-12 mb-2 opacity-20" />
                                 <p>Todo está sincronizado</p>
                             </div>
                         ) : (

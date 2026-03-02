@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react";
+import type { ComponentType } from "react";
 
 export type WidgetSize = 'small' | 'medium' | 'large' | 'full';
 export type WidgetSpan = 1 | 2; // Cuántos casilleros ocupa el widget
@@ -9,7 +9,7 @@ export interface Widget {
     type: string;
     title: string;
     description: string;
-    icon: LucideIcon;
+    icon: ComponentType<any>;
     visible: boolean;
     order: number;
     size: WidgetSize;

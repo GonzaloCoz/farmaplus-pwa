@@ -1,4 +1,4 @@
-import { BarChart3, Zap, TrendingUp, Grid3x3 } from 'lucide-react';
+import { Chart as BarChart3, Bolt as Zap, GraphUp as TrendingUp, Widget as Grid3x3 } from '@solar-icons/react';
 
 export interface LayoutPreset {
     id: string;

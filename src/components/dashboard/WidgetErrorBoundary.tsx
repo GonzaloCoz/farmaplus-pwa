@@ -1,6 +1,6 @@
 
 import { Component, ErrorInfo, ReactNode } from "react";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { Danger as AlertCircle, Restart as RefreshCw } from "@solar-icons/react";
 import { Button } from "@/components/ui/button";
 
 interface Props {

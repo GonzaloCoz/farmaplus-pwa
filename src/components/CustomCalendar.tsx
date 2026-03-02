@@ -2,7 +2,7 @@ import React from "react";
 import { addMonths, subMonths, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, format, isSameMonth, isSameDay, parseISO, differenceInCalendarDays } from "date-fns";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { es } from "date-fns/locale";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { AltArrowLeft as ChevronLeft, AltArrowRight as ChevronRight } from "@solar-icons/react";
 
 type EventItem = { id: string; title: string; branch: string; sector: string; date: string };
 

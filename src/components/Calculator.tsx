@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Delete, Equal, X } from 'lucide-react';
+import { Backspace as Delete, CloseCircle as X } from '@solar-icons/react';
 import { cn } from '@/lib/utils';
 
 interface CalculatorProps {
@@ -55,7 +55,7 @@ export function Calculator({ onResult, onClose, initialValue = '' }: CalculatorP
         { label: 'C', onClick: handleClear, variant: 'destructive', className: 'col-span-1' },
         { label: '/', onClick: () => handleOperator('/'), variant: 'secondary' },
         { label: '*', onClick: () => handleOperator('*'), variant: 'secondary' },
-        { label: <Delete className="w-4 h-4" />, onClick: handleBackspace, variant: 'secondary' },
+        { label: 'DEL', onClick: handleBackspace, variant: 'secondary' },
 
         { label: '7', onClick: () => handleNumber('7'), variant: 'outline' },
         { label: '8', onClick: () => handleNumber('8'), variant: 'outline' },

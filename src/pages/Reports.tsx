@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FileText, Search, Calendar, Layers, Eye, ArrowLeft, Download, Trash2, MapPin, Image as ImageIcon, CheckCircle2, User } from "lucide-react";
+import { Document as FileText, Magnifer as Search, Calendar, Layers, Eye, AltArrowLeft as ArrowLeft, Download, TrashBinMinimalistic as Trash2, MapPoint as MapPin, Gallery as ImageIcon, CheckCircle, User } from "@solar-icons/react";
 import { notify } from "@/lib/notifications";
 import { useNavigate, Link } from "react-router-dom";
 import {
@@ -507,7 +507,7 @@ export default function Reports() {
               <div className="flex-1 overflow-auto">
                 {expReports.length === 0 ? (
                   <Card className="p-12 text-center border-dashed bg-muted/20">
-                    <CheckCircle2 className="mx-auto h-12 w-12 text-muted-foreground mb-4 opacity-50" />
+                    <CheckCircle className="mx-auto h-12 w-12 text-muted-foreground mb-4 opacity-50" />
                     <h3 className="text-lg font-medium">Sin controles finalizados</h3>
                     <p className="text-sm text-muted-foreground mt-1">Los reportes de control de vencimientos aparecerán aquí.</p>
                   </Card>

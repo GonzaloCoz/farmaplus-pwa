@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Search, ArrowUpDown, BarChart3, CheckCircle2, AlertCircle, DollarSign, TrendingDown, TrendingUp, Loader2, Database } from "lucide-react";
+import { Magnifer as Search, SortByTime as ArrowUpDown, Chart as BarChart3, CheckCircle, DangerCircle as AlertCircle, Dollar, GraphDown as TrendingDown, GraphUp as TrendingUp, Restart as Loader2, Database, Dollar as DollarSign } from "@solar-icons/react";
 import { LaboratoryCard, LaboratoryStatus } from "@/components/LaboratoryCard";
 import { CounterAnimation } from "@/components/CounterAnimation";
 import { MetricCarousel } from "@/components/MetricCarousel";
@@ -267,7 +267,7 @@ export default function CyclicInventory() {
         <Card className="p-6 flex flex-col justify-between bg-card/40 dark:bg-card/20 backdrop-blur-sm border border-border/50 shadow-sm rounded-2xl overflow-hidden relative group transition-all duration-300">
           <div className="flex items-center gap-3 text-success mb-4 relative z-10">
             <div className="p-2 rounded-xl bg-success/10 border border-success/20">
-              <CheckCircle2 className="w-5 h-5" />
+              <CheckCircle className="w-5 h-5" />
             </div>
             <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground/80">Controlados</span>
           </div>

@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { BRANCH_NAMES } from "@/config/users";
 import { calendarService, CalendarEvent } from "@/services/calendarService";
 import { notify } from "@/lib/notifications";
-import { Loader2 } from "lucide-react";
+import { Restart as Loader2 } from "@solar-icons/react";
 
 interface AddEventDialogProps {
     open: boolean;

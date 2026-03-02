@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Lock, User, HelpCircle } from "lucide-react";
+import { Lock, User, QuestionCircle as HelpCircle } from "@solar-icons/react";
 import { notify } from "@/lib/notifications";
 import { useUser } from "@/contexts/UserContext";
 import { loadDefaultData } from "@/services/preCountDB";

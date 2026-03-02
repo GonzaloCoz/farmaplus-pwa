@@ -7,26 +7,26 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import {
-    ArrowLeft,
+    AltArrowLeft as ArrowLeft,
     Camera,
-    Plus,
-    CheckCircle2,
-    Clock,
-    Trash2,
+    AddCircle as Plus,
+    CheckCircle,
+    ClockCircle as Clock,
+    TrashBinMinimalistic as Trash2,
     Calendar,
-    Package,
-    AlertTriangle,
-    FileText,
+    Widget as Package,
+    Danger as AlertTriangle,
+    Document as FileText,
     Bell,
-    BellRing,
-    ArrowRight,
+    BellBin as BellRing,
+    AltArrowRight as ArrowRight,
     Play,
-    History,
-    Wifi,
-    WifiOff,
-    Search,
-    Pencil
-} from 'lucide-react';
+    Restart as History,
+    Widget as Wifi,
+    CloseCircle as WifiOff,
+    Magnifer as Search,
+    Pen as Pencil
+} from '@solar-icons/react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -545,7 +545,7 @@ export default function ExpirationControl() {
                                 actions={[
                                     {
                                         label: "Finalizar",
-                                        icon: <CheckCircle2 className="w-5 h-5" />,
+                                        icon: <CheckCircle className="w-5 h-5" />,
                                         onClick: handleFinishClick,
                                         variant: 'default',
                                         color: 'bg-primary text-primary-foreground'

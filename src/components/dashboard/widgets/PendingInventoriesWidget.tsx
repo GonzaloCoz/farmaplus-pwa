@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Clock } from 'lucide-react';
+import { ClockCircle as Clock } from '@solar-icons/react';
 
 interface PendingInventoriesWidgetProps {
     pendingCount: number;

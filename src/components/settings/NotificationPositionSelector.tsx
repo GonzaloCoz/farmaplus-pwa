@@ -1,4 +1,4 @@
-import { Bell } from 'lucide-react';
+import { BellBing as Bell } from '@solar-icons/react';
 import { cn } from '@/lib/utils';
 import { NotificationPosition } from '@/contexts/NotificationPreferencesContext';
 

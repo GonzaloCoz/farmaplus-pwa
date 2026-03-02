@@ -11,7 +11,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { BatchInfo } from "@/services/expirationDB";
-import { Plus, Trash2, Calendar, BellRing, Package, X, Calculator as CalculatorIcon, Clock, Pencil } from "lucide-react";
+import { Plus } from "lucide-react";
+import { TrashBinMinimalistic as Trash2, Calendar, BellBing, Widget as Package, CloseCircle as X, Calculator as CalculatorIcon, ClockCircle as Clock, Pen as Pencil, Magnifer as Search } from "@solar-icons/react";
 import { motion, AnimatePresence } from "framer-motion";
 import { notify } from "@/lib/notifications";
 import { Badge } from "@/components/ui/badge";
@@ -233,7 +234,7 @@ export function ExpirationEntryModal({
                                         <PopoverContent className="w-64 p-3" align="end">
                                             <div className="space-y-3">
                                                 <h4 className="font-medium text-sm leading-none flex items-center gap-2">
-                                                    <BellRing className="w-4 h-4 text-primary" />
+                                                    <BellBing className="w-4 h-4 text-primary" />
                                                     Anticipación de Alerta
                                                 </h4>
                                                 <p className="text-xs text-muted-foreground">

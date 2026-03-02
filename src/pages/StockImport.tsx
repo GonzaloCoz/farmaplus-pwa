@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Upload, FileSpreadsheet, AlertCircle, TrendingDown, TrendingUp, Download, CheckCircle, Target, Save, Calculator, Package, Search, Filter, ChevronDown, ListFilter, Wallet, ArrowUpRight, ArrowDownRight, MoreHorizontal, ArrowLeftRight, ArrowUpDown, Check, Pencil } from "lucide-react";
+import { Upload, Document as FileSpreadsheet, DangerCircle as AlertCircle, GraphDown as TrendingDown, GraphUp as TrendingUp, Download, CheckCircle, Target, Diskette as Save, Calculator, Widget as Package, Magnifer as Search, Filter, AltArrowDown as ChevronDown, List as ListFilter, Wallet, ArrowRightUp as ArrowUpRight, ArrowRightDown as ArrowDownRight, MenuDots as MoreHorizontal, TransferVertical as ArrowLeftRight, SortByTime as ArrowUpDown, CheckCircle as Check, Pen as Pencil } from "@solar-icons/react";
 import { Badge } from "@/components/ui/badge";
 import * as XLSX from "xlsx";
 import { notify } from "@/lib/notifications";

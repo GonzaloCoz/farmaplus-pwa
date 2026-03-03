@@ -7,6 +7,7 @@ import { Plain as Send, ChatLine as MessageSquare, Danger as AlertTriangle, File
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { useUser } from "@/contexts/UserContext";
+import { getTeamsRecipient } from "@/config/teamsConfig";
 
 const QUICK_ACTIONS = [
     {
@@ -129,7 +130,7 @@ export function TeamsChatWidget() {
     // Teams Deep Link Generator
     const openTeamsChat = (text: string) => {
         const encodedMessage = encodeURIComponent(text);
-        const targetEmail = "GHCoz@farmaplus.com.ar"; // Tu mail de Teams configurado manualmente
+        const targetEmail = getTeamsRecipient(user?.branchName);
         const url = `https://teams.microsoft.com/l/chat/0/0?users=${targetEmail}&message=${encodedMessage}`;
         window.open(url, '_blank');
         setMessage("");

@@ -10,12 +10,14 @@ import { useUser } from "@/contexts/UserContext";
 const menuItems = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Stock", url: "/stock", icon: Upload },
-  { title: "Control de Vencimiento", url: "/smart-analyst", icon: Clock },
+  { title: "Control de Vencimiento", url: "/smart-analyst", icon: Clock, comingSoon: true },
   { title: "Inventarios Cíclicos", url: "/cyclic-inventory", icon: BarChart3 },
   { title: "Comparativa", url: "/comparison", icon: TrendingUp, roles: ['admin', 'mod'] as const },
   { title: "Productos", url: "/products", icon: Package, roles: ['admin', 'mod'] as const },
   { title: "Reportes", url: "/reports", icon: FileText, roles: ['admin', 'mod'] as const },
 ];
+
+import { notify } from "@/lib/notifications";
 
 interface AppSidebarMenuItemProps {
   item: {
@@ -23,16 +25,26 @@ interface AppSidebarMenuItemProps {
     url: string;
     icon: React.ComponentType<any>;
     notification?: boolean;
+    comingSoon?: boolean;
   };
   end?: boolean;
   isCollapsed: boolean;
+  userRole?: string;
 }
 
-function AppSidebarMenuItem({ item, end, isCollapsed }: AppSidebarMenuItemProps) {
+function AppSidebarMenuItem({ item, end, isCollapsed, userRole }: AppSidebarMenuItemProps) {
+  const handleClick = (e: React.MouseEvent) => {
+    if (item.comingSoon && (userRole === 'branch' || userRole === 'mod')) {
+      e.preventDefault();
+      notify.info("Próximamente", "Esta herramienta estará disponible muy pronto.", { id: 'blocked-feature' });
+    }
+  };
+
   const content = (
     <NavLink
       to={item.url}
       end={end}
+      onClick={handleClick}
       aria-label={item.title}
       className={({ isActive }) => cn(
         "group flex items-center h-10 transition-all duration-300 rounded-xl outline-none border-none ring-0 w-full !bg-transparent !shadow-none !ring-transparent",
@@ -138,6 +150,7 @@ export function AppSidebar() {
               item={item}
               end={item.url === '/'}
               isCollapsed={isCollapsed}
+              userRole={user?.role}
             />
           ))}
         </nav>

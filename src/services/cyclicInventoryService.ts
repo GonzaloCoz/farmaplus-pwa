@@ -651,18 +651,25 @@ export const cyclicInventoryService = {
                 labCounts = await getAllBranchLabCounts();
             }
 
-            // 3. Fetch Configs for Start Date
+            // 3. Fetch Configs for Start Date and Days
             const { data: configData } = await supabase
                 .from('inventories')
                 .select('branch_name, ean, quantity')
                 .eq('laboratory', '_CONFIG_')
-                .eq('ean', 'CONFIG_START_DATE');
+                .in('ean', ['CONFIG_START_DATE', 'CONFIG_DAYS']);
 
-            const branchConfigs: Record<string, string | null> = {};
+            const branchConfigs: Record<string, { startDate: string | null, days: number }> = {};
             if (configData) {
                 configData.forEach(c => {
-                    const normalized = (c.branch_name || '').toLowerCase().trim();
-                    branchConfigs[normalized] = new Date(c.quantity * 1000).toISOString();
+                    const normalized = normalizeString(c.branch_name || '');
+                    if (!branchConfigs[normalized]) {
+                        branchConfigs[normalized] = { startDate: null, days: 0 };
+                    }
+                    if (c.ean === 'CONFIG_START_DATE') {
+                        branchConfigs[normalized].startDate = new Date(c.quantity * 1000).toISOString();
+                    } else if (c.ean === 'CONFIG_DAYS') {
+                        branchConfigs[normalized].days = c.quantity;
+                    }
                 });
             }
 
@@ -701,7 +708,9 @@ export const cyclicInventoryService = {
                 else if (controlledCount > 0) status = 'por_controlar';
 
                 // Dynamic date calculation
-                const startDateIso = branchConfigs[cleanName] || null;
+                const config = branchConfigs[normalizeString(branchName)] || { startDate: null, days: 0 };
+                const startDateIso = config.startDate;
+                const assignedDays = config.days;
                 const deploymentDate = startDateIso
                     ? new Date(startDateIso).toLocaleDateString('es-AR', {
                         day: '2-digit',
@@ -712,16 +721,24 @@ export const cyclicInventoryService = {
                     : 'sin fecha asignada';
 
                 let elapsedDays = 0;
+                let remainingDays = 0;
                 if (startDateIso) {
                     const start = new Date(startDateIso);
                     const today = new Date();
                     const diffTime = today.getTime() - start.getTime();
                     elapsedDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+                    remainingDays = Math.max(0, assignedDays - elapsedDays);
+                } else if (assignedDays > 0) {
+                    // If no start date but has assigned days, count all as remaining? 
+                    // Or 0? User wants "Pte / Asig". If not started, Pte = Asig.
+                    remainingDays = assignedDays;
                 }
 
                 return {
                     branchName,
                     deploymentDate,
+                    assignedDays: Number(assignedDays) || 0,
+                    remainingDays: Number(remainingDays) || 0,
                     cyclicRound: 1,
                     monthlyGoal: totalLabsGoal,
                     elapsedDays,
@@ -788,18 +805,25 @@ export const cyclicInventoryService = {
             labCounts = await getAllBranchLabCounts();
         }
 
-        // --- Fetch Configs for Start Date ---
+        // --- Fetch Configs for Start Date and Days ---
         const { data: configData } = await supabase
             .from('inventories')
             .select('branch_name, ean, quantity')
             .eq('laboratory', '_CONFIG_')
-            .eq('ean', 'CONFIG_START_DATE');
+            .in('ean', ['CONFIG_START_DATE', 'CONFIG_DAYS']);
 
-        const branchConfigs: Record<string, string | null> = {};
+        const branchConfigs: Record<string, { startDate: string | null, days: number }> = {};
         if (configData) {
             configData.forEach(c => {
-                const normalized = (c.branch_name || '').toLowerCase().trim();
-                branchConfigs[normalized] = new Date(c.quantity * 1000).toISOString();
+                const normalized = normalizeString(c.branch_name || '');
+                if (!branchConfigs[normalized]) {
+                    branchConfigs[normalized] = { startDate: null, days: 0 };
+                }
+                if (c.ean === 'CONFIG_START_DATE') {
+                    branchConfigs[normalized].startDate = new Date(c.quantity * 1000).toISOString();
+                } else if (c.ean === 'CONFIG_DAYS') {
+                    branchConfigs[normalized].days = c.quantity;
+                }
             });
         }
 
@@ -837,7 +861,9 @@ export const cyclicInventoryService = {
             else if (controlledCount > 0) status = 'por_controlar';
 
             // Dynamic date calculation
-            const startDateIso = branchConfigs[cleanName] || null;
+            const config = branchConfigs[normalizeString(branchName)] || { startDate: null, days: 0 };
+            const startDateIso = config.startDate;
+            const assignedDays = config.days;
             const deploymentDate = startDateIso
                 ? new Date(startDateIso).toLocaleDateString('es-AR', {
                     day: '2-digit',
@@ -848,16 +874,22 @@ export const cyclicInventoryService = {
                 : 'sin fecha asignada';
 
             let elapsedDays = 0;
+            let remainingDays = 0;
             if (startDateIso) {
                 const start = new Date(startDateIso);
                 const today = new Date();
                 const diffTime = today.getTime() - start.getTime();
                 elapsedDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+                remainingDays = Math.max(0, assignedDays - elapsedDays);
+            } else if (assignedDays > 0) {
+                remainingDays = assignedDays;
             }
 
             return {
                 branchName,
                 deploymentDate,
+                assignedDays: Number(assignedDays) || 0,
+                remainingDays: Number(remainingDays) || 0,
                 cyclicRound: 1,
                 monthlyGoal: totalLabsGoal,
                 elapsedDays,

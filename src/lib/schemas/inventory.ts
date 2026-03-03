@@ -40,6 +40,8 @@ export const BranchSummaryLiteSchema = z.object({
     differenceUnits: z.number().default(0),
     adjustmentsValue: z.number().default(0),
     controlledLabsCount: z.number().default(0),
+    assignedDays: z.number().default(0),
+    remainingDays: z.number().default(0),
     updatedAt: z.string().optional(),
 });
 

@@ -18,6 +18,8 @@ const INITIAL_BRANCHES_TO_SHOW = 8;
 interface BranchSummary {
     branchName: string;
     deploymentDate: string;
+    assignedDays: number;
+    remainingDays: number;
     cyclicRound: number;
     monthlyGoal: number;
     elapsedDays: number;
@@ -112,6 +114,8 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
     const exportToExcel = () => {
         const exportData = sortedBranches.map(branch => ({
             'Sucursal': branch.branchName,
+            'Fecha Inicio': branch.deploymentDate,
+            'Días (Pte / Asig)': `${branch.remainingDays} / ${branch.assignedDays}`,
             'Progreso %': branch.progress,
             'Diferencia Neta (Unidades)': branch.differenceUnits,
             'Valor de Ajustes': formatMoney(branch.adjustmentsValue),
@@ -184,6 +188,9 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                                     <TableHead className="text-center cursor-pointer hidden md:table-cell" onClick={() => requestSort('deploymentDate')}>
                                         Fecha Inicio
                                     </TableHead>
+                                    <TableHead className="text-center cursor-pointer hidden md:table-cell" onClick={() => requestSort('assignedDays')}>
+                                        Días
+                                    </TableHead>
                                     <TableHead className="text-center hidden lg:table-cell">Vuelta</TableHead>
                                     <TableHead className="text-center hidden lg:table-cell">Obj. Mensual</TableHead>
                                     <TableHead className="text-center cursor-pointer" onClick={() => requestSort('progress')}>
@@ -208,6 +215,7 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                                         <TableRow key={i}>
                                             <TableCell><div className="h-5 w-32 bg-muted rounded animate-pulse" /></TableCell>
                                             <TableCell className="hidden md:table-cell"><div className="h-5 w-20 bg-muted rounded animate-pulse mx-auto" /></TableCell>
+                                            <TableCell className="hidden md:table-cell"><div className="h-5 w-12 bg-muted rounded animate-pulse mx-auto" /></TableCell>
                                             <TableCell className="hidden lg:table-cell"><div className="h-5 w-10 bg-muted rounded animate-pulse mx-auto" /></TableCell>
                                             <TableCell className="hidden lg:table-cell"><div className="h-5 w-12 bg-muted rounded animate-pulse mx-auto" /></TableCell>
                                             <TableCell><div className="h-5 w-16 bg-muted rounded animate-pulse mx-auto" /></TableCell>
@@ -240,20 +248,31 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                                                 {branch.branchName}
                                             </TableCell>
                                             <TableCell className="text-center text-muted-foreground text-sm hidden md:table-cell">{branch.deploymentDate}</TableCell>
+                                            <TableCell className="text-center text-sm hidden md:table-cell">
+                                                <span className={cn(
+                                                    "font-medium",
+                                                    branch.remainingDays <= 5 ? "text-red-500 font-bold" : "text-primary"
+                                                )}>
+                                                    {branch.remainingDays}
+                                                </span>
+                                                <span className="text-muted-foreground mx-1">/</span>
+                                                <span className="text-muted-foreground">{branch.assignedDays}</span>
+                                            </TableCell>
                                             <TableCell className="text-center text-muted-foreground text-sm hidden lg:table-cell">{branch.cyclicRound}ª</TableCell>
                                             <TableCell className="text-center text-muted-foreground text-sm hidden lg:table-cell">{branch.monthlyGoal}</TableCell>
                                             <TableCell className="text-center">
                                                 <div className="flex flex-col items-center">
                                                     <span className={cn(
                                                         "font-bold text-sm",
-                                                        branch.progress >= branch.monthlyGoal ? "text-green-600" : "text-foreground"
+                                                        branch.progress > 0 ? "text-green-600" : "text-muted-foreground"
                                                     )}>
                                                         {branch.progress}%
                                                     </span>
                                                     <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden mt-1">
                                                         <div
                                                             className={cn("h-full rounded-full transition-all",
-                                                                branch.progress >= 100 ? "bg-green-500" : "bg-primary"
+                                                                branch.progress >= 100 ? "bg-green-500" :
+                                                                    branch.progress > 0 ? "bg-green-400" : "bg-muted-foreground/20"
                                                             )}
                                                             style={{ width: `${Math.min(branch.progress, 100)}%` }}
                                                         />
@@ -290,7 +309,7 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                                     ))
                                 ) : (
                                     <TableRow>
-                                        <TableCell colSpan={9} className="h-24 text-center text-muted-foreground">
+                                        <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
                                             No se encontraron sucursales con esa búsqueda.
                                         </TableCell>
                                     </TableRow>

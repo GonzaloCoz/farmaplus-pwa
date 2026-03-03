@@ -9,12 +9,16 @@ import {
     Settings
 } from '@solar-icons/react';
 
+import { useUser } from '@/contexts/UserContext';
+import { notify } from '@/lib/notifications';
+
 interface QuickAction {
     title: string;
     description: string;
     icon: React.ComponentType<{ className?: string }>;
     onClick: () => void;
     variant?: 'default' | 'outline' | 'secondary';
+    comingSoon?: boolean;
 }
 
 interface QuickActionsWidgetProps {
@@ -22,6 +26,9 @@ interface QuickActionsWidgetProps {
 }
 
 export function QuickActionsWidget({ actions = [] }: QuickActionsWidgetProps) {
+    const { user } = useUser();
+    const isAdmin = user?.role === 'admin';
+
     const defaultActions: QuickAction[] = [
         {
             title: 'Nuevo Colector',
@@ -34,7 +41,13 @@ export function QuickActionsWidget({ actions = [] }: QuickActionsWidgetProps) {
             title: 'Importar Inventario',
             description: 'Cargar desde Excel',
             icon: Upload,
-            onClick: () => console.log('Importar'),
+            onClick: () => {
+                if (!isAdmin) {
+                    notify.info("Próximamente", "La herramienta de Importación estará disponible muy pronto.", { id: 'blocked-feature' });
+                } else {
+                    console.log('Importar');
+                }
+            },
             variant: 'outline'
         },
         {

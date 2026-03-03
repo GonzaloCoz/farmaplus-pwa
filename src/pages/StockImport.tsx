@@ -25,6 +25,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
+import { useUser } from "@/contexts/UserContext";
+import { useNavigate } from "react-router-dom";
 
 interface ProductData {
   codebar: string;
@@ -179,6 +181,21 @@ const Row = ({ index, style, data }: ListChildComponentProps) => {
 };
 
 export default function StockImport() {
+  const navigate = useNavigate();
+  const { user } = useUser();
+
+  // Bloquear acceso para sucursales y zonales
+  useEffect(() => {
+    if (user?.role === 'branch' || user?.role === 'mod') {
+      notify.info("Próximamente", "La herramienta de Importación de Inventario estará disponible muy pronto.", { id: 'blocked-feature' });
+      navigate('/');
+    }
+  }, [user, navigate]);
+
+  if (user?.role === 'branch' || user?.role === 'mod') {
+    return null;
+  }
+
   const [importMode, setImportMode] = useState<ImportMode>('inventory');
   const [file, setFile] = useState<File | null>(null);
   const [filePartial, setFilePartial] = useState<File | null>(null); // For collaborative mode (Step 1)

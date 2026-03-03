@@ -12,12 +12,29 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { NotificationsMenu } from "@/components/HeaderMenus";
+import { useUser } from "@/contexts/UserContext";
 
 
 export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
     const location = useLocation();
     const navigate = useNavigate();
+    const { user } = useUser();
     const { windows, activeWindowId, openWindow, closeWindow, setActiveWindow, closeAllWindows } = useWindowManager();
+
+    const getInitials = () => {
+        if (!user) return "??";
+        if (user.role === 'branch' && user.branchName) {
+            const branchName = user.branchName.replace(/^farmacia\s+/i, '');
+            return `F${branchName.charAt(0).toUpperCase()}`;
+        }
+        const names = user.name.split(' ');
+        if (names.length >= 2) {
+            return (names[0].charAt(0) + names[names.length - 1].charAt(0)).toUpperCase();
+        }
+        return user.name.charAt(0).toUpperCase();
+    };
+
+    const initials = getInitials();
 
     const handleCreateJob = () => {
         openWindow('/', undefined, undefined, true);
@@ -135,7 +152,7 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
                     className="group flex items-center justify-center h-10 w-10 rounded-xl overflow-hidden hover:ring-2 hover:ring-primary/20 transition-all bg-muted/50 border border-border/40"
                 >
                     <div className="h-full w-full flex items-center justify-center text-[11px] font-bold text-blue-600 transition-colors group-hover:bg-blue-600 group-hover:text-white">
-                        GC
+                        {initials}
                     </div>
                 </button>
             </div>

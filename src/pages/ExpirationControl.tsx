@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,7 +18,7 @@ import {
     Danger as AlertTriangle,
     Document as FileText,
     Bell,
-    BellBin as BellRing,
+    BellBing as BellRing,
     AltArrowRight as ArrowRight,
     Play,
     Restart as History,
@@ -50,11 +50,23 @@ import { FabMenu } from '@/components/FabMenu';
 import { BatchInfo, ExpirationItem } from '@/services/expirationDB';
 import { generatePDF, ExportOptions } from '@/services/ExportService';
 import { ExpirationEntryModal } from '@/components/ExpirationEntryModal';
+import { useUser } from '@/contexts/UserContext';
 
 type Step = 'config' | 'counting';
 
 export default function ExpirationControl() {
     const navigate = useNavigate();
+    const { user } = useUser();
+
+    // Bloquear acceso para sucursales y zonales
+    if (user?.role === 'branch' || user?.role === 'mod') {
+        useEffect(() => {
+            notify.info("Próximamente", "La herramienta de Control de Vencimiento estará disponible muy pronto.", { id: 'blocked-feature' });
+            navigate('/');
+        }, [navigate]);
+        return null;
+    }
+
     const [step, setStep] = useState<Step>('config');
     const [sector, setSector] = useState('');
     const [scannerOpen, setScannerOpen] = useState(false);
@@ -200,7 +212,8 @@ export default function ExpirationControl() {
                 quantity: batch.quantity,
                 status: batch.status || 'active',
                 actionDate: batch.actionDate,
-                destinationBranch: batch.destinationBranch
+                destinationBranch: batch.destinationBranch,
+                branchName: user?.branchName || session?.sector || "Sucursal"
             }))
         );
 

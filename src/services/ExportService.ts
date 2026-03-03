@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import { format, isSameDay, isSameWeek, isSameMonth, isSameYear, parseISO, fromUnixTime, isWithinInterval, startOfDay, endOfDay } from "date-fns";
 import { es } from "date-fns/locale";
 import { ExportOptions } from "@/components/modals/ExportOptionsModal";
+export type { ExportOptions };
 import { ExpirationItem } from "./expirationDB";
 
 interface ReportItem {

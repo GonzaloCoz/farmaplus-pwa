@@ -8,13 +8,9 @@ import { notify } from "@/lib/notifications";
 import { notificationService as pushNotificationService } from "@/services/PushNotificationService";
 import { useNotifications } from "@/contexts/NotificationContext";
 
-const DUMMY_SETTINGS: Array<{ id: string; title: string; value: string }> = [];
+import { useUser } from "@/contexts/UserContext";
 
-const DUMMY_USER = {
-  name: "Gonzalo Coz",
-  email: "ghcoz@farmaplus.com.ar",
-  role: "Administrador",
-};
+const DUMMY_SETTINGS: Array<{ id: string; title: string; value: string }> = [];
 
 export function MessagesMenu() {
   const [open, setOpen] = useState(false);
@@ -215,6 +211,26 @@ export function SettingsMenu() {
 
 export function UserMenu() {
   const [open, setOpen] = useState(false);
+  const { user, logout } = useUser();
+
+  const getInitials = () => {
+    if (!user) return "??";
+
+    // Si es una sucursal, usar F + Inicial de la sucursal
+    if (user.role === 'branch' && user.branchName) {
+      const branchName = user.branchName.replace(/^farmacia\s+/i, '');
+      return `F${branchName.charAt(0).toUpperCase()}`;
+    }
+
+    // Si es un admin/mod, usar iniciales del nombre
+    const names = user.name.split(' ');
+    if (names.length >= 2) {
+      return (names[0].charAt(0) + names[names.length - 1].charAt(0)).toUpperCase();
+    }
+    return user.name.charAt(0).toUpperCase();
+  };
+
+  const initials = getInitials();
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -225,7 +241,7 @@ export function UserMenu() {
           className="group flex items-center justify-center h-10 w-10 rounded-xl overflow-hidden hover:ring-2 hover:ring-primary/20 transition-all bg-muted/50 border border-border/40"
         >
           <div className="h-full w-full flex items-center justify-center text-[11px] font-bold text-blue-600 transition-colors group-hover:bg-blue-600 group-hover:text-white">
-            GC
+            {initials}
           </div>
         </button>
       </div>
@@ -235,18 +251,33 @@ export function UserMenu() {
         </DialogHeader>
         <div className="p-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-full bg-primary/10 w-12 h-12 flex items-center justify-center font-bold">GC</div>
+            <div className="rounded-full bg-primary/10 w-12 h-12 flex items-center justify-center font-bold text-primary">
+              {initials}
+            </div>
             <div>
-              <div className="font-medium">{DUMMY_USER.name}</div>
-              <div className="text-xs text-muted-foreground">{DUMMY_USER.email}</div>
+              <div className="font-medium">{user?.name}</div>
+              <div className="text-xs text-muted-foreground">{user?.username || user?.role}</div>
             </div>
           </div>
           <div className="mt-4 divide-y">
             <div className="py-3">
-              <button className="w-full text-left hover:text-primary transition-colors font-medium">Ver perfil</button>
+              <button
+                onClick={() => setOpen(false)}
+                className="w-full text-left hover:text-primary transition-colors font-medium"
+              >
+                Ver perfil
+              </button>
             </div>
             <div className="py-3">
-              <button className="w-full text-left hover:text-destructive transition-colors font-medium">Cerrar sesión</button>
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  logout();
+                }}
+                className="w-full text-left hover:text-destructive transition-colors font-medium"
+              >
+                Cerrar sesión
+              </button>
             </div>
           </div>
         </div>

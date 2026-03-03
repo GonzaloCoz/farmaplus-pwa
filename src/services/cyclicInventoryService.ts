@@ -205,6 +205,15 @@ export const cyclicInventoryService = {
         }
     },
 
+    // Purga masiva de TODO el sistema (Admin gcoz only)
+    purgeAllInventoryData: async () => {
+        const { error } = await (supabase as any).rpc('purge_all_inventory_data');
+        if (error) {
+            console.error("Error in global purge:", error);
+            throw error;
+        }
+    },
+
     // Delete adjustment history (ya incluido en purge_lab_inventory RPC; mantener por compatibilidad)
     deleteAdjustmentHistory: async (branchName: string, labName: string) => {
         const { error } = await supabase.from('inventory_adjustments')
@@ -642,7 +651,22 @@ export const cyclicInventoryService = {
                 labCounts = await getAllBranchLabCounts();
             }
 
-            // 3. Map to UI format
+            // 3. Fetch Configs for Start Date
+            const { data: configData } = await supabase
+                .from('inventories')
+                .select('branch_name, ean, quantity')
+                .eq('laboratory', '_CONFIG_')
+                .eq('ean', 'CONFIG_START_DATE');
+
+            const branchConfigs: Record<string, string | null> = {};
+            if (configData) {
+                configData.forEach(c => {
+                    const normalized = (c.branch_name || '').toLowerCase().trim();
+                    branchConfigs[normalized] = new Date(c.quantity * 1000).toISOString();
+                });
+            }
+
+            // 4. Map to UI format
             return BRANCH_NAMES.map(branchName => {
                 const rawSummary = summaries?.find(s =>
                     (s.branch_name || '').toLowerCase().trim() === branchName.toLowerCase().trim()
@@ -670,16 +694,37 @@ export const cyclicInventoryService = {
                 const controlledCount = summary?.controlledLabsCount || 0;
                 const progress = totalLabsGoal > 0 ? Number(((controlledCount / totalLabsGoal) * 100).toFixed(1)) : 0;
 
+                const cleanName = branchName.toLowerCase().trim();
+
                 let status = 'pendiente';
                 if (controlledCount >= totalLabsGoal && totalLabsGoal > 0) status = 'controlado';
                 else if (controlledCount > 0) status = 'por_controlar';
 
+                // Dynamic date calculation
+                const startDateIso = branchConfigs[cleanName] || null;
+                const deploymentDate = startDateIso
+                    ? new Date(startDateIso).toLocaleDateString('es-AR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        timeZone: 'UTC'
+                    })
+                    : 'sin fecha asignada';
+
+                let elapsedDays = 0;
+                if (startDateIso) {
+                    const start = new Date(startDateIso);
+                    const today = new Date();
+                    const diffTime = today.getTime() - start.getTime();
+                    elapsedDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+                }
+
                 return {
                     branchName,
-                    deploymentDate: '01/12/2025',
+                    deploymentDate,
                     cyclicRound: 1,
                     monthlyGoal: totalLabsGoal,
-                    elapsedDays: 12,
+                    elapsedDays,
                     progress: progress,
                     inventoryUnits: summary?.inventoryUnits || 0,
                     differenceUnits: summary?.differenceUnits || 0,
@@ -743,13 +788,26 @@ export const cyclicInventoryService = {
             labCounts = await getAllBranchLabCounts();
         }
 
+        // --- Fetch Configs for Start Date ---
+        const { data: configData } = await supabase
+            .from('inventories')
+            .select('branch_name, ean, quantity')
+            .eq('laboratory', '_CONFIG_')
+            .eq('ean', 'CONFIG_START_DATE');
+
+        const branchConfigs: Record<string, string | null> = {};
+        if (configData) {
+            configData.forEach(c => {
+                const normalized = (c.branch_name || '').toLowerCase().trim();
+                branchConfigs[normalized] = new Date(c.quantity * 1000).toISOString();
+            });
+        }
+
         // --- Optimized Aggregation Logic ---
         const summarizedBranches = BRANCH_NAMES.map(branchName => {
             const cleanName = branchName.toLowerCase().trim();
 
             // Filter meta for this branch
-            // We TRUST branch_laboratories now, as we added cleanup to delete/purge functions.
-            // Also, we filter out records with total_items === 0 to avoid ghost data from empty labs.
             const branchMeta = allMetaData.filter(m => {
                 const mBranch = (m.branch_name || '').toLowerCase().trim();
                 return mBranch === cleanName && (m.total_items > 0);
@@ -760,13 +818,11 @@ export const cyclicInventoryService = {
             let adjustmentsValue = 0;
             const controlledLabs = new Set<string>();
 
-            // Aggregate data from all rubros/categories found in the metadata
             branchMeta.forEach(m => {
                 inventoryUnits += (m.total_system_units || 0);
                 differenceUnits += (m.net_units || 0);
                 adjustmentsValue += (m.net_value || 0);
 
-                // Count lab as complete if ANY of its rubros is marked as completed/100%
                 if (m.status === 'completed' || m.progress_percentage >= 100) {
                     controlledLabs.add(m.laboratory);
                 }
@@ -780,17 +836,36 @@ export const cyclicInventoryService = {
             if (controlledCount >= totalLabsGoal && totalLabsGoal > 0) status = 'controlado';
             else if (controlledCount > 0) status = 'por_controlar';
 
+            // Dynamic date calculation
+            const startDateIso = branchConfigs[cleanName] || null;
+            const deploymentDate = startDateIso
+                ? new Date(startDateIso).toLocaleDateString('es-AR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    timeZone: 'UTC'
+                })
+                : 'sin fecha asignada';
+
+            let elapsedDays = 0;
+            if (startDateIso) {
+                const start = new Date(startDateIso);
+                const today = new Date();
+                const diffTime = today.getTime() - start.getTime();
+                elapsedDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+            }
+
             return {
                 branchName,
-                deploymentDate: '01/12/2025',
+                deploymentDate,
                 cyclicRound: 1,
                 monthlyGoal: totalLabsGoal,
-                elapsedDays: 12,
-                progress: progress,
-                inventoryUnits: inventoryUnits,
-                differenceUnits: differenceUnits,
+                elapsedDays,
+                progress,
+                inventoryUnits,
+                differenceUnits,
                 adjustmentsValue: Math.round(adjustmentsValue * 100) / 100,
-                status: status
+                status
             };
         });
 
@@ -846,6 +921,29 @@ export const cyclicInventoryService = {
             }
         } catch (e) {
             console.error("Error in saveBranchConfig:", e);
+            throw e;
+        }
+    },
+
+    saveBulkBranchConfig: async (branchNames: string[], days: number, startDate?: string): Promise<void> => {
+        try {
+            await import('./preCountDB').then(m => m.ensureConfigProduct());
+
+            // Convert date to seconds
+            const seconds = startDate ? Math.floor(new Date(startDate).getTime() / 1000) : null;
+
+            const { error } = await (supabase as any).rpc('save_bulk_branch_config', {
+                p_branch_names: branchNames,
+                p_days: days,
+                p_start_date_seconds: seconds
+            });
+
+            if (error) {
+                console.error("Error calling save_bulk_branch_config RPC:", error);
+                throw error;
+            }
+        } catch (e) {
+            console.error("Error in saveBulkBranchConfig:", e);
             throw e;
         }
     },

@@ -25,6 +25,20 @@ import { hasPermission } from "@/config/permissions";
 import { supabase } from "@/integrations/supabase/client";
 import { BRANCH_NAMES } from "@/config/users";
 import { useTheme } from "@/hooks/useTheme";
+import { cyclicInventoryService } from "@/services/cyclicInventoryService";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 const AdminAudit = lazy(() => import("@/pages/AdminAudit"));
@@ -55,6 +69,8 @@ export default function Settings() {
 
   const [isImporting, setIsImporting] = useState(false);
   const [isImportingLabs, setIsImportingLabs] = useState(false);
+  const [isPurging, setIsPurging] = useState(false);
+  const isGcoz = user?.username.toLowerCase() === 'gcoz';
 
   // Optimized update function
   const updateSetting = useCallback(<K extends keyof AppSettings>(
@@ -337,6 +353,19 @@ export default function Settings() {
       notify.error("Error", `Error al importar: ${errorDetail.substring(0, 100)}`);
     } finally {
       setIsImporting(false);
+    }
+  };
+
+  const handlePurgeAll = async () => {
+    setIsPurging(true);
+    try {
+      await cyclicInventoryService.purgeAllInventoryData();
+      notify.success("Sistema Limpiado", "Todos los datos de inventario han sido borrados.");
+    } catch (error) {
+      notify.error("Error al limpiar", "No se pudo realizar la purga masiva.");
+      console.error(error);
+    } finally {
+      setIsPurging(false);
     }
   };
 
@@ -659,6 +688,51 @@ export default function Settings() {
                 </div>
               </CardContent>
             </Card>
+
+            {isGcoz && (
+              <Card className="border-destructive/50 bg-destructive/5 mt-8">
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 text-destructive" />
+                    <CardTitle className="text-destructive">Zona de Peligro (Solo gcoz)</CardTitle>
+                  </div>
+                  <CardDescription>Acciones destructivas permanentes para el sistema.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Alert variant="destructive" className="bg-background">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Atención - Acción Destructiva</AlertTitle>
+                    <AlertDescription>
+                      Esta acción borrará **TODOS** los inventarios, mediciones, ajustes y resúmenes de todas las sucursales del sistema.
+                      Esta operación es irreversible y está pensada para la limpieza final previo al lanzamiento.
+                    </AlertDescription>
+                  </Alert>
+
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" disabled={isPurging} className="w-full sm:w-auto">
+                        {isPurging ? 'Limpiando...' : 'Limpiar Todo el Sistema (Pre-Lanzamiento)'}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>¿Estás absolutamente seguro?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Esta acción no se puede deshacer. Se eliminarán permanentemente todos los datos de
+                          inventario cíclico y ajustes de todas las sucursales.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={handlePurgeAll} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                          Sí, borrar todo el sistema
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </TabsContent>
 

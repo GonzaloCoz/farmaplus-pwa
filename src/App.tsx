@@ -362,3 +362,5 @@ const App = () => {
 };
 
 export default App;
+
+// Deployment trigger: Secret unblocked in GitHub security settings.

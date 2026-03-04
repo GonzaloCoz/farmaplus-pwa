@@ -58,8 +58,10 @@ export function DeleteConfirmationDialog({
                         <AlertTriangle className="h-5 w-5" />
                         {title}
                     </DialogTitle>
-                    <DialogDescription className="py-2">
-                        {description || "Esta acción no se puede deshacer. Esto eliminará permanentemente los datos."}
+                    <DialogDescription asChild>
+                        <div className="py-2 text-sm text-muted-foreground">
+                            {description || "Esta acción no se puede deshacer. Esto eliminará permanentemente los datos."}
+                        </div>
                     </DialogDescription>
                 </DialogHeader>
 

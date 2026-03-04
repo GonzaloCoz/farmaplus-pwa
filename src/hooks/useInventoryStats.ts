@@ -51,23 +51,17 @@ export function useInventoryStats(items: CyclicItem[], initialCategory = "Medica
         });
     };
 
-    // Filter controlled items by CURRENT CATEGORY
+    // Filter controlled items (GLOBAL - show all controlled items)
     const controlledItems = useMemo(() => {
-        const filtered = filteredItems.filter(i =>
-            i.status === 'controlled' &&
-            (normalizeString(i.category || '') === normalizeString(currentCategory) || (!normalizeString(i.category || '') && normalizeString(currentCategory) === "VARIOS"))
-        );
+        const filtered = filteredItems.filter(i => i.status === 'controlled');
         return sortItemsByDifference(filtered);
-    }, [filteredItems, currentCategory]);
+    }, [filteredItems]);
 
-    // Filter adjusted items by CURRENT CATEGORY
+    // Filter adjusted items (GLOBAL - show all adjusted items regardless of current category tab)
     const adjustedItems = useMemo(() => {
-        const filtered = filteredItems.filter(i =>
-            i.status === 'adjusted' &&
-            (normalizeString(i.category || '') === normalizeString(currentCategory) || (!normalizeString(i.category || '') && normalizeString(currentCategory) === "VARIOS"))
-        );
+        const filtered = filteredItems.filter(i => i.status === 'adjusted');
         return sortItemsByDifference(filtered);
-    }, [filteredItems, currentCategory]);
+    }, [filteredItems]);
 
     // Financial Stats Calculation
     const financialStats = useMemo(() => {

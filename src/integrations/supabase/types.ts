@@ -314,6 +314,8 @@ export interface Database {
                     system_quantity: number
                     status: string
                     was_readjusted: boolean
+                    adjustment_id_shortage: string | null
+                    adjustment_id_surplus: string | null
                     created_at: string
                     updated_at: string
                 }
@@ -326,6 +328,8 @@ export interface Database {
                     system_quantity?: number
                     status?: string
                     was_readjusted?: boolean
+                    adjustment_id_shortage?: string | null
+                    adjustment_id_surplus?: string | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -338,6 +342,8 @@ export interface Database {
                     system_quantity?: number
                     status?: string
                     was_readjusted?: boolean
+                    adjustment_id_shortage?: string | null
+                    adjustment_id_surplus?: string | null
                     created_at?: string
                     updated_at?: string
                 }
@@ -587,6 +593,103 @@ export interface Database {
                         foreignKeyName: "expiration_items_session_id_fkey"
                         columns: ["session_id"]
                         referencedRelation: "expiration_sessions"
+                        referencedColumns: ["id"]
+                    }
+                ]
+            }
+            inventory_ledger: {
+                Row: {
+                    id: string
+                    branch_name: string
+                    laboratory: string
+                    category: string | null
+                    user_id: string | null
+                    user_name: string | null
+                    adjustment_id_shortage: string | null
+                    adjustment_id_surplus: string | null
+                    total_shortage_value: number
+                    total_surplus_value: number
+                    total_net_value: number
+                    total_items_adjusted: number
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    branch_name: string
+                    laboratory: string
+                    category?: string | null
+                    user_id?: string | null
+                    user_name?: string | null
+                    adjustment_id_shortage?: string | null
+                    adjustment_id_surplus?: string | null
+                    total_shortage_value?: number
+                    total_surplus_value?: number
+                    total_net_value?: number
+                    total_items_adjusted?: number
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    branch_name?: string
+                    laboratory?: string
+                    category?: string | null
+                    user_id?: string | null
+                    user_name?: string | null
+                    adjustment_id_shortage?: string | null
+                    adjustment_id_surplus?: string | null
+                    total_shortage_value?: number
+                    total_surplus_value?: number
+                    total_net_value?: number
+                    total_items_adjusted?: number
+                    created_at?: string
+                }
+                Relationships: []
+            }
+            inventory_ledger_items: {
+                Row: {
+                    id: string
+                    ledger_id: string
+                    ean: string
+                    product_name: string
+                    category: string | null
+                    system_quantity: number
+                    counted_quantity: number
+                    difference: number
+                    unit_cost: number
+                    total_diff_value: number
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    ledger_id: string
+                    ean: string
+                    product_name: string
+                    category?: string | null
+                    system_quantity: number
+                    counted_quantity: number
+                    difference: number
+                    unit_cost: number
+                    total_diff_value: number
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    ledger_id?: string
+                    ean?: string
+                    product_name?: string
+                    category?: string | null
+                    system_quantity?: number
+                    counted_quantity?: number
+                    difference?: number
+                    unit_cost?: number
+                    total_diff_value?: number
+                    created_at?: string
+                }
+                Relationships: [
+                    {
+                        foreignKeyName: "inventory_ledger_items_ledger_id_fkey"
+                        columns: ["ledger_id"]
+                        referencedRelation: "inventory_ledger"
                         referencedColumns: ["id"]
                     }
                 ]

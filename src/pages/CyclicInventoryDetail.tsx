@@ -110,7 +110,8 @@ export default function CyclicInventoryDetail() {
                         </div>
                     )}
 
-                    {/* Upload Section (if completely empty) */}
+                    {/* Main View: Always show Header and Stats if there are adjusted items, 
+                        else show full-screen upload if everything is empty */}
                     {items.length === 0 ? (
                         <Card className="p-12 border-dashed border-2 flex flex-col items-center justify-center text-center space-y-4 bg-muted/20">
                             <div className="p-4 bg-primary/10 rounded-full">
@@ -307,12 +308,41 @@ export default function CyclicInventoryDetail() {
                                     </TabsList>
 
                                     <TabsContent value="pending" className="space-y-4">
-                                        <Alert className="bg-muted/10 border-muted/20 mb-4 rounded-2xl py-3 shadow-none">
-                                            <Info className="h-4 w-4 text-primary" />
-                                            <AlertDescription className="text-sm font-medium text-muted-foreground ml-2">
-                                                Desliza a la derecha para confirmar (verde) o a la izquierda para reportar diferencia (naranja).
-                                            </AlertDescription>
-                                        </Alert>
+                                        {pendingItems.length === 0 && controlledItems.length === 0 && (
+                                            <Card className="p-12 border-dashed border-2 flex flex-col items-center justify-center text-center space-y-4 bg-muted/20 my-4 animate-in fade-in zoom-in duration-500">
+                                                <div className="p-4 bg-primary/10 rounded-full">
+                                                    <Upload className="w-8 h-8 text-primary" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-lg font-semibold">Cargar Nuevo Ciclo</h3>
+                                                    <p className="text-muted-foreground max-w-sm mx-auto mt-1">
+                                                        No hay ítems para contar en este laboratorio. Cargá un nuevo Excel para iniciar el siguiente ciclo.
+                                                    </p>
+                                                </div>
+                                                <div className="relative">
+                                                    <Button disabled={isUploading}>
+                                                        {isUploading ? 'Procesando...' : 'Cargar Excel de Sistema'}
+                                                    </Button>
+                                                    <Input
+                                                        type="file"
+                                                        accept=".xlsx, .xls"
+                                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                                        onChange={handleFileUpload}
+                                                        disabled={isUploading}
+                                                    />
+                                                </div>
+                                            </Card>
+                                        )}
+
+                                        {pendingItems.length > 0 && (
+                                            <Alert className="bg-muted/10 border-muted/20 mb-4 rounded-2xl py-3 shadow-none">
+                                                <Info className="h-4 w-4 text-primary" />
+                                                <AlertDescription className="text-sm font-medium text-muted-foreground ml-2">
+                                                    Desliza a la derecha para confirmar (verde) o a la izquierda para reportar diferencia (naranja).
+                                                </AlertDescription>
+                                            </Alert>
+                                        )}
+
                                         <CyclicInventoryList
                                             items={getSortedItems(pendingItems)}
                                             onUpdateQuantity={handleUpdateQuantity}
@@ -399,7 +429,7 @@ export default function CyclicInventoryDetail() {
                     <DialogHeader>
                         <DialogTitle>Finalizar Inventario</DialogTitle>
                         <DialogDescription>
-                            Ingresa el ID del ajuste generado en PLEX para guardar el estado de este inventario.
+                            Confirma los valores de ajuste para finalizar el control de este laboratorio.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="py-4 space-y-6">
@@ -432,6 +462,7 @@ export default function CyclicInventoryDetail() {
                                 placeholder="ID Ajuste Sobrantes (PLEX)"
                             />
                         </div>
+
                     </div>
                     <div className="flex justify-end gap-2">
                         <Button variant="outline" onClick={() => setShowSaveDialog(false)}>

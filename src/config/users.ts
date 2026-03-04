@@ -20,12 +20,10 @@ export interface ZonalUser {
 export const ADMIN_USERS: AdminUser[] = [];
 
 export const ZONAL_USERS: ZonalUser[] = [
-    { username: 'azanovello', name: 'Andres Zanovello', role: 'mod' },
-    { username: 'cmcgarva', name: 'Christian Mac Garva', role: 'mod' },
+    { username: 'fformichelli', name: 'Federico Formicelli', role: 'mod' },
+    { username: 'jgorbaran', name: 'Juan Gorbaran', role: 'mod' },
     { username: 'druiz', name: 'Diego Ruiz', role: 'mod' },
-    { username: 'emendoza', name: 'Javier Mendoza', role: 'mod' },
-    { username: 'jparedes', name: 'Javier Paredes', role: 'mod' },
-    { username: 'jarredondo', name: 'Jorge Arredondo', role: 'mod' },
+    { username: 'azanovello', name: 'Andres Zanovello', role: 'mod' },
 ];
 
 
@@ -67,9 +65,9 @@ export const BRANCH_NAMES = [
     "Quilmes",
     "Recoleta II",
     "Retiro",
-    "devoto II",
+    "Devoto II",
     "Retiro II",
-    "San Isidro I",
+    "San Isidro",
     "San Isidro II",
     "San Miguel",
     "Tribunales",
@@ -91,7 +89,11 @@ export const BRANCH_NAMES = [
     "Padua",
     "Mercedes",
     "Morón",
-    "Saladillo"
+    "Saladillo",
+    "Escobar",
+    "Devoto III",
+    "Palermo IV",
+    "Boedo"
 ];
 
 // Helper to generate BranchUser objects from names

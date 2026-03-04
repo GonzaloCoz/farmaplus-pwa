@@ -8,6 +8,8 @@ import { useInventoryUpload } from '@/hooks/useInventoryUpload';
 import { useInventoryStats } from '@/hooks/useInventoryStats';
 import { useUser } from '@/contexts/UserContext';
 import { supabase } from '@/integrations/supabase/client';
+import { useQueryClient } from '@tanstack/react-query';
+import { INVENTORY_KEYS } from './useInventoryQueries';
 
 const CATEGORIES = ["Medicamentos", "Perfumería", "Accesorios", "Varios"];
 
@@ -17,6 +19,7 @@ interface UseCyclicInventoryControllerProps {
 
 export function useCyclicInventoryController({ labName }: UseCyclicInventoryControllerProps) {
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const { user } = useUser();
     const branchName = user?.branchName || 'Sucursal Desconocida';
 
@@ -114,9 +117,9 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
     const globalAdjusted = items.filter(i => i.status === 'adjusted').length;
     const globalPending = items.filter(i => i.status === 'pending').length;
 
-    // Progress capped at 100%
+    // Progress capped at 100% (Integer rounding)
     const globalProgress = globalTotal > 0
-        ? Math.min(100, Math.round(((globalControlled + globalAdjusted) / globalTotal) * 100))
+        ? Math.min(100, Math.round((globalControlled + globalAdjusted) / globalTotal * 100))
         : 0;
 
 
@@ -226,27 +229,9 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         try {
             const categoryToFinalize = currentCategory;
 
-            // ⚠️ LEER EL TOTAL DE DB ANTES de que saveInventory → updateLabMetadata lo sobreescriba.
-            // Este es el denominador correcto para el progreso acumulado.
-            // Si la DB tiene 100 items (del último Excel), ese es el total real aunque solo controlemos 10.
-            let masterTotal = items.length; // Fallback al estado de React
-            try {
-                const { data: existingMeta } = await supabase
-                    .from('branch_laboratories')
-                    .select('total_items')
-                    .ilike('branch_name', branchName.trim())
-                    .eq('laboratory', labName)
-                    .limit(1)
-                    .maybeSingle();
-                const dbTotal = existingMeta?.total_items || 0;
-                // Usar el mayor entre DB y estado actual (nunca reducir el denominador)
-                masterTotal = Math.max(dbTotal, items.length);
-            } catch (e) {
-                console.warn('[Progress] No se pudo leer total de DB. Usando estado de React.');
-            }
-
-            // Optimizacion del Flujo: No eliminamos los pendientes del estado.
-            // Asi, cuando re-entren manana, siguen ahi para ser continuados.
+            // Optimización del Flujo: Ya no purgar la base de datos de los pendientes, pero 
+            // sigue guardando (Upsert) el nuevo listado sobreescribiendo el control local 
+            // con estado 'adjusted' para reflejar UI de inmediato.
             const updatedItems = items.map(item => {
                 if (item.status === 'controlled') {
                     const diff = item.countedQuantity - item.systemQuantity;
@@ -262,28 +247,23 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
 
             setItems(updatedItems);
 
-            // Optimizacion del Flujo: Ya no purgar la base de datos de los pendientes, pero 
-            // sigue guardando (Upsert) el nuevo listado sobreescribiendo el control.
-
-            // Guardar con totalDenominator = masterTotal para evitar 100% falso cuando hay pendientes
+            // Guardar invocando al Motor Ferrari 
             await cyclicInventoryService.saveInventoryForFinalize(
                 branchName,
                 labName,
                 updatedItems,
-                masterTotal
+                user?.id || ''
             );
 
-            // Corrección extra por si hay desfase (progreso acumulativo entre sesiones)
-            await cyclicInventoryService.correctProgressAfterFinalize(
-                branchName,
-                labName,
-                masterTotal
-            );
+            // Fetch the updated stats to reflect the real database state after finalization
+            await fetchPersistentStats();
 
-            // Fuente de verdad: recalcular progreso desde inventarios (evita 100% falso)
+            // Source of truth: recompute progress from inventories (prevent false 100%)
+            // Already called inside finalize_cyclic_inventory RPC but doing it here again 
+            // ensures the local UI is fully synced if necessary.
             await cyclicInventoryService.recomputeLabProgress(branchName, labName);
 
-            // Extraer las categorías de los items que acaban de ser controlados
+            // Extrack history details
             const controlledCategories = Array.from(new Set(controlledItems.map(i => i.category || 'Varios')));
             const historyCategoryStr = controlledCategories.length > 0
                 ? controlledCategories.join(', ')
@@ -301,7 +281,7 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
                 category: historyCategoryStr
             });
 
-            notify.success("Operación exitosa", `${categoryToFinalize} finalizado. Pendientes eliminados.`);
+            notify.success("Operación exitosa", `${categoryToFinalize} finalizado y archivado. Listo para nueva carga.`);
             setShowSaveDialog(false);
             setShortageId("");
             setSurplusId("");
@@ -338,9 +318,15 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         setIsDeleting(true);
         try {
             setItems([]);
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            // Removed 1.5s artificial delay for better fluidity
             await cyclicInventoryService.deleteInventory(branchName, labName);
             await cyclicInventoryService.deleteAdjustmentHistory(branchName, labName);
+
+            // Invalidar Caché de React Query para forzar recarga limpia
+            queryClient.invalidateQueries({
+                queryKey: INVENTORY_KEYS.lab(branchName, labName)
+            });
+
             setShowDeleteDialog(false);
             notify.success("Operación exitosa", "Datos reiniciados correctamente.");
             navigate('/cyclic-inventory');

@@ -73,28 +73,37 @@ export function useDashboardMetrics() {
 
     const isLoading = isLoadingInventories || isLoadingConfig || isLoadingLock;
 
-    // Mutation to update config
+    // Mutation to update config (supports bulk)
     const updateConfigMutation = useMutation({
-        mutationFn: async (variables: { branch: string, days: number, startDate?: string }) => {
-            await cyclicInventoryService.saveBranchConfig(variables.branch, variables.days, variables.startDate);
+        mutationFn: async (variables: { branches: string[], days: number, startDate?: string }) => {
+            // Use bulk service
+            await cyclicInventoryService.saveBulkBranchConfig(variables.branches, variables.days, variables.startDate);
 
-            // Audit Log
+            // Audit Log for each branch (could be many, but keeping it simple for now)
+            // Log only one entry for the bulk action to avoid spamming logs if many branches
             await auditService.logAction({
-                action: 'CONFIG_UPDATE',
+                action: 'CONFIG_UPDATE_BULK',
                 entityType: 'BRANCH_CONFIG',
-                branchId: variables.branch,
+                branchId: variables.branches.join(', '),
                 userId: user?.id,
-                details: { days: variables.days, startDate: variables.startDate }
+                details: {
+                    days: variables.days,
+                    startDate: variables.startDate,
+                    count: variables.branches.length
+                }
             });
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['branch-config', user?.branchName] });
+            // Invalidate all branch configurations and monitor summaries
+            queryClient.invalidateQueries({ queryKey: ['branch-config'] });
+            queryClient.invalidateQueries({ queryKey: ['branch-summaries-lite'] });
+            queryClient.invalidateQueries({ queryKey: ['cyclic-inventories'] });
         }
     });
 
-    const updateConfig = async (branch: string, days: number, startDate?: string) => {
-        if (!user?.branchName) return;
-        await updateConfigMutation.mutateAsync({ branch, days, startDate });
+    const updateConfig = async (branches: string[], days: number, startDate?: string) => {
+        if (!branches || branches.length === 0) return;
+        await updateConfigMutation.mutateAsync({ branches, days, startDate });
     };
 
     // Mutation to toggle lock

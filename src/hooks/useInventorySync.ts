@@ -17,7 +17,7 @@ export function useInventorySync({ branchName, labName, items, onItemsLoaded }: 
 
     // Actualizar estado local cuando cambian los datos de la consulta
     useEffect(() => {
-        if (queryData && queryData.length > 0) {
+        if (queryData) {
             onItemsLoaded(queryData);
         }
     }, [queryData, onItemsLoaded]);

@@ -48,9 +48,9 @@ export interface CyclicItem {
 }
 
 export const cyclicInventoryService = {
-    // Get inventory for a specific lab (Supabase)
     getLabInventory: async (branchName: string, labName: string): Promise<CyclicItem[]> => {
         try {
+            const cleanBranch = normalizeString(branchName);
             const { data, error } = await supabase
                 .from('inventories')
                 .select(`
@@ -70,8 +70,9 @@ export const cyclicInventoryService = {
                         category
                     )
                 `)
-                .ilike('branch_name', branchName.trim())
-                .eq('laboratory', labName);
+                .eq('branch_name', cleanBranch)
+                .ilike('laboratory', normalizeString(labName))
+                .order('name', { foreignTable: 'products', ascending: true }); // Order by product name correctly
 
             if (error) {
                 console.error(`Error loading inventory for ${labName}:`, error);
@@ -130,8 +131,8 @@ export const cyclicInventoryService = {
             // This handles BOTH product creation/update and inventory upsert atomically
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { error } = await (supabase as any).rpc('save_cyclic_inventory_v2', {
-                p_branch_name: branchName,
-                p_laboratory: labName,
+                p_branch_name: normalizeString(branchName),
+                p_laboratory: normalizeString(labName),
                 p_items: rpcItems as any
             });
 
@@ -151,41 +152,31 @@ export const cyclicInventoryService = {
         }
     },
 
-    // Variante para finalizar: pasa totalDenominator para evitar 100% falso cuando hay pendientes
+    // Variante para finalizar: Invoca al Motor Ferrari (finalize_cyclic_inventory)
     saveInventoryForFinalize: async (
         branchName: string,
         labName: string,
-        items: CyclicItem[],
-        totalDenominator: number
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        items: CyclicItem[], // Mantener por retrocompatibilidad de firma, aunque ya no se envían items uno por uno
+        userId: string
     ) => {
         try {
-            const rpcItems = items.map(item => ({
-                ean: item.ean,
-                name: item.name,
-                category: item.category,
-                cost: item.cost || 0,
-                countedQuantity: item.countedQuantity,
-                systemQuantity: item.systemQuantity,
-                status: item.status,
-                wasReadjusted: item.wasReadjusted || false,
-                shortageId: item.shortageId,
-                surplusId: item.surplusId
-            }));
-
-            const { error } = await (supabase as any).rpc('save_cyclic_inventory_v2', {
-                p_branch_name: branchName,
-                p_laboratory: labName,
-                p_items: rpcItems as any
+            // "El Snap": Finalización atómica en base de datos.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error } = await (supabase as any).rpc('finalize_cyclic_inventory', {
+                p_branch_name: normalizeString(branchName),
+                p_laboratory: normalizeString(labName),
+                p_plex_id: null,
+                p_user_id: userId
             });
 
             if (error) {
-                console.error('Error calling save_cyclic_inventory_v2 RPC:', error);
+                console.error('Error calling finalize_cyclic_inventory RPC:', error);
                 throw error;
             }
 
-            // Usar totalDenominator para progreso real (evita 100% falso cuando hay pendientes no controlados)
-            await cyclicInventoryService.updateLabMetadata(branchName, labName, items, totalDenominator);
-            await cyclicInventoryService.recomputeLabProgress(branchName, labName);
+            // Ya no es necesario re-computar aquí en el frontend porque el RPC `finalize_cyclic_inventory`
+            // hace el PERFORM `recompute_lab_progress` internamente en la DB.
 
         } catch (e) {
             console.error("Error saving inventory (finalize):", e);
@@ -196,11 +187,11 @@ export const cyclicInventoryService = {
     // Delete inventory (Reiniciar) - Usa RPC para garantizar borrado total (ajustados incluidos)
     deleteInventory: async (branchName: string, labName: string) => {
         const { error } = await (supabase as any).rpc('purge_lab_inventory', {
-            p_branch_name: branchName.trim(),
-            p_laboratory: labName.trim()
+            p_branch_name: normalizeString(branchName),
+            p_laboratory: normalizeString(labName)
         });
         if (error) {
-            console.error("Error purging lab inventory:", error);
+            console.error("Error purging lab inventory:", JSON.stringify(error, null, 2));
             throw error;
         }
     },
@@ -280,8 +271,8 @@ export const cyclicInventoryService = {
                     progress_percentage: realProgress,  // % real (nunca 100% falso)
                     status: realStatus
                 })
-                .ilike('branch_name', branchName.trim())
-                .ilike('laboratory', labName.trim());
+                .eq('branch_name', normalizeString(branchName))
+                .eq('laboratory', normalizeString(labName));
 
             if (error) {
                 console.error('[Progress] Error persisting real progress:', error);
@@ -301,14 +292,12 @@ export const cyclicInventoryService = {
     recomputeLabProgress: async (branchName: string, labName: string): Promise<void> => {
         try {
             const { error } = await (supabase as any).rpc('recompute_lab_progress', {
-                p_branch_name: branchName.trim(),
-                p_laboratory: labName.trim()
+                p_branch_name: normalizeString(branchName),
+                p_laboratory: normalizeString(labName)
             });
-            if (error) {
-                console.warn('[Progress] recompute_lab_progress no disponible o error:', error?.message);
-            }
-        } catch (e) {
-            console.warn('[Progress] Error calling recompute_lab_progress:', e);
+            if (error) throw error;
+        } catch (error) {
+            console.error('Error recomputing lab progress:', error);
         }
     },
 
@@ -346,20 +335,19 @@ export const cyclicInventoryService = {
      * Usa RPC para purga garantizada, luego guarda los nuevos items.
      * Evita residuos de ajustados y rubros fantasmas.
      */
-    purgeAndSaveLabInventory: async (branchName: string, labName: string, items: CyclicItem[]) => {
+    purgeAndSaveLabInventory: async (branchName: string, labName: string, items: CyclicItem[]): Promise<void> => {
         try {
-            // 1. Purga total vía RPC (inventarios + historial + reset metadata)
-            const { error: purgeError } = await (supabase as any).rpc('purge_lab_inventory', {
-                p_branch_name: branchName.trim(),
-                p_laboratory: labName.trim()
-            });
+            const cleanBranch = normalizeString(branchName);
+            const cleanLab = normalizeString(labName);
 
-            if (purgeError) {
-                console.error("Error purging lab:", purgeError);
-                throw purgeError;
-            }
+            // 1. Purga SELECTIVA: Borrar todo EXCEPTO los ya ajustados
+            // Esto permite que el nuevo Excel rellene los huecos sin pisar lo ya hecho.
+            await supabase.from('inventories')
+                .delete()
+                .eq('branch_name', cleanBranch)
+                .eq('laboratory', cleanLab)
+                .neq('status', 'adjusted');
 
-            // 2. Guardado de los nuevos items (crea filas en branch_laboratories vía updateLabMetadata)
             if (items.length > 0) {
                 await cyclicInventoryService.saveInventory(branchName, labName, items);
             }
@@ -377,13 +365,22 @@ export const cyclicInventoryService = {
     updateLabMetadata: async (
         branchName: string,
         labName: string,
-        items: CyclicItem[],
+        items?: CyclicItem[],
         totalDenominator?: number
     ): Promise<void> => {
+        const cleanBranch = normalizeString(branchName);
+        const cleanLab = normalizeString(labName);
         try {
+            // Re-fetch ALL items from DB to ensure metadata reflects truth (including previously adjusted items)
+            // If items are passed, we could use them, but fetching from DB is safer for "Ironclad Sync"
+            const dbItems = await cyclicInventoryService.getLabInventory(branchName, labName);
+            const itemsToProcess = dbItems.length > 0 ? dbItems : (items || []);
+
+            if (itemsToProcess.length === 0 && !totalDenominator) return;
+
             // Group items by category to split metadata records
             const grouped: Record<string, CyclicItem[]> = {};
-            items.forEach(item => {
+            itemsToProcess.forEach(item => {
                 const cat = normalizeString(item.category || 'Varios');
                 if (!grouped[cat]) grouped[cat] = [];
                 grouped[cat].push(item);
@@ -412,17 +409,12 @@ export const cyclicInventoryService = {
                 // Category-specific counts (for accurate data)
                 const totalInventoryItems = catItems.length;
 
-                // Determine overall status based on GLOBAL progress
-                let status: 'pending' | 'in_progress' | 'completed' = 'pending';
-                if (globalProgress === 100) status = 'completed';
-                else if (globalProgress > 0) status = 'in_progress';
-
                 // Upsert to metadata table with composite key (Branch + Lab + Category)
                 return supabase
                     .from('branch_laboratories')
                     .upsert({
-                        branch_name: branchName,
-                        laboratory: labName,
+                        branch_name: cleanBranch,
+                        laboratory: cleanLab,
                         category: category,
                         total_items: totalInventoryItems, // Correct Category Count
                         controlled_items: controlledItems + adjustedItems, // Correct Category Processed
@@ -434,7 +426,7 @@ export const cyclicInventoryService = {
                         net_value: stats.net,
                         negative_value: stats.negative,
                         positive_value: stats.positive,
-                        status: status
+                        status: globalProgress >= 100 ? 'completed' : globalProgress > 0 ? 'in_progress' : 'pending'
                     }, {
                         onConflict: 'branch_name,laboratory,category'
                     });
@@ -534,13 +526,13 @@ export const cyclicInventoryService = {
     // Obtener todos los inventarios (agregados o filtrados por sucursal)
     // Ayudante para obtener el estado de un solo laboratorio para la Vista Detallada
     getLabStats: async (branchName: string, labName: string, category: string) => {
-        try {
+        if (branchName && labName && category) {
             const { data, error } = await supabase
                 .from('branch_laboratories')
                 .select('*')
-                .eq('branch_name', branchName)
-                .ilike('laboratory', labName.trim())
-                .ilike('category', normalizeString(category))
+                .eq('branch_name', normalizeString(branchName))
+                .eq('laboratory', normalizeString(labName))
+                .eq('category', normalizeString(category))
                 .maybeSingle();
 
             if (error) {
@@ -563,9 +555,6 @@ export const cyclicInventoryService = {
                 pendingItems: Math.max(0, total - (controlled + adjusted)),
                 progress: progress
             };
-        } catch (error) {
-            console.error('Unexpected error in getLabStats:', error);
-            return null;
         }
     },
 
@@ -581,7 +570,7 @@ export const cyclicInventoryService = {
             .select(`*`);
 
         if (branchName) {
-            query = query.ilike('branch_name', branchName.trim());
+            query = query.eq('branch_name', normalizeString(branchName));
         }
 
         const { data, error } = await query;
@@ -675,8 +664,9 @@ export const cyclicInventoryService = {
 
             // 4. Map to UI format
             return BRANCH_NAMES.map(branchName => {
+                const normalizedSearch = normalizeString(branchName);
                 const rawSummary = summaries?.find(s =>
-                    (s.branch_name || '').toLowerCase().trim() === branchName.toLowerCase().trim()
+                    normalizeString(s.branch_name || '') === normalizedSearch
                 );
 
                 // Enterprise Validation of DB Record
@@ -1055,23 +1045,76 @@ export const cyclicInventoryService = {
         try {
             // 1. Save to legacy adjustment table (for backward compat or simple history)
             const { error: error1 } = await supabase.from('inventory_adjustments').insert({
-                branch_name: branchName,
-                laboratory: labName,
-                category: data.category ? normalizeString(data.category) : null, // Normalización
+                branch_name: normalizeString(branchName),
+                laboratory: normalizeString(labName),
+                category: data.category ? normalizeString(data.category) : null,
                 adjustment_id_shortage: data.adjustment_id_shortage,
                 adjustment_id_surplus: data.adjustment_id_surplus,
                 shortage_value: data.shortage_value,
                 surplus_value: data.surplus_value,
                 total_units_adjusted: data.total_units_adjusted,
                 user_name: data.user_name || 'Desconocido'
-            } as any); // cast as any in case Typescript Definitions aren't updated in IDE yet
+            } as any);
 
             if (error1) throw error1;
 
-            // 2. Save to NEW Full Report Table (Immutable Snapshot)
+            // 2. SAP-Style Ledger Recording (Transactional Audit Trail)
+            // Create a professional header and detailed line items
+            if (data.items_snapshot && data.items_snapshot.length > 0) {
+                // Filter items that were actually adjusted in this session
+                const adjustedItems = data.items_snapshot.filter(item =>
+                    item.status === 'adjusted' &&
+                    (item.shortageId === data.adjustment_id_shortage ||
+                        item.surplusId === data.adjustment_id_surplus)
+                );
+
+                if (adjustedItems.length > 0) {
+                    const { data: ledgerHeader, error: ledgerError } = await supabase
+                        .from('inventory_ledger')
+                        .insert({
+                            branch_name: normalizeString(branchName),
+                            laboratory: normalizeString(labName),
+                            category: data.category || 'Varios',
+                            user_id: data.user_id,
+                            user_name: data.user_name || 'Desconocido',
+                            adjustment_id_shortage: data.adjustment_id_shortage,
+                            adjustment_id_surplus: data.adjustment_id_surplus,
+                            total_shortage_value: data.shortage_value,
+                            total_surplus_value: data.surplus_value,
+                            total_net_value: data.surplus_value - data.shortage_value,
+                            total_items_adjusted: adjustedItems.length
+                        })
+                        .select()
+                        .single();
+
+                    if (!ledgerError && ledgerHeader) {
+                        const ledgerItems = adjustedItems.map(item => ({
+                            ledger_id: ledgerHeader.id,
+                            ean: item.ean,
+                            product_name: item.name,
+                            category: item.category || 'Varios',
+                            system_quantity: item.systemQuantity,
+                            counted_quantity: item.countedQuantity,
+                            difference: item.countedQuantity - item.systemQuantity,
+                            unit_cost: item.cost,
+                            total_diff_value: (item.countedQuantity - item.systemQuantity) * item.cost
+                        }));
+
+                        const { error: itemsError } = await supabase
+                            .from('inventory_ledger_items')
+                            .insert(ledgerItems);
+
+                        if (itemsError) console.error("Error creating Ledger items:", itemsError);
+                    } else {
+                        console.error("Error creating Ledger header:", ledgerError);
+                    }
+                }
+            }
+
+            // 3. Save to Full Report Table (Immutable Snapshot - legacy support)
             if (data.items_snapshot) {
                 const financialSummary = {
-                    net_value: data.adjustment_id_surplus ? data.surplus_value : -data.shortage_value, // Simplification
+                    net_value: data.surplus_value - data.shortage_value,
                     shortage_value: data.shortage_value,
                     surplus_value: data.surplus_value,
                     adjustment_ids: {
@@ -1081,10 +1124,10 @@ export const cyclicInventoryService = {
                 };
 
                 const { error: error2 } = await supabase.from('inventory_reports').insert({
-                    branch_name: branchName,
-                    laboratory: labName,
-                    category: data.category || null, // NEW: Save Category here too if column exists, otherwise it might be in snapshot_data
-                    snapshot_data: data.items_snapshot, // Guarda todo el JSON
+                    branch_name: normalizeString(branchName),
+                    laboratory: normalizeString(labName),
+                    category: data.category || null,
+                    snapshot_data: data.items_snapshot,
                     financial_summary: financialSummary,
                     user_name: data.user_name || 'Desconocido'
                 } as any);
@@ -1092,14 +1135,14 @@ export const cyclicInventoryService = {
                 if (error2) console.error("Error saving advanced report snapshot:", error2);
             }
 
-            // 3. Audit Log
+            // 4. Audit Log
             try {
                 await import('./auditService').then(({ auditService }) => {
                     auditService.logAction({
                         action: 'INVENTORY_ADJUSTMENT',
                         entityType: 'INVENTORY',
                         branchId: branchName,
-                        userId: data.user_id, // Pass explicit ID
+                        userId: data.user_id,
                         details: {
                             lab: labName,
                             netValue: data.surplus_value - data.shortage_value,
@@ -1116,11 +1159,24 @@ export const cyclicInventoryService = {
     },
 
     getAdjustmentHistory: async (branchName: string, labName: string): Promise<any[]> => {
+        // Try to fetch from professional SAP-style Ledger first
+        const { data: ledgerData, error: ledgerError } = await supabase
+            .from('inventory_ledger')
+            .select('*')
+            .eq('branch_name', normalizeString(branchName))
+            .eq('laboratory', normalizeString(labName))
+            .order('created_at', { ascending: false });
+
+        if (!ledgerError && ledgerData && ledgerData.length > 0) {
+            return ledgerData;
+        }
+
+        // Fallback to legacy inventory_adjustments for old data
         const { data, error } = await supabase
             .from('inventory_adjustments')
             .select('*')
-            .eq('branch_name', branchName)
-            .eq('laboratory', labName)
+            .eq('branch_name', normalizeString(branchName))
+            .eq('laboratory', normalizeString(labName))
             .order('created_at', { ascending: false });
 
         if (error) {
@@ -1137,7 +1193,7 @@ export const cyclicInventoryService = {
 
             const insertData = categories.map(cat => ({
                 laboratory: '_CONFIG_',
-                branch_name: branchName,
+                branch_name: normalizeString(branchName),
                 ean: `CLOSURE_${period}_${cat.name.toUpperCase()}`,
                 quantity: Math.round(cat.percentage),
                 system_quantity: 0,
@@ -1147,7 +1203,7 @@ export const cyclicInventoryService = {
             // Delete previous closures for this period and branch to avoid duplicates
             await supabase.from('inventories')
                 .delete()
-                .eq('branch_name', branchName)
+                .eq('branch_name', normalizeString(branchName))
                 .eq('laboratory', '_CONFIG_')
                 .ilike('ean', `CLOSURE_${period}_%`);
 
@@ -1176,7 +1232,7 @@ export const cyclicInventoryService = {
         const { data, error } = await supabase
             .from('inventories')
             .select('ean, quantity')
-            .eq('branch_name', branchName.trim())
+            .eq('branch_name', normalizeString(branchName))
             .eq('laboratory', '_CONFIG_')
             .ilike('ean', `CLOSURE_${period}_%`);
 
@@ -1219,28 +1275,33 @@ export const cyclicInventoryService = {
      */
     purgeBranchProgress: async (branchName: string): Promise<void> => {
         try {
-            const cleanName = branchName.trim();
+            const cleanName = normalizeString(branchName);
 
             // 1. Inventories
             await supabase.from('inventories')
                 .delete()
-                .ilike('branch_name', cleanName)
+                .eq('branch_name', cleanName)
                 .neq('laboratory', '_CONFIG_');
 
-            // 2. Adjustments
+            // 2. Adjustments (Legacy)
             await supabase.from('inventory_adjustments')
                 .delete()
-                .ilike('branch_name', cleanName);
+                .eq('branch_name', cleanName);
 
             // 3. Metadata (branch_laboratories)
             await supabase.from('branch_laboratories')
                 .delete()
-                .ilike('branch_name', cleanName);
+                .eq('branch_name', cleanName);
 
-            // 4. Reports
+            // 4. Reports (Legacy)
             await supabase.from('inventory_reports')
                 .delete()
-                .ilike('branch_name', cleanName);
+                .eq('branch_name', cleanName);
+
+            // 5. SAP Ledger (Headers and details will cascade delete if schema permits, 
+            // but usually we want to keep the Ledger. If explicit branch purge is requested 
+            // by admin, we might want to clean it too, but with caution.)
+            // await supabase.from('inventory_ledger').delete().eq('branch_name', cleanName);
 
             console.log(`Purga completa para sucursal: ${branchName}`);
         } catch (error) {
@@ -1262,6 +1323,28 @@ export const cyclicInventoryService = {
             return data;
         } catch (error) {
             return null;
+        }
+    },
+
+    /**
+     * Limpia la "Mesa de Trabajo" (inventories) tras finalizar,
+     * pero PRESERVA los ajustados para que sigan visibles en su pestaña.
+     */
+    clearInventoryWorkspace: async (branchName: string, labName: string): Promise<void> => {
+        try {
+            const cleanBranch = normalizeString(branchName);
+            const cleanLab = normalizeString(labName);
+            await supabase.from('inventories')
+                .delete()
+                .eq('branch_name', cleanBranch)
+                .eq('laboratory', cleanLab)
+                .neq('laboratory', '_CONFIG_')
+                .neq('status', 'adjusted'); // <--- SMART ARCHIVE: No borrar ajustados
+
+            console.log(`Mesa de trabajo limpia (preservando ajustados) para ${labName} en ${branchName}`);
+        } catch (error) {
+            console.error("Error en clearInventoryWorkspace:", error);
+            throw error;
         }
     }
 };

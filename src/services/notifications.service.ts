@@ -55,5 +55,47 @@ export const notificationService = {
             .eq('user_id', user.id);
 
         if (error) throw error;
+    },
+
+    /**
+     * Delete a notification by ID
+     */
+    async deleteNotification(id: string) {
+        const { error } = await supabase
+            .from('notifications')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+    },
+
+    /**
+     * Send a notification to all users in a branch
+     */
+    async sendToBranch(branchName: string, notification: { title: string, message: string, type?: string, category?: string }, senderId?: string) {
+        const { error } = await (supabase.rpc as any)('send_branch_notification', {
+            p_branch_name: branchName,
+            p_title: notification.title,
+            p_message: notification.message,
+            p_type: notification.type || 'info',
+            p_category: notification.category || 'ANUNCIO'
+        });
+
+        if (error) {
+            console.error("Error sending branch notification:", error);
+            throw error;
+        }
+
+        // Log to admin's own notification history
+        if (senderId) {
+            await supabase.from('notifications').insert({
+                user_id: senderId,
+                title: `📤 Anuncio enviado a ${branchName}`,
+                message: notification.message,
+                type: 'info',
+                category: 'ENVIADO',
+                is_read: true
+            });
+        }
     }
 };

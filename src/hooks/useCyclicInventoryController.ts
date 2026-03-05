@@ -183,8 +183,8 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
 
     // Save & Finalize Logic
     const handleFinalizeClick = async () => {
-        await saveProgress();
-        await fetchPersistentStats(); // Refresh stats from DB to ensure sync
+        // No guardamos en la nube antes de abrir el diálogo, según pedido del usuario.
+        // El usuario ingresará los IDs y recién ahí gatillaremos el guardado final.
         setShowSaveDialog(true);
     };
 
@@ -247,12 +247,19 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
 
             setItems(updatedItems);
 
-            // Guardar invocando al Motor Ferrari 
+            // 0. Sincronización obligatoria previa al SNAP
+            // Antes de finalizar el laboratorio, debemos asegurarnos de que el estado actual (controlled)
+            // esté en la nube. De lo contrario, finalize_cyclic_inventory no encontrará nada.
+            await cyclicInventoryService.saveInventory(branchName, labName, items);
+
+            // 1. Guardar invocando al Motor Ferrari 
             await cyclicInventoryService.saveInventoryForFinalize(
                 branchName,
                 labName,
                 updatedItems,
-                user?.id || ''
+                user?.id || '',
+                shortageId,
+                surplusId
             );
 
             // Fetch the updated stats to reflect the real database state after finalization

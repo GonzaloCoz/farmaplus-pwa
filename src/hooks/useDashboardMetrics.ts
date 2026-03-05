@@ -181,7 +181,7 @@ export function useDashboardMetrics() {
         metrics,
         globalProgress,
         assignedDays: (config as any)?.days || 0,
-        cycleStartDate: (config as any)?.startDate ? new Date((config as any).startDate) : undefined,
+        cycleStartDate: (config as any)?.startDate || null,
         updateConfig,
         isLocked: lockStatus.isLocked,
         lockReason: lockStatus.reason,

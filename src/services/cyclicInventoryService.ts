@@ -156,9 +156,10 @@ export const cyclicInventoryService = {
     saveInventoryForFinalize: async (
         branchName: string,
         labName: string,
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        items: CyclicItem[], // Mantener por retrocompatibilidad de firma, aunque ya no se envían items uno por uno
-        userId: string
+        items: CyclicItem[],
+        userId: string,
+        shortageId: string | null,
+        surplusId: string | null
     ) => {
         try {
             // "El Snap": Finalización atómica en base de datos.
@@ -166,7 +167,8 @@ export const cyclicInventoryService = {
             const { error } = await (supabase as any).rpc('finalize_cyclic_inventory', {
                 p_branch_name: normalizeString(branchName),
                 p_laboratory: normalizeString(labName),
-                p_plex_id: null,
+                p_shortage_id: shortageId,
+                p_surplus_id: surplusId,
                 p_user_id: userId
             });
 
@@ -749,174 +751,28 @@ export const cyclicInventoryService = {
 
 
 
-    // Get summary for ALL branches (Admin View)
-    getBranchesSummary: async (): Promise<any[]> => {
-        // 1. Fetch metadata for ALL metrics with pagination
-        // Total metadata should be a few thousand rows (fast), unlike inventories (millions)
-        let allMetaData: any[] = [];
-        let from = 0;
-        const PAGE_SIZE = 1000;
-        let hasMore = true;
-
-        try {
-            while (hasMore) {
-                const { data, error } = await supabase
-                    .from('branch_laboratories')
-                    .select('*')
-                    .range(from, from + PAGE_SIZE - 1);
-
-                if (error) throw error;
-                if (!data || data.length === 0) {
-                    hasMore = false;
-                } else {
-                    allMetaData = [...allMetaData, ...data];
-                    if (data.length < PAGE_SIZE) {
-                        hasMore = false;
-                    } else {
-                        from += PAGE_SIZE;
-                    }
-                }
-            }
-        } catch (metaError) {
-            console.error("Error fetching branches metadata with pagination:", metaError);
-        }
-
-        // --- Fetch Goals ---
-        let labCounts: Record<string, number> = {};
-        const { data: goalsData, error: goalsError } = await supabase
-            .from('branch_goals')
-            .select('branch_name, total_labs_goal');
-
-        if (!goalsError && goalsData && goalsData.length > 0) {
-            goalsData.forEach(g => {
-                labCounts[g.branch_name] = g.total_labs_goal;
-            });
-        } else {
-            labCounts = await getAllBranchLabCounts();
-        }
-
-        // --- Fetch Configs for Start Date and Days ---
-        const { data: configData } = await supabase
-            .from('inventories')
-            .select('branch_name, ean, quantity')
-            .eq('laboratory', '_CONFIG_')
-            .in('ean', ['CONFIG_START_DATE', 'CONFIG_DAYS']);
-
-        const branchConfigs: Record<string, { startDate: string | null, days: number }> = {};
-        if (configData) {
-            configData.forEach(c => {
-                const normalized = normalizeString(c.branch_name || '');
-                if (!branchConfigs[normalized]) {
-                    branchConfigs[normalized] = { startDate: null, days: 0 };
-                }
-                if (c.ean === 'CONFIG_START_DATE') {
-                    branchConfigs[normalized].startDate = new Date(c.quantity * 1000).toISOString();
-                } else if (c.ean === 'CONFIG_DAYS') {
-                    branchConfigs[normalized].days = c.quantity;
-                }
-            });
-        }
-
-        // --- Optimized Aggregation Logic ---
-        const summarizedBranches = BRANCH_NAMES.map(branchName => {
-            const cleanName = branchName.toLowerCase().trim();
-
-            // Filter meta for this branch
-            const branchMeta = allMetaData.filter(m => {
-                const mBranch = (m.branch_name || '').toLowerCase().trim();
-                return mBranch === cleanName && (m.total_items > 0);
-            });
-
-            let inventoryUnits = 0;
-            let differenceUnits = 0;
-            let adjustmentsValue = 0;
-            const controlledLabs = new Set<string>();
-
-            branchMeta.forEach(m => {
-                inventoryUnits += (m.total_system_units || 0);
-                differenceUnits += (m.net_units || 0);
-                adjustmentsValue += (m.net_value || 0);
-
-                if (m.status === 'completed' || m.progress_percentage >= 100) {
-                    controlledLabs.add(m.laboratory);
-                }
-            });
-
-            const totalLabsGoal = labCounts[branchName] || 0;
-            const controlledCount = controlledLabs.size;
-            const progress = totalLabsGoal > 0 ? Number(((controlledCount / totalLabsGoal) * 100).toFixed(1)) : 0;
-
-            let status = 'pendiente';
-            if (controlledCount >= totalLabsGoal && totalLabsGoal > 0) status = 'controlado';
-            else if (controlledCount > 0) status = 'por_controlar';
-
-            // Dynamic date calculation
-            const config = branchConfigs[normalizeString(branchName)] || { startDate: null, days: 0 };
-            const startDateIso = config.startDate;
-            const assignedDays = config.days;
-            const deploymentDate = startDateIso
-                ? new Date(startDateIso).toLocaleDateString('es-AR', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                    timeZone: 'UTC'
-                })
-                : 'sin fecha asignada';
-
-            let elapsedDays = 0;
-            let remainingDays = 0;
-            if (startDateIso) {
-                const start = new Date(startDateIso);
-                const today = new Date();
-                const diffTime = today.getTime() - start.getTime();
-                elapsedDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
-                remainingDays = Math.max(0, assignedDays - elapsedDays);
-            } else if (assignedDays > 0) {
-                remainingDays = assignedDays;
-            }
-
-            return {
-                branchName,
-                deploymentDate,
-                assignedDays: Number(assignedDays) || 0,
-                remainingDays: Number(remainingDays) || 0,
-                cyclicRound: 1,
-                monthlyGoal: totalLabsGoal,
-                elapsedDays,
-                progress,
-                inventoryUnits,
-                differenceUnits,
-                adjustmentsValue: Math.round(adjustmentsValue * 100) / 100,
-                status
-            };
-        });
-
-        return summarizedBranches.sort((a, b) => b.progress - a.progress);
-    },
 
 
 
     // Configuration System
     getBranchConfig: async (branchName: string): Promise<{ days: number, startDate: string | null }> => {
         const cleanBranch = normalizeString(branchName);
-        const { data } = await supabase
+        const { data, error } = await supabase
             .from('inventories')
             .select('ean, quantity')
             .eq('branch_name', cleanBranch)
             .eq('laboratory', '_CONFIG_');
 
-        if (!data || (data as any).length === 0) return { days: 0, startDate: null };
+        if (error || !data || data.length === 0) return { days: 0, startDate: null };
 
         const configData = data as any[];
         const daysRecord = configData.find(r => r.ean === 'CONFIG_DAYS');
         const startDateRecord = configData.find(r => r.ean === 'CONFIG_START_DATE');
 
-        // If it's the old format (only one record with ean 'CONFIG_DAYS' or generic)
-        const days = daysRecord ? daysRecord.quantity : (configData[0]?.ean === 'CONFIG_DAYS' ? configData[0].quantity : 0);
+        const days = Number(daysRecord?.quantity || 0);
 
         let startDate = null;
         if (startDateRecord && startDateRecord.quantity) {
-            // Convert back to ms (stored as seconds to fit in 32-bit integer)
             startDate = new Date(startDateRecord.quantity * 1000).toISOString();
         }
 

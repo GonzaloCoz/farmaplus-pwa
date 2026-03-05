@@ -15,7 +15,6 @@ BEGIN
     public.inventories, 
     public.inventory_adjustments, 
     public.inventory_reports,
-    public.branch_summaries,
     public.precount_sessions,
     public.audit_logs
   RESTART IDENTITY CASCADE;

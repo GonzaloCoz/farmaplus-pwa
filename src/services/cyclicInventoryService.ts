@@ -163,13 +163,16 @@ export const cyclicInventoryService = {
     ) => {
         try {
             // "El Snap": Finalización atómica en base de datos.
+            // Validar que el userId sea un UUID válido para evitar error 400
+            const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId);
+
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { error } = await (supabase as any).rpc('finalize_cyclic_inventory', {
                 p_branch_name: normalizeString(branchName),
                 p_laboratory: normalizeString(labName),
                 p_shortage_id: shortageId,
                 p_surplus_id: surplusId,
-                p_user_id: userId
+                p_user_id: isValidUUID ? userId : null // Pass null if invalid, SQL handles it
             });
 
             if (error) {
@@ -680,24 +683,61 @@ export const cyclicInventoryService = {
                         differenceUnits: rawSummary.difference_units,
                         adjustmentsValue: rawSummary.adjustments_value,
                         controlledLabsCount: rawSummary.controlled_labs_count,
+                        activeLabsCount: rawSummary.active_labs_count,
+                        totalControlledItems: rawSummary.total_controlled_items,
+                        totalItemsSum: rawSummary.total_items_sum,
+                        weightedProgressSum: rawSummary.weighted_progress_sum,
                         updatedAt: rawSummary.updated_at
                     });
                     if (result.success) {
-                        summary = result.data;
+                        summary = result.data as any;
                     } else {
                         console.error(`Validation Error for branch ${branchName}:`, result.error.format());
                     }
                 }
 
                 const totalLabsGoal = labCounts[branchName] || 0;
-                const controlledCount = summary?.controlledLabsCount || 0;
-                const progress = totalLabsGoal > 0 ? Number(((controlledCount / totalLabsGoal) * 100).toFixed(1)) : 0;
+                const controlledLabsCount = summary?.controlledLabsCount || 0;
+                const activeCount = summary?.activeLabsCount || 0;
 
-                const cleanName = branchName.toLowerCase().trim();
+                // Progress calculation: 
+                // We prefer item-based progress if we have the data, as it reflects partial lab work.
+                // However, we want to scale it by the proportion of labs started vs the goal if appropriate?
+                // Actually, the most intuitive is: (Total items controlled / Total items in ALL labs)
+                // Since we only know total items of STARTED labs, we can estimate or use a hybrid.
+
+                // --- PRECISE PROGRESS CALCULATION (WEIGHTED BY LABS) ---
+                let progress = 0;
+                if (totalLabsGoal > 0) {
+                    // weightedProgressSum is the sum of (avg progress of each lab)
+                    // 100 points = 1 lab completed.
+                    progress = Number((summary.weightedProgressSum / totalLabsGoal).toFixed(1));
+                } else if (summary?.totalItemsSum > 0) {
+                    // Fallback to item-based if no goal defined
+                    progress = Number(((summary.totalControlledItems / summary.totalItemsSum) * 100).toFixed(1));
+                }
+
+                // Indicators of activity
+                const hasActivity = activeCount > 0 ||
+                    (summary?.differenceUnits !== 0 && summary?.differenceUnits !== undefined) ||
+                    (summary?.inventoryUnits > 0);
+
+                if (progress === 0 && hasActivity) {
+                    progress = 0.1;
+                }
+
+                if (progress > 100) progress = 100;
+                // -------------------------------------------------------
 
                 let status = 'pendiente';
-                if (controlledCount >= totalLabsGoal && totalLabsGoal > 0) status = 'controlado';
-                else if (controlledCount > 0) status = 'por_controlar';
+                // Finalized only if all labs in goal are finished
+                if (controlledLabsCount >= totalLabsGoal && totalLabsGoal > 0) {
+                    status = 'controlado';
+                }
+                // In Process if any lab is being worked on OR if there are already units/adjustments registered
+                else if (controlledLabsCount > 0 || activeCount > 0 || (summary?.differenceUnits !== 0 && summary?.differenceUnits !== undefined) || (summary?.inventoryUnits > 0)) {
+                    status = 'por_controlar';
+                }
 
                 // Dynamic date calculation
                 const config = branchConfigs[normalizeString(branchName)] || { startDate: null, days: 0 };

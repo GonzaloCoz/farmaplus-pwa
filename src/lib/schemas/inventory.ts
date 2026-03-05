@@ -40,9 +40,13 @@ export const BranchSummaryLiteSchema = z.object({
     differenceUnits: z.number().default(0),
     adjustmentsValue: z.number().default(0),
     controlledLabsCount: z.number().default(0),
+    activeLabsCount: z.number().default(0),
+    totalControlledItems: z.number().default(0),
+    totalItemsSum: z.number().default(0),
+    weightedProgressSum: z.number().default(0),
     assignedDays: z.number().default(0),
     remainingDays: z.number().default(0),
-    updatedAt: z.string().optional(),
+    updatedAt: z.string().optional().nullable(),
 });
 
 export type CyclicItemValidated = z.infer<typeof CyclicItemSchema>;

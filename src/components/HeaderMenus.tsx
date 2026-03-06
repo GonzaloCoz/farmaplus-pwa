@@ -505,9 +505,9 @@ export function UserMenu() {
         <button
           onClick={() => setOpen(true)}
           aria-label="Usuario"
-          className="group flex items-center justify-center h-10 w-10 rounded-xl overflow-hidden hover:ring-2 hover:ring-primary/20 transition-all bg-muted/50 border border-border/40"
+          className="group flex items-center justify-center h-10 w-10 rounded-xl overflow-hidden hover:ring-2 hover:ring-foreground/10 transition-all bg-muted/50 border border-border/40"
         >
-          <div className="h-full w-full flex items-center justify-center text-[11px] font-bold text-blue-600 transition-colors group-hover:bg-blue-600 group-hover:text-white">
+          <div className="h-full w-full flex items-center justify-center text-[11px] font-bold text-foreground transition-colors group-hover:bg-foreground group-hover:text-background border-none">
             {initials}
           </div>
         </button>

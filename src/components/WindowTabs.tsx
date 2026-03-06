@@ -12,6 +12,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { NotificationsMenu } from "@/components/HeaderMenus";
+import { TrainingCenterButton } from "./TrainingCenterButton";
 import { useUser } from "@/contexts/UserContext";
 
 
@@ -139,6 +140,7 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
 
             {/* Right Side Actions */}
             <div className="flex items-center gap-2 ml-4 shrink-0">
+                <TrainingCenterButton />
                 <NotificationsMenu />
                 <button
                     onClick={() => navigate('/settings')}

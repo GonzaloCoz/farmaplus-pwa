@@ -1,4 +1,5 @@
 import { NotificationsMenu } from "@/components/HeaderMenus";
+import { TrainingCenterButton } from "./TrainingCenterButton";
 import { UserProfileSheet } from "@/components/UserProfileSheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Logo from "@/assets/logo.svg";
@@ -40,6 +41,7 @@ export function TopAppBar() {
 
                 {/* Actions Right */}
                 <div className="flex items-center gap-2">
+                    <TrainingCenterButton />
                     <NotificationsMenu />
 
                     <UserProfileSheet

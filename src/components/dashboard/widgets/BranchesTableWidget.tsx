@@ -235,16 +235,10 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                                             onClick={() => handleBranchClick(branch.branchName)}
                                             className={cn(
                                                 "group cursor-pointer hover:bg-muted/50 transition-all border-b last:border-0",
-                                                isActiveBranch(branch.branchName) && "bg-primary/5 hover:bg-primary/10 border-l-4 border-l-primary"
+                                                isActiveBranch(branch.branchName) && "bg-muted/30"
                                             )}
                                         >
                                             <TableCell className="font-medium text-foreground relative">
-                                                {isActiveBranch(branch.branchName) && (
-                                                    <motion.div
-                                                        layoutId="active-indicator"
-                                                        className="absolute left-0 top-0 bottom-0 w-1 bg-primary"
-                                                    />
-                                                )}
                                                 {branch.branchName}
                                             </TableCell>
                                             <TableCell className="text-center text-muted-foreground text-sm hidden md:table-cell">{branch.deploymentDate}</TableCell>
@@ -292,16 +286,16 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                                             </TableCell>
                                             <TableCell className="text-center">
                                                 {branch.status === 'controlado' ? (
-                                                    <Badge variant="outline" className="font-normal border bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30">
-                                                        <CheckCircle className="w-3 h-3 mr-1" /> FINALIZADA
+                                                    <Badge variant="outline" className="font-bold text-[10px] px-2 py-0.5 rounded-full border bg-green-50 text-green-600 border-green-200 dark:bg-green-900/20 dark:border-green-800/30 dark:text-green-400 flex items-center justify-center gap-1 w-fit mx-auto whitespace-nowrap">
+                                                        <CheckCircle className="w-3.5 h-3.5" /> COMPLETADO
                                                     </Badge>
                                                 ) : branch.status === 'por_controlar' ? (
-                                                    <Badge variant="outline" className="font-normal border bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30">
-                                                        <Clock className="w-3 h-3 mr-1" /> EN PROCESO
+                                                    <Badge variant="outline" className="font-bold text-[10px] px-2 py-0.5 rounded-full border bg-purple-50 text-purple-600 border-purple-200 dark:bg-purple-900/20 dark:border-purple-800/30 dark:text-purple-400 flex items-center justify-center gap-1 w-fit mx-auto whitespace-nowrap">
+                                                        <Clock className="w-3.5 h-3.5 animate-pulse" /> EN PROCESO
                                                     </Badge>
                                                 ) : (
-                                                    <Badge variant="outline" className="font-normal border bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/30">
-                                                        <AlertCircle className="w-3 h-3 mr-1" /> PENDIENTE
+                                                    <Badge variant="outline" className="font-bold text-[10px] px-2 py-0.5 rounded-full border bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:border-red-800/30 dark:text-red-400 flex items-center justify-center gap-1 w-fit mx-auto whitespace-nowrap">
+                                                        <AlertCircle className="w-3.5 h-3.5" /> PENDIENTE
                                                     </Badge>
                                                 )}
                                             </TableCell>

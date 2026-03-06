@@ -3,7 +3,7 @@ import { CardHeader, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Magnifer as Search, SortByTime as ArrowUpDown, GraphUp as TrendingUp, CheckCircle, DangerCircle as AlertCircle, ClockCircle as Clock, Download } from '@solar-icons/react';
+import { Magnifer as Search, TransferVertical, GraphUp as TrendingUp, CheckCircle, DangerCircle as AlertCircle, ClockCircle as Clock, Download } from '@solar-icons/react';
 import * as XLSX from 'xlsx';
 import { motion } from 'framer-motion';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
@@ -179,34 +179,70 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                         <Table>
                             <TableHeader className="bg-muted/40 hover:bg-muted/50 transition-colors">
                                 <TableRow>
-                                    <TableHead className="w-[200px] cursor-pointer" onClick={() => requestSort('branchName')}>
+                                    <TableHead className="w-[200px] cursor-pointer whitespace-nowrap" onClick={() => requestSort('branchName')}>
                                         <div className="flex items-center font-semibold text-foreground">
                                             Sucursal
-                                            <ArrowUpDown className="ml-2 h-3 w-3 opacity-50" />
+                                            <TransferVertical className={cn(
+                                                "ml-2 h-3.5 w-3.5 transition-all",
+                                                sortConfig.key === 'branchName' ? "opacity-100 text-primary" : "opacity-30",
+                                                sortConfig.key === 'branchName' && sortConfig.direction === 'descending' && "rotate-180"
+                                            )} />
                                         </div>
                                     </TableHead>
-                                    <TableHead className="text-center cursor-pointer hidden md:table-cell" onClick={() => requestSort('deploymentDate')}>
-                                        Fecha Inicio
+                                    <TableHead className="text-center cursor-pointer hidden md:table-cell whitespace-nowrap" onClick={() => requestSort('deploymentDate')}>
+                                        <div className="flex items-center justify-center font-semibold text-foreground">
+                                            Fecha Inicio
+                                            <TransferVertical className={cn(
+                                                "ml-2 h-3.5 w-3.5 transition-all",
+                                                sortConfig.key === 'deploymentDate' ? "opacity-100 text-primary" : "opacity-30",
+                                                sortConfig.key === 'deploymentDate' && sortConfig.direction === 'descending' && "rotate-180"
+                                            )} />
+                                        </div>
                                     </TableHead>
-                                    <TableHead className="text-center cursor-pointer hidden md:table-cell" onClick={() => requestSort('assignedDays')}>
-                                        Días
+                                    <TableHead className="text-center cursor-pointer hidden md:table-cell whitespace-nowrap" onClick={() => requestSort('assignedDays')}>
+                                        <div className="flex items-center justify-center font-semibold text-foreground">
+                                            Días
+                                            <TransferVertical className={cn(
+                                                "ml-2 h-3.5 w-3.5 transition-all",
+                                                sortConfig.key === 'assignedDays' ? "opacity-100 text-primary" : "opacity-30",
+                                                sortConfig.key === 'assignedDays' && sortConfig.direction === 'descending' && "rotate-180"
+                                            )} />
+                                        </div>
                                     </TableHead>
-                                    <TableHead className="text-center hidden lg:table-cell">Vuelta</TableHead>
-                                    <TableHead className="text-center hidden lg:table-cell">Obj. Mensual</TableHead>
-                                    <TableHead className="text-center cursor-pointer" onClick={() => requestSort('progress')}>
+                                    <TableHead className="text-center hidden lg:table-cell whitespace-nowrap">Vuelta</TableHead>
+                                    <TableHead className="text-center hidden lg:table-cell whitespace-nowrap">Obj. Mensual</TableHead>
+                                    <TableHead className="text-center cursor-pointer whitespace-nowrap" onClick={() => requestSort('progress')}>
                                         <div className="flex items-center justify-center font-semibold text-foreground">
                                             % Avance
-                                            <ArrowUpDown className="ml-2 h-3 w-3 opacity-50" />
+                                            <TransferVertical className={cn(
+                                                "ml-2 h-3.5 w-3.5 transition-all",
+                                                sortConfig.key === 'progress' ? "opacity-100 text-primary" : "opacity-30",
+                                                sortConfig.key === 'progress' && sortConfig.direction === 'descending' && "rotate-180"
+                                            )} />
                                         </div>
                                     </TableHead>
-                                    <TableHead className="text-center hidden md:table-cell">Un. Inventario</TableHead>
-                                    <TableHead className="text-center cursor-pointer hidden md:table-cell" onClick={() => requestSort('differenceUnits')}>
-                                        Diferencia
+                                    <TableHead className="text-center hidden md:table-cell whitespace-nowrap">Un. Inventario</TableHead>
+                                    <TableHead className="text-center cursor-pointer hidden md:table-cell whitespace-nowrap" onClick={() => requestSort('differenceUnits')}>
+                                        <div className="flex items-center justify-center font-semibold text-foreground">
+                                            Diferencia
+                                            <TransferVertical className={cn(
+                                                "ml-2 h-3.5 w-3.5 transition-all",
+                                                sortConfig.key === 'differenceUnits' ? "opacity-100 text-primary" : "opacity-30",
+                                                sortConfig.key === 'differenceUnits' && sortConfig.direction === 'descending' && "rotate-180"
+                                            )} />
+                                        </div>
                                     </TableHead>
-                                    <TableHead className="text-right cursor-pointer" onClick={() => requestSort('adjustmentsValue')}>
-                                        $ Ajustes
+                                    <TableHead className="text-right cursor-pointer whitespace-nowrap" onClick={() => requestSort('adjustmentsValue')}>
+                                        <div className="flex items-center justify-end font-semibold text-foreground">
+                                            $ Ajustes
+                                            <TransferVertical className={cn(
+                                                "ml-2 h-3.5 w-3.5 transition-all",
+                                                sortConfig.key === 'adjustmentsValue' ? "opacity-100 text-primary" : "opacity-30",
+                                                sortConfig.key === 'adjustmentsValue' && sortConfig.direction === 'descending' && "rotate-180"
+                                            )} />
+                                        </div>
                                     </TableHead>
-                                    <TableHead className="text-center w-[120px]">Status</TableHead>
+                                    <TableHead className="text-center w-[120px] whitespace-nowrap">Status</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -235,11 +271,22 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                                             onClick={() => handleBranchClick(branch.branchName)}
                                             className={cn(
                                                 "group cursor-pointer hover:bg-muted/50 transition-all border-b last:border-0",
-                                                isActiveBranch(branch.branchName) && "bg-muted/30"
+                                                isActiveBranch(branch.branchName) && "bg-muted/15 dark:bg-muted/10"
                                             )}
                                         >
                                             <TableCell className="font-medium text-foreground relative">
-                                                {branch.branchName}
+                                                <div className="flex items-center gap-2">
+                                                    {isActiveBranch(branch.branchName) && (
+                                                        <motion.div
+                                                            layoutId="active-dot"
+                                                            className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.5)]"
+                                                            initial={{ scale: 0 }}
+                                                            animate={{ scale: 1 }}
+                                                            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                                                        />
+                                                    )}
+                                                    {branch.branchName}
+                                                </div>
                                             </TableCell>
                                             <TableCell className="text-center text-muted-foreground text-sm hidden md:table-cell">{branch.deploymentDate}</TableCell>
                                             <TableCell className="text-center text-sm hidden md:table-cell">

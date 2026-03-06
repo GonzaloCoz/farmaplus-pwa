@@ -46,7 +46,13 @@ export function DashboardHeader({
 
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-medium tracking-tight text-foreground">
-                    {getGreeting()}, {(user?.role === 'admin' || user?.role === 'mod') ? user?.name.split(' ')[0] : (user?.branchName || 'Sucursal')} <span className="wave">👋</span>
+                    {getGreeting()}, {user?.name.split(' ')[0]}
+                    {user?.branchName && (
+                        <span className="text-muted-foreground font-normal ml-2">
+                            — {user.branchName}
+                        </span>
+                    )}
+                    <span className="wave ml-2">👋</span>
                 </h1>
 
                 <div className="flex gap-2">

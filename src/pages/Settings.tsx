@@ -41,7 +41,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-const AdminAudit = lazy(() => import("@/pages/AdminAudit"));
+// AdminAudit removed - moved to Reports.tsx
 // ... other imports
 
 // Consolidated settings interface
@@ -379,7 +379,6 @@ export default function Settings() {
       <Tabs defaultValue="general" className="space-y-4">
         <TabsList>
           <TabsTrigger value="general">General</TabsTrigger>
-          {isAdmin && <TabsTrigger value="audit">Auditoría</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="general" className="space-y-6">
@@ -742,15 +741,6 @@ export default function Settings() {
           </div>
         </TabsContent>
 
-        {
-          isAdmin && (
-            <TabsContent value="audit">
-              <Suspense fallback={<div className="p-12 text-center text-muted-foreground animate-pulse">Cargando auditoría...</div>}>
-                <AdminAudit />
-              </Suspense>
-            </TabsContent>
-          )
-        }
 
       </Tabs >
     </PageLayout >

@@ -50,18 +50,34 @@ export const auditService = {
     /**
      * Fetch logs (Admin only)
      */
-    async getLogs(filters?: { userId?: string, action?: string, limit?: number }) {
+    async getLogs(filters?: {
+        userId?: string,
+        branchId?: string,
+        action?: string,
+        startDate?: string,
+        endDate?: string,
+        limit?: number
+    }) {
         let query = supabase
             .from('audit_logs')
             .select('*')
             .order('created_at', { ascending: false })
-            .limit(filters?.limit || 50);
+            .limit(filters?.limit || 100);
 
         if (filters?.userId) {
             query = query.eq('user_id', filters.userId);
         }
+        if (filters?.branchId && filters.branchId !== 'all') {
+            query = query.eq('branch_id', filters.branchId);
+        }
         if (filters?.action) {
             query = query.eq('action', filters.action);
+        }
+        if (filters?.startDate) {
+            query = query.gte('created_at', `${filters.startDate}T00:00:00`);
+        }
+        if (filters?.endDate) {
+            query = query.lte('created_at', `${filters.endDate}T23:59:59`);
         }
 
         const { data, error } = await query;

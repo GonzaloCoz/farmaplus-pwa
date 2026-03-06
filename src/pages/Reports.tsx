@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Document as FileText, Magnifer as Search, Calendar, Layers, Eye, AltArrowLeft as ArrowLeft, Download, TrashBinMinimalistic as Trash2, MapPoint as MapPin, Gallery as ImageIcon, CheckCircle, User } from "@solar-icons/react";
+import { Document as FileText, Magnifer as Search, Calendar, Layers, Eye, AltArrowLeft as ArrowLeft, Download, TrashBinMinimalistic as Trash2, MapPoint as MapPin, Gallery as ImageIcon, CheckCircle, User, ShieldCheck } from "@solar-icons/react";
 import { notify } from "@/lib/notifications";
 import { useNavigate, Link } from "react-router-dom";
 import {
@@ -34,7 +34,10 @@ import html2canvas from "html2canvas";
 import { ReportTemplate } from "@/components/ReportTemplate";
 import { Badge } from "@/components/ui/badge";
 import { PageLayout } from "@/components/layout/PageLayout";
-import { PageHeader } from "@/components/layout/PageHeader";
+import { motion } from "framer-motion";
+import { useUser } from "@/contexts/UserContext";
+
+const AdminAudit = lazy(() => import("@/pages/AdminAudit"));
 
 // Interface for Old Inventory Reports
 interface InventoryReport {
@@ -62,6 +65,8 @@ interface ExpirationReport {
 
 export default function Reports() {
   const navigate = useNavigate();
+  const { user } = useUser();
+  const isAdmin = user?.role === 'admin';
   const [activeTab, setActiveTab] = useState("pre-count");
 
   // --- PRE-COUNT HISTORY STATE ---
@@ -181,8 +186,6 @@ export default function Reports() {
 
         const canvas = document.createElement('canvas');
         try {
-          // Use CODE128 to avoid automatic check digit calculation
-          // EAN13 format adds an extra digit which causes scanner issues
           JsBarcode(canvas, item.ean, {
             format: "CODE128",
             displayValue: true,
@@ -198,7 +201,6 @@ export default function Reports() {
           const barcodeData = canvas.toDataURL("image/png");
           doc.addImage(barcodeData, 'PNG', barcodeX, barcodeY, barcodeWidth, barcodeHeight);
         } catch (e) {
-          // Fallback for any barcode generation error
           doc.setFontSize(8);
           doc.text(item.ean, barcodeX, barcodeY + 10);
         }
@@ -286,11 +288,6 @@ export default function Reports() {
     notify.success("Operación exitosa", "Reporte eliminado");
   };
 
-  const handleExportExcel = (report: InventoryReport) => {
-    // Logic from provided original file... (omitted for brevity, assume standard export)
-    notify.info("Información", "Función de exportar excel...");
-  };
-  // --- Re-implementing handleExportExcel properly as it was truncated above by me logically ---
   const doExportExcel = (report: InventoryReport) => {
     try {
       const formatForSheet = (data: any[]) => data.map(item => ({
@@ -400,7 +397,7 @@ export default function Reports() {
 
       item.batches.forEach((batch: any) => {
         doc.text(batch.batchNumber, 15, y);
-        doc.text(batch.expirationDate || '-', 80, y); // Should format if stored raw
+        doc.text(batch.expirationDate || '-', 80, y);
         doc.text(batch.quantity.toString(), 150, y);
         y += 5;
       });
@@ -413,363 +410,474 @@ export default function Reports() {
   };
 
   return (
-    <PageLayout>
-
-
-      <div className="flex-1">
-
-        <div className="flex-1 overflow-hidden">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-            <TabsList className="grid w-full grid-cols-3 max-w-[600px] mb-6 mx-auto bg-muted/50 p-1 rounded-full">
-              <TabsTrigger value="pre-count" className="rounded-full data-[state=active]:bg-background data-[state=active]:shadow-sm">Colector</TabsTrigger>
-              <TabsTrigger value="vencimientos" className="rounded-full data-[state=active]:bg-background data-[state=active]:shadow-sm">Vencimientos</TabsTrigger>
-              <TabsTrigger value="audits" className="rounded-full data-[state=active]:bg-background data-[state=active]:shadow-sm">Auditorías</TabsTrigger>
+    <PageLayout className="flex flex-col h-full overflow-hidden pt-6">
+      <div className="flex-1 flex flex-col min-h-0">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex items-center justify-center mb-8">
+            <TabsList className="bg-muted/30 p-1 rounded-xl border border-border/50 backdrop-blur-sm shadow-inner overflow-hidden">
+              <TabsTrigger
+                value="pre-count"
+                className="rounded-lg px-8 py-2 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:text-primary transition-all duration-300 font-medium"
+              >
+                Colector
+              </TabsTrigger>
+              <TabsTrigger
+                value="vencimientos"
+                className="rounded-lg px-8 py-2 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:text-primary transition-all duration-300 font-medium"
+              >
+                Vencimientos
+              </TabsTrigger>
+              <TabsTrigger
+                value="audits"
+                className="rounded-lg px-8 py-2 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:text-primary transition-all duration-300 font-medium"
+              >
+                Auditorías
+              </TabsTrigger>
+              {isAdmin && (
+                <TabsTrigger
+                  value="system-audit"
+                  className="rounded-lg px-8 py-2 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:text-primary transition-all duration-300 font-medium"
+                >
+                  <ShieldCheck className="w-4 h-4 mr-2" />
+                  Log de Auditoría
+                </TabsTrigger>
+              )}
             </TabsList>
+          </div>
 
+          <div className="flex-1 overflow-hidden px-1">
             {/* --- TAB: COLECTOR --- */}
-            <TabsContent value="pre-count" className="flex-1 overflow-hidden flex flex-col data-[state=inactive]:hidden motion-safe:animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="mb-4 flex justify-end">
-                <div className="relative w-full max-w-xs">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar por sector..."
-                    value={searchSessionTerm}
-                    onChange={(e) => setSearchSessionTerm(e.target.value)}
-                    className="pl-9 bg-card"
-                  />
+            <TabsContent value="pre-count" className="h-full m-0 data-[state=inactive]:hidden outline-none">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="h-full flex flex-col min-h-0"
+              >
+                <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-1">
+                  <h3 className="text-lg font-semibold text-foreground/80">Sesiones Finalizadas</h3>
+                  <div className="relative w-full sm:max-w-xs group">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                    <Input
+                      placeholder="Buscar por sector..."
+                      value={searchSessionTerm}
+                      onChange={(e) => setSearchSessionTerm(e.target.value)}
+                      className="pl-10 bg-muted/20 border-border/50 focus:bg-background transition-all rounded-xl"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex-1 overflow-auto rounded-xl border bg-card shadow-sm">
-                {loadingSessions ? (
-                  <div className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4" />
-                    <p>Cargando historial...</p>
-                  </div>
-                ) : filteredSessions.length > 0 ? (
-                  <Table>
-                    <TableHeader className="bg-muted/30">
-                      <TableRow>
-                        <TableHead>Sector</TableHead>
-                        <TableHead>Fecha</TableHead>
-                        <TableHead className="text-right">Productos</TableHead>
-                        <TableHead className="text-right">Unidades</TableHead>
-                        <TableHead className="w-[100px]"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredSessions.map((session) => (
-                        <TableRow key={session.id} className="hover:bg-muted/50 transition-colors">
-                          <TableCell className="font-medium">
-                            <div className="flex items-center gap-2">
-                              <Layers className="w-4 h-4 text-primary" />
-                              {session.sector}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2 text-muted-foreground text-xs">
-                              <Calendar className="w-3 h-3" />
-                              {new Date(session.start_time).toLocaleDateString()}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-sm">
-                            {session.totalProducts}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-sm">
-                            {session.totalUnits}
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleViewDetails(session)}
-                              className="hover:text-primary"
-                            >
-                              <Eye className="w-4 h-4 mr-2" />
-                              Ver
-                            </Button>
-                          </TableCell>
+                <div className="flex-1 overflow-auto rounded-xl border bg-card/30 backdrop-blur-sm shadow-sm border-border/50">
+                  {loadingSessions ? (
+                    <div className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4" />
+                      <p>Cargando historial...</p>
+                    </div>
+                  ) : filteredSessions.length > 0 ? (
+                    <Table>
+                      <TableHeader className="bg-muted/30 sticky top-0 z-10">
+                        <TableRow>
+                          <TableHead>Sector</TableHead>
+                          <TableHead>Fecha</TableHead>
+                          <TableHead className="text-right">Productos</TableHead>
+                          <TableHead className="text-right">Unidades</TableHead>
+                          <TableHead className="w-[100px]"></TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <div className="flex flex-col items-center justify-center p-20 text-center text-muted-foreground opacity-50">
-                    <FileText className="w-16 h-16 mb-4 stroke-1" />
-                    <p>No hay conteos finalizados aún.</p>
-                  </div>
-                )}
-              </div>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredSessions.map((session) => (
+                          <TableRow key={session.id} className="hover:bg-muted/50 transition-colors group/row">
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                <Layers className="w-4 h-4 text-primary opacity-70 group-hover/row:opacity-100 transition-opacity" />
+                                {session.sector}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                                <Calendar className="w-3 h-3" />
+                                {new Date(session.start_time).toLocaleDateString()}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-sm font-semibold">
+                              {session.totalProducts}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-sm font-semibold">
+                              {session.totalUnits}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleViewDetails(session)}
+                                className="hover:text-primary rounded-lg"
+                              >
+                                <Eye className="w-4 h-4 mr-2" />
+                                Ver
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center p-20 text-center">
+                      <div className="w-20 h-20 rounded-full bg-muted/30 flex items-center justify-center mb-6">
+                        <FileText className="w-10 h-10 text-muted-foreground/40 stroke-1" />
+                      </div>
+                      <h3 className="text-xl font-semibold text-foreground/70 mb-2">No hay sesiones</h3>
+                      <p className="text-muted-foreground max-w-[250px]">Los conteos finalizados en el colector aparecerán listados aquí.</p>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
             </TabsContent>
 
-            {/* --- TAB: VENCIMIENTOS (NEW) --- */}
-            <TabsContent value="vencimientos" className="flex-1 overflow-hidden flex flex-col data-[state=inactive]:hidden motion-safe:animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="flex-1 overflow-auto">
-                {expReports.length === 0 ? (
-                  <Card className="p-12 text-center border-dashed bg-muted/20">
-                    <CheckCircle className="mx-auto h-12 w-12 text-muted-foreground mb-4 opacity-50" />
-                    <h3 className="text-lg font-medium">Sin controles finalizados</h3>
-                    <p className="text-sm text-muted-foreground mt-1">Los reportes de control de vencimientos aparecerán aquí.</p>
-                  </Card>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-10">
-                    {expReports.map(report => (
-                      <Card key={report.id} className="p-5 flex flex-col gap-4 hover:shadow-md transition-shadow">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="font-bold text-lg">{report.sector}</h3>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                              <Calendar className="w-3 h-3" />
-                              {new Date(report.date).toLocaleDateString()}
-                              <span>•</span>
-                              <User className="w-3 h-3" />
-                              {report.responsible}
+            {/* --- TAB: VENCIMIENTOS --- */}
+            <TabsContent value="vencimientos" className="h-full m-0 data-[state=inactive]:hidden outline-none">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="h-full flex flex-col min-h-0"
+              >
+                <div className="flex-1 overflow-auto">
+                  {expReports.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center p-20 text-center">
+                      <div className="w-20 h-20 rounded-full bg-muted/30 flex items-center justify-center mb-6">
+                        <CheckCircle className="w-10 h-10 text-muted-foreground/40 stroke-1" />
+                      </div>
+                      <h3 className="text-xl font-semibold text-foreground/70 mb-2">Sin controles finalizados</h3>
+                      <p className="text-muted-foreground max-w-[250px]">Los reportes de control de vencimientos aparecerán aquí.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-10">
+                      {expReports.map(report => (
+                        <Card key={report.id} className="p-6 flex flex-col gap-4 hover:shadow-lg transition-all border-border/50 bg-card/50 backdrop-blur-sm rounded-2xl group/card overflow-hidden relative">
+                          <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -mr-12 -mt-12 transition-transform group-hover/card:scale-150" />
+                          <div className="flex justify-between items-start relative z-10">
+                            <div>
+                              <h3 className="font-bold text-xl text-foreground/90">{report.sector}</h3>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
+                                <Calendar className="w-3.5 h-3.5" />
+                                {new Date(report.date).toLocaleDateString()}
+                                <span className="opacity-30">•</span>
+                                <User className="w-3.5 h-3.5" />
+                                {report.responsible}
+                              </div>
+                            </div>
+                            <Badge variant="secondary" className="px-3 py-1 rounded-lg bg-primary/10 text-primary border-none font-mono text-sm">
+                              {report.stats.totalUnits} u.
+                            </Badge>
+                          </div>
+
+                          <div className="bg-muted/30 rounded-xl p-4 text-sm space-y-2 relative z-10">
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Productos</span>
+                              <span className="font-bold">{report.stats.totalProducts}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-muted-foreground">Unidades Totales</span>
+                              <span className="font-bold">{report.stats.totalUnits}</span>
                             </div>
                           </div>
-                          <Badge variant="secondary" className="font-mono">{report.stats.totalUnits} u.</Badge>
-                        </div>
 
-                        <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-1">
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Productos</span>
-                            <span className="font-medium">{report.stats.totalProducts}</span>
+                          <div className="flex gap-2 mt-auto pt-4 relative z-10">
+                            <Button className="flex-1 rounded-xl shadow-sm group/btn" variant="outline" size="sm" onClick={() => {
+                              setSelectedExpReport(report);
+                              setExpDetailsOpen(true);
+                            }}>
+                              <Eye className="w-4 h-4 mr-2 transition-transform group-hover/btn:scale-110" />
+                              Ver Detalles
+                            </Button>
+                            <Button variant="ghost" size="icon" className="text-destructive/60 hover:text-destructive hover:bg-destructive/10 rounded-xl" onClick={() => deleteExpReport(report.id)}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Unidades</span>
-                            <span className="font-medium">{report.stats.totalUnits}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex gap-2 mt-auto pt-2">
-                          <Button className="flex-1" variant="outline" size="sm" onClick={() => {
-                            setSelectedExpReport(report);
-                            setExpDetailsOpen(true);
-                          }}>
-                            <Eye className="w-4 h-4 mr-2" />
-                            Detalles
-                          </Button>
-                          <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10" onClick={() => deleteExpReport(report.id)}>
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </div>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
             </TabsContent>
 
             {/* --- TAB: AUDITORÍAS --- */}
-            <TabsContent value="audits" className="flex-1 overflow-hidden flex flex-col data-[state=inactive]:hidden motion-safe:animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar reporte..."
-                    value={searchReportTerm}
-                    onChange={(e) => handleSearchReport(e.target.value)}
-                    className="pl-9 bg-card"
-                  />
+            <TabsContent value="audits" className="h-full m-0 data-[state=inactive]:hidden outline-none">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="h-full flex flex-col min-h-0"
+              >
+                <div className="flex flex-col gap-6 mb-8 px-1">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-foreground/80">Auditorías de Inventario</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="relative group">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                      <Input
+                        placeholder="Buscar reporte..."
+                        value={searchReportTerm}
+                        onChange={(e) => handleSearchReport(e.target.value)}
+                        className="pl-10 bg-muted/20 border-border/50 focus:bg-background transition-all rounded-xl"
+                      />
+                    </div>
+                    <div className="relative group">
+                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                      <Input
+                        placeholder="Filtrar por sucursal..."
+                        value={filterBranch}
+                        onChange={(e) => handleFilterBranch(e.target.value)}
+                        className="pl-10 bg-muted/20 border-border/50 focus:bg-background transition-all rounded-xl"
+                      />
+                    </div>
+                    <div className="relative group">
+                      <Layers className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                      <Input
+                        placeholder="Filtrar por sector..."
+                        value={filterSector}
+                        onChange={(e) => handleFilterSector(e.target.value)}
+                        className="pl-10 bg-muted/20 border-border/50 focus:bg-background transition-all rounded-xl"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <Input
-                  placeholder="Filtrar por sucursal..."
-                  value={filterBranch}
-                  onChange={(e) => handleFilterBranch(e.target.value)}
-                  className="bg-card"
-                />
-                <Input
-                  placeholder="Filtrar por sector..."
-                  value={filterSector}
-                  onChange={(e) => handleFilterSector(e.target.value)}
-                  className="bg-card"
-                />
-              </div>
 
-              <div className="flex-1 overflow-auto">
-                {filteredReports.length === 0 ? (
-                  <Card className="p-12 text-center border-dashed bg-muted/20">
-                    <FileText className="mx-auto h-12 w-12 text-muted-foreground mb-4 opacity-50" />
-                    <h3 className="text-lg font-medium text-foreground">
-                      {reports.length === 0 ? "Sin reportes aún" : "Sin resultados"}
-                    </h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {reports.length === 0
-                        ? "Los reportes de 'Importar Inventario' aparecerán aquí"
-                        : "Intenta con otros filtros de búsqueda"}
-                    </p>
-                  </Card>
-                ) : (
-                  <div className="space-y-3 pb-10">
-                    {filteredReports.map((report) => (
-                      <Link to={`/reports/${report.id}`} key={report.id} className="block group">
-                        <Card className="p-4 cursor-pointer hover:shadow-md transition-all border-l-4 border-l-primary/0 hover:border-l-primary">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">{report.name}</h3>
-                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-muted-foreground">
-                                <div className="flex items-center gap-2"><MapPin className="h-4 w-4" /><span>{report.branch}</span></div>
-                                <div className="flex items-center gap-2"><Layers className="h-4 w-4" /><span>{report.sector}</span></div>
-                                <div className="flex items-center gap-2"><Calendar className="h-4 w-4" /><span>{new Date(report.date).toLocaleDateString("es-ES")}</span></div>
+                <div className="flex-1 overflow-auto px-1">
+                  {filteredReports.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center p-20 text-center">
+                      <div className="w-20 h-20 rounded-full bg-muted/30 flex items-center justify-center mb-6">
+                        <FileText className="w-10 h-10 text-muted-foreground/40 stroke-1" />
+                      </div>
+                      <h3 className="text-xl font-semibold text-foreground/70 mb-2">
+                        {reports.length === 0 ? "Sin reportes aún" : "Sin resultados"}
+                      </h3>
+                      <p className="text-muted-foreground max-w-[300px]">
+                        {reports.length === 0
+                          ? "Los reportes de 'Importar Inventario' aparecerán aquí una vez que se procesen."
+                          : "No encontramos reportes que coincidan con los filtros aplicados."}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4 pb-10">
+                      {filteredReports.map((report) => (
+                        <Link to={`/reports/${report.id}`} key={report.id} className="block group">
+                          <Card className="p-5 cursor-pointer hover:shadow-md transition-all border-l-4 border-l-transparent hover:border-l-primary bg-card/50 backdrop-blur-sm rounded-2xl border border-border/50 overflow-hidden relative">
+                            <div className="flex items-start justify-between relative z-10">
+                              <div className="flex-1">
+                                <h3 className="font-bold text-lg text-foreground/90 group-hover:text-primary transition-colors">{report.name}</h3>
+                                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-3 text-sm text-muted-foreground">
+                                  <div className="flex items-center gap-2 bg-muted/50 px-3 py-1 rounded-full"><MapPin className="h-3.5 w-3.5" /><span>{report.branch}</span></div>
+                                  <div className="flex items-center gap-2 bg-muted/50 px-3 py-1 rounded-full"><Layers className="h-3.5 w-3.5" /><span>{report.sector}</span></div>
+                                  <div className="flex items-center gap-2 bg-muted/50 px-3 py-1 rounded-full"><Calendar className="h-3.5 w-3.5" /><span>{new Date(report.date).toLocaleDateString("es-ES")}</span></div>
+                                </div>
+                              </div>
+                              <div className="flex gap-2" onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  onClick={() => handleExportImage(report)}
+                                  className="h-9 w-9 rounded-xl hover:bg-primary hover:text-primary-foreground border-border/50"
+                                  title="Exportar como Imagen"
+                                >
+                                  <ImageIcon className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  onClick={() => doExportExcel(report)}
+                                  className="h-9 w-9 rounded-xl hover:bg-success hover:text-success-foreground border-border/50 text-success"
+                                  title="Exportar Excel"
+                                >
+                                  <Download className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  onClick={() => handleDeleteReport(report.id)}
+                                  className="h-9 w-9 rounded-xl hover:bg-destructive hover:text-destructive-foreground border-border/50 text-destructive/70"
+                                  title="Eliminar"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
                               </div>
                             </div>
-                            <div className="flex gap-2" onClick={(e) => e.preventDefault()}>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleExportImage(report)}
-                                className="hover:bg-primary hover:text-primary-foreground"
-                                title="Exportar como Imagen"
-                              >
-                                <ImageIcon className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => doExportExcel(report)}
-                                className="hover:bg-success hover:text-success-foreground"
-                                title="Exportar Excel"
-                              >
-                                <Download className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleDeleteReport(report.id)}
-                                className="hover:bg-destructive hover:text-destructive-foreground"
-                                title="Eliminar"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        </Card>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
+                          </Card>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
             </TabsContent>
-          </Tabs>
-        </div>
 
-        {/* Dialogo de Detalles (Colector) */}
-        <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-          <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col">
+            {/* --- TAB: SYSTEM AUDIT --- */}
+            {isAdmin && (
+              <TabsContent value="system-audit" className="flex-1 m-0 data-[state=inactive]:hidden outline-none overflow-y-auto">
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="h-full flex flex-col min-h-0 px-1"
+                >
+                  <Suspense fallback={
+                    <div className="flex flex-col items-center justify-center p-20 text-center">
+                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mb-4" />
+                      <p className="text-muted-foreground animate-pulse">Cargando registros de auditoría...</p>
+                    </div>
+                  }>
+                    <AdminAudit />
+                  </Suspense>
+                </motion.div>
+              </TabsContent>
+            )}
+          </div>
+        </Tabs>
+      </div>
+
+      {/* --- DIALOGS --- */}
+
+      {/* Dialogo de Detalles (Colector) */}
+      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col rounded-3xl overflow-hidden border-none shadow-2xl p-0">
+          <div className="bg-muted/10 p-6 pb-4 border-b">
             <DialogHeader>
-              <DialogTitle>Detalle del Colector</DialogTitle>
-              <DialogDescription>
+              <DialogTitle className="text-2xl font-bold tracking-tight">Detalle del Colector</DialogTitle>
+              <DialogDescription className="text-base mt-2">
                 {selectedSession && (
-                  <span>
-                    Sector: <strong>{selectedSession.sector}</strong> -
-                    Fecha: {new Date(selectedSession.start_time).toLocaleString()}
-                  </span>
+                  <div className="flex items-center gap-3 mt-1">
+                    <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 px-3 py-1 rounded-lg">Sector: {selectedSession.sector}</Badge>
+                    <span className="text-muted-foreground/60">|</span>
+                    <span className="flex items-center gap-1.5 text-muted-foreground">
+                      <Calendar className="w-4 h-4" />
+                      {new Date(selectedSession.start_time).toLocaleString()}
+                    </span>
+                  </div>
                 )}
               </DialogDescription>
             </DialogHeader>
+          </div>
 
-            <div className="flex-1 overflow-auto min-h-[300px] border rounded-md">
-              {loadingItems ? (
-                <div className="flex items-center justify-center h-full">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-                </div>
-              ) : (
+          <div className="flex-1 overflow-auto bg-card/10">
+            {loadingItems ? (
+              <div className="flex flex-col items-center justify-center h-64 gap-4">
+                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
+                <p className="text-muted-foreground animate-pulse">Cargando productos...</p>
+              </div>
+            ) : (
+              <div className="p-6 pt-0">
                 <Table>
-                  <TableHeader className="sticky top-0 bg-background">
-                    <TableRow>
-                      <TableHead>EAN</TableHead>
-                      <TableHead>Producto</TableHead>
-                      <TableHead className="text-right">Cant.</TableHead>
+                  <TableHeader className="sticky top-0 bg-background/50 backdrop-blur-md z-10">
+                    <TableRow className="hover:bg-transparent border-border/50">
+                      <TableHead className="py-4">EAN</TableHead>
+                      <TableHead className="py-4">Producto</TableHead>
+                      <TableHead className="text-right py-4">Cantidad</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {sessionItems.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="font-mono text-xs">{item.ean}</TableCell>
-                        <TableCell className="text-sm">{item.product_name}</TableCell>
-                        <TableCell className="text-right font-bold">{item.quantity}</TableCell>
+                      <TableRow key={item.id} className="border-border/40 hover:bg-muted/30 transition-colors">
+                        <TableCell className="font-mono text-xs font-semibold py-4">{item.ean}</TableCell>
+                        <TableCell className="text-sm py-4">{item.product_name}</TableCell>
+                        <TableCell className="text-right py-4 font-bold text-lg">{item.quantity}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-              )}
-            </div>
+              </div>
+            )}
+          </div>
 
-            <div className="flex justify-end gap-2 pt-4 border-t mt-auto">
-              <Button
-                variant="outline"
-                onClick={() => selectedSession && handleExportPDF(selectedSession, sessionItems)}
-                disabled={loadingItems || sessionItems.length === 0}
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                Descargar PDF
-              </Button>
-              <Button onClick={() => setDetailsOpen(false)}>
-                Cerrar
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+          <div className="p-6 border-t bg-muted/5 flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={() => selectedSession && handleExportPDF(selectedSession, sessionItems)}
+              disabled={loadingItems || sessionItems.length === 0}
+              className="rounded-xl px-6 h-11 border-border/50"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Descargar PDF
+            </Button>
+            <Button onClick={() => setDetailsOpen(false)} className="rounded-xl px-8 h-11 shadow-md">
+              Cerrar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-        {/* Dialogo Detalles Vencimientos */}
-        <Dialog open={expDetailsOpen} onOpenChange={setExpDetailsOpen}>
-          <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col">
+      {/* Dialogo Detalles Vencimientos */}
+      <Dialog open={expDetailsOpen} onOpenChange={setExpDetailsOpen}>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col rounded-3xl overflow-hidden border-none shadow-2xl p-0">
+          <div className="bg-muted/10 p-6 pb-4 border-b">
             <DialogHeader>
-              <DialogTitle className="flex justify-between items-center mr-6">
-                <span>Reporte Vencimientos</span>
-                <Badge variant="outline">{selectedExpReport?.sector}</Badge>
+              <DialogTitle className="flex justify-between items-center mr-8">
+                <span className="text-2xl font-bold tracking-tight">Reporte Vencimientos</span>
+                <Badge className="bg-primary/10 text-primary border-none text-sm px-4 py-1 rounded-full uppercase tracking-wider">{selectedExpReport?.sector}</Badge>
               </DialogTitle>
-              <DialogDescription>
-                <div>Fecha: {selectedExpReport && new Date(selectedExpReport.date).toLocaleString()}</div>
-                <div>Responsable: {selectedExpReport?.responsible}</div>
+              <DialogDescription className="text-base mt-2 space-y-1">
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <Calendar className="w-4 h-4" />
+                  {selectedExpReport && new Date(selectedExpReport.date).toLocaleString()}
+                </div>
+                <div className="flex items-center gap-1.5 text-muted-foreground">
+                  <User className="w-4 h-4" />
+                  Responsable: <span className="font-semibold text-foreground/80">{selectedExpReport?.responsible}</span>
+                </div>
               </DialogDescription>
             </DialogHeader>
+          </div>
 
-            <div className="flex-1 overflow-auto border rounded-xl bg-card p-0">
+          <div className="flex-1 overflow-auto bg-card/10">
+            <div className="p-6 pt-0">
               <Table>
-                <TableHeader className="sticky top-0 bg-background z-10">
-                  <TableRow>
-                    <TableHead>Producto</TableHead>
-                    <TableHead>Lote</TableHead>
-                    <TableHead>Vencimiento</TableHead>
-                    <TableHead className="text-right">Cant.</TableHead>
+                <TableHeader className="sticky top-0 bg-background/50 backdrop-blur-md z-10">
+                  <TableRow className="hover:bg-transparent border-border/50">
+                    <TableHead className="py-4">Producto / EAN</TableHead>
+                    <TableHead className="py-4">Lote</TableHead>
+                    <TableHead className="py-4">Vencimiento</TableHead>
+                    <TableHead className="text-right py-4">Cantidad</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {selectedExpReport?.items.map((item: any) => (
                     item.batches.map((batch: any, idx: number) => (
-                      <TableRow key={item.id + idx}>
-                        <TableCell className="font-medium text-xs">
-                          {idx === 0 && (
-                            <div>
-                              <div>{item.productName}</div>
-                              <span className="text-muted-foreground text-[10px]">{item.ean}</span>
+                      <TableRow key={item.id + idx} className="border-border/40 hover:bg-muted/30 transition-colors">
+                        <TableCell className="py-4">
+                          {idx === 0 ? (
+                            <div className="space-y-0.5">
+                              <div className="text-sm font-semibold">{item.productName}</div>
+                              <div className="text-muted-foreground text-[10px] font-mono tracking-tighter">{item.ean}</div>
                             </div>
+                          ) : (
+                            <div className="w-8 h-[1px] bg-muted/20 ml-2" />
                           )}
                         </TableCell>
-                        <TableCell className="font-mono text-xs">{batch.batchNumber}</TableCell>
-                        <TableCell className="font-mono text-xs">{batch.expirationDate}</TableCell>
-                        <TableCell className="text-right font-bold">{batch.quantity}</TableCell>
+                        <TableCell className="font-mono text-xs py-4 font-medium">{batch.batchNumber}</TableCell>
+                        <TableCell className="font-mono text-xs py-4">
+                          <Badge variant="outline" className="border-border/50 text-[10px] rounded-md font-mono">
+                            {batch.expirationDate}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right py-4 font-bold text-lg">{batch.quantity}</TableCell>
                       </TableRow>
                     ))
                   ))}
                 </TableBody>
               </Table>
             </div>
+          </div>
 
-            <div className="flex justify-end gap-2 pt-4 border-t mt-auto">
-              <Button variant="outline" onClick={() => selectedExpReport && exportExpPDF(selectedExpReport)}>
-                <FileText className="w-4 h-4 mr-2" />
-                Descargar PDF
-              </Button>
-              <Button onClick={() => setExpDetailsOpen(false)}>Cerrar</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+          <div className="p-6 border-t bg-muted/5 flex justify-end gap-3">
+            <Button variant="outline" onClick={() => selectedExpReport && exportExpPDF(selectedExpReport)} className="rounded-xl px-6 h-11 border-border/50">
+              <FileText className="w-4 h-4 mr-2" />
+              Descargar PDF
+            </Button>
+            <Button onClick={() => setExpDetailsOpen(false)} className="rounded-xl px-8 h-11 shadow-md">Cerrar</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-        {/* Hidden Template for Image Generation (Auditorías) */}
-        <div className="fixed left-[-9999px] top-0">
-          <ReportTemplate ref={reportTemplateRef} report={reportToExport} />
-        </div>
+      {/* Hidden Template for Image Generation (Auditorías) */}
+      <div className="fixed left-[-9999px] top-0 opacity-0 pointer-events-none">
+        <ReportTemplate ref={reportTemplateRef} report={reportToExport} />
       </div>
     </PageLayout>
   );

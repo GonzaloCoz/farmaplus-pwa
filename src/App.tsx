@@ -182,11 +182,13 @@ const AppRoutes = () => {
         <Route
           path="/products"
           element={
-            <Suspense fallback={<PageSkeleton />}>
-              <PageTransition>
-                <Products />
-              </PageTransition>
-            </Suspense>
+            <AdminRoute>
+              <Suspense fallback={<PageSkeleton />}>
+                <PageTransition>
+                  <Products />
+                </PageTransition>
+              </Suspense>
+            </AdminRoute>
           }
         />
         <Route
@@ -202,11 +204,13 @@ const AppRoutes = () => {
         <Route
           path="/comparison"
           element={
-            <Suspense fallback={<PageSkeleton />}>
-              <PageTransition>
-                <BranchComparison />
-              </PageTransition>
-            </Suspense>
+            <AdminRoute>
+              <Suspense fallback={<PageSkeleton />}>
+                <PageTransition>
+                  <BranchComparison />
+                </PageTransition>
+              </Suspense>
+            </AdminRoute>
           }
         />
         <Route

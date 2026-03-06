@@ -14,38 +14,49 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.ico', 'logo.png', 'farmaplus-logo.svg'],
+        includeAssets: ['favicon.ico', 'logo.png', 'logo512.png'],
         manifest: {
-          short_name: "Farmaplus",
-          name: "Farmaplus - Gestión de Inventario",
-          description: "Sistema de gestión de inventarios para Farmaplus. Gestiona inventarios cíclicos, importa datos, genera reportes y más.",
+          name: 'Farmaplus - Gestión de Inventario',
+          short_name: 'Farmaplus',
+          description: 'Sistema de gestión de inventarios para Farmaplus. Gestiona inventarios cíclicos, importa datos, genera reportes y más.',
+          theme_color: '#ffffff',
+          background_color: '#ffffff',
+          display: 'standalone',
+          orientation: 'portrait-primary',
+          scope: base,
+          start_url: base,
+          lang: 'es-ES',
           icons: [
             {
-              src: "logo.png",
-              type: "image/png",
-              sizes: "192x192",
-              purpose: "any maskable"
+              src: 'logo.png',
+              sizes: '192x192',
+              type: 'image/png',
+              purpose: 'any maskable'
             },
             {
-              src: "logo512.png",
-              type: "image/png",
-              sizes: "512x512",
-              purpose: "any maskable"
+              src: 'logo512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'any maskable'
             }
           ],
-          start_url: "./index.html",
-          display: "standalone",
-          orientation: "portrait-primary",
-          theme_color: "#ffffff",
-          background_color: "#ffffff",
-          scope: "./",
-          lang: "es-ES"
+          shortcuts: [
+            {
+              name: 'Stock',
+              url: `${base}stock`,
+              icons: [{ src: 'logo.png', sizes: '192x192' }]
+            },
+            {
+              name: 'Inventarios',
+              url: `${base}cyclic-inventory`,
+              icons: [{ src: 'logo.png', sizes: '192x192' }]
+            }
+          ],
+          categories: ['business', 'productivity']
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-          globIgnores: ['**/bg.svg'],
           navigateFallback: 'index.html',
-          navigateFallbackAllowlist: [/^(?!\/__).*/],
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -72,17 +83,17 @@ export default defineConfig(({ mode }) => {
                 },
                 cacheableResponse: {
                   statuses: [0, 200]
-                },
+                }
               }
             },
             {
-              urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/.*/i,
+              urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
               handler: 'NetworkFirst',
               options: {
-                cacheName: 'supabase-api-cache',
+                cacheName: 'supabase-cache',
                 expiration: {
                   maxEntries: 100,
-                  maxAgeSeconds: 60 * 5 // 5 minutes
+                  maxAgeSeconds: 60 * 60 * 24 // 24 hours
                 },
                 cacheableResponse: {
                   statuses: [0, 200]

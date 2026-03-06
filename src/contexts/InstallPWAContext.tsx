@@ -51,7 +51,10 @@ export const InstallPWAProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   const showInstallPrompt = () => {
-    installPrompt?.prompt();
+    if (installPrompt) {
+      installPrompt.prompt();
+      setInstallPrompt(null);
+    }
   };
 
   return (

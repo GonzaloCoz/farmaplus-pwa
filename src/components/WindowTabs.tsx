@@ -11,6 +11,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { NotificationsMenu } from "@/components/HeaderMenus";
 import { TrainingCenterButton } from "./TrainingCenterButton";
 import { useUser } from "@/contexts/UserContext";
 
@@ -140,6 +141,7 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
             {/* Right Side Actions */}
             <div className="flex items-center gap-2 ml-4 shrink-0">
                 <TrainingCenterButton />
+                <NotificationsMenu />
                 <button
                     onClick={() => navigate('/settings')}
                     className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-muted/50 border border-border/40 hover:bg-muted/80 dark:hover:bg-zinc-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"

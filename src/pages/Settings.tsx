@@ -14,7 +14,10 @@ import * as XLSX from 'xlsx';
 
 import { PageLayout } from "@/components/layout/PageLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { useNavigate } from "react-router-dom";
 import { useUser } from "@/contexts/UserContext";
+import { useNotificationPreferences } from "@/contexts/NotificationPreferencesContext";
+import { NotificationPositionSelector } from "@/components/settings/NotificationPositionSelector";
 import { ThemeSelector } from "@/components/settings/ThemeSelector";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { notify } from "@/lib/notifications";
@@ -57,6 +60,7 @@ export default function Settings() {
   const navigate = useNavigate();
   const { user, logout } = useUser();
   const isAdmin = user?.role === 'admin';
+  const { preferences, setPosition, setReminderType } = useNotificationPreferences();
   const { themeMode, setThemeMode } = useTheme();
   const queryClient = useQueryClient();
 
@@ -394,7 +398,9 @@ export default function Settings() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
-      const { error } = await (supabase.from('app_versions') as any)
+      const { error } = await supabase
+        // @ts-ignore - app_versions is not in types yet
+        .from('app_versions')
         .insert({
           version: newVersionObj.version.trim(),
           release_notes: newVersionObj.notes.trim() || 'Actualización menor de sistema y mejoras de estabilidad.',
@@ -436,6 +442,67 @@ export default function Settings() {
 
         <TabsContent value="general" className="space-y-6">
           <div className="grid gap-6">
+            {/* Notificaciones */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Bell className="w-5 h-5 text-primary" />
+                  <CardTitle>Notificaciones</CardTitle>
+                </div>
+                <CardDescription>Personaliza cómo y dónde aparecen las notificaciones.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Reminder Type */}
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-base">Recordatorios</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Estas son notificaciones para recordarte actividad que has perdido o citas próximas.
+                    </p>
+                  </div>
+
+                  <RadioGroup value={preferences.reminderType} onValueChange={(value) => setReminderType(value as any)}>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="center-only" id="center-only" />
+                      <Label htmlFor="center-only" className="font-normal cursor-pointer">
+                        Mostrar nuevos recordatorios en el centro de notificaciones pero no como banners.
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="all" id="all" />
+                      <Label htmlFor="all" className="font-normal cursor-pointer">
+                        Notificarme para todos los recordatorios
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="none" id="none" />
+                      <Label htmlFor="none" className="font-normal cursor-pointer">
+                        No notificarme.
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+
+                {/* Position Selector */}
+                <div className="space-y-4 pt-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-base">Posición de notificación</Label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => notify.info("Notificación de prueba", "Esta es una vista previa de cómo aparecerán tus notificaciones.")}
+                    >
+                      Probar
+                    </Button>
+                  </div>
+                  <NotificationPositionSelector
+                    value={preferences.position}
+                    onChange={setPosition}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Apariencia */}
             <Card>
               <CardHeader>

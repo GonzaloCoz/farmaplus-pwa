@@ -37,6 +37,12 @@ export function AppUpdater() {
     const handleUpdate = async () => {
         // Advanced PWA wipe & reload
         try {
+            // Inform user before reload
+            notify.success("Actualización en curso", "Reiniciando la aplicación para aplicar los cambios...");
+
+            // Give 1 second for the notification to be seen
+            await new Promise(resolve => setTimeout(resolve, 800));
+
             // 1. Unregister all Service Workers
             if ('serviceWorker' in navigator) {
                 const registrations = await navigator.serviceWorker.getRegistrations();
@@ -63,57 +69,70 @@ export function AppUpdater() {
 
     return (
         <AlertDialog open={isUpdateAvailable}>
-            <AlertDialogContent className="max-w-md p-0 overflow-hidden border-2 border-primary/20 bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/80">
-                {/* Windows-style Header Banner */}
-                <div className="bg-gradient-to-r from-blue-600 to-primary p-6 text-white flex items-center gap-3">
-                    <div className="bg-white/20 p-2 rounded-full ring-2 ring-white/40">
-                        <DownloadCloud className="w-6 h-6 text-white" />
-                    </div>
-                    <div>
-                        <h2 className="text-xl font-bold tracking-tight">Actualización Requerida</h2>
-                        <p className="text-blue-100 text-sm opacity-90">Farmaplus Gestión de Inventario</p>
-                    </div>
-                </div>
+            <AlertDialogContent className="max-w-[700px] w-[90vw] p-0 overflow-hidden border-none bg-background/60 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/40 shadow-2xl elevation-10 rounded-[32px]">
+                <div className="relative">
+                    {/* Windows-style Header Banner - Modernized */}
+                    <div className="bg-gradient-to-br from-blue-600/90 via-primary/90 to-indigo-600/90 p-8 text-white flex items-center justify-between overflow-hidden relative">
+                        {/* Decorative background circle */}
+                        <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
 
-                <div className="p-6 space-y-6">
-                    <AlertDialogHeader className="space-y-3">
-                        <AlertDialogTitle className="text-xl">
-                            Nueva versión disponible: <span className="text-primary font-mono bg-primary/10 px-2 py-1 rounded-md text-base">{latestVersion.version}</span>
-                        </AlertDialogTitle>
-                        <AlertDialogDescription className="text-base text-foreground/80">
-                            Hemos publicado una actualización crítica del sistema. Para garantizar que estés trabajando con los últimos datos y herramientas, es obligatorio actualizar ahora.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-
-                    {/* Release Notes Area */}
-                    {latestVersion.release_notes && (
-                        <Card className="border-muted bg-muted/30 overflow-hidden">
-                            <div className="bg-muted px-4 py-2 font-medium text-sm flex items-center gap-2 border-b">
-                                <ServerCrash className="w-4 h-4 text-muted-foreground" />
-                                Novedades de esta versión
+                        <div className="flex items-center gap-5 relative z-10">
+                            <div className="bg-white/20 p-4 rounded-2xl ring-1 ring-white/30 backdrop-blur-md shadow-inner">
+                                <DownloadCloud className="w-8 h-8 text-white animate-pulse" />
                             </div>
-                            <ScrollArea className="h-[120px] w-full rounded-b-md p-4">
-                                <div className="text-sm whitespace-pre-wrap text-muted-foreground">
-                                    {latestVersion.release_notes}
-                                </div>
-                            </ScrollArea>
-                        </Card>
-                    )}
-
-                    <div className="bg-blue-50/50 dark:bg-blue-900/10 p-4 border border-blue-100 dark:border-blue-900/30 rounded-lg text-sm text-blue-800 dark:text-blue-300">
-                        <strong>Importante:</strong> La aplicación se reiniciará automáticamente. Cualquier conteo pendiente que no haya sido guardado podría perderse.
+                            <div>
+                                <h2 className="text-2xl font-black tracking-tight leading-tight">Actualización Lista</h2>
+                                <p className="text-white/70 text-sm font-medium">Farmaplus Gestión • Sistema Central</p>
+                            </div>
+                        </div>
+                        <div className="hidden sm:block opacity-20 relative z-10">
+                            <RefreshCw className="w-24 h-24 rotate-12" />
+                        </div>
                     </div>
 
-                    <AlertDialogFooter className="sm:justify-center">
-                        <Button
-                            onClick={handleUpdate}
-                            className="w-full sm:w-auto min-w-[200px] h-11 text-base font-semibold shadow-lg hover:scale-[1.02] transition-transform flex items-center gap-2"
-                            size="lg"
-                        >
-                            <RefreshCw className="w-4 h-4 animate-spin-slow" />
-                            Actualizar Ahora
-                        </Button>
-                    </AlertDialogFooter>
+                    <div className="p-8 space-y-8">
+                        <AlertDialogHeader className="space-y-4">
+                            <AlertDialogTitle className="text-2xl font-extrabold tracking-tight flex items-center gap-3">
+                                Versión <span className="text-primary bg-primary/10 px-3 py-1 rounded-xl text-lg font-mono border border-primary/20">{latestVersion.version}</span>
+                            </AlertDialogTitle>
+                            <AlertDialogDescription className="text-lg leading-relaxed text-foreground/70 font-medium">
+                                Hemos publicado mejoras significativas y correcciones críticas. Para garantizar la integridad de tus datos, es necesario reiniciar la aplicación.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+
+                        {/* Release Notes Area */}
+                        {latestVersion.release_notes && (
+                            <div className="relative group">
+                                <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-blue-500/20 rounded-3xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+                                <Card className="relative border-border/40 bg-card/50 backdrop-blur-sm overflow-hidden rounded-2xl">
+                                    <div className="bg-muted/50 px-5 py-3 font-semibold text-xs uppercase tracking-widest flex items-center gap-2 border-b border-border/40 text-muted-foreground">
+                                        <ServerCrash className="w-4 h-4" />
+                                        Log de cambios
+                                    </div>
+                                    <ScrollArea className="h-[140px] w-full p-5">
+                                        <div className="text-[15px] leading-relaxed whitespace-pre-wrap font-medium">
+                                            {latestVersion.release_notes}
+                                        </div>
+                                    </ScrollArea>
+                                </Card>
+                            </div>
+                        )}
+
+                        <div className="bg-amber-500/5 dark:bg-amber-500/10 p-5 border border-amber-500/20 rounded-2xl text-[15px] text-amber-700 dark:text-amber-400 font-medium flex gap-3 items-center">
+                            <div className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                            <span>Tus sesiones activas y datos guardados se mantendrán protegidos.</span>
+                        </div>
+
+                        <AlertDialogFooter className="pt-2">
+                            <Button
+                                onClick={handleUpdate}
+                                className="w-full h-14 text-lg font-bold shadow-xl shadow-primary/20 hover:scale-[1.01] active:scale-[0.99] transition-all rounded-2xl bg-primary hover:bg-primary/90 flex items-center justify-center gap-3"
+                            >
+                                <RefreshCw className="w-5 h-5" />
+                                Actualizar y Reiniciar Ahora
+                            </Button>
+                        </AlertDialogFooter>
+                    </div>
                 </div>
             </AlertDialogContent>
         </AlertDialog>

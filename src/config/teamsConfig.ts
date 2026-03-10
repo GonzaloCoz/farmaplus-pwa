@@ -26,6 +26,7 @@ const BRANCH_MAPPING: Record<string, string> = {
     "mercedes": TEAMS_RECIPIENTS.GHCOZ,
     "morón": TEAMS_RECIPIENTS.GHCOZ,
     "saladillo": TEAMS_RECIPIENTS.GHCOZ,
+    "devoto x": TEAMS_RECIPIENTS.GHCOZ,
 
     // Grupo EDIAZ
     "belgrano vi": TEAMS_RECIPIENTS.EDIAZ,

@@ -10,6 +10,7 @@ import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { WindowRouter } from "@/components/WindowRouter";
 import { getTabMetaForPath } from "@/config/tabConfig";
+import { AppUpdater } from "@/components/AppUpdater";
 
 export function AppLayout() {
   const { windows, activeWindowId, updateWindowPath, updateWindowMeta } = useWindowManager();
@@ -88,6 +89,7 @@ export function AppLayout() {
           <SyncStatus />
         </div>
       </div>
+      <AppUpdater />
     </div>
   );
 }

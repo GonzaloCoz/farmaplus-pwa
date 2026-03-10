@@ -93,7 +93,8 @@ export const BRANCH_NAMES = [
     "Escobar",
     "Devoto III",
     "Palermo IV",
-    "Boedo"
+    "Boedo",
+    "Devoto X"
 ];
 
 // Helper to generate BranchUser objects from names

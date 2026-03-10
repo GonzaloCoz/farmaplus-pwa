@@ -38,7 +38,11 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, BookOpen, Users2, DownloadCloud, PenTool } from 'lucide-react';
+import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
+import { useAppVersion, CURRENT_APP_VERSION } from '@/hooks/useAppVersion';
+import { Textarea } from '@/components/ui/textarea';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 // AdminAudit removed - moved to Reports.tsx
@@ -54,10 +58,11 @@ interface AppSettings {
 
 export default function Settings() {
   const navigate = useNavigate();
-  const { user } = useUser();
+  const { user, logout } = useUser();
   const isAdmin = user?.role === 'admin';
   const { preferences, setPosition, setReminderType } = useNotificationPreferences();
   const { themeMode, setThemeMode } = useTheme();
+  const queryClient = useQueryClient();
 
   // Consolidated settings state
   const [settings, setSettings] = useState<AppSettings>({
@@ -70,7 +75,20 @@ export default function Settings() {
   const [isImporting, setIsImporting] = useState(false);
   const [isImportingLabs, setIsImportingLabs] = useState(false);
   const [isPurging, setIsPurging] = useState(false);
+  const [isUpdatingGoals, setIsUpdatingGoals] = useState(false);
   const isGcoz = user?.username.toLowerCase() === 'gcoz';
+
+  // App Version state
+  const { currentVersion, latestVersion } = useAppVersion();
+  const [isPublishingVersion, setIsPublishingVersion] = useState(false);
+  const [newVersionObj, setNewVersionObj] = useState({ version: '', notes: '' });
+
+  // Add auto-generated version prefix on load
+  useEffect(() => {
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}.${(today.getMonth() + 1).toString().padStart(2, '0')}.${today.getDate().toString().padStart(2, '0')}`;
+    setNewVersionObj(prev => ({ ...prev, version: `v1.2.x (Build ${dateStr})` }));
+  }, []);
 
   // Optimized update function
   const updateSetting = useCallback(<K extends keyof AppSettings>(
@@ -187,7 +205,7 @@ export default function Settings() {
         branch_name: a.branch,
         laboratory: a.lab,
         category: a.category,
-        // Status might be reset to default or kept? 
+        // Status might be reset to default or kept?
         // If we want to ensure visibility, defaulting to 'pending' is safe for configuration updates.
         status: 'pending' as const,
         // No updated_at col
@@ -252,11 +270,12 @@ export default function Settings() {
         "Sincronización Exacta Completada",
         `${insertedCount} laboratorios asegurados. ${deletedCount} laboratorios obsoletos eliminados de las sucursales procesadas.`
       );
-
+      toast.success('Laboratorios y categorías importados exitosamente');
       event.target.value = '';
-    } catch (error) {
+    } catch (error: any) {
       console.error("Import error:", error);
       notify.error("Error", `No se pudo completar la importación: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      toast.error('Error al importar', { description: error.message });
       event.target.value = '';
     } finally {
       setIsImportingLabs(false);
@@ -366,6 +385,46 @@ export default function Settings() {
       console.error(error);
     } finally {
       setIsPurging(false);
+    }
+  };
+
+  const handlePublishVersion = async () => {
+    if (!newVersionObj.version.trim()) {
+      toast.error('Ingresa un número de versión válido');
+      return;
+    }
+
+    setIsPublishingVersion(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      const { error } = await supabase
+        // @ts-ignore - app_versions is not in types yet
+        .from('app_versions')
+        .insert({
+          version: newVersionObj.version.trim(),
+          release_notes: newVersionObj.notes.trim() || 'Actualización menor de sistema y mejoras de estabilidad.',
+          is_active: true,
+          published_by: user?.id
+        });
+
+      if (error) throw error;
+
+      toast.success('Nueva versión publicada exitosamente', {
+        description: 'Todos los clientes conectados recibirán el aviso de actualización al instante.'
+      });
+      setNewVersionObj({ version: '', notes: '' });
+
+    } catch (error: any) {
+      console.error('Error publishing version:', error);
+      // Check if it's a unique constraint violation
+      if (error.code === '23505') {
+        toast.error('Esta versión ya fue publicada antes. Utiliza un nombre o build diferente.');
+      } else {
+        toast.error('Error al publicar nueva versión', { description: error.message });
+      }
+    } finally {
+      setIsPublishingVersion(false);
     }
   };
 
@@ -679,18 +738,60 @@ export default function Settings() {
                   <Info className="w-5 h-5 text-primary" />
                   <CardTitle>Sistema</CardTitle>
                 </div>
-                <CardDescription>Información de la versión y mantenimiento.</CardDescription>
+                <CardDescription>Información de la versión de la aplicación.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
                   <div className="space-y-1">
-                    <p className="font-medium">Versión de la App</p>
-                    <p className="text-sm text-muted-foreground">v1.2.0 (Build 2025.11.24)</p>
+                    <p className="font-medium">Versión Actual Ejecutándose (Local)</p>
+                    <p className="text-sm text-primary font-mono bg-primary/10 inline-block px-1.5 py-0.5 rounded">{CURRENT_APP_VERSION}</p>
                   </div>
-                  <Button variant="outline" size="sm" disabled>
-                    Actualizada
-                  </Button>
+                  <div className="text-right">
+                    <p className="font-medium">Última Publicada (Nube)</p>
+                    <p className="text-sm text-muted-foreground">{latestVersion?.version || 'Igual que local'}</p>
+                  </div>
                 </div>
+
+                {isGcoz && (
+                  <div className="space-y-4 pt-4 border-t">
+                    <div className="flex items-center gap-2 text-primary font-medium mb-2">
+                      <DownloadCloud className="w-4 h-4" />
+                      <h4>Publicar Nueva Actualización a Sucursales</h4>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Completa estos datos después de hacer <code className="bg-muted px-1 py-0.5 rounded">git push</code> para obligar a todas las sucursales a recargar sus navegadores y obtener el nuevo código al instante.
+                    </p>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Nombre de la Nueva Versión</Label>
+                        <Input
+                          placeholder="ej. v1.3.0 (Build 2026.03.09)"
+                          value={newVersionObj.version}
+                          onChange={(e) => setNewVersionObj(p => ({ ...p, version: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Notas de la Versión (Novedades)</Label>
+                        <Textarea
+                          placeholder="- Nuevo módulo de auditoría...&#10;- Corrección de bugs..."
+                          className="min-h-[100px]"
+                          value={newVersionObj.notes}
+                          onChange={(e) => setNewVersionObj(p => ({ ...p, notes: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+
+                    <Button
+                      onClick={handlePublishVersion}
+                      disabled={isPublishingVersion || !newVersionObj.version.trim()}
+                      className="w-full sm:w-auto"
+                    >
+                      <DownloadCloud className="w-4 h-4 mr-2" />
+                      {isPublishingVersion ? 'Publicando...' : 'Forzar Actualización Global'}
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

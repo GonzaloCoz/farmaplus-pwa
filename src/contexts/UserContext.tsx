@@ -10,6 +10,7 @@ export interface User {
     name: string;
     role: 'admin' | 'branch' | 'mod';
     branchName?: string; // Optional for admins/mods
+    branchId?: string; // UUID of the branch
     branchSheet?: string; // Optional for admins/mods
     permissions?: string[];
     assignedBranches?: string[]; // Array of branch names for mod users
@@ -107,6 +108,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                             name: profile.full_name || profile.username,
                             role: (profile.role as 'admin' | 'branch' | 'mod') || 'branch',
                             branchName: profile.branches?.name || 'Casa Central',
+                            branchId: profile.branch_id,
                             branchSheet: profile.branches?.name || 'Casa Central',
                             permissions: finalPermissions,
                             assignedBranches: assignedBranches
@@ -185,6 +187,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                     name: data.full_name || data.username,
                     role: (data.role as 'admin' | 'branch' | 'mod') || 'admin',
                     branchName: branchName || 'Casa Central',
+                    branchId: data.branch_id,
                     branchSheet: branchName || 'Casa Central',
                     permissions: finalPermissions,
                     assignedBranches: assignedBranches

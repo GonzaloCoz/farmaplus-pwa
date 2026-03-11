@@ -61,7 +61,8 @@ export default function PreCount() {
     const [quantity, setQuantity] = useState('1');
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [showCalculator, setShowCalculator] = useState(false);
-    const [highSpeedMode, setHighSpeedMode] = useState(true);
+    const [highSpeedMode, setHighSpeedMode] = useState(false);
+    const [deviceName, setDeviceName] = useState(() => localStorage.getItem('precount_device_name') || '');
     const { trigger } = useHaptic();
 
     const handleCalculatorResult = (result: number) => {
@@ -94,6 +95,11 @@ export default function PreCount() {
         if (!sector.trim()) {
             notify.error("Error", 'Por favor, ingresa el nombre del sector');
             return;
+        }
+
+        // Save device name to localStorage
+        if (deviceName.trim()) {
+            localStorage.setItem('precount_device_name', deviceName.trim());
         }
 
         await startSession(sector.trim());
@@ -463,6 +469,7 @@ export default function PreCount() {
                                 />
                             </div>
 
+
                             <Button
                                 className="w-full h-12 text-lg font-medium shadow-md hover:shadow-lg transition-all"
                                 onClick={handleStartSession}
@@ -604,8 +611,27 @@ export default function PreCount() {
                                 <div className="flex items-center justify-between gap-4 w-full">
                                     {/* Left: Sector Label + Name */}
                                     <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                                        <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap">Sector</span>
-                                        <span className="font-bold text-foreground text-lg sm:text-xl truncate">{session?.sector}</span>
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap">Sector</span>
+                                            <span className="font-bold text-foreground text-sm truncate">{session?.sector}</span>
+                                        </div>
+                                        <div className="flex flex-col border-l border-border/40 pl-3">
+                                            <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap">PC</span>
+                                            <button 
+                                                onClick={() => {
+                                                    const newName = prompt("Nombre de esta PC:", deviceName);
+                                                    if (newName !== null) {
+                                                        const trimmed = newName.trim();
+                                                        setDeviceName(trimmed);
+                                                        localStorage.setItem('precount_device_name', trimmed);
+                                                        notify.success("PC Actualizada", `Identificada como: ${trimmed}`);
+                                                    }
+                                                }}
+                                                className="font-bold text-primary text-sm truncate hover:underline text-left"
+                                            >
+                                                {deviceName || 'Sin nombre'}
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div className="h-10 sm:h-12 w-px bg-border/40 flex-shrink-0" />

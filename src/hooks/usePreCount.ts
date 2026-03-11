@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '@/services/db';
 import { supabase } from '@/integrations/supabase/client';
 import { playSound } from '@/utils/soundUtils';
 import {
@@ -15,6 +17,7 @@ import {
     deleteSession as deleteSessionDB,
 } from '@/services/preCountDB';
 import { notify } from '@/lib/notifications';
+import { useUser } from '@/contexts/UserContext';
 
 export interface UIPreCountItem {
     id: string;
@@ -25,6 +28,8 @@ export interface UIPreCountItem {
     timestamp: number;
     synced?: number;
     id_producto?: string;
+    deviceId?: string;
+    deviceName?: string;
 }
 
 interface UsePreCountReturn {
@@ -47,17 +52,36 @@ interface UsePreCountReturn {
 }
 
 export function usePreCount(): UsePreCountReturn {
-    const [items, setItems] = useState<UIPreCountItem[]>([]);
     const [session, setSession] = useState<PreCountSession | null>(null);
     const [errorCount, setErrorCount] = useState(0);
     const [availableSessions, setAvailableSessions] = useState<PreCountSession[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const { user } = useUser();
+
+    // LIVE QUERY for items - This is our source of truth
+    const items = useLiveQuery(
+        async () => {
+            if (!session) return [];
+            const results = await db.items
+                .where('session_id')
+                .equals(session.id)
+                .reverse()
+                .toArray();
+            
+            return results.map(mapInternalItemToUI);
+        },
+        [session?.id]
+    ) || [];
 
     // Initial Load
     useEffect(() => {
         const init = async () => {
+            if (!user) return; // Wait for user context
             try {
-                const sessions = await getActiveSessions();
+                const sessions = await getActiveSessions({ 
+                    branchId: user.branchId, 
+                    role: user.role 
+                });
                 setAvailableSessions(sessions);
             } catch (error) {
                 console.error('Error initializing pre-count:', error);
@@ -68,83 +92,65 @@ export function usePreCount(): UsePreCountReturn {
         };
 
         init();
-    }, []);
+    }, [user]);
 
-    // REALTIME SUBSCRIPTIONS with incremental updates and debouncing
+    // REALTIME SUBSCRIPTIONS
     useEffect(() => {
         let debounceTimer: NodeJS.Timeout | null = null;
-        const DEBOUNCE_MS = 300; // 300ms debounce for rapid changes
+        const DEBOUNCE_MS = 300;
 
-        // Subscribe to Sessions changes
         const sessionsChannel = supabase
-            .channel('public:precount_sessions')
+            .channel('public:precount_sessions_ui')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'precount_sessions' }, async (payload) => {
-                // Debounce session updates
                 if (debounceTimer) clearTimeout(debounceTimer);
-
                 debounceTimer = setTimeout(async () => {
-                    const sessions = await getActiveSessions();
+                    const sessions = await getActiveSessions({ branchId: user?.branchId, role: user?.role });
                     setAvailableSessions(sessions);
 
-                    // If current session was updated/deleted
                     if (session && payload.eventType === 'DELETE' && payload.old.id === session.id) {
                         setSession(null);
-                        setItems([]);
                         notify.info("Sesión eliminada", "La sesión actual fue eliminada desde otro dispositivo");
                     }
                 }, DEBOUNCE_MS);
             })
             .subscribe();
 
-        // Subscribe to Items changes (only if in a session) - INCREMENTAL UPDATES
         let itemsChannel: any = null;
         if (session) {
             itemsChannel = supabase
-                .channel(`public:precount_items:session_id=${session.id}`)
+                .channel(`public:precount_items:${session.id}`)
                 .on('postgres_changes',
                     { event: 'INSERT', schema: 'public', table: 'precount_items', filter: `session_id=eq.${session.id}` },
-                    (payload) => {
-                        // Incremental INSERT: add new item to list
-                        const newItem = payload.new as PreCountItem;
-                        const uiItem = mapItemToUI(newItem);
-
-                        setItems(prev => {
-                            // Check if item already exists (from optimistic update)
-                            const exists = prev.some(item => item.id === uiItem.id);
-                            if (exists) {
-                                // Update existing item (mark as synced)
-                                return prev.map(item =>
-                                    item.id === uiItem.id ? { ...uiItem, synced: 1 } : item
-                                );
-                            }
-                            // Check if same EAN exists (replace optimistic temp)
-                            const tempIndex = prev.findIndex(item => item.ean === uiItem.ean && item.id.startsWith('temp-'));
-                            if (tempIndex !== -1) {
-                                const newItems = [...prev];
-                                newItems[tempIndex] = { ...uiItem, synced: 1 };
-                                return newItems;
-                            }
-                            // Add new item
-                            return [uiItem, ...prev];
+                    async (payload) => {
+                        const newItem = payload.new as any;
+                        await db.items.put({
+                            id: newItem.id,
+                            session_id: newItem.session_id,
+                            ean: newItem.ean,
+                            product_name: newItem.product_name,
+                            quantity: newItem.quantity,
+                            scanned_at: newItem.scanned_at,
+                            scanned_by: newItem.scanned_by,
+                            synced: 1, 
+                            id_producto: newItem.id_producto,
+                            device_id: newItem.device_id,
+                            device_name: newItem.device_name
                         });
                     })
                 .on('postgres_changes',
                     { event: 'UPDATE', schema: 'public', table: 'precount_items', filter: `session_id=eq.${session.id}` },
-                    (payload) => {
-                        // Incremental UPDATE: update specific item
-                        const updatedItem = payload.new as PreCountItem;
-                        const uiItem = mapItemToUI(updatedItem);
-
-                        setItems(prev => prev.map(item =>
-                            item.id === uiItem.id ? { ...uiItem, synced: 1 } : item
-                        ));
+                    async (payload) => {
+                        const updatedItem = payload.new as any;
+                        await db.items.update(updatedItem.id, {
+                            quantity: updatedItem.quantity,
+                            scanned_at: updatedItem.scanned_at,
+                            synced: 1
+                        });
                     })
                 .on('postgres_changes',
                     { event: 'DELETE', schema: 'public', table: 'precount_items', filter: `session_id=eq.${session.id}` },
-                    (payload) => {
-                        // Incremental DELETE: remove specific item
-                        const deletedId = payload.old.id as string;
-                        setItems(prev => prev.filter(item => item.id !== deletedId));
+                    async (payload) => {
+                        await db.items.delete(payload.old.id);
                     })
                 .subscribe();
         }
@@ -154,36 +160,40 @@ export function usePreCount(): UsePreCountReturn {
             supabase.removeChannel(sessionsChannel);
             if (itemsChannel) supabase.removeChannel(itemsChannel);
         };
-    }, [session?.id]); // Re-subscribe when session changes
+    }, [session?.id, user?.branchId, user?.role]);
 
     // Helper to map DB item to UI item
-    const mapItemToUI = (dbItem: PreCountItem): UIPreCountItem => ({
+    const mapInternalItemToUI = (dbItem: any): UIPreCountItem => ({
         id: dbItem.id,
         sessionId: dbItem.session_id,
         ean: dbItem.ean,
         productName: dbItem.product_name,
         quantity: dbItem.quantity,
-        timestamp: new Date(dbItem.scanned_at).getTime(),
+        timestamp: new Date(dbItem.scanned_at || Date.now()).getTime(),
         synced: dbItem.synced ?? 1,
-        id_producto: dbItem.id_producto
+        id_producto: dbItem.id_producto,
+        deviceId: dbItem.device_id,
+        deviceName: dbItem.device_name
     });
 
-    // Calcular totales con memoization
+    // Calcular totales
     const totalProducts = useMemo(() => items.length, [items.length]);
     const totalUnits = useMemo(() => items.reduce((sum, item) => sum + item.quantity, 0), [items]);
 
     // Iniciar nueva sesión
     const startSession = async (sector: string) => {
+        if (!user) return;
+        setIsLoading(true);
         try {
-            setIsLoading(true);
-            const newSession = await createSession(sector);
+            const newSession = await createSession(sector, user.branchId);
             setSession(newSession);
-            setItems([]);
-            setErrorCount(0);
-            notify.success("Sesión iniciada", `Captura de datos de ${sector} comenzado (En la Nube)`);
+            // Refresh sessions list
+            const sessions = await getActiveSessions({ branchId: user.branchId, role: user.role });
+            setAvailableSessions(sessions);
+            notify.success("Sesión iniciada", "La sesión ha sido creada correctamente");
         } catch (error) {
             console.error('Error starting session:', error);
-            notify.error("Error", "No se pudo iniciar la sesión");
+            notify.error("Error", "No se pudo crear la sesión");
         } finally {
             setIsLoading(false);
         }
@@ -193,10 +203,8 @@ export function usePreCount(): UsePreCountReturn {
     const resumeSession = async (sessionToResume: PreCountSession) => {
         try {
             setSession(sessionToResume);
-            const sessionItems = await getPreCountItemsBySessionId(sessionToResume.id);
-            setItems(sessionItems.map(mapItemToUI));
             setErrorCount(sessionToResume.errorCount || 0);
-            notify.success("Sesión retomada", `Conectado a ${sessionToResume.sector}`);
+            notify.success("Sesión retomada", `Sucursal: ${sessionToResume.sector}`);
         } catch (error) {
             console.error('Error resuming session:', error);
             notify.error("Error", "No se pudo conectar a la sesión");
@@ -205,217 +213,79 @@ export function usePreCount(): UsePreCountReturn {
 
     // Delete session
     const deleteSession = async (id: string) => {
-        if (!confirm('¿Estás seguro de eliminar esta sesión? Se borrará para TODOS los usuarios.')) return;
+        const previousSessions = [...availableSessions];
+        setAvailableSessions(prev => prev.filter(s => s.id !== id));
         try {
             await deleteSessionDB(id);
-            if (session?.id === id) {
-                setSession(null);
-                setItems([]);
-            }
-            notify.success("Sesión eliminada", "La sesión se eliminó correctamente");
+            if (session?.id === id) setSession(null);
+            notify.success("Sesión eliminada", "La sesión ha sido eliminada correctamente");
         } catch (error) {
             console.error('Error deleting session:', error);
+            setAvailableSessions(previousSessions);
             notify.error("Error", "No se pudo eliminar la sesión");
         }
     };
 
-    // Agregar item con optimistic update
+    // Agregar item
     const addItem = useCallback(async (ean: string, productName: string, quantity: number, id_producto?: string) => {
-        if (!session) {
-            notify.error("Sesión requerida", "No hay una sesión activa");
-            return;
-        }
-
-        // Verificar si el producto ya existe
-        const existingItem = items.find(item => item.ean === ean);
-        const previousQuantity = existingItem?.quantity || 0;
-
-        // Optimistic update: actualizar UI inmediatamente
-        const tempId = `temp-${Date.now()}`;
-        const optimisticItem: UIPreCountItem = {
-            id: tempId,
-            sessionId: session.id,
-            ean,
-            productName,
-            quantity,
-            timestamp: Date.now(),
-            synced: 0, // Marca como no sincronizado
-            id_producto: id_producto || existingItem?.id_producto
-        };
-
+        if (!session) return;
         try {
-            if (existingItem) {
-                // Update quantity and MOVE TO TOP
-                const updatedItem = {
-                    ...existingItem,
-                    quantity: existingItem.quantity + quantity,
-                    synced: 0,
-                    timestamp: Date.now() // Update timestamp to reflect re-scan
-                };
-
-                // Remove from current position and add to top
-                setItems(prev => [
-                    updatedItem,
-                    ...prev.filter(item => item.ean !== ean)
-                ]);
-
-                notify.success("Cantidad actualizada", `${productName} (+${quantity}) - Movido al inicio`);
-            } else {
-                // Add new item at the top
-                setItems(prev => [optimisticItem, ...prev]);
-                notify.success("Producto agregado", `${productName} - ${quantity} unidades`);
-                playSound('success');
-            }
-
-            // Realizar operación en servidor (usa upsert RPC optimizado)
             const { upsertPreCountItem } = await import('@/services/preCountDB');
             await upsertPreCountItem({
                 session_id: session.id,
                 ean,
                 product_name: productName,
                 quantity,
-                id_producto: id_producto || existingItem?.id_producto
+                id_producto
             });
-
-            // La actualización real vendrá por realtime subscription
-            // que marcará el item como sincronizado
+            playSound('success');
         } catch (error) {
             console.error('Error adding item:', error);
-
-            // Rollback optimistic update
-            if (existingItem) {
-                setItems(prev => prev.map(item =>
-                    item.ean === ean
-                        ? { ...item, quantity: previousQuantity, synced: 1 }
-                        : item
-                ));
-            } else {
-                setItems(prev => prev.filter(item => item.id !== tempId));
-            }
-
             notify.error("Error", "No se pudo agregar el producto");
         }
-    }, [session, items]);
+    }, [session]);
 
-    // Actualizar item con optimismo
+    // Actualizar item
     const updateItem = useCallback(async (id: string, quantity: number) => {
         if (quantity <= 0) return;
-
-        // 1. Guardar estado anterior para rollback
-        const itemToUpdate = items.find(i => i.id === id);
-        const previousQuantity = itemToUpdate?.quantity || 0;
-
-        // 2. Actualización Optimista: UI inmediata
-        setItems(prev => prev.map(item =>
-            item.id === id ? { ...item, quantity, synced: 0 } : item // synced:0 para indicar pendiente
-        ));
-
-        // Feedback inmediato (opcional, puede ser mucho ruido)
-        // notify.success("Cantidad actualizada", "Sincronizando...");
-
         try {
-            // 3. Llamada al servidor
             await updatePreCountItem(id, { quantity });
-            // El realtime se encargará de confirmar (poner synced: 1)
         } catch (error) {
             console.error('Error updating item:', error);
-
-            // 4. Rollback en caso de error
-            setItems(prev => prev.map(item =>
-                item.id === id ? { ...item, quantity: previousQuantity, synced: 1 } : item
-            ));
-
             notify.error("Error", "No se pudo actualizar el producto");
         }
-    }, [items]);
+    }, []);
 
-    // Eliminar item con optimismo y Deshacer
+    // Eliminar item
     const removeItem = useCallback(async (id: string) => {
-        // 1. Guardar el item para rollback
-        const itemToDelete = items.find(i => i.id === id);
-        if (!itemToDelete) return;
-
-        // 2. Eliminación Optimista: UI inmediata
-        setItems(prev => prev.filter(item => item.id !== id));
-        playSound('delete');
-
-        // 3. Notificación con acción de Deshacer
-        notify.success("Producto eliminado", "Deshacer para restaurar", {
-            duration: 4000,
-            action: {
-                label: "Deshacer",
-                onClick: async () => {
-                    // RESTORE (UNDO)
-                    console.log('Undoing deletion for:', itemToDelete);
-
-                    // Create a temporary item for optimistic restoration to avoid duplication
-                    const restoredItem = {
-                        ...itemToDelete,
-                        id: `temp-undo-${Date.now()}`,
-                        synced: 0
-                    };
-
-                    setItems(prev => [restoredItem, ...prev]);
-                    playSound('success');
-
-                    // Re-insert into DB
-                    try {
-                        const { upsertPreCountItem } = await import('@/services/preCountDB');
-                        await upsertPreCountItem({
-                            session_id: itemToDelete.sessionId,
-                            ean: itemToDelete.ean,
-                            product_name: itemToDelete.productName,
-                            quantity: itemToDelete.quantity,
-                        });
-                    } catch (e) {
-                        console.error('Error restoring item:', e);
-                        notify.error("Error", "No se pudo restaurar el producto");
-                        setItems(prev => prev.filter(i => i.id !== restoredItem.id));
-                    }
-                }
-            }
-        });
-
         try {
-            // 4. Llamada al servidor (Delete real)
             await deletePreCountItem(id);
+            playSound('delete');
         } catch (error) {
             console.error('Error removing item:', error);
-
-            // Rollback automático si falla el borrado real (no el undo)
-            setItems(prev => [...prev, itemToDelete]);
-
             notify.error("Error", "No se pudo eliminar el producto");
-            playSound('error');
         }
-    }, [items]);
+    }, []);
 
     // Finalizar sesión
     const finishSession = async () => {
         if (!session) return;
-        if (!confirm('¿Finalizar sesión de conteo? Esto la cerrará para todos.')) return;
-
+        if (!confirm('¿Finalizar sesión de conteo?')) return;
         try {
             await endSession(session.id);
             setSession(null);
-            setItems([]);
-            notify.success("Sesión finalizada", "La captura de datos se guardó y finalizó");
+            notify.success("Sesión finalizada", "La sesión se cerró y finalizó");
         } catch (error) {
             console.error('Error finishing session:', error);
             notify.error("Error", "No se pudo finalizar la sesión");
         }
     };
 
-    // Refrescar items (manual override)
+    // Refrescar items
     const refreshItems = useCallback(async () => {
-        if (!session) return;
-        try {
-            const sessionItems = await getPreCountItemsBySessionId(session.id);
-            setItems(sessionItems.map(mapItemToUI));
-        } catch (error) {
-            console.error('Error refreshing items:', error);
-        }
-    }, [session]);
+        const sessions = await getActiveSessions({ branchId: user?.branchId, role: user?.role });
+        setAvailableSessions(sessions);
+    }, [user]);
 
     const registerError = useCallback(() => {
         setErrorCount(prev => prev + 1);

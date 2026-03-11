@@ -3,6 +3,20 @@ import { syncManager } from './syncManager';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '@/integrations/supabase/client';
 
+// Device Identification Utility
+export const getDeviceId = () => {
+    let id = localStorage.getItem('precount_device_id');
+    if (!id) {
+        id = `dev-${uuidv4().substring(0, 8)}`;
+        localStorage.setItem('precount_device_id', id);
+    }
+    return id;
+};
+
+export const getDeviceName = () => {
+    return localStorage.getItem('precount_device_name') || 'Generic Device';
+};
+
 // Re-export product functionality from the new service
 export {
     type Product,
@@ -30,7 +44,7 @@ export type PreCountItem = LocalItem;
 
 // --- Sesiones ---
 
-export async function createSession(sector: string): Promise<PreCountSession> {
+export async function createSession(sector: string, branch_id?: string): Promise<PreCountSession> {
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData.user?.id;
     const sessionId = uuidv4();
@@ -42,6 +56,7 @@ export async function createSession(sector: string): Promise<PreCountSession> {
         start_time: now,
         status: 'active',
         user_id: userId,
+        branch_id: branch_id,
         synced: 0
     };
 
@@ -59,13 +74,85 @@ export async function createSession(sector: string): Promise<PreCountSession> {
 }
 
 
-export async function getActiveSessions(): Promise<PreCountSession[]> {
-    // Read from Local DB
-    return await db.sessions
+export async function getActiveSessions(options?: { branchId?: string, role?: string }): Promise<PreCountSession[]> {
+    // 1. Read sessions from Local DB first (immediate results)
+    let localSessions = await db.sessions
         .where('status')
         .equals('active')
         .reverse()
         .sortBy('start_time') as PreCountSession[];
+
+    // 1.1 Filter local by branch if provided
+    if (options?.branchId && options.role === 'branch') {
+        localSessions = localSessions.filter(s => s.branch_id === options.branchId);
+    }
+
+    // 2. If online, try to fetch/sync from Supabase to get latest counts
+    if (navigator.onLine) {
+        try {
+            // Get pending deletes to avoid resurrecting them
+            const pendingDeletes = await db.pendingActions
+                .where('type').equals('delete')
+                .and(a => (a as any).entity === 'session')
+                .toArray();
+            const deletedIds = new Set(pendingDeletes.map(d => d.data.id));
+
+            let query: any = supabase
+                .from('precount_sessions')
+                .select(`
+                    *,
+                    items:precount_items(quantity)
+                `)
+                .eq('status', 'active');
+            
+            // Filter by branch on server if branch user
+            if (options?.branchId && options.role === 'branch') {
+                query = query.eq('branch_id', options.branchId);
+            }
+
+            const { data: remoteSessions, error: sError } = await query;
+
+            if (!sError && remoteSessions) {
+                const rawSessions = remoteSessions as any[];
+                // Filter out those we just deleted locally but haven't synced yet
+                const filteredRemote = rawSessions.filter(rs => !deletedIds.has(rs.id));
+
+                const enrichedSessions: PreCountSession[] = filteredRemote.map(rs => {
+                    const session: PreCountSession = {
+                        id: rs.id,
+                        sector: rs.sector,
+                        start_time: rs.start_time,
+                        status: rs.status as 'active' | 'completed',
+                        user_id: rs.user_id,
+                        branch_id: rs.branch_id,
+                        synced: 1,
+                        totalProducts: rs.items?.length || 0,
+                        totalUnits: rs.items?.reduce((sum: number, it: any) => sum + (it.quantity || 0), 0) || 0
+                    };
+                    return session;
+                });
+
+                // Update local sessions with remote ones (simple merge)
+                for (const rs of filteredRemote) {
+                    const { items: _items, ...sessionData } = rs;
+                    await db.sessions.put(sessionData as LocalSession);
+                }
+
+                return enrichedSessions;
+            }
+        } catch (error) {
+            console.error('Error fetching remote sessions:', error);
+        }
+    }
+
+    // 3. Fallback: Enrich local sessions with counts from Local Items
+    for (const session of localSessions) {
+        const items = await db.items.where('session_id').equals(session.id).toArray();
+        session.totalProducts = items.length;
+        session.totalUnits = items.reduce((sum, item) => sum + item.quantity, 0);
+    }
+
+    return localSessions;
 }
 
 export async function deleteSession(id: string): Promise<void> {
@@ -129,11 +216,13 @@ export async function addPreCountItem(item: { session_id: string, ean: string, p
 
 export async function upsertPreCountItem(item: { session_id: string, ean: string, product_name: string, quantity: number, id_producto?: string }): Promise<PreCountItem> {
     const { data: userData } = await supabase.auth.getUser();
+    const deviceId = getDeviceId();
+    const deviceName = getDeviceName();
 
-    // Check if item exists locally (deduplication/update logic)
+    // Check if item exists locally FOR THIS DEVICE
     const existingItem = await db.items
-        .where('[session_id+ean]')
-        .equals([item.session_id, item.ean])
+        .where('[session_id+ean+device_id]')
+        .equals([item.session_id, item.ean, deviceId])
         .first();
 
     const now = new Date().toISOString();
@@ -145,10 +234,17 @@ export async function upsertPreCountItem(item: { session_id: string, ean: string
         await db.items.update(existingItem.id, {
             quantity: newQuantity,
             scanned_at: now,
-            synced: 0,
-            id_producto: item.id_producto || existingItem.id_producto
+            synced: 1, // Optimistic: assume success
+            id_producto: item.id_producto || existingItem.id_producto,
+            device_name: deviceName
         });
-        resultItem = { ...existingItem, quantity: newQuantity, scanned_at: now, id_producto: item.id_producto || existingItem.id_producto };
+        resultItem = { 
+            ...existingItem, 
+            quantity: newQuantity, 
+            scanned_at: now, 
+            id_producto: item.id_producto || existingItem.id_producto,
+            device_name: deviceName
+        };
     } else {
         // Create new
         const newItem: LocalItem = {
@@ -159,27 +255,29 @@ export async function upsertPreCountItem(item: { session_id: string, ean: string
             quantity: item.quantity,
             scanned_at: now,
             scanned_by: userData.user?.id,
-            synced: 0,
-            id_producto: item.id_producto
+            synced: 1, // Optimistic: assume success
+            id_producto: item.id_producto,
+            device_id: deviceId,
+            device_name: deviceName
         };
         await db.items.add(newItem);
         resultItem = newItem;
     }
 
-    // Queue Sync
-    // We send 'upsert' equivalent logic. 
-    // Ideally we stick to atomic operations.
-    // SyncManager handles 'create/update' for items using the RPC 'upsert_precount_item'.
+    // Queue Sync with full metadata to avoid deletion mismatch
     await syncManager.addToQueue({
-        type: 'update', // generic update/upsert
+        type: 'update',
         entity: 'item',
         data: {
+            id: resultItem.id, // Pass the local UUID to Supabase
             session_id: item.session_id,
             ean: item.ean,
             product_name: item.product_name,
             quantity: item.quantity,
             scanned_by: userData.user?.id,
-            id_producto: item.id_producto || existingItem?.id_producto
+            id_producto: item.id_producto || existingItem?.id_producto,
+            device_id: deviceId,
+            device_name: deviceName
         }
     });
 

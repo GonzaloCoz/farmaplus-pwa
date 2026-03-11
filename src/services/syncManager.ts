@@ -46,9 +46,20 @@ export class SyncManager {
                 try {
                     await this.executeAction(action);
                     await db.pendingActions.update(action.id, { status: 'success' });
-                    // Remove successfully synced items after a while or immediately?
-                    // Let's keep them for "History" in UI for now, or delete to keep DB small.
-                    // For now, delete to keep it clean, UI can show "Empty" when done.
+                    
+                    // Update the local entity to synced: 1
+                    if (action.entity === 'session') {
+                        await db.sessions.update(action.data.id, { synced: 1 });
+                    } else if (action.entity === 'item') {
+                        // For items, we might need to find by EAN or ID depending on the data
+                        const itemId = action.data.id;
+                        if (itemId) {
+                            // Already optimistic 1, but confirm it
+                            await db.items.update(itemId, { synced: 1 });
+                        }
+                    }
+
+                    // Remove successfully synced items
                     await db.pendingActions.delete(action.id);
                 } catch (error: any) {
                     console.error('Sync failed for action:', action, error);
@@ -61,6 +72,11 @@ export class SyncManager {
                             retries: newRetries,
                             error: error.message || 'Unknown error'
                         });
+
+                        // Fallback: If it permanently failed, mark as un-synced so user sees the warning
+                        if (action.entity === 'item' && action.data.id) {
+                            await db.items.update(action.data.id, { synced: 0 });
+                        }
                     } else {
                         await db.pendingActions.update(action.id, {
                             status: 'pending', // Reset to pending to retry later
@@ -93,12 +109,15 @@ export class SyncManager {
             if (type === 'create' || type === 'update') {
                 // Use upsert RPC for atoms
                 const { error } = await supabase.rpc('upsert_precount_item', {
+                    p_id: data.id,
                     p_session_id: data.session_id,
                     p_ean: data.ean,
                     p_product_name: data.product_name,
                     p_quantity: data.quantity,
                     p_user_id: data.scanned_by,
-                    p_id_producto: data.id_producto
+                    p_id_producto: data.id_producto,
+                    p_device_id: data.device_id,
+                    p_device_name: data.device_name
                 });
                 if (error) throw error;
             } else if (type === 'delete') {

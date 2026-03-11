@@ -431,6 +431,8 @@ export const cyclicInventoryService = {
                         net_value: stats.net,
                         negative_value: stats.negative,
                         positive_value: stats.positive,
+                        negative_units: stats.negativeUnits,
+                        positive_units: stats.positiveUnits,
                         status: globalProgress >= 100 ? 'completed' : globalProgress > 0 ? 'in_progress' : 'pending'
                     }, {
                         onConflict: 'branch_name,laboratory,category'
@@ -605,8 +607,8 @@ export const cyclicInventoryService = {
 
                     // Units
                     totalSystemUnits: row.total_system_units,
-                    negativeUnits: row.net_units < 0 ? row.net_units : 0,
-                    positiveUnits: row.net_units > 0 ? row.net_units : 0,
+                    negativeUnits: row.negative_units || 0,
+                    positiveUnits: row.positive_units || 0,
                     netUnits: row.net_units
                 };
 

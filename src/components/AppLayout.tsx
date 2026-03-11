@@ -13,31 +13,7 @@ import { getTabMetaForPath } from "@/config/tabConfig";
 import { AppUpdater } from "@/components/AppUpdater";
 
 export function AppLayout() {
-  const { windows, activeWindowId, updateWindowPath, updateWindowMeta } = useWindowManager();
-  const location = useLocation();
-  const globalNavigate = useNavigate();
-
-  // Sync global URL and win metadata to active window path when global URL changes
-  useEffect(() => {
-    if (activeWindowId) {
-      const activeWindow = windows.find(w => w.id === activeWindowId);
-      if (activeWindow && activeWindow.path !== location.pathname) {
-        const { title, icon } = getTabMetaForPath(location.pathname);
-        updateWindowPath(activeWindowId, location.pathname);
-        updateWindowMeta(activeWindowId, title, icon);
-      }
-    }
-  }, [location.pathname, activeWindowId, updateWindowPath, updateWindowMeta]);
-
-  const handleWindowPathChange = (winId: string, newPath: string) => {
-    // Update context state
-    updateWindowPath(winId, newPath);
-
-    // If it's the active window, sync to global URL
-    if (winId === activeWindowId && location.pathname !== newPath) {
-      globalNavigate(newPath);
-    }
-  };
+  const { windows, activeWindowId } = useWindowManager();
 
   return (
     <div className="flex h-screen w-full bg-[#dadada] dark:bg-[#0a0a0a] overflow-hidden transition-all duration-500">

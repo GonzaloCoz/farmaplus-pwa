@@ -13,7 +13,6 @@ const CyclicInventoryDetail = lazy(() => import("@/pages/CyclicInventoryDetail")
 const Products = lazy(() => import("@/pages/Products"));
 const Reports = lazy(() => import("@/pages/Reports"));
 const Settings = lazy(() => import("@/pages/Settings"));
-const Profile = lazy(() => import("@/pages/Profile"));
 const M3ComponentsDemo = lazy(() => import("@/pages/M3ComponentsDemo"));
 const AnimationsDemo = lazy(() => import("@/pages/AnimationsDemo"));
 const AdminBranches = lazy(() => import("@/pages/AdminBranches"));
@@ -21,6 +20,7 @@ const SmartAnalystPage = lazy(() => import("@/pages/SmartAnalystPage"));
 const AdminAudit = lazy(() => import("@/pages/AdminAudit"));
 const AdminUsers = lazy(() => import("@/pages/AdminUsers"));
 const BranchComparison = lazy(() => import("@/pages/BranchComparison"));
+const InventoryReminder = lazy(() => import("@/pages/InventoryReminder"));
 
 // Simple component mapping for isolated windows
 const ROUTE_MAP: Record<string, React.ReactNode> = {
@@ -34,13 +34,13 @@ const ROUTE_MAP: Record<string, React.ReactNode> = {
     "/reports": <Reports />,
     "/comparison": <BranchComparison />,
     "/settings": <Settings />,
-    "/profile": <Profile />,
     "/m3-demo": <M3ComponentsDemo />,
     "/animations-demo": <AnimationsDemo />,
     "/admin/audit": <AdminAudit />,
     "/admin/users": <AdminUsers />,
     "/admin/branches": <AdminBranches />,
     "/smart-analyst": <SmartAnalystPage />,
+    "/inventory-reminder": <InventoryReminder />,
 };
 
 // Function to handle dynamic routes like /cyclic-inventory/:id

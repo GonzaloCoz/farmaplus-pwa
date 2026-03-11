@@ -3,12 +3,14 @@ import { motion } from "framer-motion";
 import { notify } from '@/lib/notifications';
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Magnifer as Search, SortByTime as ArrowUpDown, Chart as BarChart3, CheckCircle, DangerCircle as AlertCircle, Dollar, GraphDown as TrendingDown, GraphUp as TrendingUp, Restart as Loader2, Database, Dollar as DollarSign } from "@solar-icons/react";
+import { Chart as BarChart3, CheckCircle, DangerCircle as AlertCircle, Dollar, GraphDown as TrendingDown, GraphUp as TrendingUp, Restart as Loader2, Dollar as DollarSign, Magnifer as Search, Filter, MenuDots as MoreVertical, Widget as GridIcon, List as ListIcon, ClockCircle as Clock } from "@solar-icons/react";
 import { LaboratoryCard, LaboratoryStatus } from "@/components/LaboratoryCard";
 import { CounterAnimation } from "@/components/CounterAnimation";
 import { MetricCarousel } from "@/components/MetricCarousel";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { cn, normalizeString } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -22,8 +24,6 @@ import { cyclicInventoryService, CyclicInventoryStats } from "@/services/cyclicI
 import { useUser } from "@/contexts/UserContext";
 import { usePrefetchLabInventory } from "@/hooks/useInventoryQueries";
 
-import { maintenanceService } from "@/services/maintenanceService";
-
 type SortOption = "name-asc" | "name-desc" | "value-asc" | "value-desc";
 type FilterCategory = "MEDICAMENTOS" | "PERFUMERIA" | "ACCESORIOS" | "VARIOS";
 
@@ -32,6 +32,8 @@ export default function CyclicInventory() {
   const { user } = useUser();
   const prefetchLab = usePrefetchLabInventory();
   const [searchTerm, setSearchTerm] = useState("");
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [categoryFilter, setCategoryFilter] = useState<FilterCategory>("MEDICAMENTOS");
   const [sortBy, setSortBy] = useState<SortOption>("name-asc");
   const [laboratories, setLaboratories] = useState<CyclicInventoryStats[]>([]);
@@ -175,38 +177,30 @@ export default function CyclicInventory() {
 
     // Filtrar por término de búsqueda
     if (searchTerm) {
+      const term = searchTerm.toLowerCase();
       result = result.filter((lab) =>
-        lab.labName.toLowerCase().includes(searchTerm.toLowerCase())
+        lab.labName.toLowerCase().includes(term)
       );
     }
 
     // Ordenar
     result.sort((a, b) => {
       switch (sortBy) {
-        case "name-asc":
-          return a.labName.localeCompare(b.labName);
         case "name-desc":
           return b.labName.localeCompare(a.labName);
         case "value-asc":
           return a.differenceValue - b.differenceValue;
         case "value-desc":
           return b.differenceValue - a.differenceValue;
+        case "name-asc":
         default:
-          return 0;
+          return a.labName.localeCompare(b.labName);
       }
     });
 
     return result;
-  }, [searchTerm, sortBy, groupedLaboratories]);
+  }, [groupedLaboratories, searchTerm, sortBy]);
 
-  const getSortLabel = (sort: SortOption) => {
-    switch (sort) {
-      case "name-asc": return "Nombre (A-Z)";
-      case "name-desc": return "Nombre (Z-A)";
-      case "value-asc": return "Valor (Menor a Mayor)";
-      case "value-desc": return "Valor (Mayor a Menor)";
-    }
-  };
 
   const categories: FilterCategory[] = ["MEDICAMENTOS", "PERFUMERIA", "ACCESORIOS", "VARIOS"];
 
@@ -332,110 +326,9 @@ export default function CyclicInventory() {
       </div>
 
       {/* Filtros y Búsqueda - Sticky con Blur */}
-      <div className="flex flex-col gap-4 sticky top-0 bg-[#f0eeef]/80 dark:bg-[#2a2a2a]/80 backdrop-blur-xl z-20 py-4 -mx-4 px-4 md:-mx-6 md:px-6 transition-all border-b border-gray-200/30 dark:border-white/5">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-            <Input
-              placeholder="Buscar laboratorio..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-
-          <div className="flex gap-2">
-            {/* Botones de Migración (Solo Admin) */}
-            {user?.role === 'admin' && (
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 px-4 rounded-xl bg-white dark:bg-[#1e1e1e] border-gray-100/50 dark:border-white/5 shadow-sm hover:shadow-md transition-all font-semibold"
-                  onClick={() => {
-                    if (confirm("¿Ejecutar mantenimiento profundo de inventarios? Esto eliminará registros huérfanos y normalizará categorías.")) {
-                      maintenanceService.performDeepCleanup();
-                    }
-                  }}
-                >
-                  <AlertCircle className="w-4 h-4 mr-2 text-warning" />
-                  Mantenimiento DB
-                </Button>
-
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="h-9 px-4 rounded-xl bg-white dark:bg-[#1e1e1e] border-gray-100/50 dark:border-white/5 shadow-sm hover:shadow-md transition-all font-semibold"
-                  onClick={async () => {
-                    if (!confirm("¿Sincronizar metas desde el Excel maestro a la base de datos?")) return;
-                    const toastId = notify.info("Información", "Sincronizando metas...");
-                    try {
-                      await cyclicInventoryService.migrateGoalsFromExcel();
-                      notify.success("Operación exitosa", "Metas sincronizadas con éxito.");
-                      // Reload to reflect changes
-                      window.location.reload();
-                    } catch (e) {
-                      notify.error("Error", "Error al sincronizar metas.");
-                    }
-                  }}
-                >
-                  <Database className="w-4 h-4 mr-2 text-primary" />
-                  Sincronizar Metas
-                </Button>
-
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="h-9 px-4 rounded-xl shadow-sm hover:shadow-md transition-all font-semibold"
-                  onClick={async () => {
-                    if (!confirm("⚠️ ATENCIÓN: ¿Eliminar todo el avance de laboratorios de esta sucursal? Esta acción es irreversible y purgará inventarios, historial y reportes.")) return;
-
-                    const secondConfirm = confirm("¿Estás ABSOLUTAMENTE seguro? Se borrará todo el progreso de la sucursal actual.");
-                    if (!secondConfirm) return;
-
-                    const toastId = notify.info("Purgando", "Eliminando avance de la sucursal...");
-                    try {
-                      await cyclicInventoryService.purgeBranchProgress(user?.branchSheet || "");
-                      notify.success("Éxito", "Avance purgado correctamente.");
-                      window.location.reload();
-                    } catch (e) {
-                      notify.error("Error", "No se pudo purgar el avance.");
-                    }
-                  }}
-                >
-                  <TrendingDown className="w-4 h-4 mr-2" />
-                  Purgar Avance
-                </Button>
-              </div>
-            )}
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 rounded-xl border-gray-100/50 dark:border-white/5 bg-white dark:bg-[#1e1e1e] shadow-sm font-semibold px-4">
-                  <ArrowUpDown className="w-4 h-4 mr-2 text-muted-foreground" />
-                  {getSortLabel(sortBy)}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setSortBy("name-asc")}>
-                  Nombre (A-Z)
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setSortBy("name-desc")}>
-                  Nombre (Z-A)
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setSortBy("value-asc")}>
-                  Valor (Menor a Mayor)
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setSortBy("value-desc")}>
-                  Valor (Mayor a Menor)
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-
+      <div className="flex items-center justify-between sticky top-0 bg-[#f0eeef]/40 dark:bg-[#1a1a1a]/40 backdrop-blur-xl z-20 py-4 -mx-4 px-4 md:-mx-6 md:px-6 transition-all gap-4 mb-6">
         {/* Filtros de Categoría */}
-        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar shrink-0">
           {categories.map((cat) => (
             <Button
               key={cat}
@@ -445,8 +338,8 @@ export default function CyclicInventory() {
               className={cn(
                 "whitespace-nowrap rounded-xl px-5 h-9 font-semibold transition-all",
                 categoryFilter === cat
-                  ? "bg-white dark:bg-[#1e1e1e] text-primary shadow-sm ring-1 ring-black/[0.03] dark:ring-white/[0.05]"
-                  : "text-muted-foreground hover:bg-white/50 dark:hover:bg-white/5"
+                  ? "bg-primary text-white shadow-sm dark:bg-white dark:text-black"
+                  : "text-muted-foreground hover:bg-white/50 dark:hover:bg-white/10 hover:text-foreground"
               )}
             >
               {cat === "MEDICAMENTOS" ? "Medicamentos" :
@@ -455,24 +348,194 @@ export default function CyclicInventory() {
             </Button>
           ))}
         </div>
+
+        {/* Toolbar de Acciones */}
+        <div className="flex items-center gap-1.5 flex-1 justify-end">
+          {/* Barra de búsqueda expandible */}
+          <div className="flex items-center">
+            <motion.div
+              initial={false}
+              animate={{ 
+                width: isSearchExpanded ? (window.innerWidth < 768 ? '160px' : '240px') : '36px',
+                opacity: 1
+              }}
+              className="relative flex items-center h-9 bg-white/40 dark:bg-[#2a2a2a]/40 rounded-xl border-none overflow-hidden"
+            >
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 shrink-0 hover:bg-white dark:hover:bg-white/10 transition-colors"
+                onClick={() => setIsSearchExpanded(!isSearchExpanded)}
+              >
+                <Search className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+              </Button>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Buscar laboratorio..."
+                className={cn(
+                  "bg-transparent border-none focus:outline-none text-sm w-full pr-3 transition-opacity duration-300",
+                  isSearchExpanded ? "opacity-100" : "opacity-0 pointer-events-none"
+                )}
+              />
+            </motion.div>
+          </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl bg-white/40 dark:bg-[#2a2a2a]/40 group">
+                <Filter className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48 rounded-xl p-1">
+              <DropdownMenuItem onClick={() => setSortBy("name-asc")} className="rounded-lg text-xs font-semibold">Nombre (A-Z)</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortBy("name-desc")} className="rounded-lg text-xs font-semibold">Nombre (Z-A)</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortBy("value-desc")} className="rounded-lg text-xs font-semibold">Mayor Diferencia</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortBy("value-asc")} className="rounded-lg text-xs font-semibold">Menor Diferencia</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl bg-white/40 dark:bg-[#2a2a2a]/40 group">
+            <MoreVertical className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+          </Button>
+
+          <div className="flex p-1 bg-card/40 dark:bg-[#1e1e1e] rounded-xl border border-border/50 shadow-sm">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setViewMode('grid')}
+              className={cn(
+                "h-7 w-8 rounded-[10px] transition-all",
+                viewMode === 'grid' ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <GridIcon className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setViewMode('list')}
+              className={cn(
+                "h-7 w-8 rounded-[10px] transition-all",
+                viewMode === 'list' ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <ListIcon className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
       </div>
 
-      {/* Cuadrícula de Tarjetas */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {filteredAndSortedLabs.map((lab) => (
-          <LaboratoryCard
-            key={lab.labName}
-            name={lab.labName}
-            negativeValue={lab.negativeValue}
-            positiveValue={lab.positiveValue}
-            differenceValue={lab.differenceValue}
-            status={lab.status}
-            progress={lab.progress}
-            onClick={() => navigate(`/cyclic-inventory/${encodeURIComponent(lab.labName)}`)}
-            onMouseEnter={() => prefetchLab(user?.branchSheet || "", lab.labName)}
-          />
-        ))}
-      </div>
+      {/* Contenido Principal */}
+      {viewMode === 'grid' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filteredAndSortedLabs.map((lab) => (
+            <LaboratoryCard
+              key={lab.labName}
+              name={lab.labName}
+              negativeValue={lab.negativeValue}
+              positiveValue={lab.positiveValue}
+              differenceValue={lab.differenceValue}
+              status={lab.status}
+              progress={lab.progress}
+              onClick={() => navigate(`/cyclic-inventory/${encodeURIComponent(lab.labName)}`)}
+              onMouseEnter={() => prefetchLab(user?.branchSheet || "", lab.labName)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-border/50 bg-card/10 backdrop-blur-sm overflow-hidden shadow-sm">
+          <Table>
+            <TableHeader className="bg-muted/30">
+              <TableRow className="border-border/50 hover:bg-transparent">
+                <TableHead className="font-bold text-[10px] uppercase tracking-wider text-muted-foreground/70 h-10 px-4">Laboratorio</TableHead>
+                <TableHead className="text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground/70 h-10">Estado</TableHead>
+                <TableHead className="text-right font-bold text-[10px] uppercase tracking-wider text-muted-foreground/70 h-10">Valor (-)</TableHead>
+                <TableHead className="text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground/70 h-10">Un. (-)</TableHead>
+                <TableHead className="text-right font-bold text-[10px] uppercase tracking-wider text-muted-foreground/70 h-10">Valor (+)</TableHead>
+                <TableHead className="text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground/70 h-10">Un. (+)</TableHead>
+                <TableHead className="text-right font-bold text-[10px] uppercase tracking-wider text-muted-foreground/70 h-10">Dif. Neta</TableHead>
+                <TableHead className="text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground/70 h-10 w-[140px]">Avance</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredAndSortedLabs.map((lab) => (
+                <TableRow 
+                  key={lab.labName}
+                  className="border-border/30 hover:bg-white/5 dark:hover:bg-white/5 cursor-pointer h-12"
+                  onClick={() => navigate(`/cyclic-inventory/${encodeURIComponent(lab.labName)}`)}
+                >
+                  <TableCell className="py-2 px-4 whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]">
+                    <span className="font-bold text-xs text-foreground group-hover:text-primary transition-colors">{lab.labName}</span>
+                  </TableCell>
+                  <TableCell className="text-center px-1">
+                    <div className="flex justify-center">
+                      <div className={cn(
+                        "w-2.5 h-2.5 rounded-full shadow-sm transition-colors",
+                        lab.status === 'controlado' ? "bg-green-500" : 
+                        lab.status === 'por_controlar' ? "bg-purple-500 animate-pulse" : 
+                        "bg-red-500"
+                      )} title={lab.status.toUpperCase()} />
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right py-2 leading-tight">
+                    <span className="font-bold text-destructive text-[11px]">
+                      {lab.negativeValue !== 0 ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(lab.negativeValue) : "-"}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-center py-2 leading-tight">
+                    <span className="font-bold text-destructive text-[11px]">
+                      {(() => {
+                        // Si tenemos persistencia (db), la usamos. Si es 0 (post-migracion), calculamos del neto
+                        // para que el usuario no vea "-" hasta el proximo sync.
+                        const units = lab.negativeUnits !== 0 ? Math.abs(lab.negativeUnits) : (lab.netUnits < 0 ? Math.abs(lab.netUnits) : 0);
+                        return units !== 0 ? units : "-";
+                      })()}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right py-2 leading-tight">
+                    <span className="font-bold text-success text-[11px]">
+                      {lab.positiveValue !== 0 ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(lab.positiveValue) : "-"}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-center py-2 leading-tight">
+                    <span className="font-bold text-success text-[11px]">
+                      {(() => {
+                        const units = lab.positiveUnits !== 0 ? lab.positiveUnits : (lab.netUnits > 0 ? lab.netUnits : 0);
+                        return units !== 0 ? units : "-";
+                      })()}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right py-2 leading-tight">
+                    <span className={cn(
+                      "font-mono font-bold text-[11px]",
+                      lab.differenceValue > 0 ? "text-success" : 
+                      lab.differenceValue < 0 ? "text-destructive" : 
+                        "text-muted-foreground/30"
+                    )}>
+                      {lab.differenceValue !== 0 ? (lab.differenceValue > 0 ? "+" : "") + new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(lab.differenceValue) : "-"}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-center py-2 px-4">
+                    <div className="flex flex-col gap-0.5 w-full max-w-[100px] mx-auto">
+                      <div className="flex items-center justify-between text-[9px] font-bold tabular-nums">
+                        <span className={lab.progress > 0 ? "text-primary" : "text-muted-foreground/30"}>{lab.progress}%</span>
+                      </div>
+                      <div className="h-1 bg-muted/20 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-primary"
+                          style={{ width: `${lab.progress}%` }}
+                        />
+                      </div>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
     </div>
   );
 }

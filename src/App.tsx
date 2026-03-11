@@ -34,7 +34,6 @@ const CyclicInventoryDetail = lazy(() => import("./pages/CyclicInventoryDetail")
 const Products = lazy(() => import("./pages/Products"));
 const Reports = lazy(() => import("./pages/Reports"));
 const Settings = lazy(() => import("./pages/Settings"));
-const Profile = lazy(() => import("./pages/Profile"));
 const M3ComponentsDemo = lazy(() => import("./pages/M3ComponentsDemo"));
 const AnimationsDemo = lazy(() => import("./pages/AnimationsDemo"));
 const Login = lazy(() => import("./pages/Login"));
@@ -45,6 +44,7 @@ const AdminAudit = lazy(() => import("./pages/AdminAudit"));
 
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const BranchComparison = lazy(() => import("./pages/BranchComparison"));
+const InventoryReminder = lazy(() => import("./pages/InventoryReminder"));
 
 
 const queryClient = new QueryClient({
@@ -224,16 +224,6 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/profile"
-          element={
-            <Suspense fallback={<PageSkeleton />}>
-              <PageTransition>
-                <Profile />
-              </PageTransition>
-            </Suspense>
-          }
-        />
-        <Route
           path="/m3-demo"
           element={
             <Suspense fallback={<DashboardSkeleton />}>
@@ -300,6 +290,16 @@ const AppRoutes = () => {
             </Suspense>
           }
         />
+        <Route
+          path="/inventory-reminder"
+          element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <PageTransition>
+                <InventoryReminder />
+              </PageTransition>
+            </Suspense>
+          }
+        />
 
       </Route>
       <Route
@@ -345,18 +345,18 @@ const App = () => {
         <SnackbarProvider>
           <NotificationPreferencesProvider>
             <UserProvider>
-              <WindowManagerProvider>
-                <NotificationProvider>
-                  <Sonner />
-                  <OfflineIndicator />
-                  <InstallPrompt />
-                  <ErrorBoundary>
-                    <BrowserRouter basename={import.meta.env.VITE_BASE?.replace(/\/$/, '') || ''}>
+              <NotificationProvider>
+                <Sonner />
+                <OfflineIndicator />
+                <InstallPrompt />
+                <ErrorBoundary>
+                  <BrowserRouter basename={import.meta.env.VITE_BASE?.replace(/\/$/, '') || ''}>
+                    <WindowManagerProvider>
                       <AppRoutes />
-                    </BrowserRouter>
-                  </ErrorBoundary>
-                </NotificationProvider>
-              </WindowManagerProvider>
+                    </WindowManagerProvider>
+                  </BrowserRouter>
+                </ErrorBoundary>
+              </NotificationProvider>
             </UserProvider>
           </NotificationPreferencesProvider>
         </SnackbarProvider>

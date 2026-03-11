@@ -1,6 +1,6 @@
 
 import React from "react";
-import { Home, Upload, Chart as BarChart3, Box as Package, Document as FileText, Settings, User, GraphUp as TrendingUp, ShieldCheck, ClockCircle as Clock } from "@solar-icons/react";
+import { Home, Upload, Chart as BarChart3, Box as Package, Document as FileText, Settings, GraphUp as TrendingUp, ShieldCheck, ClockCircle as Clock } from "@solar-icons/react";
 import { ZebraIcon } from "@/components/icons/ZebraIcon";
 
 export const TAB_CONFIG: Record<string, { title: string, icon: React.ReactNode }> = {
@@ -14,9 +14,9 @@ export const TAB_CONFIG: Record<string, { title: string, icon: React.ReactNode }
     "/products": { title: "Productos", icon: <Package size={16} weight="LineDuotone" /> },
     "/reports": { title: "Reportes", icon: <FileText size={16} weight="LineDuotone" /> },
     "/settings": { title: "Configuración", icon: <Settings size={16} weight="LineDuotone" /> },
-    "/profile": { title: "Perfil", icon: <User size={16} weight="LineDuotone" /> },
     "/admin/audit": { title: "Auditoría", icon: <ShieldCheck size={16} weight="LineDuotone" /> },
     "/smart-analyst": { title: "Control de Vencimiento", icon: <Clock size={16} weight="LineDuotone" /> },
+    "/inventory-reminder": { title: "Próximo Inventario", icon: <Clock size={16} weight="LineDuotone" /> },
 };
 
 export const getTabMetaForPath = (path: string) => {

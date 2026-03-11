@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
-import { Magnifer as Search, CloseCircle as X, MenuDots as MoreHorizontal, Widget as LayoutDashboard, Database, ClipboardList, Widget as Package, Document as FileText, Settings, User, Chart as BarChart2, ShieldCheck, Widget as Microscope, TrashBinMinimalistic as Trash2 } from "@solar-icons/react";
+import { Magnifer as Search, CloseCircle as X, MenuDots as MoreHorizontal, Widget as LayoutDashboard, Database, ClipboardList, Widget as Package, Document as FileText, Chart as BarChart2, ShieldCheck, Widget as Microscope, TrashBinMinimalistic as Trash2 } from "@solar-icons/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import Logo from "@/assets/logo.svg";
@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { NotificationsMenu } from "@/components/HeaderMenus";
 import { TrainingCenterButton } from "./TrainingCenterButton";
+import { ProfileDropdown } from "@/components/ProfileDropdown";
 import { useUser } from "@/contexts/UserContext";
 
 
@@ -22,20 +23,6 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
     const { user } = useUser();
     const { windows, activeWindowId, openWindow, closeWindow, setActiveWindow, closeAllWindows } = useWindowManager();
 
-    const getInitials = () => {
-        if (!user) return "??";
-        if (user.role === 'branch' && user.branchName) {
-            const branchName = user.branchName.replace(/^farmacia\s+/i, '');
-            return `F${branchName.charAt(0).toUpperCase()}`;
-        }
-        const names = user.name.split(' ');
-        if (names.length >= 2) {
-            return (names[0].charAt(0) + names[names.length - 1].charAt(0)).toUpperCase();
-        }
-        return user.name.charAt(0).toUpperCase();
-    };
-
-    const initials = getInitials();
 
     const handleCreateJob = () => {
         openWindow('/', undefined, undefined, true);
@@ -106,18 +93,20 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
                             )}>
                                 {win.title}
                             </span>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleCloseTab(e, win.id);
-                                }}
-                                className={cn(
-                                    "p-0.5 rounded-md opacity-0 group-hover:opacity-60 transition-all hover:bg-muted hover:text-destructive hover:opacity-100 ml-1",
-                                    isActive ? "opacity-40" : "" // Show faint close on active
-                                )}
-                            >
-                                <X className="w-[16px] h-[16px]" />
-                            </button>
+                            {win.isClosable !== false && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCloseTab(e, win.id);
+                                    }}
+                                    className={cn(
+                                        "p-0.5 rounded-md opacity-0 group-hover:opacity-60 transition-all hover:bg-muted hover:text-destructive hover:opacity-100 ml-1",
+                                        isActive ? "opacity-40" : "" // Show faint close on active
+                                    )}
+                                >
+                                    <X className="w-[16px] h-[16px]" />
+                                </button>
+                            )}
                         </div>
                     );
                 })}
@@ -142,21 +131,8 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
             <div className="flex items-center gap-2 ml-4 shrink-0">
                 <TrainingCenterButton />
                 <NotificationsMenu />
-                <button
-                    onClick={() => navigate('/settings')}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-muted/50 border border-border/40 hover:bg-muted/80 dark:hover:bg-zinc-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
-                >
-                    <Settings className="w-4 h-4 text-muted-foreground" />
-                </button>
                 <div className="w-[1px] h-4 bg-border/40 mx-1" />
-                <button
-                    onClick={() => navigate('/profile')}
-                    className="group flex items-center justify-center h-10 w-10 rounded-xl overflow-hidden hover:ring-2 hover:ring-primary/20 transition-all bg-muted/50 border border-border/40"
-                >
-                    <div className="h-full w-full flex items-center justify-center text-[11px] font-bold text-blue-600 transition-colors group-hover:bg-blue-600 group-hover:text-white">
-                        {initials}
-                    </div>
-                </button>
+                <ProfileDropdown />
             </div>
         </div>
     );

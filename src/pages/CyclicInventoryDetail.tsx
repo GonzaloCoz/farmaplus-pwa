@@ -1,14 +1,33 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, Magnifer as Search, InfoCircle as Info, Restart as Loader2, CheckCircle, Restart as RotateCcw, Dollar, ClipboardList, AltArrowLeft as ArrowLeft } from "@solar-icons/react";
+import { 
+    Upload, 
+    Magnifer as Search, 
+    InfoCircle as Info, 
+    Restart as Loader2, 
+    CheckCircle, 
+    Restart as RotateCcw, 
+    Dollar, 
+    ClipboardList, 
+    AltArrowLeft as ArrowLeft,
+    Filter,
+    MenuDots as MoreVertical,
+    DangerCircle as DiffIcon
+} from "@solar-icons/react";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CyclicInventoryList } from '@/components/CyclicInventoryList';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import {
     Dialog,
     DialogContent,
@@ -36,6 +55,7 @@ export default function CyclicInventoryDetail() {
     const labName = id ? decodeURIComponent(id) : '';
     const navigate = useNavigate();
     const { activeWindowId, updateWindowMeta } = useWindowManager();
+    const [isSearchExpanded, setIsSearchExpanded] = useState(false);
 
     // Update window tab title with lab name
     useEffect(() => {
@@ -110,38 +130,8 @@ export default function CyclicInventoryDetail() {
                         </div>
                     )}
 
-                    {/* Main View: Always show Header and Stats if there are adjusted items, 
-                        else show full-screen upload if everything is empty */}
-                    {items.length === 0 ? (
-                        <Card className="p-12 border-dashed border-2 flex flex-col items-center justify-center text-center space-y-4 bg-muted/20">
-                            <div className="p-4 bg-primary/10 rounded-full">
-                                <Upload className="w-8 h-8 text-primary" />
-                            </div>
-                            <div>
-                                <h3 className="text-lg font-semibold">Cargar Archivo de Inventario</h3>
-                                <p className="text-muted-foreground max-w-md mx-auto mt-2">
-                                    Sube el archivo Excel (.xlsx) descargado del sistema para comenzar el control de {labName}.
-                                </p>
-                            </div>
-                            <div className="relative">
-                                <Button disabled={isLoading}>
-                                    {isLoading ? 'Procesando...' : 'Seleccionar Archivo'}
-                                </Button>
-                                <Input
-                                    type="file"
-                                    accept=".xlsx, .xls"
-                                    className="absolute inset-0 opacity-0 cursor-pointer"
-                                    onChange={handleFileUpload}
-                                    disabled={isUploading || isLoading}
-                                />
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-4">
-                                Columnas requeridas: C (EAN), D (Producto), E (Cantidad), K (Costo), J (Rubro), O (Laboratorio)
-                            </p>
-                        </Card>
-                    ) : (
-                        /* Inventory Lists */
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Main View: Always show Header and Stats */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             {/* Stats Cards */}
                             {/* 1. Enhanced Status Bar - Full Width Single Row */}
                             <Card className="lg:col-span-3 min-h-[110px] mb-8 flex flex-col justify-center px-6 sm:px-8 bg-muted/20 border-muted/40 shadow-sm overflow-hidden">
@@ -205,57 +195,96 @@ export default function CyclicInventoryDetail() {
 
                             {/* Main Content */}
                             <div className="lg:col-span-3">
-                                <div className="flex flex-col md:flex-row gap-6 mb-8">
-                                    <div className="relative flex-1 group">
-                                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4 transition-colors group-focus-within:text-primary" />
-                                        <Input
-                                            placeholder="Buscar por nombre o EAN..."
-                                            value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="pl-9 rounded-full bg-muted/20 border-muted/40 transition-all focus-visible:ring-primary/20"
-                                        />
-                                    </div>
-                                    <div className="flex items-center space-x-2 bg-muted/20 p-2 rounded-full border border-muted/40 transition-all hover:bg-muted/30">
-                                        <Switch
-                                            id="diff-mode"
-                                            checked={showDifferencesOnly}
-                                            onCheckedChange={setShowDifferencesOnly}
-                                        />
-                                        <Label htmlFor="diff-mode" className="cursor-pointer text-sm font-medium mr-2">Solo Diferencias</Label>
-                                    </div>
-                                    <Button
-                                        variant={sortBy === 'financial' ? "default" : "outline"}
-                                        onClick={() => setSortBy(prev => prev === 'default' ? 'financial' : 'default')}
-                                        className="h-10 rounded-full transition-all duration-300 hover:scale-105 active:scale-95"
-                                        title="Ordenar por Impacto Financiero"
-                                    >
-                                        {sortBy === 'financial' ? <Dollar className="w-4 h-4 mr-2" /> : <div className="w-4 h-4 mr-2 flex items-center justify-center font-bold">$</div>}
-                                        {sortBy === 'financial' ? 'Impacto $' : 'Orden A-Z'}
-                                    </Button>
-                                </div>
-                                {/* Category Tabs (Rubros) */}
-                                <div className="mb-6 overflow-x-auto pb-2">
-                                    <div className="flex gap-2">
+                                {/* Toolbar & Categories - Sticky with Blur */}
+                                <div className="flex items-center justify-between sticky top-0 bg-[#f0eeef]/40 dark:bg-[#1a1a1a]/40 backdrop-blur-xl z-20 py-4 -mx-4 px-4 md:-mx-6 md:px-6 transition-all gap-4 mb-6">
+                                    {/* Categorías */}
+                                    <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar shrink-0">
                                         {CATEGORIES.map(cat => (
                                             <Button
                                                 key={cat}
-                                                variant={currentCategory === cat ? "default" : "outline"}
+                                                variant="ghost"
+                                                size="sm"
                                                 onClick={() => setCurrentCategory(cat)}
                                                 className={cn(
-                                                    "rounded-xl px-6 h-12 transition-all duration-300 border-2",
+                                                    "whitespace-nowrap rounded-xl px-5 h-9 font-semibold transition-all",
                                                     currentCategory === cat
-                                                        ? "bg-primary text-primary-foreground border-primary shadow-lg scale-105"
-                                                        : "bg-muted/10 border-muted/20 opacity-70 hover:opacity-100 hover:bg-muted/20 hover:scale-102"
+                                                        ? "bg-primary text-white shadow-sm dark:bg-white dark:text-black"
+                                                        : "text-muted-foreground hover:bg-white/50 dark:hover:bg-white/10 hover:text-foreground"
                                                 )}
                                             >
-                                                <span className={cn(
-                                                    "font-bold tracking-tight",
-                                                    currentCategory === cat ? "text-primary-foreground" : "text-muted-foreground"
-                                                )}>
-                                                    {cat}
-                                                </span>
+                                                {cat}
                                             </Button>
                                         ))}
+                                    </div>
+
+                                    {/* Toolbar de Acciones */}
+                                    <div className="flex items-center gap-1.5 flex-1 justify-end">
+                                        {/* Barra de búsqueda expandible */}
+                                        <div className="flex items-center">
+                                            <motion.div
+                                                initial={false}
+                                                animate={{ 
+                                                    width: isSearchExpanded ? (window.innerWidth < 768 ? '160px' : '240px') : '36px',
+                                                    opacity: 1
+                                                }}
+                                                className="relative flex items-center h-9 bg-white/40 dark:bg-[#2a2a2a]/40 rounded-xl border-none overflow-hidden"
+                                            >
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-9 w-9 shrink-0 hover:bg-white dark:hover:bg-white/10 transition-colors"
+                                                    onClick={() => setIsSearchExpanded(!isSearchExpanded)}
+                                                >
+                                                    <Search className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                                                </Button>
+                                                <input
+                                                    type="text"
+                                                    value={searchTerm}
+                                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                                    placeholder="Buscar por nombre o EAN..."
+                                                    className={cn(
+                                                        "bg-transparent border-none focus:outline-none text-sm w-full pr-3 transition-opacity duration-300",
+                                                        isSearchExpanded ? "opacity-100" : "opacity-0 pointer-events-none"
+                                                    )}
+                                                />
+                                            </motion.div>
+                                        </div>
+
+                                        {/* Botón Solo Diferencias */}
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => setShowDifferencesOnly(!showDifferencesOnly)}
+                                            className={cn(
+                                                "h-9 w-9 rounded-xl transition-all",
+                                                showDifferencesOnly 
+                                                    ? "bg-primary text-white dark:bg-white dark:text-black shadow-sm" 
+                                                    : "bg-white/40 dark:bg-[#2a2a2a]/40 text-muted-foreground hover:bg-white/60 dark:hover:bg-white/10 hover:text-foreground"
+                                            )}
+                                            title="Solo Diferencias"
+                                        >
+                                            <DiffIcon className="w-4 h-4" />
+                                        </Button>
+
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl bg-white/40 dark:bg-[#2a2a2a]/40 group">
+                                                    <Filter className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end" className="w-48 rounded-xl p-1">
+                                                <DropdownMenuItem onClick={() => setSortBy('default')} className="rounded-lg text-xs font-semibold">
+                                                    Orden A-Z
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => setSortBy('financial')} className="rounded-lg text-xs font-semibold">
+                                                    Impacto Financiero
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+
+                                        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl bg-white/40 dark:bg-[#2a2a2a]/40 group">
+                                            <MoreVertical className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                                        </Button>
                                     </div>
                                 </div>
 
@@ -309,28 +338,59 @@ export default function CyclicInventoryDetail() {
 
                                     <TabsContent value="pending" className="space-y-4">
                                         {pendingItems.length === 0 && controlledItems.length === 0 && (
-                                            <Card className="p-12 border-dashed border-2 flex flex-col items-center justify-center text-center space-y-4 bg-muted/20 my-4 animate-in fade-in zoom-in duration-500">
+                                            <Card className="p-12 border-dashed border-2 flex flex-col items-center justify-center text-center space-y-4 bg-muted/10 my-4 animate-in fade-in zoom-in duration-500 rounded-3xl">
                                                 <div className="p-4 bg-primary/10 rounded-full">
                                                     <Upload className="w-8 h-8 text-primary" />
                                                 </div>
-                                                <div>
-                                                    <h3 className="text-lg font-semibold">Cargar Nuevo Ciclo</h3>
-                                                    <p className="text-muted-foreground max-w-sm mx-auto mt-1">
-                                                        No hay ítems para contar en este laboratorio. Cargá un nuevo Excel para iniciar el siguiente ciclo.
-                                                    </p>
-                                                </div>
-                                                <div className="relative">
-                                                    <Button disabled={isUploading}>
-                                                        {isUploading ? 'Procesando...' : 'Cargar Excel de Sistema'}
-                                                    </Button>
-                                                    <Input
-                                                        type="file"
-                                                        accept=".xlsx, .xls"
-                                                        className="absolute inset-0 opacity-0 cursor-pointer"
-                                                        onChange={handleFileUpload}
-                                                        disabled={isUploading}
-                                                    />
-                                                </div>
+                                                
+                                                {history.length === 0 ? (
+                                                    // Initial Opening State
+                                                    <>
+                                                        <div>
+                                                            <h3 className="text-lg font-semibold">Cargar Archivo de Inventario</h3>
+                                                            <p className="text-muted-foreground max-w-sm mx-auto mt-1">
+                                                                Sube el archivo Excel (.xlsx) descargado del sistema para comenzar el control de {labName}.
+                                                            </p>
+                                                        </div>
+                                                        <div className="relative">
+                                                            <Button disabled={isUploading} className="rounded-full px-8">
+                                                                {isUploading ? 'Procesando...' : 'Seleccionar Archivo'}
+                                                            </Button>
+                                                            <Input
+                                                                type="file"
+                                                                accept=".xlsx, .xls"
+                                                                className="absolute inset-0 opacity-0 cursor-pointer"
+                                                                onChange={handleFileUpload}
+                                                                disabled={isUploading}
+                                                            />
+                                                        </div>
+                                                        <p className="text-[10px] text-muted-foreground mt-4 opacity-70 uppercase tracking-tighter">
+                                                            Columnas requeridas: C (EAN), D (Producto), E (Cantidad), K (Costo), J (Rubro), O (Laboratorio)
+                                                        </p>
+                                                    </>
+                                                ) : (
+                                                    // New Cycle State
+                                                    <>
+                                                        <div>
+                                                            <h3 className="text-lg font-semibold">Cargar Nuevo Ciclo</h3>
+                                                            <p className="text-muted-foreground max-w-sm mx-auto mt-1">
+                                                                No hay ítems para contar en este laboratorio. Cargá un nuevo Excel para iniciar el siguiente ciclo.
+                                                            </p>
+                                                        </div>
+                                                        <div className="relative">
+                                                            <Button disabled={isUploading} className="rounded-full px-8">
+                                                                {isUploading ? 'Procesando...' : 'Cargar Excel de Sistema'}
+                                                            </Button>
+                                                            <Input
+                                                                type="file"
+                                                                accept=".xlsx, .xls"
+                                                                className="absolute inset-0 opacity-0 cursor-pointer"
+                                                                onChange={handleFileUpload}
+                                                                disabled={isUploading}
+                                                            />
+                                                        </div>
+                                                    </>
+                                                )}
                                             </Card>
                                         )}
 
@@ -419,7 +479,6 @@ export default function CyclicInventoryDetail() {
                                 </Tabs>
                             </div>
                         </div>
-                    )}
                 </>
             )}
 

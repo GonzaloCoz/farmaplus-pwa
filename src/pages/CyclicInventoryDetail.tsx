@@ -273,11 +273,17 @@ export default function CyclicInventoryDetail() {
                                                 </Button>
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end" className="w-48 rounded-xl p-1">
-                                                <DropdownMenuItem onClick={() => setSortBy('default')} className="rounded-lg text-xs font-semibold">
-                                                    Orden A-Z
+                                                <DropdownMenuItem onClick={() => setSortBy('name-asc')} className="rounded-lg text-xs font-semibold">
+                                                    Nombre (A-Z)
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => setSortBy('financial')} className="rounded-lg text-xs font-semibold">
-                                                    Impacto Financiero
+                                                <DropdownMenuItem onClick={() => setSortBy('name-desc')} className="rounded-lg text-xs font-semibold">
+                                                    Nombre (Z-A)
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => setSortBy('value-asc')} className="rounded-lg text-xs font-semibold">
+                                                    Valor (Menor a Mayor)
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => setSortBy('value-desc')} className="rounded-lg text-xs font-semibold">
+                                                    Valor (Mayor a Menor)
                                                 </DropdownMenuItem>
                                             </DropdownMenuContent>
                                         </DropdownMenu>

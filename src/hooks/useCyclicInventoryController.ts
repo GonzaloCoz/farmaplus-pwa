@@ -73,18 +73,22 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
     }, [fetchPersistentStats]);
 
     // Advanced Logic State
-    const [sortBy, setSortBy] = useState<'default' | 'financial'>('default');
+    const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'value-asc' | 'value-desc'>('name-asc');
 
     // Derived State: Sorted Items
     // We filter items based on the active tab in the UI, but here we provide a helper to sort any list
     const getSortedItems = useCallback((itemsToSort: CyclicItem[]) => {
-        if (sortBy === 'default') return itemsToSort;
-
         return [...itemsToSort].sort((a, b) => {
+            if (sortBy === 'name-asc') return a.name.localeCompare(b.name);
+            if (sortBy === 'name-desc') return b.name.localeCompare(a.name);
+
             const diffA = Math.abs(a.systemQuantity - a.countedQuantity) * a.cost;
             const diffB = Math.abs(b.systemQuantity - b.countedQuantity) * b.cost;
-            // Descending order (highest impact first)
-            return diffB - diffA;
+            
+            if (sortBy === 'value-asc') return diffA - diffB;
+            if (sortBy === 'value-desc') return diffB - diffA;
+
+            return 0;
         });
     }, [sortBy]);
 

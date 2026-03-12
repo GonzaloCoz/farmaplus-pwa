@@ -129,7 +129,7 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
 
     // -- Actions --
 
-    const handleUpdateQuantity = useCallback((id: string, quantity: number) => {
+    const handleUpdateQuantity = useCallback((id: string, quantity: number, reason?: string) => {
         setItems(prev => prev.map(item => {
             if (item.id === id) {
                 const diff = quantity - item.systemQuantity;
@@ -160,7 +160,8 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
                 return {
                     ...item,
                     countedQuantity: quantity,
-                    status: item.status === 'adjusted' ? 'adjusted' : 'controlled',
+                    readjustmentReason: reason,
+                    status: 'controlled', // Force to controlled so it can be finalized again
                     wasReadjusted: isReadjustment ? true : item.wasReadjusted
                 };
             }

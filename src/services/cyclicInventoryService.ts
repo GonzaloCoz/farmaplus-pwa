@@ -45,6 +45,7 @@ export interface CyclicItem {
     updatedAt?: string;
     shortageId?: string;
     surplusId?: string;
+    readjustmentReason?: string;
 }
 
 export const cyclicInventoryService = {
@@ -60,6 +61,7 @@ export const cyclicInventoryService = {
                     system_quantity,
                     status,
                     was_readjusted,
+                    readjustment_reason,
                     category,
                     adjustment_id_shortage,
                     adjustment_id_surplus,
@@ -91,6 +93,7 @@ export const cyclicInventoryService = {
                     status: item.status as 'pending' | 'controlled' | 'adjusted',
                     category: item.category || item.products?.category, // Prefer category from inventory record
                     wasReadjusted: item.was_readjusted,
+                    readjustmentReason: item.readjustment_reason,
                     updatedAt: item.updated_at,
                     shortageId: item.adjustment_id_shortage,
                     surplusId: item.adjustment_id_surplus
@@ -123,6 +126,7 @@ export const cyclicInventoryService = {
                 systemQuantity: item.systemQuantity,
                 status: item.status,
                 wasReadjusted: item.wasReadjusted || false,
+                readjustmentReason: item.readjustmentReason,
                 shortageId: item.shortageId,
                 surplusId: item.surplusId
             }));
@@ -176,7 +180,7 @@ export const cyclicInventoryService = {
             });
 
             if (error) {
-                console.error('Error calling finalize_cyclic_inventory RPC:', error);
+                console.error('Error calling finalize_cyclic_inventory RPC:', JSON.stringify(error, null, 2));
                 throw error;
             }
 

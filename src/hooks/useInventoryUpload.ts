@@ -57,6 +57,16 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
         try {
             const dbItems = await cyclicInventoryService.getLabInventory(branchName, labName);
             if (dbItems.length > 0) {
+                // Feature logic: If 100% adjusted and user uploads Excel, ask for re-adjustment
+                const allAdjusted = dbItems.every(i => i.status === 'adjusted');
+                if (allAdjusted) {
+                    const confirmReajuste = window.confirm("Este laboratorio ya fue finalizado al 100%.\n\n¿Deseas realizar un re-ajuste de algunos artículos?\nSi confirmas, podrás buscarlos en la pestaña 'Ajustados' y modificar su cantidad indicando el motivo.");
+                    if (!confirmReajuste) {
+                        setIsUploading(false);
+                        return;
+                    }
+                }
+
                 // React state toma prioridad (puede tener cambios no guardados recientes),
                 // pero la DB es el fallback para items que no están en el estado.
                 const reactItemMap = new Map(currentItems.map(i => [String(i.ean).trim(), i]));

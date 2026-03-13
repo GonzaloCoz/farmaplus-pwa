@@ -216,11 +216,14 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                                 {(() => {
                                     const iconClass = "w-4 h-4";
                                     const weight = diff !== 0 ? "BoldDuotone" : "LineDuotone";
-                                    switch (item.category) {
-                                        case 'Perfumería': return <Perfume className={iconClass} weight={weight as any} />;
-                                        case 'Accesorios': return <Stethoscope className={iconClass} weight={weight as any} />;
-                                        case 'Varios': return <Pills3 className={iconClass} weight={weight as any} />;
-                                        case 'Medicamentos':
+                                    const rawCategory = typeof item.category === 'string' ? item.category.trim() : 'Varios';
+                                    const catNormal = rawCategory.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+                                    switch (catNormal) {
+                                        case 'perfumeria': return <Perfume className={iconClass} weight={weight as any} />;
+                                        case 'accesorios': return <Stethoscope className={iconClass} weight={weight as any} />;
+                                        case 'varios': return <Pills3 className={iconClass} weight={weight as any} />;
+                                        case 'medicamentos':
                                         default: return <JarOfPills className={iconClass} weight={weight as any} />;
                                     }
                                 })()}

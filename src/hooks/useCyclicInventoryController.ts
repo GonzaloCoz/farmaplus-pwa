@@ -95,8 +95,8 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
             if (sortBy === 'name-asc') return a.name.localeCompare(b.name);
             if (sortBy === 'name-desc') return b.name.localeCompare(a.name);
 
-            const diffA = Math.abs(a.systemQuantity - a.countedQuantity) * a.cost;
-            const diffB = Math.abs(b.systemQuantity - b.countedQuantity) * b.cost;
+            const diffA = (a.countedQuantity - a.systemQuantity) * a.cost;
+            const diffB = (b.countedQuantity - b.systemQuantity) * b.cost;
             
             if (sortBy === 'value-asc') return diffA - diffB;
             if (sortBy === 'value-desc') return diffB - diffA;

@@ -322,7 +322,7 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                                     "text-sm font-bold",
                                     diffValue < 0 ? 'text-destructive' : 'text-success'
                                 )}>
-                                    {diffValue > 0 ? '+' : ''}${Math.abs(diffValue).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    {diffValue > 0 ? '+' : (diffValue < 0 ? '-' : '')}${Math.abs(diffValue).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </p>
                             </div>
                         )}

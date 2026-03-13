@@ -20,7 +20,11 @@ import {
     Hashtag as Hash,
     Copy,
     ArrowRightUp as ArrowUpRight,
-    ArrowRightDown as ArrowDownRight
+    ArrowRightDown as ArrowDownRight,
+    JarOfPills,
+    Perfume,
+    Stethoscope,
+    Pills3
 } from '@solar-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -205,9 +209,21 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                         <div className="flex items-center gap-2 min-w-0 pr-2">
                             <div className={cn(
                                 "p-1.5 rounded-lg shrink-0",
-                                diff < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'
+                                diff < 0 ? 'bg-destructive/10 text-destructive dark:bg-red-500/15 dark:text-red-400'
+                                    : diff > 0 ? 'bg-success/10 text-success dark:bg-green-500/15 dark:text-green-400'
+                                    : 'bg-muted/40 text-muted-foreground'
                             )}>
-                                {diff < 0 ? <TrendingDown className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
+                                {(() => {
+                                    const iconClass = "w-4 h-4";
+                                    const weight = diff !== 0 ? "BoldDuotone" : "LineDuotone";
+                                    switch (item.category) {
+                                        case 'Perfumería': return <Perfume className={iconClass} weight={weight as any} />;
+                                        case 'Accesorios': return <Stethoscope className={iconClass} weight={weight as any} />;
+                                        case 'Varios': return <Pills3 className={iconClass} weight={weight as any} />;
+                                        case 'Medicamentos':
+                                        default: return <JarOfPills className={iconClass} weight={weight as any} />;
+                                    }
+                                })()}
                             </div>
                             <div className="flex flex-col gap-0.5 min-w-0">
                                 <ProductImageHover ean={item.ean} name={item.name}>

@@ -433,6 +433,7 @@ export default function CyclicInventoryDetail() {
                                             onUpdateQuantity={handleUpdateQuantity}
                                             onCheck={() => { }} // No check needed for adjusted
                                             readOnly={false} // Enable editing for readjustments
+                                            isAdjustedTab={true}
                                         />
                                     </TabsContent>
 

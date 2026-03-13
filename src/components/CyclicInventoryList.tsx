@@ -49,12 +49,11 @@ export interface CyclicItem {
     updatedAt?: string;
     shortageId?: string;
     surplusId?: string;
-    readjustmentReason?: string;
 }
 
 interface CyclicInventoryListProps {
     items: CyclicItem[];
-    onUpdateQuantity: (id: string, quantity: number, reason?: string) => void;
+    onUpdateQuantity: (id: string, quantity: number) => void;
     onCheck: (id: string) => void;
     onRevert?: (id: string) => void;
     readOnly?: boolean;
@@ -78,12 +77,10 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editQuantity, setEditQuantity] = useState('');
     const [showCalculator, setShowCalculator] = useState(false);
-    const [editReason, setEditReason] = useState('');
 
     const handleStartEdit = (item: CyclicItem) => {
         setEditingId(item.id);
         setEditQuantity(item.countedQuantity.toString());
-        setEditReason(item.readjustmentReason || '');
         setShowCalculator(false);
     };
 
@@ -91,16 +88,8 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
         if (editingId) {
             const qty = parseInt(editQuantity, 10);
             if (!isNaN(qty) && qty >= 0) {
-                const item = items.find(i => i.id === editingId);
-                // Si estaba ajustado, el motivo es obligatorio
-                if (item?.status === 'adjusted' && !editReason.trim()) {
-                    // Import notify dynamically to avoid circular dependencies if any, or just use the local state.
-                    // Wait, we need to import notify if not imported. I'll just use simple alert fallback or add notify import.
-                    return; 
-                }
-                onUpdateQuantity(editingId, qty, editReason.trim());
+                onUpdateQuantity(editingId, qty);
                 setEditingId(null);
-                setEditReason('');
             }
         }
     };
@@ -108,7 +97,6 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
     const handleCancelEdit = () => {
         setEditingId(null);
         setEditQuantity('');
-        setEditReason('');
         setShowCalculator(false);
     };
 
@@ -354,68 +342,35 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                     <DialogHeader>
                         <DialogTitle>Editar Cantidad</DialogTitle>
                     </DialogHeader>
-                    {editingId && (() => {
-                        const currentItem = items.find(i => i.id === editingId);
-                        if (!currentItem) return null;
-                        return (
-                            <div className="space-y-4 py-4">
-                                <div className="p-3 bg-muted/30 rounded-lg border border-border">
-                                    <span className="font-mono text-xs text-muted-foreground">{currentItem.ean}</span>
-                                    <h4 className="font-semibold text-sm leading-tight mt-1">{currentItem.name}</h4>
-                                </div>
-                                <div className="flex gap-2 items-end">
-                                    <div className="flex-1">
-                                        <label className="text-sm font-medium text-foreground mb-2 block">
-                                            Nueva Cantidad Física
-                                        </label>
-                                        <Input
-                                            type="number"
-                                            min="0"
-                                            value={editQuantity}
-                                            onChange={(e) => setEditQuantity(e.target.value)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    // Validar motivo si está ajustado
-                                                    if (currentItem.status === 'adjusted' && !editReason.trim()) return;
-                                                    handleSaveEdit();
-                                                }
-                                            }}
-                                            placeholder="Ingresa la cantidad"
-                                            autoFocus
-                                        />
-                                    </div>
-                                    <Button
-                                        variant={showCalculator ? "secondary" : "outline"}
-                                        size="icon"
-                                        onClick={() => setShowCalculator(!showCalculator)}
-                                        title="Calculadora"
-                                    >
-                                        <CalculatorIcon className="w-4 h-4" />
-                                    </Button>
-                                </div>
-
-                                {currentItem.status === 'adjusted' && (
-                                    <div className="mt-4">
-                                        <label className="text-sm font-medium text-destructive mb-2 block">
-                                            Motivo de Re-ajuste *
-                                        </label>
-                                        <Input
-                                            value={editReason}
-                                            onChange={(e) => setEditReason(e.target.value)}
-                                            placeholder="Ej. Se encontraron 2 más en el depósito..."
-                                            className="border-warning focus-visible:ring-warning"
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter' && editReason.trim()) {
-                                                    handleSaveEdit();
-                                                }
-                                            }}
-                                        />
-                                        <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
-                                            <AlertTriangle className="w-3.5 h-3.5 text-warning" />
-                                            Requerido para modificar ítems ya ajustados.
-                                        </p>
-                                    </div>
-                                )}
+                    <div className="space-y-4 py-4">
+                        <div className="flex gap-2 items-end">
+                            <div className="flex-1">
+                                <label className="text-sm font-medium text-foreground mb-2 block">
+                                    Cantidad Física
+                                </label>
+                                <Input
+                                    type="number"
+                                    min="0"
+                                    value={editQuantity}
+                                    onChange={(e) => setEditQuantity(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            handleSaveEdit();
+                                        }
+                                    }}
+                                    placeholder="Ingresa la cantidad"
+                                    autoFocus
+                                />
+                            </div>
+                            <Button
+                                variant={showCalculator ? "secondary" : "outline"}
+                                size="icon"
+                                onClick={() => setShowCalculator(!showCalculator)}
+                                title="Calculadora"
+                            >
+                                <CalculatorIcon className="w-4 h-4" />
+                            </Button>
+                        </div>
 
                         <AnimatePresence>
                             {showCalculator && (
@@ -433,8 +388,6 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                             )}
                         </AnimatePresence>
                     </div>
-                    );
-                    })()}
                     <DialogFooter>
                         <Button variant="outline" onClick={handleCancelEdit}>
                             Cancelar

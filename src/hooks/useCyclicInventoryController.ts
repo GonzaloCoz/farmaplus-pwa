@@ -25,6 +25,7 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
 
     // Core State
     const [items, setItems] = useState<CyclicItem[]>([]);
+    const [isExcelUploaded, setIsExcelUploaded] = useState(false);
 
     // 1. Sync Logic (Load/Save/AutoSave/Reset)
     const { isLoading, setIsLoading, isSaving, setIsSaving, saveProgress } = useInventorySync({
@@ -39,11 +40,23 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         branchName,
         labName,
         currentItems: items,
-        onItemsUpdated: setItems
+        onItemsUpdated: (newItems) => {
+            setItems(newItems);
+            setIsExcelUploaded(true); // Se acaba de cargar un Excel, permitimos re-ajustes
+        }
     });
 
+    // RULE: "Smart Hide" - If lab has adjusted items and NO Excel upload, hide pendings.
+    const hasAdjustedItems = items.some(i => i.status === 'adjusted');
+    const shouldHidePendings = hasAdjustedItems && !isExcelUploaded;
+
+    // We only count "visible" or "active" items for the Global Header
+    const visibleItems = shouldHidePendings 
+        ? items.filter(i => i.status !== 'pending')
+        : items;
+
     // 3. Stats & Filter Logic
-    const stats = useInventoryStats(items, CATEGORIES[0]);
+    const stats = useInventoryStats(visibleItems, CATEGORIES[0]);
     const {
         controlledItems: localControlled,
         currentCategory
@@ -130,6 +143,17 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
     // -- Actions --
 
     const handleUpdateQuantity = useCallback((id: string, quantity: number, reason?: string) => {
+        const itemToUpdate = items.find(i => i.id === id);
+        
+        // REGLA DE NEGOCIO: Re-ajuste requiere carga previa de Excel
+        if (itemToUpdate?.status === 'adjusted' && !isExcelUploaded) {
+            notify.error(
+                "Acción bloqueada", 
+                "Para realizar un re-ajuste de productos ya finalizados, primero debes cargar el Excel de sistema actualizado."
+            );
+            return;
+        }
+
         setItems(prev => prev.map(item => {
             if (item.id === id) {
                 const diff = quantity - item.systemQuantity;
@@ -209,23 +233,25 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         const surpluses = controlledItems.filter(i => i.countedQuantity > i.systemQuantity);
 
         if (shortages.length > 0) {
-            if (!shortageId.trim()) {
+            const cleanId = shortageId.trim();
+            if (!cleanId) {
                 notify.error("Error", "Por favor ingresa el ID de ajuste para Faltantes");
                 return;
             }
-            if (!/^\d+$/.test(shortageId.trim())) {
-                notify.error("Error", "El ID de Faltantes debe contener solo números, sin espacios ni símbolos.");
+            if (!/^\d+$/.test(cleanId) || cleanId.length < 4 || cleanId.length > 12) {
+                notify.error("Error", "El ID de Faltantes debe ser numérico y tener entre 4 y 12 dígitos.");
                 return;
             }
         }
 
         if (surpluses.length > 0) {
-            if (!surplusId.trim()) {
+            const cleanId = surplusId.trim();
+            if (!cleanId) {
                 notify.error("Error", "Por favor ingresa el ID de ajuste para Sobrantes");
                 return;
             }
-            if (!/^\d+$/.test(surplusId.trim())) {
-                notify.error("Error", "El ID de Sobrantes debe contener solo números, sin espacios ni símbolos.");
+            if (!/^\d+$/.test(cleanId) || cleanId.length < 4 || cleanId.length > 12) {
+                notify.error("Error", "El ID de Sobrantes debe ser numérico y tener entre 4 y 12 dígitos.");
                 return;
             }
         }
@@ -240,11 +266,27 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
             const updatedItems = items.map(item => {
                 if (item.status === 'controlled') {
                     const diff = item.countedQuantity - item.systemQuantity;
+                    
+                    // Logic to preserve existing IDs and append new ones if they changed
+                    let newShortageId = item.shortageId;
+                    if (diff < 0) {
+                        newShortageId = item.shortageId 
+                            ? (item.shortageId.includes(shortageId) ? item.shortageId : `${item.shortageId}, ${shortageId}`)
+                            : shortageId;
+                    }
+
+                    let newSurplusId = item.surplusId;
+                    if (diff > 0) {
+                        newSurplusId = item.surplusId 
+                            ? (item.surplusId.includes(surplusId) ? item.surplusId : `${item.surplusId}, ${surplusId}`)
+                            : surplusId;
+                    }
+
                     return {
                         ...item,
                         status: 'adjusted' as const,
-                        shortageId: diff < 0 ? shortageId : undefined,
-                        surplusId: diff > 0 ? surplusId : undefined
+                        shortageId: newShortageId,
+                        surplusId: newSurplusId
                     };
                 }
                 return item;
@@ -266,6 +308,11 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
                 shortageId,
                 surplusId
             );
+
+            // 2. Limpieza local de pendientes: tras la finalización, la app solo debe mostrar lo ajustado
+            // El RPC ya borró los pendientes en la DB, sincronizamos el estado local.
+            const finalProcessedItems = updatedItems.filter(item => item.status === 'adjusted');
+            setItems(finalProcessedItems);
 
             // Fetch the updated stats to reflect the real database state after finalization
             await fetchPersistentStats();
@@ -303,6 +350,11 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
 
             const newHistory = await cyclicInventoryService.getAdjustmentHistory(branchName, labName);
             setHistory(newHistory);
+
+            // Invalidar Caché de React Query para forzar que al volver se cargue la lista limpia (sin pendientes)
+            queryClient.invalidateQueries({
+                queryKey: INVENTORY_KEYS.lab(branchName, labName)
+            });
 
         } catch (error) {
             console.error("Error saving inventory:", error);
@@ -356,6 +408,7 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         isLoading,
         isSaving,
         isUploading,
+        isExcelUploaded,
         branchName,
 
         // Stats (Overriden by Global Logic)
@@ -398,6 +451,9 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         handleFinalizeClick,
         handleSaveInventory,
         handleResetData,
-        handleConfirmDelete
+        handleConfirmDelete,
+
+        // Special State
+        shouldHidePendings
     };
 }

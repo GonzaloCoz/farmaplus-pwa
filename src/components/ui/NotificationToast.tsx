@@ -61,7 +61,7 @@ export function NotificationToast({
     duration = 15000,
     action
 }: NotificationToastProps) {
-    const [expanded, setExpanded] = useState(false);
+    const [expanded, setExpanded] = useState(type === 'error');
     const [isPaused, setIsPaused] = useState(false);
     const [remaining, setRemaining] = useState(duration);
     const [isVisible, setIsVisible] = useState(true);

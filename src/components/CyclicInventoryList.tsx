@@ -24,6 +24,7 @@ import {
 } from '@solar-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { notify } from '@/lib/notifications';
 import { SwipeableItem } from './SwipeableItem';
 import { Calculator } from './Calculator';
 import { FixedSizeList as List } from 'react-window';
@@ -49,15 +50,17 @@ export interface CyclicItem {
     updatedAt?: string;
     shortageId?: string;
     surplusId?: string;
+    readjustmentReason?: string;
 }
 
 interface CyclicInventoryListProps {
     items: CyclicItem[];
-    onUpdateQuantity: (id: string, quantity: number) => void;
+    onUpdateQuantity: (id: string, quantity: number, reason?: string) => void;
     onCheck: (id: string) => void;
     onRevert?: (id: string) => void;
     readOnly?: boolean;
     isPending?: boolean;
+    isExcelUploaded?: boolean;
     // IDs de ajuste del último cierre (para mostrar en la pestaña de Ajustados)
     lastAdjustmentIds?: {
         shortage: string; // ID Plex para Faltantes
@@ -72,15 +75,28 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
     onRevert,
     readOnly = false,
     isPending = false,
+    isExcelUploaded = false,
     lastAdjustmentIds
 }: CyclicInventoryListProps) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editQuantity, setEditQuantity] = useState('');
     const [showCalculator, setShowCalculator] = useState(false);
+    const [editReason, setEditReason] = useState('');
+    const [copiedId, setCopiedId] = useState<string | null>(null);
 
     const handleStartEdit = (item: CyclicItem) => {
+        // REGLA DE NEGOCIO: Bloqueo de Re-ajuste si no hay Excel nuevo
+        if (item.status === 'adjusted' && !isExcelUploaded) {
+            notify.error(
+                "Acción bloqueada", 
+                "Para realizar un re-ajuste de productos ya finalizados, primero debes cargar el Excel de sistema actualizado."
+            );
+            return;
+        }
+
         setEditingId(item.id);
         setEditQuantity(item.countedQuantity.toString());
+        setEditReason(item.readjustmentReason || '');
         setShowCalculator(false);
     };
 
@@ -88,8 +104,16 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
         if (editingId) {
             const qty = parseInt(editQuantity, 10);
             if (!isNaN(qty) && qty >= 0) {
-                onUpdateQuantity(editingId, qty);
+                const item = items.find(i => i.id === editingId);
+                // Si estaba ajustado, el motivo es obligatorio
+                if (item?.status === 'adjusted' && !editReason.trim()) {
+                    // Import notify dynamically to avoid circular dependencies if any, or just use the local state.
+                    // Wait, we need to import notify if not imported. I'll just use simple alert fallback or add notify import.
+                    return; 
+                }
+                onUpdateQuantity(editingId, qty, editReason.trim());
                 setEditingId(null);
+                setEditReason('');
             }
         }
     };
@@ -97,6 +121,7 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
     const handleCancelEdit = () => {
         setEditingId(null);
         setEditQuantity('');
+        setEditReason('');
         setShowCalculator(false);
     };
 
@@ -104,9 +129,10 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
         setEditQuantity(Math.floor(result).toString());
     };
 
-    const copyToClipboard = (text: string) => {
+    const copyToClipboard = (text: string, id: string) => {
         navigator.clipboard.writeText(text);
-        // We could add a notification here or local state feedback
+        setCopiedId(id);
+        setTimeout(() => setCopiedId(null), 2000);
     };
 
     // Row component for react-window
@@ -155,19 +181,33 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                     })}
                 >
                     <div
-                        className="grid grid-cols-12 gap-0 h-full items-center border-b border-border/40 hover:bg-muted/10 transition-colors group cursor-pointer"
+                        className="h-full items-center border-b border-border/40 hover:bg-muted/10 transition-colors group cursor-pointer px-4"
+                        style={{
+                            display: 'grid',
+                            gridTemplateColumns: isPending
+                                ? '60px 2.5fr 1.5fr 1fr 1fr'
+                                : '60px 2.5fr 1.5fr 1fr 1fr 0.8fr 0.8fr 1fr',
+                            gap: '0 12px'
+                        }}
                         onClick={() => handleStartEdit(item)}
                     >
-                        {/* Product Info */}
-                        <div className={cn(
-                            "flex items-center gap-3 pl-2 pr-4 min-w-0 transition-all",
-                            isPending ? "col-span-4" : "col-span-3"
-                        )}>
+                        {/* FECHA */}
+                        <div className="flex flex-col justify-center py-1">
+                            <span className="text-xs font-bold text-foreground/80 leading-tight">
+                                {item.updatedAt ? new Date(item.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground font-medium leading-none">
+                                {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString([], { day: '2-digit', month: '2-digit' }) : '--/--'}
+                            </span>
+                        </div>
+
+                        {/* PRODUCTO */}
+                        <div className="flex items-center gap-2 min-w-0 pr-2">
                             <div className={cn(
-                                "p-2 rounded-lg shrink-0",
+                                "p-1.5 rounded-lg shrink-0",
                                 diff < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'
                             )}>
-                                {diff < 0 ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
+                                {diff < 0 ? <TrendingDown className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
                             </div>
                             <div className="flex flex-col gap-0.5 min-w-0">
                                 <ProductImageHover ean={item.ean} name={item.name}>
@@ -175,65 +215,45 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                                         {item.name}
                                     </p>
                                 </ProductImageHover>
-                                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                                    {item.wasReadjusted && (
-                                        <Badge variant="outline" className="text-[10px] h-5 bg-purple-100/50 text-purple-700 border-purple-200 font-normal">
-                                            Modif.
-                                        </Badge>
-                                    )}
-                                    {/* Badge con el ID de Ajuste Plex */}
-                                    {item.status === 'adjusted' && diff !== 0 && (item.shortageId || item.surplusId) && (
-                                        <Badge
-                                            variant="outline"
-                                            className={cn(
-                                                "text-[10px] h-5 font-mono gap-1 font-semibold",
-                                                diff < 0
-                                                    ? "bg-destructive/10 text-destructive border-destructive/30"
-                                                    : "bg-success/10 text-success border-success/30"
-                                            )}
-                                            title={diff < 0 ? `ID Ajuste Faltantes: ${item.shortageId}` : `ID Ajuste Sobrantes: ${item.surplusId}`}
-                                        >
-                                            <Hash className="w-2.5 h-2.5" />
-                                            {diff < 0 ? (item.shortageId || '—') : (item.surplusId || '—')}
-                                        </Badge>
-                                    )}
-                                </div>
+                                {item.wasReadjusted && (
+                                    <Badge variant="outline" className="text-[10px] h-5 w-fit bg-primary/10 text-primary border-primary/20 font-semibold">
+                                        Modif.
+                                    </Badge>
+                                )}
                             </div>
                         </div>
 
-                        {/* EAN Column */}
-                        <div className={cn(
-                            "flex items-center gap-2 self-center transition-all px-2",
-                            isPending ? "col-span-3" : "col-span-2"
-                        )}>
-                            <span className="text-sm font-mono text-muted-foreground truncate">{item.ean}</span>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    copyToClipboard(item.ean);
-                                }}
-                            >
-                                <Copy className="w-3 h-3" />
-                            </Button>
+                        {/* EAN with Copy functionality */}
+                        <div 
+                            className="flex items-center gap-2 self-center cursor-pointer group/ean"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                copyToClipboard(item.ean, item.id);
+                            }}
+                            title="Copiar EAN"
+                        >
+                            <span className="text-sm font-mono text-muted-foreground group-hover/ean:text-foreground transition-colors">
+                                {item.ean}
+                            </span>
+                            <div className="w-4 h-4 flex items-center justify-center">
+                                {copiedId === item.id ? (
+                                    <CheckCircle className="w-3.5 h-3.5 text-success animate-bounce-in shrink-0" />
+                                ) : (
+                                    <Copy 
+                                        className="w-3.5 h-3.5 text-primary opacity-0 group-hover/ean:opacity-100 transition-opacity shrink-0"
+                                    />
+                                )}
+                            </div>
                         </div>
 
-                        {/* Price */}
-                        <div className={cn(
-                            "text-left self-center transition-all px-2",
-                            isPending ? "col-span-2" : "hidden md:block md:col-span-1"
-                        )}>
+                        {/* PRECIO */}
+                        <div className="self-center">
                             <p className="text-sm font-medium">${item.cost.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                         </div>
 
-                        {/* Physical / System */}
-                        <div className={cn(
-                            "text-left self-center transition-all pl-8 pr-2",
-                            isPending ? "col-span-3 block" : "hidden sm:block sm:col-span-2"
-                        )}>
-                            <div className="flex items-center justify-start gap-1.5 text-sm relative">
+                        {/* FÍSICO / SISTEMA */}
+                        <div className="self-center">
+                            <div className="flex items-center justify-start gap-1.5 text-sm">
                                 {isPending ? (
                                     <div className="w-10 h-8 rounded-md bg-muted/20 border border-dashed border-muted-foreground/30 flex items-center justify-center text-muted-foreground/40 text-xs shadow-inner">
                                         -
@@ -244,16 +264,48 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                                         hasDiff ? "text-warning" : "text-success"
                                     )}>{item.countedQuantity}</span>
                                 )}
-                                <span className="text-muted-foreground/60 mx-0.5">/</span>
+                                <span className="text-muted-foreground/60">/</span>
                                 <span className="text-muted-foreground font-medium">{item.systemQuantity}</span>
                             </div>
                         </div>
 
-                        {/* Difference (Pill) */}
+                        {/* ID (Badge style) - Only in non-pending */}
                         {!isPending && (
-                            <div className="col-span-2 flex justify-start self-center px-2">
+                            <div className="flex flex-col justify-center gap-0.5 self-center">
+                                {item.status === 'adjusted' && (item.shortageId || item.surplusId) ? (
+                                    <div className="flex flex-col gap-1">
+                                        {item.shortageId && item.shortageId.split(',').map((id, idx) => (
+                                            <Badge
+                                                key={`shortage-${idx}`}
+                                                variant="outline"
+                                                className="text-[10px] h-5 font-mono gap-1 font-semibold bg-destructive/10 text-destructive border-destructive/30 w-fit"
+                                            >
+                                                <Hash className="w-2.5 h-2.5" />
+                                                {id.trim()}
+                                            </Badge>
+                                        ))}
+                                        {item.surplusId && item.surplusId.split(',').map((id, idx) => (
+                                            <Badge
+                                                key={`surplus-${idx}`}
+                                                variant="outline"
+                                                className="text-[10px] h-5 font-mono gap-1 font-semibold bg-success/10 text-success border-success/30 w-fit"
+                                            >
+                                                <Hash className="w-2.5 h-2.5" />
+                                                {id.trim()}
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <span className="text-[10px] text-muted-foreground/30">—</span>
+                                )}
+                            </div>
+                        )}
+
+                        {/* DIFERENCIA (Pill) */}
+                        {!isPending && (
+                            <div className="flex justify-start self-center">
                                 <div className={cn(
-                                    "flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold w-full max-w-[80px] justify-center whitespace-nowrap",
+                                    "flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold justify-center whitespace-nowrap",
                                     diff < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success',
                                     diff === 0 && 'bg-muted text-muted-foreground'
                                 )}>
@@ -263,9 +315,9 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                             </div>
                         )}
 
-                        {/* Total Value */}
+                        {/* TOTAL ($) */}
                         {!isPending && (
-                            <div className="col-span-2 text-left pr-2 self-center">
+                            <div className="self-center">
                                 <p className={cn(
                                     "text-sm font-bold",
                                     diffValue < 0 ? 'text-destructive' : 'text-success'
@@ -292,28 +344,27 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
     return (
         <Card className="border-muted/40 shadow-sm overflow-hidden bg-card">
             {/* Table Header */}
-            <div className="grid grid-cols-12 gap-0 p-4 border-b bg-muted/30 text-[10px] md:text-xs font-semibold text-muted-foreground uppercase tracking-wider items-center">
-                <div className={cn(
-                    "pl-2 text-left pr-4",
-                    isPending ? "col-span-4" : "col-span-3"
-                )}>Producto</div>
-                <div className={cn(
-                    "text-left px-2",
-                    isPending ? "col-span-3" : "col-span-2"
-                )}>EAN</div>
-                <div className={cn(
-                    "text-left px-2",
-                    isPending ? "col-span-2" : "hidden md:block md:col-span-1"
-                )}>Precio</div>
+            <div
+                className="px-4 py-3 border-b bg-muted/30 text-[10px] md:text-xs font-semibold text-muted-foreground uppercase tracking-wider items-center"
+                style={{
+                    display: 'grid',
+                    gridTemplateColumns: isPending
+                        ? '60px 2.5fr 1.5fr 1fr 1fr'
+                        : '60px 2.5fr 1.5fr 1fr 1fr 0.8fr 0.8fr 1fr',
+                    gap: '0 12px'
+                }}
+            >
+                <div>Fecha</div>
+                <div className="pl-9">Producto</div>
+                <div>EAN</div>
+                <div>Precio</div>
+                <div>Físico / Sistema</div>
                 {!isPending && (
                     <>
-                        <div className="col-span-2 text-left pl-8 pr-2">Físico / Sistema</div>
-                        <div className="col-span-2 text-left px-2">Diferencia</div>
-                        <div className="col-span-2 text-left pr-2 pl-2">Total ($)</div>
+                        <div className="text-left">ID</div>
+                        <div className="text-left">Diferencia</div>
+                        <div>Total ($)</div>
                     </>
-                )}
-                {isPending && (
-                    <div className="col-span-3 text-left px-2">Físico / Sistema</div>
                 )}
             </div>
 
@@ -342,35 +393,68 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                     <DialogHeader>
                         <DialogTitle>Editar Cantidad</DialogTitle>
                     </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="flex gap-2 items-end">
-                            <div className="flex-1">
-                                <label className="text-sm font-medium text-foreground mb-2 block">
-                                    Cantidad Física
-                                </label>
-                                <Input
-                                    type="number"
-                                    min="0"
-                                    value={editQuantity}
-                                    onChange={(e) => setEditQuantity(e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            handleSaveEdit();
-                                        }
-                                    }}
-                                    placeholder="Ingresa la cantidad"
-                                    autoFocus
-                                />
-                            </div>
-                            <Button
-                                variant={showCalculator ? "secondary" : "outline"}
-                                size="icon"
-                                onClick={() => setShowCalculator(!showCalculator)}
-                                title="Calculadora"
-                            >
-                                <CalculatorIcon className="w-4 h-4" />
-                            </Button>
-                        </div>
+                    {editingId && (() => {
+                        const currentItem = items.find(i => i.id === editingId);
+                        if (!currentItem) return null;
+                        return (
+                            <div className="space-y-4 py-4">
+                                <div className="p-3 bg-muted/30 rounded-lg border border-border">
+                                    <span className="font-mono text-xs text-muted-foreground">{currentItem.ean}</span>
+                                    <h4 className="font-semibold text-sm leading-tight mt-1">{currentItem.name}</h4>
+                                </div>
+                                <div className="flex gap-2 items-end">
+                                    <div className="flex-1">
+                                        <label className="text-sm font-medium text-foreground mb-2 block">
+                                            Nueva Cantidad Física
+                                        </label>
+                                        <Input
+                                            type="number"
+                                            min="0"
+                                            value={editQuantity}
+                                            onChange={(e) => setEditQuantity(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    // Validar motivo si está ajustado
+                                                    if (currentItem.status === 'adjusted' && !editReason.trim()) return;
+                                                    handleSaveEdit();
+                                                }
+                                            }}
+                                            placeholder="Ingresa la cantidad"
+                                            autoFocus
+                                        />
+                                    </div>
+                                    <Button
+                                        variant={showCalculator ? "secondary" : "outline"}
+                                        size="icon"
+                                        onClick={() => setShowCalculator(!showCalculator)}
+                                        title="Calculadora"
+                                    >
+                                        <CalculatorIcon className="w-4 h-4" />
+                                    </Button>
+                                </div>
+
+                                {currentItem.status === 'adjusted' && (
+                                    <div className="mt-4">
+                                        <label className="text-sm font-medium text-destructive mb-2 block">
+                                            Motivo de Re-ajuste *
+                                        </label>
+                                        <Input
+                                            value={editReason}
+                                            onChange={(e) => setEditReason(e.target.value)}
+                                            placeholder="Ej. Se encontraron 2 más en el depósito..."
+                                            className="border-warning focus-visible:ring-warning"
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && editReason.trim()) {
+                                                    handleSaveEdit();
+                                                }
+                                            }}
+                                        />
+                                        <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
+                                            <AlertTriangle className="w-3.5 h-3.5 text-warning" />
+                                            Requerido para modificar ítems ya ajustados.
+                                        </p>
+                                    </div>
+                                )}
 
                         <AnimatePresence>
                             {showCalculator && (
@@ -388,6 +472,8 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                             )}
                         </AnimatePresence>
                     </div>
+                    );
+                    })()}
                     <DialogFooter>
                         <Button variant="outline" onClick={handleCancelEdit}>
                             Cancelar

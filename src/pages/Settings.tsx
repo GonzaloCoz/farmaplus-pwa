@@ -43,6 +43,7 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAppVersion, CURRENT_APP_VERSION } from '@/hooks/useAppVersion';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 // AdminAudit removed - moved to Reports.tsx
@@ -82,6 +83,7 @@ export default function Settings() {
   const { currentVersion, latestVersion } = useAppVersion();
   const [isPublishingVersion, setIsPublishingVersion] = useState(false);
   const [newVersionObj, setNewVersionObj] = useState({ version: '', notes: '' });
+  const [selectedBranchImport, setSelectedBranchImport] = useState<string>("");
 
   // Add auto-generated version prefix on load
   useEffect(() => {
@@ -276,6 +278,143 @@ export default function Settings() {
       console.error("Import error:", error);
       notify.error("Error", `No se pudo completar la importación: ${error instanceof Error ? error.message : 'Error desconocido'}`);
       toast.error('Error al importar', { description: error.message });
+      event.target.value = '';
+    } finally {
+      setIsImportingLabs(false);
+    }
+  };
+
+  const handleImportIndividualLaboratories = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!selectedBranchImport) {
+      notify.error("Error", "Por favor selecciona una sucursal primero.");
+      event.target.value = '';
+      return;
+    }
+
+    if (!confirm(`¿Deseas importar las asignaciones para ${selectedBranchImport}? Esto actualizará sus laboratorios basándose en el archivo maestro.`)) {
+      event.target.value = '';
+      return;
+    }
+
+    setIsImportingLabs(true);
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data);
+
+      const sheetMap = new Map<string, string>();
+      workbook.SheetNames.forEach(s => sheetMap.set(s.toLowerCase().trim(), s));
+
+      const nBranch = selectedBranchImport.toLowerCase().trim();
+      let sheetName = sheetMap.get(nBranch);
+
+      if (!sheetName) {
+        for (const [sKey, sName] of sheetMap.entries()) {
+          if (nBranch.startsWith(sKey) && sKey.length > 3) {
+            sheetName = sName;
+            break;
+          }
+        }
+      }
+
+      if (!sheetName) {
+        throw new Error(`No se encontró una hoja coincidente para ${selectedBranchImport} en el Excel.`);
+      }
+
+      const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 }) as any[][];
+      if (jsonData.length < 2) throw new Error("La hoja seleccionada no tiene datos válidos.");
+
+      const headers = jsonData[1];
+      const excelLabs = new Set<string>(); // composite keys: "LAB|CAT"
+      const newAssignments: Array<{ lab: string, category: string }> = [];
+
+      for (let c = 0; c < headers.length; c++) {
+        const category = String(headers[c] || '').trim().toUpperCase();
+        if (!category) continue;
+
+        for (let r = 2; r < jsonData.length; r++) {
+          const row = jsonData[r];
+          if (row && row[c]) {
+            const labName = String(row[c]).trim().toUpperCase();
+            if (labName.length > 0) {
+              const key = `${labName}|${category}`;
+              excelLabs.add(key);
+              newAssignments.push({ lab: labName, category });
+            }
+          }
+        }
+      }
+
+      // 1. Fetch existing labs for this branch
+      const { data: existingLabs, error: fetchError } = await supabase
+        .from('branch_laboratories')
+        .select('id, laboratory, category, progress_percentage')
+        .eq('branch_name', selectedBranchImport);
+
+      if (fetchError) throw fetchError;
+
+      const existingMap = new Map<string, any>();
+      existingLabs?.forEach(l => existingMap.set(`${l.laboratory}|${l.category}`, l));
+
+      // 2. Determine what to Insert, What to Keep/Ignore, and what to Delete
+      const toUpsert: any[] = [];
+      let totalExcelCount = newAssignments.length;
+      let ignoredCount = 0;
+      let newCount = 0;
+
+      newAssignments.forEach(a => {
+        const key = `${a.lab}|${a.category}`;
+        if (existingMap.has(key)) {
+          ignoredCount++;
+          // We still upsert to ensure config is consistent, but it counts as "already there"
+        } else {
+          newCount++;
+        }
+        toUpsert.push({
+          branch_name: selectedBranchImport,
+          laboratory: a.lab,
+          category: a.category,
+          status: 'pending',
+          progress_percentage: 0
+        });
+      });
+
+      // 3. Orphans cleanup
+      const idsToDelete = existingLabs
+        ?.filter(row => !excelLabs.has(`${row.laboratory}|${row.category}`))
+        .map(row => row.id) || [];
+
+      // Execute Changes
+      if (toUpsert.length > 0) {
+        const { error: upsError } = await supabase
+          .from('branch_laboratories')
+          .upsert(toUpsert, { onConflict: 'branch_name,laboratory,category' });
+        if (upsError) throw upsError;
+      }
+
+      if (idsToDelete.length > 0) {
+        const { error: delError } = await supabase
+          .from('branch_laboratories')
+          .delete()
+          .in('id', idsToDelete);
+        if (delError) throw delError;
+      }
+
+      notify.success(
+        "Sincronización Individual Completada",
+        `Sucursal: ${selectedBranchImport}\n\n` +
+        `✅ ${newCount} laboratorios nuevos cargados.\n` +
+        `ℹ️ ${ignoredCount} laboratorios ya existían (sin cambios).\n` +
+        `🗑️ ${idsToDelete.length} laboratorios obsoletos eliminados.`
+      );
+      
+      toast.success('Actualización de sucursal exitosa');
+      event.target.value = '';
+    } catch (error: any) {
+      console.error("Individual import error:", error);
+      notify.error("Error", error.message || 'Error al procesar la sucursal.');
       event.target.value = '';
     } finally {
       setIsImportingLabs(false);
@@ -722,6 +861,45 @@ export default function Settings() {
                         {isImportingLabs && (
                           <p className="text-sm text-muted-foreground mt-2 animate-pulse">
                             Procesando archivo...
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="p-4 border rounded-lg bg-muted/30 space-y-4">
+                        <div>
+                          <h3 className="font-medium mb-1">Asignación Individual por Sucursal</h3>
+                          <p className="text-sm text-muted-foreground mb-3">
+                            Selecciona una sucursal y sube el archivo maestro para actualizar solo esa farmacia.
+                          </p>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label>Sucursal a actualizar</Label>
+                            <Select value={selectedBranchImport} onValueChange={setSelectedBranchImport}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Seleccionar sucursal..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {BRANCH_NAMES.map(name => (
+                                  <SelectItem key={name} value={name}>{name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Archivo Maestro (.xlsx)</Label>
+                            <Input
+                              type="file"
+                              accept=".xlsx, .xls"
+                              onChange={handleImportIndividualLaboratories}
+                              disabled={isImportingLabs || !selectedBranchImport}
+                              className="cursor-pointer"
+                            />
+                          </div>
+                        </div>
+                        {!selectedBranchImport && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400">
+                             Primero selecciona una sucursal para habilitar la carga.
                           </p>
                         )}
                       </div>

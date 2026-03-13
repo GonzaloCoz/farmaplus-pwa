@@ -40,9 +40,9 @@ self.onmessage = async (e: MessageEvent) => {
             return;
         }
 
-        // 3. Verificación de Laboratorio
-        const currentLab = labName.toUpperCase().trim();
-        const uploadLab = fileLabName.toUpperCase().trim();
+        // 3. Verificación de Laboratorio (Accent-Insensitive & robust)
+        const currentLab = normalizeStringWorker(labName);
+        const uploadLab = normalizeStringWorker(fileLabName);
 
         if (currentLab !== uploadLab) {
             if (!uploadLab.includes(currentLab) && !currentLab.includes(uploadLab)) {

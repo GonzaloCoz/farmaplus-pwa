@@ -18,7 +18,8 @@ import {
     AltArrowLeft as ArrowLeft,
     Filter,
     MenuDots as MoreVertical,
-    DangerCircle as DiffIcon
+    DangerCircle as DiffIcon,
+    Danger as AlertTriangle
 } from "@solar-icons/react";
 import {
     DropdownMenu,
@@ -56,6 +57,7 @@ export default function CyclicInventoryDetail() {
     const navigate = useNavigate();
     const { activeWindowId, updateWindowMeta } = useWindowManager();
     const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+    const [activeTab, setActiveTab] = useState("pending");
 
     // Update window tab title with lab name
     useEffect(() => {
@@ -70,6 +72,7 @@ export default function CyclicInventoryDetail() {
         isLoading,
         isUploading,
         isSaving,
+        isExcelUploaded,
         progressPercentage,
         branchName,
 
@@ -103,11 +106,23 @@ export default function CyclicInventoryDetail() {
         handleResetData,
         handleConfirmDelete,
 
+        // Special State
+        shouldHidePendings,
+
         // Advanced Logic
         sortBy, setSortBy,
         getSortedItems
 
     } = useCyclicInventoryController({ labName });
+
+    // Efecto para setear pestaña por defecto según carga
+    useEffect(() => {
+        if (!isLoading && items.length > 0) {
+            if (pendingItems.length === 0 && controlledItems.length === 0 && adjustedItems.length > 0 && activeTab === "pending") {
+                setActiveTab("adjusted");
+            }
+        }
+    }, [isLoading, items.length, pendingItems.length, controlledItems.length, adjustedItems.length, activeTab]);
 
     return (
         <PageLayout className="pb-32 lg:pb-10">
@@ -294,7 +309,7 @@ export default function CyclicInventoryDetail() {
                                     </div>
                                 </div>
 
-                                <Tabs defaultValue="pending" className="w-full transition-all duration-500">
+                                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full transition-all duration-500">
                                     <TabsList className="grid w-full grid-cols-4 mb-6 p-1 bg-muted/20 rounded-2xl h-14 border border-muted/40">
                                         <TabsTrigger
                                             value="pending"
@@ -408,12 +423,31 @@ export default function CyclicInventoryDetail() {
                                                 </AlertDescription>
                                             </Alert>
                                         )}
+                                        
+                                        {shouldHidePendings && (
+                                            <Alert className="bg-primary/10 border-primary/20 mb-4 rounded-2xl py-3 shadow-none">
+                                                <Info className="h-4 w-4 text-primary" />
+                                                <AlertDescription className="text-sm font-medium text-primary/80 ml-2">
+                                                    <strong>Vista de Cierre:</strong> Los productos pendientes están ocultos para mantener el laboratorio limpio. Se volverán a activar automáticamente cuando cargues un nuevo Excel.
+                                                </AlertDescription>
+                                            </Alert>
+                                        )}
+
+                                        {!isExcelUploaded && adjustedItems.length > 0 && (
+                                            <Alert className="bg-warning/10 border-warning/20 mb-4 rounded-2xl py-3 shadow-none">
+                                                <AlertTriangle className="h-4 w-4 text-warning" />
+                                                <AlertDescription className="text-sm font-medium text-warning/80 ml-2">
+                                                    <strong>Regla de Re-ajuste:</strong> Para modificar productos ya finalizados, debes cargar el Excel de sistema más reciente.
+                                                </AlertDescription>
+                                            </Alert>
+                                        )}
 
                                         <CyclicInventoryList
                                             items={getSortedItems(pendingItems)}
                                             onUpdateQuantity={handleUpdateQuantity}
                                             onCheck={handleCheck}
                                             isPending={true}
+                                            isExcelUploaded={isExcelUploaded}
                                         />
                                     </TabsContent>
 
@@ -424,6 +458,7 @@ export default function CyclicInventoryDetail() {
                                             onCheck={handleCheck}
                                             onRevert={handleRevertItem}
                                             readOnly={false}
+                                            isExcelUploaded={isExcelUploaded}
                                         />
                                     </TabsContent>
 
@@ -433,7 +468,7 @@ export default function CyclicInventoryDetail() {
                                             onUpdateQuantity={handleUpdateQuantity}
                                             onCheck={() => { }} // No check needed for adjusted
                                             readOnly={false} // Enable editing for readjustments
-                                            isAdjustedTab={true}
+                                            isExcelUploaded={isExcelUploaded}
                                         />
                                     </TabsContent>
 
@@ -494,7 +529,7 @@ export default function CyclicInventoryDetail() {
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Finalizar Inventario</DialogTitle>
-                        <DialogDescription>
+                        <DialogDescription id="finalize-dialog-description">
                             Confirma los valores de ajuste para finalizar el control de este laboratorio.
                         </DialogDescription>
                     </DialogHeader>

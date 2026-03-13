@@ -51,52 +51,38 @@ export interface CyclicItem {
 export const cyclicInventoryService = {
     getLabInventory: async (branchName: string, labName: string): Promise<CyclicItem[]> => {
         try {
-            const cleanBranch = normalizeString(branchName);
-            const { data, error } = await supabase
-                .from('inventories')
-                .select(`
-                    id,
-                    ean,
-                    quantity,
-                    system_quantity,
-                    status,
-                    was_readjusted,
-                    readjustment_reason,
-                    category,
-                    adjustment_id_shortage,
-                    adjustment_id_surplus,
-                    updated_at,
-                    products (
-                        name,
-                        cost,
-                        category
-                    )
-                `)
-                .eq('branch_name', cleanBranch)
-                .ilike('laboratory', normalizeString(labName))
-                .order('name', { foreignTable: 'products', ascending: true }); // Order by product name correctly
+            console.log(`[CyclicService] getLabInventory (v2 RPC) for ${labName} at ${branchName}`);
+            
+            // Use the NEW ROBUST RPC for accent-insensitive and case-insensitive matching
+            const { data, error } = await (supabase as any).rpc('get_lab_inventory_v2', {
+                p_branch_name: branchName,
+                p_laboratory: labName
+            });
 
             if (error) {
                 console.error(`Error loading inventory for ${labName}:`, error);
                 return [];
             }
 
-            // Map Supabase result to CyclicItem
+            console.log(`[CyclicService] Found ${data?.length || 0} rows in DB (v2)`);
+
+            // Map RPC result to CyclicItem
             return data.map((item: any) => {
-                const mappedItem = {
+                 const mappedItem = {
                     id: item.id,
                     ean: item.ean,
-                    name: item.products?.name || 'Desconocido',
-                    systemQuantity: item.system_quantity || 0,
+                    name: item.product_name,
+                    quantity: item.quantity,
+                    systemQuantity: item.system_quantity,
                     countedQuantity: item.quantity,
-                    cost: item.products?.cost || 0,
-                    status: item.status as 'pending' | 'controlled' | 'adjusted',
-                    category: item.category || item.products?.category, // Prefer category from inventory record
+                    status: item.status as any,
                     wasReadjusted: item.was_readjusted,
                     readjustmentReason: item.readjustment_reason,
-                    updatedAt: item.updated_at,
+                    category: item.category || 'Varios',
                     shortageId: item.adjustment_id_shortage,
-                    surplusId: item.adjustment_id_surplus
+                    surplusId: item.adjustment_id_surplus,
+                    cost: item.product_cost || 0,
+                    updatedAt: item.updated_at
                 };
 
                 // Enterprise Validation

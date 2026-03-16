@@ -45,6 +45,9 @@ const AdminAudit = lazy(() => import("./pages/AdminAudit"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const BranchComparison = lazy(() => import("./pages/BranchComparison"));
 const InventoryReminder = lazy(() => import("./pages/InventoryReminder"));
+const TrainingCenter = lazy(() => import("./pages/TrainingCenter"));
+const PostDetail = lazy(() => import("./pages/PostDetail"));
+const AdminEditor = lazy(() => import("./pages/AdminEditor"));
 
 
 const queryClient = new QueryClient({
@@ -296,6 +299,46 @@ const AppRoutes = () => {
             <Suspense fallback={<DashboardSkeleton />}>
               <PageTransition>
                 <InventoryReminder />
+              </PageTransition>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/foro"
+          element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <PageTransition>
+                <TrainingCenter />
+              </PageTransition>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/foro/admin/edit"
+          element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <PageTransition>
+                <AdminEditor />
+              </PageTransition>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/foro/admin/edit/:id"
+          element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <PageTransition>
+                <AdminEditor />
+              </PageTransition>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/foro/:id"
+          element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <PageTransition>
+                <PostDetail />
               </PageTransition>
             </Suspense>
           }

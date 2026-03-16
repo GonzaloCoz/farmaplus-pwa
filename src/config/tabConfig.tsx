@@ -17,6 +17,7 @@ export const TAB_CONFIG: Record<string, { title: string, icon: React.ReactNode }
     "/admin/audit": { title: "Auditoría", icon: <ShieldCheck size={16} weight="LineDuotone" /> },
     "/smart-analyst": { title: "Control de Vencimiento", icon: <Clock size={16} weight="LineDuotone" /> },
     "/inventory-reminder": { title: "Próximo Inventario", icon: <Clock size={16} weight="LineDuotone" /> },
+    "/foro": { title: "Centro de Capacitación", icon: <FileText size={16} weight="LineDuotone" /> },
 };
 
 export const getTabMetaForPath = (path: string) => {
@@ -26,6 +27,10 @@ export const getTabMetaForPath = (path: string) => {
     // Dynamic routes (e.g. /cyclic-inventory/123)
     if (path.startsWith('/cyclic-inventory/')) {
         return { title: "Detalle Inventario", icon: <BarChart3 size={16} weight="LineDuotone" /> };
+    }
+
+    if (path.startsWith('/foro/')) {
+        return { title: "Publicación", icon: <FileText size={16} weight="LineDuotone" /> };
     }
 
     // Default

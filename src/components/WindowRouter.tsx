@@ -21,6 +21,9 @@ const AdminAudit = lazy(() => import("@/pages/AdminAudit"));
 const AdminUsers = lazy(() => import("@/pages/AdminUsers"));
 const BranchComparison = lazy(() => import("@/pages/BranchComparison"));
 const InventoryReminder = lazy(() => import("@/pages/InventoryReminder"));
+const TrainingCenter = lazy(() => import("../pages/TrainingCenter"));
+const PostDetail = lazy(() => import("../pages/PostDetail"));
+const AdminEditor = lazy(() => import("../pages/AdminEditor"));
 
 // Simple component mapping for isolated windows
 const ROUTE_MAP: Record<string, React.ReactNode> = {
@@ -41,6 +44,9 @@ const ROUTE_MAP: Record<string, React.ReactNode> = {
     "/admin/branches": <AdminBranches />,
     "/smart-analyst": <SmartAnalystPage />,
     "/inventory-reminder": <InventoryReminder />,
+    "/foro": <TrainingCenter />,
+    "/foro/admin/edit": <AdminEditor />,
+    "/foro/admin/edit/:id": <AdminEditor />,
 };
 
 // Function to handle dynamic routes like /cyclic-inventory/:id
@@ -50,6 +56,10 @@ const getComponentForPath = (path: string) => {
     // Pattern matching for /cyclic-inventory/:id
     if (path.startsWith('/cyclic-inventory/')) {
         return <CyclicInventoryDetail />;
+    }
+
+    if (path.startsWith('/foro/')) {
+        return <PostDetail />;
     }
 
     return <div>Página no encontrada</div>;

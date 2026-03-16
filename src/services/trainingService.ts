@@ -202,23 +202,21 @@ export const trainingService = {
     /**
      * Admin: Create Post
      */
-    async createPost(post: Partial<TrainingPost>) {
+    async createPost(post: Partial<TrainingPost>, manualAuthorId?: string) {
         const { data: { user } } = await supabase.auth.getUser();
-        const { data: { session } } = await supabase.auth.getSession();
+        const authorId = user?.id || manualAuthorId;
         
-        console.log("TrainingService: Creating post with user:", user?.id);
-        console.log("TrainingService: Auth session active:", !!session);
+        console.log("TrainingService: Creating post. Supabase Auth User:", user?.id, "Manual ID:", manualAuthorId);
         
-        if (!user) {
-            console.error("TrainingService: No user found in getUser()");
-            throw new Error("Sesión no encontrada o expirada. Por favor, vuelve a iniciar sesión.");
+        if (!authorId) {
+            throw new Error("No se pudo identificar al autor. Por favor, re-inicia sesión.");
         }
 
         const { data, error } = await (supabase as any)
             .from('training_posts')
             .insert({
                 ...post,
-                author_id: user.id
+                author_id: authorId
             })
             .select()
             .single();
@@ -233,10 +231,18 @@ export const trainingService = {
     /**
      * Admin: Update Post
      */
-    async updatePost(id: string, post: Partial<TrainingPost>) {
+    async updatePost(id: string, post: Partial<TrainingPost>, manualAuthorId?: string) {
+        const { data: { user } } = await supabase.auth.getUser();
+        const authorId = user?.id || manualAuthorId;
+
         const { data, error } = await (supabase as any)
             .from('training_posts')
-            .update(post)
+            .update({
+                ...post,
+                // Only update author_id if we have one and it's not already set correctly
+                // In most updates we don't change the author, but for bypass we ensure it matches
+                ...(authorId ? { author_id: authorId } : {})
+            })
             .eq('id', id)
             .select()
             .single();

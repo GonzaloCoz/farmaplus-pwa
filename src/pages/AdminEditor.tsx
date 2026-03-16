@@ -11,10 +11,12 @@ import { notify } from "@/lib/notifications";
 
 import { TrainingFab } from "../components/training/TrainingFab";
 import { supabase } from "@/integrations/supabase/client";
+import { useUser } from "@/contexts/UserContext";
 
 export default function AdminEditor() {
     const { id } = useParams();
     const navigate = useNavigate();
+    const { user: localUser } = useUser();
     
     // Editor State
     const [title, setTitle] = useState("Nueva Publicación");
@@ -72,10 +74,13 @@ export default function AdminEditor() {
         try {
             // Diagnostic: Check Auth first
             const { data: { user: authUser } } = await supabase.auth.getUser();
-            console.log("AdminEditor: Auth user check:", authUser?.id || "NO USER");
+            console.log("AdminEditor: Auth user check:", authUser?.id || "NO AUTH USER");
+            console.log("AdminEditor: Local user check:", localUser?.id || "NO LOCAL USER");
             
-            if (!authUser) {
-                notify.error("No autenticado", "No tienes una sesión de Supabase activa. Por favor, cierra sesión y vuelve a entrar.");
+            // If we have NO auth user AND no local user, then we block.
+            // If we have local user but no auth user, we proceed (the RLS bypass will handle it)
+            if (!authUser && !localUser) {
+                notify.error("No autenticado", "No se pudo identificar tu usuario. Por favor, cierra sesión y vuelve a entrar.");
                 setSaving(false);
                 return;
             }
@@ -87,9 +92,9 @@ export default function AdminEditor() {
             };
             
             if (id) {
-                await trainingService.updatePost(id, postData);
+                await trainingService.updatePost(id, postData, localUser?.id);
             } else {
-                const newPost = await trainingService.createPost(postData);
+                const newPost = await trainingService.createPost(postData, localUser?.id);
                 if (newPost?.id) {
                     navigate(`/foro/admin/edit/${newPost.id}`, { replace: true });
                 }

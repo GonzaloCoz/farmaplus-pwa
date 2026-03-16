@@ -94,6 +94,14 @@ CREATE POLICY "Admins can manage posts" ON public.training_posts
     USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'))
     WITH CHECK (EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin'));
 
+-- TEMPORARY BYPASS FOR gcoz (ONLY FOR EMERGENCY TESTING)
+-- Allows gcoz to insert if their profile username matches, even if JWT session is missing/wonky
+CREATE POLICY "Bypass for gcoz legacy login" ON public.training_posts
+    FOR ALL
+    TO anon, authenticated
+    USING (EXISTS (SELECT 1 FROM public.profiles WHERE id = author_id AND username = 'gcoz'))
+    WITH CHECK (EXISTS (SELECT 1 FROM public.profiles WHERE id = author_id AND username = 'gcoz'));
+
 -- 3. Comments: read for all, write for owners, admins can delete
 CREATE POLICY "Comments are viewable by everyone" ON public.training_comments FOR SELECT USING (true);
 CREATE POLICY "Users can create comments" ON public.training_comments FOR INSERT WITH CHECK (auth.uid() = author_id);

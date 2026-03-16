@@ -58,14 +58,14 @@ interface TiptapEditorProps {
 }
 
 // Static Extensions outside component to avoid re-renders and duplicates
-const STATIC_EXTENSIONS = [
+// We filter them by name to ensure no duplicates are registered
+const RAW_EXTENSIONS = [
     StarterKit.configure({
         heading: {
             levels: [1, 2, 3],
         },
-        // Force disable these in StarterKit if they are somehow included
-        // (though standard StarterKit shouldn't have them)
-        codeBlock: false, 
+        // Disable extensions that might be causing duplicates
+        codeBlock: false,
     }),
     TextStyle,
     FontSize,
@@ -90,6 +90,11 @@ const STATIC_EXTENSIONS = [
         placeholder: 'Escribe algo increíble...',
     }),
 ];
+
+// Ensure each extension is only included once by name
+const STATIC_EXTENSIONS = RAW_EXTENSIONS.filter((ext: any, index: number, self: any[]) => 
+    index === self.findIndex((t) => t.name === ext.name)
+);
 
 export function TiptapEditor({ 
     initialContent, 

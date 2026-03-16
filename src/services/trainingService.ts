@@ -204,17 +204,29 @@ export const trainingService = {
      */
     async createPost(post: Partial<TrainingPost>) {
         const { data: { user } } = await supabase.auth.getUser();
+        const { data: { session } } = await supabase.auth.getSession();
         
+        console.log("TrainingService: Creating post with user:", user?.id);
+        console.log("TrainingService: Auth session active:", !!session);
+        
+        if (!user) {
+            console.error("TrainingService: No user found in getUser()");
+            throw new Error("Sesión no encontrada o expirada. Por favor, vuelve a iniciar sesión.");
+        }
+
         const { data, error } = await (supabase as any)
             .from('training_posts')
             .insert({
                 ...post,
-                author_id: user?.id
+                author_id: user.id
             })
             .select()
             .single();
 
-        if (error) throw error;
+        if (error) {
+            console.error("TrainingService: Error in insert:", error);
+            throw error;
+        }
         return data as unknown as TrainingPost;
     },
 

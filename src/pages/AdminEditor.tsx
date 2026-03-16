@@ -10,6 +10,7 @@ import { trainingService, TrainingPost } from "../services/trainingService";
 import { notify } from "@/lib/notifications";
 
 import { TrainingFab } from "../components/training/TrainingFab";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function AdminEditor() {
     const { id } = useParams();
@@ -69,6 +70,16 @@ export default function AdminEditor() {
 
         setSaving(true);
         try {
+            // Diagnostic: Check Auth first
+            const { data: { user: authUser } } = await supabase.auth.getUser();
+            console.log("AdminEditor: Auth user check:", authUser?.id || "NO USER");
+            
+            if (!authUser) {
+                notify.error("No autenticado", "No tienes una sesión de Supabase activa. Por favor, cierra sesión y vuelve a entrar.");
+                setSaving(false);
+                return;
+            }
+
             const postData: Partial<TrainingPost> = {
                 title,
                 content,
@@ -84,9 +95,10 @@ export default function AdminEditor() {
                 }
             }
             notify.success("Éxito", `Publicación guardada como ${status === 'published' ? 'publicada' : 'borrador'}.`);
-        } catch (error) {
-            notify.error("Error", "No se pudo guardar la publicación.");
-            console.error(error);
+        } catch (error: any) {
+            console.error("HandleSave Error:", error);
+            const msg = error.message || "No se pudo guardar la publicación.";
+            notify.error("Error", msg);
         } finally {
             setSaving(false);
         }

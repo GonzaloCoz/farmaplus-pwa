@@ -73,23 +73,30 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
             <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2 mask-linear-fade flex-1">
                 {windows.map((win) => {
                     const isActive = activeWindowId === win.id;
+                    const isSpecialGreen = win.path === '/inventory-reminder';
+                    
                     return (
                         <div
                             key={win.id}
                             className={cn(
                                 "group relative flex items-center h-11 px-5 gap-3 rounded-xl border transition-all cursor-pointer shrink-0 select-none",
-                                isActive
-                                    ? "bg-white dark:bg-[#1e1e1e] border-border/60 shadow-md text-black dark:text-white ring-1 ring-black/[0.01] dark:ring-white/[0.03] elevation-3 animate-in fade-in zoom-in-95 duration-200"
-                                    : "bg-[#f0eeef] dark:bg-[#2a2a2a] border-transparent text-gray-500 dark:text-zinc-400 hover:bg-muted/80 hover:text-black dark:hover:text-white transition-colors"
+                                isSpecialGreen 
+                                    ? "bg-[#0e5e4d] border-[#0e5e4d] text-white shadow-md hover:bg-[#0c5041] hover:border-[#0c5041]"
+                                    : isActive
+                                        ? "bg-white dark:bg-[#1e1e1e] border-border/60 shadow-md text-black dark:text-white ring-1 ring-black/[0.01] dark:ring-white/[0.03] elevation-3 animate-in fade-in zoom-in-95 duration-200"
+                                        : "bg-[#f0eeef] dark:bg-[#2a2a2a] border-transparent text-gray-500 dark:text-zinc-400 hover:bg-muted/80 hover:text-black dark:hover:text-white transition-colors"
                             )}
                             onClick={() => handleTabClick(win.id, win.path)}
                         >
-                            <span className={cn("shrink-0 transition-colors", isActive ? "text-primary" : "text-gray-500 dark:text-zinc-400 group-hover:text-black dark:group-hover:text-white")}>
+                            <span className={cn(
+                                "shrink-0 transition-colors uppercase", 
+                                isSpecialGreen ? "text-white" : isActive ? "text-primary" : "text-gray-500 dark:text-zinc-400 group-hover:text-black dark:group-hover:text-white"
+                            )}>
                                 {win.icon || <FileText className="w-4 h-4" />}
                             </span>
                             <span className={cn(
-                                "text-[15px] font-semibold truncate max-w-[160px] transition-colors",
-                                isActive ? "text-black dark:text-white" : "text-gray-600 dark:text-zinc-400 group-hover:text-black dark:group-hover:text-white"
+                                "text-[15px] font-semibold truncate max-w-[150px] transition-colors",
+                                isSpecialGreen ? "text-white" : isActive ? "text-black dark:text-white" : "text-gray-600 dark:text-zinc-400 group-hover:text-black dark:group-hover:text-white"
                             )}>
                                 {win.title}
                             </span>
@@ -100,8 +107,8 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
                                         handleCloseTab(e, win.id);
                                     }}
                                     className={cn(
-                                        "p-0.5 rounded-md opacity-0 group-hover:opacity-60 transition-all hover:bg-muted hover:text-destructive hover:opacity-100 ml-1",
-                                        isActive ? "opacity-40" : "" // Show faint close on active
+                                        "p-0.5 rounded-md opacity-0 group-hover:opacity-60 transition-all hover:bg-black/10 hover:text-white hover:opacity-100 ml-1",
+                                        isSpecialGreen ? "opacity-60 text-white" : isActive ? "opacity-40" : ""
                                     )}
                                 >
                                     <X className="w-[16px] h-[16px]" />

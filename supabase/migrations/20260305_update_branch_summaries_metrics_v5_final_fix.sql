@@ -46,6 +46,7 @@ branch_lab_metrics AS (
         MAX(bl.branch_name) as display_name,
         COUNT(DISTINCT bl.laboratory) FILTER (WHERE bl.status = 'completed' OR bl.progress_percentage >= 100) as controlled_labs_count,
         COUNT(DISTINCT bl.laboratory) FILTER (WHERE (bl.status = 'in_progress' OR bl.progress_percentage > 0) AND bl.progress_percentage < 100) as active_labs_count,
+        COUNT(DISTINCT bl.laboratory) as total_labs_count,
         SUM(COALESCE(bl.total_items, 0)) as total_items_master,
         MAX(bl.last_updated) as updated_at
     FROM public.branch_laboratories bl
@@ -58,6 +59,7 @@ SELECT
     COALESCE(im.total_adj_value, 0) as adjustments_value,
     COALESCE(bl.controlled_labs_count, 0) as controlled_labs_count,
     COALESCE(bl.active_labs_count, 0) as active_labs_count,
+    COALESCE(bl.total_labs_count, 0) as total_labs_count,
     COALESCE(im.items_controlled_live, 0) as total_controlled_items,
     COALESCE(NULLIF(bl.total_items_master, 0), im.total_items_in_inv, 0) as total_items_sum,
     COALESCE(ws.weighted_progress_sum, 0) as weighted_progress_sum,

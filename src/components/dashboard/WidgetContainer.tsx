@@ -77,7 +77,7 @@ export const WidgetContainer = memo(({ widget, isEditMode, onRemove, onSizeChang
                         )}
                     </div>
                 )}
-                <div className="h-full overflow-auto">
+                <div className="h-full no-scrollbar">
                     {children}
                 </div>
             </Card>

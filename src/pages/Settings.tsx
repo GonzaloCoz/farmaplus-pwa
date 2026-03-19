@@ -537,8 +537,7 @@ export default function Settings() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
-      const { error } = await supabase
-        // @ts-ignore - app_versions is not in types yet
+      const { error } = await (supabase as any)
         .from('app_versions')
         .insert({
           version: newVersionObj.version.trim(),

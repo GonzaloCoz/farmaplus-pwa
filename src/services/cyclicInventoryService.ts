@@ -623,7 +623,8 @@ export const cyclicInventoryService = {
 
             if (sumError) throw sumError;
 
-            // 2. Fetch Goals
+            /* 
+            // 2. Fetch Goals (REMOVED - Use total_labs_count from master list)
             let labCounts: Record<string, number> = {};
             const { data: goalsData, error: goalsError } = await supabase
                 .from('branch_goals')
@@ -636,6 +637,7 @@ export const cyclicInventoryService = {
             } else {
                 labCounts = await getAllBranchLabCounts();
             }
+            */
 
             // 3. Fetch Configs for Start Date and Days
             const { data: configData } = await supabase
@@ -676,6 +678,7 @@ export const cyclicInventoryService = {
                         adjustmentsValue: rawSummary.adjustments_value,
                         controlledLabsCount: rawSummary.controlled_labs_count,
                         activeLabsCount: rawSummary.active_labs_count,
+                        totalLabsCount: rawSummary.total_labs_count,
                         totalControlledItems: rawSummary.total_controlled_items,
                         totalItemsSum: rawSummary.total_items_sum,
                         weightedProgressSum: rawSummary.weighted_progress_sum,
@@ -688,24 +691,17 @@ export const cyclicInventoryService = {
                     }
                 }
 
-                const totalLabsGoal = labCounts[branchName] || 0;
                 const controlledLabsCount = summary?.controlledLabsCount || 0;
                 const activeCount = summary?.activeLabsCount || 0;
+                const totalLabsMaster = summary?.totalLabsCount || 0;
 
-                // Progress calculation: 
-                // We prefer item-based progress if we have the data, as it reflects partial lab work.
-                // However, we want to scale it by the proportion of labs started vs the goal if appropriate?
-                // Actually, the most intuitive is: (Total items controlled / Total items in ALL labs)
-                // Since we only know total items of STARTED labs, we can estimate or use a hybrid.
-
-                // --- PRECISE PROGRESS CALCULATION (WEIGHTED BY LABS) ---
+                // --- PROGRESS CALCULATION (COMPLETED LABS COVERAGE) ---
+                // Matches CategoryProgressWidget.tsx logic for consistency
                 let progress = 0;
-                if (totalLabsGoal > 0) {
-                    // weightedProgressSum is the sum of (avg progress of each lab)
-                    // 100 points = 1 lab completed.
-                    progress = Number((summary.weightedProgressSum / totalLabsGoal).toFixed(1));
+                if (totalLabsMaster > 0) {
+                    progress = Number(((controlledLabsCount / totalLabsMaster) * 100).toFixed(1));
                 } else if (summary?.totalItemsSum > 0) {
-                    // Fallback to item-based if no goal defined
+                    // Fallback to item-based if no labs defined
                     progress = Number(((summary.totalControlledItems / summary.totalItemsSum) * 100).toFixed(1));
                 }
 
@@ -723,7 +719,7 @@ export const cyclicInventoryService = {
 
                 let status = 'pendiente';
                 // Finalized only if all labs in goal are finished
-                if (controlledLabsCount >= totalLabsGoal && totalLabsGoal > 0) {
+                if (controlledLabsCount >= totalLabsMaster && totalLabsMaster > 0) {
                     status = 'controlado';
                 }
                 // In Process if any lab is being worked on OR if there are already units/adjustments registered
@@ -764,7 +760,7 @@ export const cyclicInventoryService = {
                     assignedDays: Number(assignedDays) || 0,
                     remainingDays: Number(remainingDays) || 0,
                     cyclicRound: 1,
-                    monthlyGoal: totalLabsGoal,
+                    monthlyGoal: totalLabsMaster, // Using Total Labs Count instead of Goal
                     elapsedDays,
                     progress: progress,
                     inventoryUnits: summary?.inventoryUnits || 0,

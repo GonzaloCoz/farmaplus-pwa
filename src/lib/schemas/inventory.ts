@@ -41,6 +41,7 @@ export const BranchSummaryLiteSchema = z.object({
     adjustmentsValue: z.number().default(0),
     controlledLabsCount: z.number().default(0),
     activeLabsCount: z.number().default(0),
+    totalLabsCount: z.number().default(0),
     totalControlledItems: z.number().default(0),
     totalItemsSum: z.number().default(0),
     weightedProgressSum: z.number().default(0),

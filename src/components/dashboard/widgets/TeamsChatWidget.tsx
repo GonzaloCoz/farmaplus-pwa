@@ -1,9 +1,7 @@
 import { useState, useRef } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Plus } from "lucide-react";
-import { Plain as Send, ChatLine as MessageSquare, Danger as AlertTriangle, FileCheck, Paperclip } from "@solar-icons/react";
+import { Plain as Send, ChatLine as MessageSquare, Danger as AlertTriangle } from "@solar-icons/react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { useUser } from "@/contexts/UserContext";
@@ -13,28 +11,33 @@ const QUICK_ACTIONS = [
     {
         label: "Diferencia de Stock",
         icon: AlertTriangle,
+        color: "text-orange-500 border-orange-500/50 bg-orange-500/5",
         message: "Hola, he detectado una diferencia de stock importante en...",
-        color: "bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 border-orange-200"
     },
     {
         label: "Confirmar Cierre",
-        icon: FileCheck,
-        message: "El cierre del inventario cíclico ha sido completado y verificado.",
-        color: "bg-green-500/10 text-green-600 hover:bg-green-500/20 border-green-200"
+        icon: MessageSquare,
+        color: "text-emerald-500 border-emerald-500/50 bg-emerald-500/5",
+        message: "Solicito confirmar el cierre del inventario para...",
     },
     {
         label: "Solicitud Urgente",
         icon: Plus,
+        color: "text-blue-500 border-blue-500/50 bg-blue-500/5",
         message: "Necesito autorización urgente para...",
-        color: "bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 border-blue-200"
     }
 ];
 
-// Corporate Colors
+const Paperclip = ({ className }: { className?: string }) => (
+    <svg className={className} width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.51a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+    </svg>
+);
+
 const AI_COLORS = {
     dark: "#08102E",
     blue: "#045598",
-    light: "#a5b1e1ff"
+    light: "#3b82f6" // Classic blue for the orb glow
 };
 
 const MotionOrb = () => {
@@ -42,81 +45,29 @@ const MotionOrb = () => {
         <div className="relative w-32 h-32 flex items-center justify-center">
             {/* Core Glow */}
             <motion.div
-                className="absolute inset-0 rounded-full blur-xl opacity-50"
-                style={{
-                    background: `radial-gradient(circle at center, ${AI_COLORS.light}, ${AI_COLORS.blue})`
-                }}
+                className="absolute inset-0 rounded-full blur-2xl opacity-40 bg-blue-500/50"
                 animate={{
-                    scale: [0.8, 1, 0.9, 0.8],
-                    opacity: [0.4, 0.6, 0.5, 0.4]
+                    scale: [0.9, 1.1, 1],
+                    opacity: [0.3, 0.5, 0.3]
                 }}
-                transition={{
-                    duration: 5,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                    times: [0, 0.4, 0.8, 1]
-                }}
+                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
             />
 
-            {/* Moving Gradients Layer 1 */}
-            <motion.div
-                className="absolute w-28 h-28 rounded-full blur-lg mix-blend-screen"
+            {/* Main Orb Body */}
+            <div
+                className="absolute w-24 h-24 rounded-full z-0 overflow-hidden shadow-[0_0_40px_rgba(59,130,246,0.5)]"
                 style={{
-                    background: `conic-gradient(from 0deg, ${AI_COLORS.dark}, ${AI_COLORS.blue}, ${AI_COLORS.light}, ${AI_COLORS.dark})`
-                }}
-                animate={{
-                    rotate: 360,
-                    scale: [0.9, 1.1, 1.0, 0.9]
-                }}
-                transition={{
-                    rotate: { duration: 7, repeat: Infinity, ease: "linear" },
-                    scale: { duration: 6, repeat: Infinity, ease: "easeInOut" }
-                }}
-            />
-
-            {/* Moving Gradients Layer 2 */}
-            <motion.div
-                className="absolute w-24 h-24 rounded-full blur-md mix-blend-overlay"
-                style={{
-                    background: `conic-gradient(from 180deg, ${AI_COLORS.light}, ${AI_COLORS.blue}, ${AI_COLORS.dark}, ${AI_COLORS.light})`
-                }}
-                animate={{
-                    rotate: -360,
-                    scale: [1.1, 0.9, 0.95, 1.1]
-                }}
-                transition={{
-                    rotate: { duration: 9, repeat: Infinity, ease: "linear" },
-                    scale: { duration: 8, repeat: Infinity, ease: "easeInOut" }
-                }}
-            />
-
-            {/* Central Highlight / Liquid Glass Effect */}
-            <motion.div
-                className="absolute w-20 h-20 rounded-full backdrop-blur-md z-10 flex items-center justify-center overflow-hidden"
-                style={{
-                    background: "linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 100%)",
-                    border: "1px solid rgba(255,255,255,0.3)",
-                    boxShadow: `0 8px 32px 0 rgba(31, 38, 135, 0.37), inset 0 0 0 1px rgba(255,255,255,0.1)`
-                }}
-                animate={{
-                    boxShadow: [
-                        `0 0 20px ${AI_COLORS.blue}40, inset 0 0 10px rgba(255,255,255,0.1)`,
-                        `0 0 35px ${AI_COLORS.light}50, inset 0 0 20px rgba(255,255,255,0.2)`,
-                        `0 0 20px ${AI_COLORS.blue}40, inset 0 0 10px rgba(255,255,255,0.1)`
-                    ]
-                }}
-                transition={{
-                    duration: 4,
-                    repeat: Infinity,
-                    ease: "easeInOut"
+                    background: `radial-gradient(circle at 30% 30%, ${AI_COLORS.light}, ${AI_COLORS.blue})`
                 }}
             >
-                {/* Glossy Reflection */}
-                <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white/20 to-transparent opacity-50 pointer-events-none" />
+                {/* Glass Highlight */}
+                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-white/30" />
+            </div>
 
-                {/* Chat Icon */}
-                <MessageSquare className="w-10 h-10 text-white drop-shadow-md relative z-10" strokeWidth={2} />
-            </motion.div>
+            {/* Central Icon */}
+            <div className="relative z-10 flex items-center justify-center">
+                <MessageSquare className="w-10 h-10 text-white drop-shadow-md" strokeWidth={1.5} />
+            </div>
         </div>
     );
 };
@@ -125,9 +76,7 @@ export function TeamsChatWidget() {
     const { user } = useUser();
     const [message, setMessage] = useState("");
     const inputRef = useRef<HTMLInputElement>(null);
-    const [isTyping, setIsTyping] = useState(false);
 
-    // Teams Deep Link Generator
     const openTeamsChat = (text: string) => {
         const encodedMessage = encodeURIComponent(text);
         const targetEmail = getTeamsRecipient(user?.branchName);
@@ -146,99 +95,82 @@ export function TeamsChatWidget() {
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-            handleSend();
-        }
+        if (e.key === 'Enter') handleSend();
     };
 
     return (
-        <Card className="h-full flex flex-col justify-between">
-            {/* Ambient Background Removed */}
+        <div className="h-full flex flex-col no-scrollbar p-4 sm:p-5">
+            {/* Header: Clean & Integrated */}
+            <div className="flex flex-row items-center justify-between mb-4">
+                <span className="text-[20px] font-bold text-foreground tracking-tight">Chat Teams</span>
+            </div>
 
-            {/* Header: Cleaned up to match standard widget format (Left aligned Text, no icon or block) */}
-            <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0 relative z-10">
-                <CardTitle className="text-lg font-medium tracking-tight">
-                    Chat Teams
-                </CardTitle>
-            </CardHeader>
+            <div className="flex-1 flex flex-col relative z-10">
+                {/* Main Content Area */}
+                <div className="flex-1 flex flex-col items-center justify-center text-center -mt-4">
+                    <div className="scale-90 mb-4 sm:mb-6">
+                        <MotionOrb />
+                    </div>
 
-            <CardContent className="flex-1 flex flex-col gap-4 relative z-10 p-4">
-                {/* Visual AI Orb Area */}
-                <div className="flex-1 flex flex-col justify-center items-center text-center -mt-4">
-                    <MotionOrb />
-
-                    <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.5 }}
-                        className="space-y-1 relative z-20 mt-2"
-                    >
-                        <h3 className="font-semibold text-lg">Hola {user?.name?.split(' ')[0] || 'Gonzalo'}</h3>
-                        <p className="text-muted-foreground text-xs max-w-[200px] mx-auto">
+                    <div className="space-y-1">
+                        <h3 className="text-[19px] sm:text-[21px] font-bold text-foreground tracking-tight leading-tight">
+                            Hola {user?.name?.split(' ')[0] || 'Gonzalo'}
+                        </h3>
+                        <p className="text-muted-foreground text-[12px] sm:text-sm">
                             ¿En qué puedo ayudarte hoy?
                         </p>
-                    </motion.div>
+                    </div>
                 </div>
 
-                {/* Quick Actions (Chips) with updated default styling */}
-                <div className="flex flex-wrap gap-2 justify-center mb-1">
-                    {QUICK_ACTIONS.map((action, idx) => (
-                        <motion.button
+                {/* Quick Actions Area: Row layout */}
+                <div className="flex flex-row items-center justify-between gap-2 px-1 mb-4">
+                    {QUICK_ACTIONS.map((action) => (
+                        <button
                             key={action.label}
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: 0.8 + (idx * 0.1) }}
                             onClick={() => handleQuickAction(action.message)}
                             className={cn(
-                                "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-medium border transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm bg-background/50 backdrop-blur-sm",
+                                "flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-full border text-[10px] font-bold transition-all active:scale-[0.95]",
                                 action.color
                             )}
                         >
-                            <action.icon className="h-3 w-3" />
-                            {action.label}
-                        </motion.button>
+                            <action.icon className="w-3.5 h-3.5" />
+                            <span className="truncate">{action.label}</span>
+                        </button>
                     ))}
                 </div>
 
-                {/* Input Area */}
-                <div className="relative mt-auto">
-                    <div className="relative flex items-center bg-background/80 backdrop-blur border rounded-full shadow-sm focus-within:ring-2 transition-all group-hover:shadow-md"
-                        style={{ borderColor: `${AI_COLORS.light}30` }}
-                    >
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-10 w-10 text-muted-foreground hover:text-primary rounded-full shrink-0 ml-1"
-                            onClick={() => setIsTyping(!isTyping)}
-                            title="Adjuntar Reporte"
-                        >
-                            <Paperclip className="h-4 w-4" />
-                        </Button>
-
-                        <Input
-                            ref={inputRef}
+                {/* Single Area Input: Reverted design */}
+                <div className="px-3 pb-4">
+                    <div className="bg-zinc-100 dark:bg-[#1c1c1c] border border-border/40 rounded-full flex items-center p-1 shadow-sm transition-all focus-within:border-primary/40 focus-within:ring-4 focus-within:ring-primary/5">
+                        <div className="flex items-center justify-center w-9 h-9 text-muted-foreground ml-1">
+                            <Paperclip className="w-5 h-5 opacity-60" />
+                        </div>
+                        
+                        <input
+                            ref={inputRef as any}
                             value={message}
                             onChange={(e) => setMessage(e.target.value)}
-                            onKeyDown={handleKeyDown}
+                            onKeyDown={handleKeyDown as any}
                             placeholder="Escribe tu mensaje..."
-                            className="border-none shadow-none focus-visible:ring-0 bg-transparent h-10 px-2 text-sm"
+                            className="flex-1 bg-transparent border-none focus:outline-none text-[13px] px-2 placeholder:text-muted-foreground/50"
                         />
-
+                        
                         <Button
                             onClick={handleSend}
                             size="icon"
-                            className="h-9 w-9 rounded-full mr-1 transition-all shrink-0"
-                            style={{
-                                backgroundColor: message.trim() ? AI_COLORS.blue : undefined,
-                                opacity: message.trim() ? 1 : 0.5
-                            }}
+                            className={cn(
+                                "h-9 w-9 rounded-full transition-all flex items-center justify-center shadow-lg mr-0.5",
+                                message.trim() 
+                                    ? "bg-[#045598] hover:bg-[#03447a] text-white" 
+                                    : "bg-muted text-muted-foreground opacity-50 cursor-not-allowed"
+                            )}
                             disabled={!message.trim()}
                         >
-                            <Send className="h-4 w-4 text-white" />
+                            <Send className="h-5 w-5" strokeWidth={1.5} />
                         </Button>
                     </div>
                 </div>
-            </CardContent>
-        </Card>
+            </div>
+        </div>
     );
 }

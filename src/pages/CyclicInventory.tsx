@@ -17,6 +17,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+  DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getLaboratoriesForBranch } from "@/services/preCountDB";
@@ -26,6 +29,7 @@ import { usePrefetchLabInventory } from "@/hooks/useInventoryQueries";
 
 type SortOption = "name-asc" | "name-desc" | "value-asc" | "value-desc";
 type FilterCategory = "MEDICAMENTOS" | "PERFUMERIA" | "ACCESORIOS" | "VARIOS";
+type StatusFilter = "all" | "controlado" | "pendiente" | "por_controlar";
 
 export default function CyclicInventory() {
   const navigate = useNavigate();
@@ -36,6 +40,7 @@ export default function CyclicInventory() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [categoryFilter, setCategoryFilter] = useState<FilterCategory>("MEDICAMENTOS");
   const [sortBy, setSortBy] = useState<SortOption>("name-asc");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [laboratories, setLaboratories] = useState<CyclicInventoryStats[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [lockStatus, setLockStatus] = useState<{ isLocked: boolean, reason: 'manual' | 'deadline' | null }>({ isLocked: false, reason: null });
@@ -183,6 +188,11 @@ export default function CyclicInventory() {
       );
     }
 
+    // Filtrar por estado
+    if (statusFilter !== "all") {
+      result = result.filter(lab => lab.status === statusFilter);
+    }
+
     // Ordenar
     result.sort((a, b) => {
       switch (sortBy) {
@@ -199,7 +209,7 @@ export default function CyclicInventory() {
     });
 
     return result;
-  }, [groupedLaboratories, searchTerm, sortBy]);
+  }, [groupedLaboratories, searchTerm, sortBy, statusFilter]);
 
 
   const categories: FilterCategory[] = ["MEDICAMENTOS", "PERFUMERIA", "ACCESORIOS", "VARIOS"];
@@ -388,11 +398,68 @@ export default function CyclicInventory() {
                 <Filter className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48 rounded-xl p-1">
-              <DropdownMenuItem onClick={() => setSortBy("name-asc")} className="rounded-lg text-xs font-semibold">Nombre (A-Z)</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortBy("name-desc")} className="rounded-lg text-xs font-semibold">Nombre (Z-A)</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortBy("value-desc")} className="rounded-lg text-xs font-semibold">Mayor Diferencia</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortBy("value-asc")} className="rounded-lg text-xs font-semibold">Menor Diferencia</DropdownMenuItem>
+            <DropdownMenuContent align="end" className="w-52 rounded-2xl p-2">
+              <DropdownMenuLabel className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">Ordenar por</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => setSortBy("name-asc")} className="rounded-xl">
+                <Search className="w-4 h-4 text-muted-foreground" />
+                <span>Nombre (A-Z)</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortBy("name-desc")} className="rounded-xl">
+                <Search className="w-4 h-4 text-muted-foreground" />
+                <span>Nombre (Z-A)</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortBy("value-desc")} className="rounded-xl">
+                <TrendingUp className="w-4 h-4 text-success" />
+                <span>Mayor Diferencia</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortBy("value-asc")} className="rounded-xl">
+                <TrendingDown className="w-4 h-4 text-destructive" />
+                <span>Menor Diferencia</span>
+              </DropdownMenuItem>
+              
+              <DropdownMenuSeparator className="my-2" />
+              
+              <DropdownMenuLabel className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">Filtrar por Estado</DropdownMenuLabel>
+              <DropdownMenuCheckboxItem 
+                checked={statusFilter === "all"} 
+                onCheckedChange={() => setStatusFilter("all")}
+                className="rounded-xl"
+              >
+                <div className="flex items-center gap-3">
+                  <ListIcon className="w-4 h-4 text-muted-foreground" />
+                  <span>Todas</span>
+                </div>
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem 
+                checked={statusFilter === "controlado"} 
+                onCheckedChange={() => setStatusFilter("controlado")}
+                className="rounded-xl"
+              >
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="w-4 h-4 text-success" />
+                  <span>Controlados</span>
+                </div>
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem 
+                checked={statusFilter === "por_controlar"} 
+                onCheckedChange={() => setStatusFilter("por_controlar")}
+                className="rounded-xl"
+              >
+                <div className="flex items-center gap-3">
+                  <Clock className="w-4 h-4 text-purple-500" />
+                  <span>En Proceso</span>
+                </div>
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem 
+                checked={statusFilter === "pendiente"} 
+                onCheckedChange={() => setStatusFilter("pendiente")}
+                className="rounded-xl"
+              >
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="w-4 h-4 text-red-500" />
+                  <span>Pendientes</span>
+                </div>
+              </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
           </DropdownMenu>
 

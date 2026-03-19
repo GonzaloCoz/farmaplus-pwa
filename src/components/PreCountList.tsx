@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Pen as Pencil, TrashBinMinimalistic as Trash2, Widget as Package, Copy, CheckCircle as Check } from '@solar-icons/react';
+import { cn } from '@/lib/utils';
 import { UIPreCountItem } from '@/hooks/usePreCount';
 import {
     Dialog,
@@ -32,7 +33,7 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
     const handleSaveEdit = () => {
         if (editingId && editQuantity) {
             const quantity = parseInt(editQuantity, 10);
-            if (quantity > 0) {
+            if (quantity !== 0) {
                 onUpdate(editingId, quantity);
                 setEditingId(null);
                 setEditQuantity('');
@@ -155,7 +156,10 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
                                         {/* Footer: Qty & Actions */}
                                         <div className="flex items-center justify-between pt-3 mt-auto border-t border-border/30">
                                             <div className="flex items-baseline gap-1.5">
-                                                <span className="text-3xl font-black tracking-tighter text-foreground">
+                                                <span className={cn(
+                                                    "text-3xl font-black tracking-tighter",
+                                                    item.quantity < 0 ? "text-destructive" : "text-foreground"
+                                                )}>
                                                     {item.quantity}
                                                 </span>
                                                 <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em] opacity-80">
@@ -235,7 +239,7 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
                         <Button variant="outline" onClick={handleCancelEdit}>
                             Cancelar
                         </Button>
-                        <Button onClick={handleSaveEdit} disabled={!editQuantity || parseInt(editQuantity) <= 0}>
+                        <Button onClick={handleSaveEdit} disabled={!editQuantity || parseInt(editQuantity) === 0}>
                             Guardar
                         </Button>
                     </DialogFooter>

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 import {
     Scanner as Barcode,
     Magnifer as Search,
@@ -62,6 +63,7 @@ export default function PreCount() {
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [showCalculator, setShowCalculator] = useState(false);
     const [highSpeedMode, setHighSpeedMode] = useState(false);
+    const [isNegativeMode, setIsNegativeMode] = useState(false);
     const [deviceName, setDeviceName] = useState(() => localStorage.getItem('precount_device_name') || '');
     const { trigger } = useHaptic();
 
@@ -139,8 +141,9 @@ export default function PreCount() {
                 setManualEAN(code);
 
                 if (highSpeedMode) {
-                    // Fast flow: Add immediately with 1
-                    await addItem(code, productToUse.name, 1, productToUse.id_producto);
+                    // Fast flow: Add immediately with 1 (or -1 in negative mode)
+                    const qtyToAdd = isNegativeMode ? -1 : 1;
+                    await addItem(code, productToUse.name, qtyToAdd, productToUse.id_producto);
                     setManualEAN('');
                     setSelectedProduct(null);
                     trigger('success');
@@ -194,11 +197,16 @@ export default function PreCount() {
             return;
         }
 
-        const qty = parseInt(quantity, 10);
-        if (isNaN(qty) || qty <= 0) {
+        const baseQty = parseInt(quantity, 10);
+        if (isNaN(baseQty) || baseQty === 0) {
             notify.error("Error", 'Por favor, ingresa una cantidad válida');
             return;
         }
+
+        // Apply negative mode if active
+        // If the user entered a negative number manually, we treat it as is.
+        // If the user entered a positive number but mode is negative, we invert it.
+        const qty = isNegativeMode ? -Math.abs(baseQty) : baseQty;
 
         let productName = selectedProduct?.name;
 
@@ -660,6 +668,21 @@ export default function PreCount() {
 
                                     {/* Right: Status Icons */}
                                     <div className="flex items-center gap-4 flex-shrink-0">
+                                        <div 
+                                            className="flex flex-col items-center gap-1 group cursor-pointer" 
+                                            onClick={() => {
+                                                setIsNegativeMode(!isNegativeMode);
+                                                if (!isNegativeMode) {
+                                                    notify.info("Modo Devolución", "La carga ahora será en negativo");
+                                                }
+                                            }}
+                                        >
+                                            <div className={`p-2 rounded-full transition-all ${isNegativeMode ? 'bg-destructive/20 text-destructive shadow-[0_0_15px_rgba(239,68,68,0.4)]' : 'bg-muted text-muted-foreground'}`}>
+                                                <RotateCcw className={cn("w-4 h-4", isNegativeMode && "animate-spin-slow")} />
+                                            </div>
+                                            <span className="text-[8px] uppercase font-bold tracking-tighter">Negativo</span>
+                                        </div>
+
                                         <div className="flex flex-col items-center gap-1 group cursor-pointer" onClick={() => setHighSpeedMode(!highSpeedMode)}>
                                             <div className={`p-2 rounded-full transition-all ${highSpeedMode ? 'bg-primary/20 text-primary shadow-glow' : 'bg-muted text-muted-foreground'}`}>
                                                 {highSpeedMode ? <Zap className="w-4 h-4" /> : <ZapOff className="w-4 h-4" />}

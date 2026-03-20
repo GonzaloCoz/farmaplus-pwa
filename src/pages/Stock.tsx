@@ -1,15 +1,17 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
-import { ClipboardList, Upload, AltArrowRight as ArrowRight, ClockCircle as Clock } from '@solar-icons/react';
+import { ClipboardList, Upload, AltArrowRight as ArrowRight, ClockCircle as Clock, Laptop, Smartphone } from '@solar-icons/react';
 import { ZebraIcon } from '@/components/icons/ZebraIcon';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 export default function Stock() {
     const navigate = useNavigate();
+    const isMobile = useIsMobile();
 
-    const options = [
+    const allOptions = [
         {
             title: 'Colector de Datos',
             description: 'Una forma simple de contar productos, incluso sin internet. Escaneá rápido y sincronizá todo al final.',
@@ -17,6 +19,8 @@ export default function Stock() {
             path: '/stock/pre-count',
             color: 'primary',
             gradient: 'from-primary/20 to-primary/5',
+            showOnMobile: true,
+            showOnDesktop: true
         },
         {
             title: 'Control de Vencimientos',
@@ -25,16 +29,32 @@ export default function Stock() {
             path: '/stock/expiration-control',
             color: 'primary',
             gradient: 'from-primary/20 to-primary/5',
+            showOnMobile: true,
+            showOnDesktop: true
         },
         {
-            title: 'Importar Inventario',
-            description: 'Importa y analiza archivos Excel de inventario físico para detectar discrepancias.',
-            icon: Upload,
+            title: 'Importar Inventario y Servidor de Recuento',
+            description: 'Importa archivos Excel de inventario físico y crea salas de recuento masivo para las Zebras.',
+            icon: Laptop,
             path: '/stock/import',
             color: 'primary',
             gradient: 'from-primary/20 to-primary/5',
+            showOnMobile: false, // Oculto en móbiles (las Zebras no importan excel ni hostean servidores)
+            showOnDesktop: true
         },
+        {
+            title: 'Conectar Zebra a Recuento',
+            description: 'Ingresa el PIN de acceso para contar productos en una sesión de recuento guiada por la PC.',
+            icon: Smartphone,
+            path: '/stock/recount-mobile',
+            color: 'primary',
+            gradient: 'from-success/20 to-success/5',
+            showOnMobile: true,
+            showOnDesktop: false // Oculto en PC porque la app cliente está optimizada para la Zebra
+        }
     ];
+
+    const options = allOptions.filter(opt => isMobile ? opt.showOnMobile : opt.showOnDesktop);
 
     return (
         <PageLayout>

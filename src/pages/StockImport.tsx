@@ -11,12 +11,17 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Upload, Document as FileSpreadsheet, DangerCircle as AlertCircle, GraphDown as TrendingDown, GraphUp as TrendingUp, Download, CheckCircle, Target, Diskette as Save, Calculator, Widget as Package, Magnifer as Search, Filter, AltArrowDown as ChevronDown, List as ListFilter, Wallet, ArrowRightUp as ArrowUpRight, ArrowRightDown as ArrowDownRight, MenuDots as MoreHorizontal, TransferVertical as ArrowLeftRight, SortByTime as ArrowUpDown, CheckCircle as Check, Pen as Pencil } from "@solar-icons/react";
+import { Upload, Document as FileSpreadsheet, DangerCircle as AlertCircle, Download, CheckCircle, Diskette as Save, Widget as Package, Magnifer as Search, Filter, AltArrowDown as ChevronDown, List as ListFilter, ArrowRightUp as ArrowUpRight, ArrowRightDown as ArrowDownRight, MenuDots as MoreHorizontal, TransferVertical as ArrowLeftRight, SortByTime as ArrowUpDown, CheckCircle as Check, Pen as Pencil, Wallet, Target, Calculator, GraphDown as TrendingDown, GraphUp as TrendingUp } from "@solar-icons/react";
 import { Badge } from "@/components/ui/badge";
 import * as XLSX from "xlsx";
 import { notify } from "@/lib/notifications";
 import { SaveReportModal } from "@/components/SaveReportModal";
 import { FabMenu } from "@/components/FabMenu";
+import { StockRecountServer } from "@/components/StockRecountServer";
+import { usePreCount } from "@/hooks/usePreCount";
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from "@/integrations/supabase/client";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -66,23 +71,7 @@ interface AnalysisResults {
   allProducts: ProductData[];
 }
 
-interface NegativeItem {
-  codebar: string;
-  name: string;
-  quantity: number;
-  price: number;
-  totalValue: number;
-  rowIndex: number;
-}
-
-interface AnalysisResultsNegative {
-  totalProducts: number;
-  totalUnits: number;
-  totalValue: number;
-  items: NegativeItem[];
-}
-
-type ImportMode = 'inventory' | 'negative_preview' | 'collaborative_inventory';
+type ImportMode = 'inventory' | 'stock_recount';
 
 
 // Virtualized Row Component
@@ -183,26 +172,24 @@ const Row = ({ index, style, data }: ListChildComponentProps) => {
 export default function StockImport() {
   const navigate = useNavigate();
   const { user } = useUser();
+  const isMobile = useIsMobile();
 
-  // Bloquear acceso para sucursales y zonales
+  // Bloquear acceso para sucursales y zonales (y redirigir a Zebra si es móvil)
   useEffect(() => {
+    if (isMobile) {
+      navigate('/stock/recount-mobile', { replace: true });
+      return;
+    }
     if (user?.role === 'branch' || user?.role === 'mod') {
       notify.info("Próximamente", "La herramienta de Importación de Inventario estará disponible muy pronto.", { id: 'blocked-feature' });
       navigate('/');
     }
-  }, [user, navigate]);
-
-  if (user?.role === 'branch' || user?.role === 'mod') {
-    return null;
-  }
+  }, [user, navigate, isMobile]);
 
   const [importMode, setImportMode] = useState<ImportMode>('inventory');
   const [file, setFile] = useState<File | null>(null);
-  const [filePartial, setFilePartial] = useState<File | null>(null); // For collaborative mode (Step 1)
-  const [fileComplete, setFileComplete] = useState<File | null>(null); // For collaborative mode (Step 2)
   const [analyzing, setAnalyzing] = useState(false);
   const [results, setResults] = useState<AnalysisResults | null>(null);
-  const [negativeResults, setNegativeResults] = useState<AnalysisResultsNegative | null>(null);
   const [originalData, setOriginalData] = useState<{ headers: any[], rows: any[][] }>({ headers: [], rows: [] });
 
   const [hasExported, setHasExported] = useState(false);
@@ -211,19 +198,10 @@ export default function StockImport() {
   const [downloadFileName, setDownloadFileName] = useState("Inventario");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"all" | "shortage" | "surplus" | "match" | "zero_stock">("all");
-  const [negativeFilter, setNegativeFilter] = useState<"all" | "positive" | "negative">("negative");
   const [showDiscrepancy, setShowDiscrepancy] = useState(false);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ field: 'value', direction: 'desc' });
   const [editingRow, setEditingRow] = useState<number | null>(null);
   const [frozenSortIndices, setFrozenSortIndices] = useState<number[] | null>(null);
-
-  // Collaborative State
-  const [collaborativeResults, setCollaborativeResults] = useState<{
-    partial: AnalysisResults,
-    branch: AnalysisResults,
-    general: AnalysisResults
-  } | null>(null);
-  const [collaborativeTab, setCollaborativeTab] = useState<'partial' | 'branch' | 'general'>('general');
 
   const resultsRef = useRef<HTMLDivElement>(null);
 
@@ -234,32 +212,11 @@ export default function StockImport() {
         selectedFile.type === "application/vnd.ms-excel") {
         setFile(selectedFile);
         setResults(null); // Limpiar resultados anteriores al cargar un nuevo archivo
-        setNegativeResults(null);
         setOriginalData({ headers: [], rows: [] });
         notify.success("Operación exitosa", "Archivo cargado correctamente");
       } else {
         notify.error("Error", "Por favor, selecciona un archivo Excel válido");
       }
-    }
-  };
-
-  const handlePartialFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (isValidExcel(selectedFile)) {
-      setFilePartial(selectedFile!);
-      notify.success("Operación exitosa", "Stock Parcial cargado");
-    } else {
-      notify.error("Error", "Archivo inválido");
-    }
-  };
-
-  const handleCompleteFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (isValidExcel(selectedFile)) {
-      setFileComplete(selectedFile!);
-      notify.success("Operación exitosa", "Stock Completo cargado");
-    } else {
-      notify.error("Error", "Archivo inválido");
     }
   };
 
@@ -320,29 +277,6 @@ export default function StockImport() {
     setResults(results);
   };
 
-  const analyzeNegativePreview = (rows: any[]) => {
-    const items: NegativeItem[] = rows.map((row, index) => ({
-      codebar: row[2] ? String(row[2]) : "", // Columna C (Index 2)
-      name: row[3] ? String(row[3]) : "",   // Columna D (Index 3)
-      quantity: Number(row[4]) || 0,        // Columna E (Index 4)
-      price: Number(row[10]) || 0,          // Columna K (Index 10)
-      totalValue: (Number(row[4]) || 0) * (Number(row[10]) || 0),
-      rowIndex: index
-    })).filter(item => item.codebar && item.name); // Filter empty rows
-
-    // Calculate totals
-    const totalProducts = items.length;
-    const totalUnits = items.reduce((acc, item) => acc + item.quantity, 0);
-    const totalValue = items.reduce((acc, item) => acc + item.totalValue, 0);
-
-    setNegativeResults({
-      totalProducts,
-      totalUnits,
-      totalValue,
-      items
-    });
-  };
-
   const handleAnalyze = async () => {
     if (!file) {
       notify.error("Error", "Por favor, selecciona un archivo primero");
@@ -366,8 +300,6 @@ export default function StockImport() {
 
       if (importMode === 'inventory') {
         analyzeRows(rows);
-      } else {
-        analyzeNegativePreview(rows);
       }
 
       notify.success("Operación exitosa", "Análisis completado", { id: "analysis-toast" });
@@ -399,204 +331,6 @@ export default function StockImport() {
     return String(val).trim().replace(/[^0-9a-zA-Z]/g, ''); // Remove weird chars/spaces
   };
 
-  const handleAnalyzeMerge = async () => {
-    if (!filePartial || !fileComplete) {
-      notify.error("Error", "Debes cargar ambos archivos.");
-      return;
-    }
-
-    setAnalyzing(true);
-    notify.info("Información", "Fusionando inventarios (v2)...", { id: "merge-toast" }); // Update text to confirm reload
-
-    try {
-      // 1. Process Partial File (Our Count)
-      const dataPartial = await filePartial.arrayBuffer();
-      const wbPartial = XLSX.read(dataPartial);
-      const wsPartial = wbPartial.Sheets[wbPartial.SheetNames[0]];
-      const rawRowsPartial: any[][] = XLSX.utils.sheet_to_json(wsPartial, { header: 1 });
-
-      const headersPartial = rawRowsPartial[0];
-      const codeIndexPartial = getColumnIndex(headersPartial, ['codebar', 'código', 'codigo', 'ean'], 6);
-      const qtyIndexPartial = getColumnIndex(headersPartial, ['físico', 'fisico', 'cantidad', 'physical'], 13);
-
-      // Map: Codebar -> Quantity
-      const partialMap = new Map<string, number>();
-      rawRowsPartial.slice(1).forEach(row => {
-        const code = cleanEAN(row[codeIndexPartial]);
-        const qty = Number(row[qtyIndexPartial]) || 0;
-        if (code) {
-          const current = partialMap.get(code) || 0;
-          partialMap.set(code, current + qty);
-        }
-      });
-
-      // 2. Process Complete File (Branch Count + System)
-      const dataComplete = await fileComplete.arrayBuffer();
-      const wbComplete = XLSX.read(dataComplete);
-      const wsComplete = wbComplete.Sheets[wbComplete.SheetNames[0]];
-      const rowsComplete: any[][] = XLSX.utils.sheet_to_json(wsComplete, { header: 1 });
-
-      const headers = rowsComplete[0];
-      const codeIndexComplete = getColumnIndex(headers, ['codebar', 'código', 'codigo', 'ean'], 6);
-      const qtyIndexComplete = getColumnIndex(headers, ['físico', 'fisico', 'cantidad', 'physical'], 13);
-      const systemIndexComplete = getColumnIndex(headers, ['sistema', 'system'], 15);
-      const costIndexComplete = getColumnIndex(headers, ['costo', 'cost'], 19);
-
-      // Aggregate Branch Data by EAN to prevent duplicates
-      // Map: Codebar -> { branchQty, systemStock, rowData }
-      const branchMap = new Map<string, { branchQty: number, systemStock: number, rowData: any[] }>();
-
-      rowsComplete.slice(1).forEach(row => {
-        const code = cleanEAN(row[codeIndexComplete]);
-        if (!code) return; // Skip empty EANs
-
-        const qty = Number(row[qtyIndexComplete]) || 0;
-        const system = Number(row[systemIndexComplete]) || 0;
-
-        if (branchMap.has(code)) {
-          const current = branchMap.get(code)!;
-          // Sum Physical Quantity
-          current.branchQty += qty;
-          // For System Stock, usually it's per SKU, so we assume the first non-zero or just the first is correct.
-          // If the file has duplicates with split system stock, we might want to sum it?
-          // Standard safe bet: If it's the SAME product, the system stock reported on line 2 should be the same as line 1.
-          // If it's 0 on one and X on another, taking Max is safer.
-          current.systemStock = Math.max(current.systemStock, system);
-        } else {
-          branchMap.set(code, {
-            branchQty: qty,
-            systemStock: system,
-            rowData: row
-          });
-        }
-      });
-
-      // 3. Merge Logic & Row Generation (Union of both maps)
-      const allEans = new Set([...partialMap.keys(), ...branchMap.keys()]);
-      const rowsGeneral: any[][] = [];
-
-      console.log(`Debug Fusion: Partial Keys: ${partialMap.size}, Branch Keys: ${branchMap.size}, Unique EANs: ${allEans.size}`);
-
-      allEans.forEach(ean => {
-        const partialQty = partialMap.get(ean) || 0;
-        const branchData = branchMap.get(ean);
-
-        let newRow: any[];
-
-        if (branchData) {
-          // Product exists in Branch File (Master)
-          newRow = [...branchData.rowData];
-
-          // Logic Change: Prioritize Partial Count (Our Count) if it exists.
-          // If we counted it, our count overrides the branch count (Audit/Correction mode).
-          // If we didn't count it (not in partial map), we keep the branch count.
-          // Previous 'Sum' logic caused duplicates when files overlapped.
-          const totalQty = partialMap.has(ean) ? partialQty : branchData.branchQty;
-
-          // Normalize Data based on standard indices expectation
-          newRow[6] = ean; // Ensure clean EAN
-          newRow[13] = totalQty; // Total Physical
-          newRow[15] = branchData.systemStock; // System
-          newRow[17] = totalQty - branchData.systemStock; // Diff
-
-          const cost = Number(newRow[19]) || 0; // Cost from original row
-          newRow[22] = (totalQty - branchData.systemStock) * cost; // DiffVal
-        } else {
-          // Orphan in Partial (Not in Branch File)
-          // We have to construct a row. We might lack Name/Cost/Price.
-          // We'll initialize an empty row and fill what we can.
-          newRow = new Array(30).fill(""); // arbitrary size sufficient for indices
-          newRow[6] = ean;
-          newRow[13] = partialQty;
-          newRow[15] = 0; // No system stock known
-          newRow[17] = partialQty; // Diff is full qty
-          newRow[19] = 0; // No cost known
-          newRow[22] = 0; // No diff val possible
-
-          // Try to find Name if possible? No easy way unless we scan Partial file for Name col.
-          // Let's mark it as "Unknown" or leave blank.
-          newRow[10] = `(Extra) ${ean}`; // Placeholder name
-        }
-
-        rowsGeneral.push(newRow);
-      });
-
-      // 4. Calculate Results
-      const resGeneral = calculateAnalysisResults(rowsGeneral);
-
-      // Recalculate Partial/Branch Views based on Aggregated Data for consistency
-      // Branch-only View
-      const rowsBranch = Array.from(branchMap.values()).map(data => {
-        const newRow = [...data.rowData];
-        newRow[13] = data.branchQty;
-        newRow[15] = data.systemStock;
-        newRow[17] = data.branchQty - data.systemStock;
-        const cost = Number(newRow[19]) || 0;
-        newRow[22] = (data.branchQty - data.systemStock) * cost;
-        return newRow;
-      });
-
-      // Partial-only View (Items that were in Partial)
-      // We can iterate the partialMap and try to match with branchData for details
-      const rowsPartial: any[][] = [];
-      partialMap.forEach((qty, ean) => {
-        const branchData = branchMap.get(ean);
-        let newRow: any[];
-        if (branchData) {
-          newRow = [...branchData.rowData];
-          newRow[13] = qty; // Just Partial Qty
-          newRow[15] = branchData.systemStock;
-          newRow[17] = qty - branchData.systemStock;
-          const cost = Number(newRow[19]) || 0;
-          newRow[22] = (qty - branchData.systemStock) * cost;
-        } else {
-          newRow = new Array(30).fill("");
-          newRow[6] = ean;
-          newRow[10] = `(Extra) ${ean}`;
-          newRow[13] = qty;
-          newRow[15] = 0;
-          newRow[17] = qty;
-          newRow[22] = 0;
-        }
-        rowsPartial.push(newRow);
-      });
-
-      const resPartial = calculateAnalysisResults(rowsPartial);
-      const resBranch = calculateAnalysisResults(rowsBranch);
-
-      if (partialMap.size === 0) {
-        notify.warning("Advertencia", "No se encontraron productos en el Archivo Parcial (Codebar col G).");
-      }
-
-      if (resGeneral.totalProducts === 0) {
-        notify.error("Error", "No se encontraron productos para analizar.");
-      }
-
-      setCollaborativeResults({
-        general: resGeneral,
-        partial: resPartial,
-        branch: resBranch
-      });
-
-      // Set initial view
-      if (collaborativeTab === 'partial') setResults(resPartial);
-      else if (collaborativeTab === 'branch') setResults(resBranch);
-      else setResults(resGeneral);
-
-      setOriginalData({ headers, rows: rowsGeneral });
-
-      notify.success("Operación exitosa", "Fusión completada y duplicados unificados", { id: "merge-toast" });
-      setTimeout(() => {
-        resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 300);
-
-    } catch (error) {
-      console.error("Error merging:", error);
-      notify.error("Error", "Error al fusionar archivos.", { id: "merge-toast" });
-    } finally {
-      setAnalyzing(false);
-    }
-  };
 
   const handleQuantityChange = (rowIndex: number, newQuantity: string | number) => {
     // 1. Create a deep copy of rows to avoid mutating state directly
@@ -877,55 +611,40 @@ export default function StockImport() {
           <Tabs defaultValue="inventory" value={importMode} onValueChange={(v) => {
             setImportMode(v as ImportMode);
             setResults(null);
-            setNegativeResults(null);
             setFile(null); // Reset file to force re-selection or at least clear state
           }} className="w-full">
-            <TabsList className="grid w-full grid-cols-3 mb-6">
-              <TabsTrigger value="inventory">Análisis de Inventario</TabsTrigger>
-              <TabsTrigger value="negative_preview">Previsión Negativos</TabsTrigger>
-              <TabsTrigger value="collaborative_inventory">Análisis Colaborativo</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-2 mb-6">
+              <TabsTrigger value="inventory">Análisis de Datos</TabsTrigger>
+              <TabsTrigger value="stock_recount">Recuento de Stock</TabsTrigger>
             </TabsList>
 
             <div className="flex flex-col gap-4">
-              {importMode === 'collaborative_inventory' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Partial File Upload */}
-                  <label
-                    className={cn(
-                      "flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-2xl cursor-pointer transition-colors",
-                      filePartial ? "border-success bg-success/5" : "border-border bg-muted/30 hover:bg-muted/50"
-                    )}
-                  >
-                    <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4">
-                      {filePartial ? <CheckCircle className="w-10 h-10 mb-3 text-success" /> : <Upload className="w-10 h-10 mb-3 text-muted-foreground" />}
-                      <p className="mb-1 text-sm text-foreground font-medium">
-                        {filePartial ? filePartial.name : "1. Cargar Stock Propio"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        El que controlamos nosotros
-                      </p>
-                    </div>
-                    <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handlePartialFileChange} />
-                  </label>
-
-                  {/* Complete File Upload */}
-                  <label
-                    className={cn(
-                      "flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-2xl cursor-pointer transition-colors",
-                      fileComplete ? "border-success bg-success/5" : "border-border bg-muted/30 hover:bg-muted/50"
-                    )}
-                  >
-                    <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4">
-                      {fileComplete ? <CheckCircle className="w-10 h-10 mb-3 text-success" /> : <Upload className="w-10 h-10 mb-3 text-muted-foreground" />}
-                      <p className="mb-1 text-sm text-foreground font-medium">
-                        {fileComplete ? fileComplete.name : "2. Cargar Stock Sucursal"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        El archivo completo de sistema
-                      </p>
-                    </div>
-                    <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleCompleteFileChange} />
-                  </label>
+              {importMode === 'stock_recount' ? (
+                <div className="text-center py-10">
+                  <h3 className="text-lg font-medium">Recuento de Stock (Servidor PC)</h3>
+                  <p className="text-sm text-muted-foreground mt-2 mb-6">
+                    Sube el archivo Excel base para iniciar la sesión de recuento y generar un código de acceso para las Zebras.
+                  </p>
+                  <div className="flex items-center justify-center w-full">
+                    <label
+                      htmlFor="dropzone-file-recount"
+                      className="flex flex-col items-center justify-center w-full h-64 border-2 border-border border-dashed rounded-2xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                        <Upload className="w-12 h-12 mb-4 text-muted-foreground" />
+                        <p className="mb-2 text-sm text-foreground font-medium">
+                          {file ? file.name : "Haz clic para cargar Excel Base"}
+                        </p>
+                      </div>
+                      <input
+                        id="dropzone-file-recount"
+                        type="file"
+                        className="hidden"
+                        accept=".xlsx,.xls"
+                        onChange={handleFileChange}
+                      />
+                    </label>
+                  </div>
                 </div>
               ) : (
                 <div className="flex items-center justify-center w-full">
@@ -959,32 +678,34 @@ export default function StockImport() {
             <FileSpreadsheet className="w-5 h-5 text-muted-foreground" />
             <div className="flex-1">
               <p className="text-sm font-medium text-foreground">
-                Formato requerido ({importMode === 'inventory' ? 'Inventario' : 'Negativos'})
+                Formato requerido ({importMode === 'inventory' ? 'Inventario' : 'Recuento de Stock'})
               </p>
               <p className="text-xs text-muted-foreground">
-                {importMode === 'inventory' && "El archivo debe contener las columnas: Código, Producto, Stock Sistema, Stock Físico, Diferencia"}
-                {importMode === 'negative_preview' && "El archivo debe contener las columnas: Codebar (C), Producto (D), Cantidad (E), Precio (K)"}
-                {importMode === 'collaborative_inventory' && "Se requiere cargar dos archivos con el formato de Inventario estándar."}
+                El archivo debe contener las columnas: Código, Producto, Stock Sistema, Stock Físico
               </p>
             </div>
           </div>
 
-          <Button
-            onClick={importMode === 'collaborative_inventory' ? handleAnalyzeMerge : handleAnalyze}
-            disabled={
-              (importMode === 'collaborative_inventory' && (!filePartial || !fileComplete)) ||
-              (importMode !== 'collaborative_inventory' && !file) ||
-              analyzing
-            }
-            className="w-full"
-            size="lg"
-          >
-            {analyzing ? "Analizando..." : "Analizar Archivo"}
-          </Button>
+          {importMode === 'inventory' && (
+            <Button
+              onClick={handleAnalyze}
+              disabled={!file || analyzing}
+              className="w-full"
+              size="lg"
+            >
+              {analyzing ? "Analizando..." : "Analizar Archivo"}
+            </Button>
+          )}
+
+          {importMode === 'stock_recount' && file && (
+            <div className="mt-6 border-t pt-6">
+              <StockRecountServer file={file} onClear={() => setFile(null)} />
+            </div>
+          )}
         </div>
       </Card>
 
-      {importMode === 'negative_preview' && negativeResults && (
+      {importMode === 'inventory' && results && (
         <motion.div
           ref={resultsRef}
           className="space-y-8"
@@ -992,291 +713,6 @@ export default function StockImport() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
         >
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-1">Total Productos</p>
-                  <h3 className="text-2xl font-bold text-foreground">{negativeResults.totalProducts}</h3>
-                </div>
-                <div className="h-12 w-12 bg-primary/10 rounded-xl flex items-center justify-center">
-                  <Target className="w-6 h-6 text-primary" />
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-1">Items Negativos</p>
-                  <h3 className="text-2xl font-bold text-destructive">
-                    {negativeResults.items.filter(i => i.quantity < 0).length}
-                  </h3>
-                </div>
-                <div className="h-12 w-12 bg-destructive/10 rounded-xl flex items-center justify-center">
-                  <TrendingDown className="w-6 h-6 text-destructive" />
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-1">Items Positivos</p>
-                  <h3 className="text-2xl font-bold text-success">
-                    {negativeResults.items.filter(i => i.quantity > 0).length}
-                  </h3>
-                </div>
-                <div className="h-12 w-12 bg-success/10 rounded-xl flex items-center justify-center">
-                  <TrendingUp className="w-6 h-6 text-success" />
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-1">Total Unidades Negativas</p>
-                  <h3 className="text-2xl font-bold text-destructive">
-                    {negativeResults.items
-                      .filter(i => i.quantity < 0)
-                      .reduce((sum, i) => sum + Math.abs(i.quantity), 0)
-                      .toLocaleString()}
-                  </h3>
-                </div>
-                <div className="h-12 w-12 bg-destructive/10 rounded-xl flex items-center justify-center">
-                  <Calculator className="w-6 h-6 text-destructive" />
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-1">Valor Items Negativos</p>
-                  <h3 className="text-2xl font-bold text-destructive">
-                    <CounterAnimation
-                      value={negativeResults.items
-                        .filter(i => i.quantity < 0)
-                        .reduce((sum, i) => sum + Math.abs(i.totalValue), 0)
-                      }
-                      prefix="$"
-                    />
-                  </h3>
-                </div>
-                <div className="h-12 w-12 bg-destructive/10 rounded-xl flex items-center justify-center">
-                  <Wallet className="w-6 h-6 text-destructive" />
-                </div>
-              </div>
-            </Card>
-            <Card className="p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-1">Valor Total</p>
-                  <h3 className="text-2xl font-bold text-foreground">
-                    <CounterAnimation value={negativeResults.totalValue} prefix="$" />
-                  </h3>
-                </div>
-                <div className="h-12 w-12 bg-blue-500/10 rounded-xl flex items-center justify-center">
-                  <Wallet className="w-6 h-6 text-blue-500" />
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          {/* Middle Section - Controls & Search */}
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4 py-4 sticky top-0 z-20 bg-background/80 backdrop-blur-md border-b">
-            <div className="flex items-center gap-2">
-              <div className="bg-destructive/10 px-4 py-2 rounded-xl">
-                <p className="text-sm font-semibold text-destructive">
-                  Mostrando Faltantes ({negativeResults.items.filter(i => i.quantity < 0).length})
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 w-full md:w-auto">
-              <div className="relative w-full md:w-80">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar producto, EAN..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 h-10 bg-muted/30 border-muted-foreground/20 rounded-xl focus-visible:ring-primary"
-                />
-              </div>
-            </div>
-          </div>
-
-          <Card className="border-muted/40 shadow-sm overflow-hidden bg-card">
-            {/* Headers with Sorting */}
-            <div className="grid grid-cols-12 gap-4 p-4 border-b bg-muted/30 text-xs font-semibold text-muted-foreground uppercase tracking-wider shrink-0">
-              <div className="col-span-6 md:col-span-4 pl-2">Producto</div>
-              <div className="col-span-2 hidden md:block text-right">Precio</div>
-              <div
-                className="col-span-3 md:col-span-3 text-center flex items-center justify-center cursor-pointer hover:text-foreground transition-colors group"
-                onClick={() => setSortConfig({
-                  field: 'quantity',
-                  direction: sortConfig.field === 'quantity' && sortConfig.direction === 'desc' ? 'asc' : 'desc'
-                })}
-              >
-                Cantidad
-                <div className="ml-1 opacity-50 group-hover:opacity-100">
-                  {sortConfig.field === 'quantity' && (
-                    sortConfig.direction === 'desc' ? <ArrowDownRight className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />
-                  )}
-                  {sortConfig.field !== 'quantity' && <ArrowLeftRight className="w-3 h-3 rotate-90 opacity-20" />}
-                </div>
-              </div>
-              <div
-                className="col-span-3 md:col-span-3 text-right cursor-pointer hover:text-foreground transition-colors flex items-center justify-end pr-2 group"
-                onClick={() => setSortConfig({
-                  field: 'value',
-                  direction: sortConfig.field === 'value' && sortConfig.direction === 'desc' ? 'asc' : 'desc'
-                })}
-              >
-                Total ($)
-                <div className="ml-1 opacity-50 group-hover:opacity-100">
-                  {sortConfig.field === 'value' && (
-                    sortConfig.direction === 'desc' ? <ArrowDownRight className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />
-                  )}
-                  {sortConfig.field !== 'value' && <ArrowLeftRight className="w-3 h-3 rotate-90 opacity-20" />}
-                </div>
-              </div>
-            </div>
-
-            <div className="divide-y divide-border/40 max-h-[600px] overflow-y-auto">
-              {negativeResults.items
-                .filter(item => {
-                  if (negativeFilter === 'negative' && item.quantity >= 0) return false;
-                  if (negativeFilter === 'positive' && item.quantity <= 0) return false;
-
-                  if (searchQuery) {
-                    const q = searchQuery.toLowerCase();
-                    return item.name.toLowerCase().includes(q) || item.codebar.toLowerCase().includes(q);
-                  }
-                  return true;
-                })
-                .sort((a, b) => {
-                  const valA = sortConfig.field === 'value' ? a.totalValue : a.quantity;
-                  const valB = sortConfig.field === 'value' ? b.totalValue : b.quantity;
-
-                  if (sortConfig.direction === 'desc') {
-                    return valB - valA;
-                  } else {
-                    return valA - valB;
-                  }
-                })
-                .map((item, idx) => (
-                  <div key={idx} className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-muted/10 transition-colors group">
-                    {/* Product Info */}
-                    <div className="col-span-6 md:col-span-4 flex items-center gap-3 pl-2 min-w-0">
-                      <div className={cn("p-2 rounded-lg shrink-0", item.quantity < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success')}>
-                        {item.quantity < 0 ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
-                      </div>
-                      <div className="min-w-0 flex flex-col justify-center">
-                        <ProductImageHover ean={item.codebar} name={item.name}>
-                          <p className="font-semibold text-sm text-foreground truncate" title={item.name}>{item.name}</p>
-                        </ProductImageHover>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <Badge variant="outline" className="text-[10px] h-5 font-mono text-muted-foreground border-border/60 font-normal hidden sm:inline-flex">
-                            {item.codebar}
-                          </Badge>
-                          <span className="text-[10px] text-muted-foreground sm:hidden">{item.codebar}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Unit Price */}
-                    <div className="col-span-2 hidden md:block text-right self-center">
-                      <p className="text-sm font-medium">${item.price.toLocaleString()}</p>
-                      <p className="text-[10px] text-muted-foreground">Costo Unit.</p>
-                    </div>
-
-                    {/* Quantity (Pill Style) */}
-                    <div className="col-span-3 md:col-span-3 flex justify-center self-center">
-                      <div className={cn(
-                        "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold w-20 justify-center",
-                        item.quantity < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'
-                      )}>
-                        {item.quantity < 0 ? <ArrowDownRight className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
-                        {item.quantity}
-                      </div>
-                    </div>
-
-                    {/* Total Value */}
-                    <div className="col-span-3 md:col-span-3 text-right pr-2 self-center">
-                      <p className={cn(
-                        "font-bold text-sm",
-                        item.quantity < 0 ? "text-destructive" : "text-success"
-                      )}>
-                        ${item.totalValue.toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </Card>
-        </motion.div>
-      )}
-
-      {(importMode === 'inventory' || importMode === 'collaborative_inventory') && results && (
-        <motion.div
-          ref={resultsRef}
-          className="space-y-8"
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-        >
-          {/* Collaborative Tabs */}
-          {importMode === 'collaborative_inventory' && collaborativeResults && (
-            <div className="flex justify-center">
-              <div className="inline-flex bg-muted/50 p-1 rounded-xl">
-                <button
-                  onClick={() => {
-                    setCollaborativeTab('partial');
-                    setResults(collaborativeResults.partial);
-                  }}
-                  className={cn(
-                    "px-6 py-2 rounded-lg text-sm font-medium transition-all duration-200",
-                    collaborativeTab === 'partial'
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-                  )}
-                >
-                  Nuestro Conteo
-                </button>
-                <button
-                  onClick={() => {
-                    setCollaborativeTab('branch');
-                    setResults(collaborativeResults.branch);
-                  }}
-                  className={cn(
-                    "px-6 py-2 rounded-lg text-sm font-medium transition-all duration-200",
-                    collaborativeTab === 'branch'
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-                  )}
-                >
-                  Conteo Sucursal
-                </button>
-                <button
-                  onClick={() => {
-                    setCollaborativeTab('general');
-                    setResults(collaborativeResults.general);
-                  }}
-                  className={cn(
-                    "px-6 py-2 rounded-lg text-sm font-medium transition-all duration-200",
-                    collaborativeTab === 'general'
-                      ? "bg-background text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-                  )}
-                >
-                  Stock General
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* 1. Top Section - Dashboard Summary Cards */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

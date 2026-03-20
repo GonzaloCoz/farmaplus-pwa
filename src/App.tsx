@@ -28,6 +28,7 @@ const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Stock = lazy(() => import("./pages/Stock"));
 const PreCount = lazy(() => import("./pages/PreCount"));
 const StockImport = lazy(() => import("./pages/StockImport"));
+const StockRecountMobile = lazy(() => import("./pages/StockRecountMobile"));
 const ExpirationControl = lazy(() => import("./pages/ExpirationControl"));
 const CyclicInventory = lazy(() => import("./pages/CyclicInventory"));
 const CyclicInventoryDetail = lazy(() => import("./pages/CyclicInventoryDetail"));
@@ -148,6 +149,16 @@ const AppRoutes = () => {
             <Suspense fallback={<DashboardSkeleton />}>
               <PageTransition>
                 <StockImport />
+              </PageTransition>
+            </Suspense>
+          }
+        />
+        <Route
+          path="/stock/recount-mobile"
+          element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <PageTransition>
+                <StockRecountMobile />
               </PageTransition>
             </Suspense>
           }

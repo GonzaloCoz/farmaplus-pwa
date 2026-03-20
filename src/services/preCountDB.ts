@@ -92,8 +92,8 @@ export async function getActiveSessions(options?: { branchId?: string, role?: st
         try {
             // Get pending deletes to avoid resurrecting them
             const pendingDeletes = await db.pendingActions
-                .where('type').equals('delete')
-                .and(a => (a as any).entity === 'session')
+                .where('entity').equals('session')
+                .and(a => (a as any).type === 'delete')
                 .toArray();
             const deletedIds = new Set(pendingDeletes.map(d => d.data.id));
 

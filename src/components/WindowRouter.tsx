@@ -7,6 +7,7 @@ const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Stock = lazy(() => import("@/pages/Stock"));
 const PreCount = lazy(() => import("@/pages/PreCount"));
 const StockImport = lazy(() => import("@/pages/StockImport"));
+const StockRecountMobile = lazy(() => import("@/pages/StockRecountMobile"));
 const ExpirationControl = lazy(() => import("@/pages/ExpirationControl"));
 const CyclicInventory = lazy(() => import("@/pages/CyclicInventory"));
 const CyclicInventoryDetail = lazy(() => import("@/pages/CyclicInventoryDetail"));
@@ -31,6 +32,7 @@ const ROUTE_MAP: Record<string, React.ReactNode> = {
     "/stock": <Stock />,
     "/stock/pre-count": <PreCount />,
     "/stock/import": <StockImport />,
+    "/stock/recount-mobile": <StockRecountMobile />,
     "/stock/expiration-control": <ExpirationControl />,
     "/cyclic-inventory": <CyclicInventory />,
     "/products": <Products />,

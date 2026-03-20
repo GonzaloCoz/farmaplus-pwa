@@ -114,9 +114,9 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                         console.log("Ironclad Sync completado con éxito (Worker).");
 
                         if (addedCount > 0 || updatedCount > 0) {
-                            notify.success("Carga exitosa", `${addedCount} nuevos, ${updatedCount} actualizados`);
+                            notify.success("Carga exitosa", `Se agregaron ${addedCount} productos nuevos y se actualizaron ${updatedCount} existentes.`);
                         } else {
-                            notify.info("Sin cambios", `Todos los productos ya estaban procesados`);
+                            notify.info("Sin cambios", `Todos los productos en el archivo ya estaban procesados en este laboratorio.`);
                         }
                     } catch (err) {
                         console.error("Failed to save after upload:", err);

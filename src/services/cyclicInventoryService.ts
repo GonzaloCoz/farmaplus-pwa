@@ -346,14 +346,9 @@ export const cyclicInventoryService = {
             const cleanBranch = normalizeString(branchName);
             const cleanLab = normalizeString(labName);
 
-            // 1. Purga SELECTIVA: Borrar todo EXCEPTO los ya ajustados
-            // Esto permite que el nuevo Excel rellene los huecos sin pisar lo ya hecho.
-            await supabase.from('inventories')
-                .delete()
-                .eq('branch_name', cleanBranch)
-                .eq('laboratory', cleanLab)
-                .neq('status', 'adjusted');
-
+            // 1. Guardar/Actualizar (Upsert) los nuevos ítems
+            // Ya no realizamos una purga destructiva (.delete().neq('status', 'adjusted'))
+            // para permitir que el nuevo Excel sume productos sin borrar los anteriores
             if (items.length > 0) {
                 await cyclicInventoryService.saveInventory(branchName, labName, items);
             }

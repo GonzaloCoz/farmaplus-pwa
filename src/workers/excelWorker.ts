@@ -51,26 +51,11 @@ self.onmessage = async (e: MessageEvent) => {
             }
         }
 
-        // 4. Lógica de Procesamiento (Sincronización Maestra)
-        const categoriesInFile = new Set<string>();
-        const eansInFile = new Set<string>();
-
-        for (let i = 1; i < data.length; i++) {
-            const row: any = data[i];
-            if (!row || !row[3]) continue;
-            const ean = String(row[2] || '').trim();
-            if (ean) eansInFile.add(ean);
-            let category = normalizeStringWorker(row[9]?.toString() || 'Varios');
-            categoriesInFile.add(category);
-        }
-
-        // Filtrar currentItems (Limpieza de residuos)
-        const finalItems: any[] = currentItems.filter((item: any) => {
-            if (item.status === 'pending') return false;
-            if (eansInFile.has(String(item.ean).trim())) return true;
-            return false;
-        });
-
+        // 4. Lógica de Procesamiento (Sincronización Maestra - MODO MERGE)
+        // Ya no filtramos currentItems destructivamente. Los mantenemos todos.
+        // Esto permite que el nuevo Excel rellene los huecos sin pisar lo ya hecho.
+        const finalItems: any[] = [...currentItems];
+        
         const eanMap = new Map();
         finalItems.forEach((item, index) => {
             eanMap.set(String(item.ean).trim(), index);
@@ -93,33 +78,23 @@ self.onmessage = async (e: MessageEvent) => {
 
             if (eanMap.has(ean)) {
                 const index = eanMap.get(ean);
-                const existingItem = finalItems[index];
+                const existingItem = { ...finalItems[index] };
 
-                if (existingItem.status === 'controlled' || existingItem.status === 'adjusted') {
-                    finalItems[index] = {
-                        ...existingItem,
-                        name: row[3],
-                        systemQuantity: Number(row[4]) || 0,
-                        cost: costValue,
-                        category: category
-                    };
-                    updatedCount++;
-                    continue;
-                }
-
+                // Si ya fue controlado o ajustado, mantenemos su estado y cantidad contada
+                // Pero actualizamos los datos básicos del sistema que vienen del nuevo Excel
                 finalItems[index] = {
                     ...existingItem,
                     name: row[3],
                     systemQuantity: Number(row[4]) || 0,
-                    countedQuantity: Number(row[4]) || 0,
                     cost: costValue,
-                    category: category,
-                    status: 'pending'
+                    category: category
                 };
+                
                 updatedCount++;
                 continue;
             }
 
+            // Si es un EAN nuevo, lo agregamos como pendiente
             finalItems.push({
                 id: self.crypto.randomUUID ? self.crypto.randomUUID() : Math.random().toString(36).substring(2),
                 ean: ean,
@@ -138,8 +113,7 @@ self.onmessage = async (e: MessageEvent) => {
             success: true,
             finalItems,
             addedCount,
-            updatedCount,
-            categories: Array.from(categoriesInFile)
+            updatedCount
         });
 
     } catch (err: any) {

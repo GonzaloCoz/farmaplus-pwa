@@ -48,6 +48,10 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { useCyclicInventoryController } from '@/hooks/useCyclicInventoryController';
 import { InventorySkeleton } from '@/components/InventorySkeleton';
 import { useWindowManager } from '@/contexts/WindowManagerContext';
+import { useUser } from '@/contexts/UserContext';
+import { TrashBinMinimalistic as TrashIcon } from '@solar-icons/react';
+import { cyclicInventoryService } from '@/services/cyclicInventoryService';
+import { notify as toast } from '@/lib/notifications';
 
 const CATEGORIES = ["Medicamentos", "Perfumería", "Accesorios", "Varios"];
 
@@ -56,8 +60,15 @@ export default function CyclicInventoryDetail() {
     const labName = id ? decodeURIComponent(id) : '';
     const navigate = useNavigate();
     const { activeWindowId, updateWindowMeta } = useWindowManager();
+    const { user } = useUser();
     const [isSearchExpanded, setIsSearchExpanded] = useState(false);
     const [activeTab, setActiveTab] = useState("pending");
+
+    // Admin Mode State
+    const [isAdminModeEnabled, setIsAdminModeEnabled] = useState(false);
+    const [showAdminPurgeModal, setShowAdminPurgeModal] = useState(false);
+    const [adminPassword, setAdminPassword] = useState("");
+    const [isAdminPurging, setIsAdminPurging] = useState(false);
 
     // Update window tab title with lab name
     useEffect(() => {
@@ -65,6 +76,23 @@ export default function CyclicInventoryDetail() {
             updateWindowMeta(activeWindowId, labName, <ClipboardList className="w-4 h-4" />);
         }
     }, [activeWindowId, labName, updateWindowMeta]);
+
+    // Keyboard listener for Admin Mode (Ctrl + B)
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.ctrlKey && e.key.toLowerCase() === 'b') {
+                e.preventDefault();
+                if (user?.role === 'admin') {
+                    setIsAdminModeEnabled(prev => !prev);
+                    if (!isAdminModeEnabled) {
+                        toast.info("Modo Administrador", "Funciones de depuración activadas.");
+                    }
+                }
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isAdminModeEnabled, user?.role]);
 
     const {
         // State
@@ -115,6 +143,37 @@ export default function CyclicInventoryDetail() {
 
     } = useCyclicInventoryController({ labName });
 
+    const handleAdminPurge = async () => {
+        if (!adminPassword) {
+            toast.error("Error", "Debes ingresar la contraseña.");
+            return;
+        }
+
+        setIsAdminPurging(true);
+        try {
+            const result = (await cyclicInventoryService.adminPurgeLabInventory(
+                branchName,
+                labName,
+                adminPassword,
+                user?.id || ''
+            )) as any;
+
+            if (result.success) {
+                toast.success("Éxito", result.message);
+                setShowAdminPurgeModal(false);
+                setAdminPassword("");
+                navigate('/cyclic-inventory');
+            } else {
+                toast.error("Error", result.message);
+            }
+        } catch (error) {
+            console.error("Error in admin purge:", error);
+            toast.error("Error", "Error al procesar la solicitud.");
+        } finally {
+            setIsAdminPurging(false);
+        }
+    };
+
     // Efecto para setear pestaña por defecto según carga
     useEffect(() => {
         if (!isLoading && items.length > 0) {
@@ -161,13 +220,40 @@ export default function CyclicInventoryDetail() {
                                         >
                                             <ArrowLeft className="w-5 h-5" />
                                         </Button>
-                                        <div className="flex items-center gap-3 sm:gap-4">
-                                            <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap opacity-60">Lab</span>
-                                            <span className="font-bold text-foreground text-lg sm:text-xl truncate">{labName}</span>
+                                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-6 flex-1 min-w-0">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap opacity-60">Lab</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-bold text-foreground text-lg sm:text-xl truncate">{labName}</span>
+
+                                                        {/* Admin Secret Button Next to Title */}
+                                                        <AnimatePresence>
+                                                            {isAdminModeEnabled && user?.role === 'admin' && (
+                                                                <motion.div
+                                                                    initial={{ opacity: 0, scale: 0.8 }}
+                                                                    animate={{ opacity: 1, scale: 1 }}
+                                                                    exit={{ opacity: 0, scale: 0.8 }}
+                                                                >
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-8 w-8 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-sm flex-shrink-0"
+                                                                        onClick={() => setShowAdminPurgeModal(true)}
+                                                                        title="Eliminación Administrativa (Crítico)"
+                                                                    >
+                                                                        <TrashIcon className="w-4 h-4" />
+                                                                    </Button>
+                                                                </motion.div>
+                                                            )}
+                                                        </AnimatePresence>
+                                                    </div>
+                                                </div>
                                         </div>
                                     </div>
 
-                                    <div className="h-10 sm:h-12 w-px bg-border/40 flex-shrink-0 mx-2" />
+                                    <div className="flex items-center gap-4">
+                                        <div className="h-10 sm:h-12 w-px bg-border/40 flex-shrink-0 mx-2" />
+                                    </div>
 
                                     {/* Center: Counters - Horizontal Layout */}
                                     <div className="flex items-center gap-6 sm:gap-12 flex-1 justify-center">
@@ -642,6 +728,77 @@ export default function CyclicInventoryDetail() {
 
             {/* Onboarding Overlay */}
             <Onboarding />
+
+            {/* Minimalist Admin Purge Modal */}
+            <Dialog open={showAdminPurgeModal} onOpenChange={setShowAdminPurgeModal}>
+                <DialogContent className="max-w-md p-0 gap-0 overflow-hidden border border-border/60 shadow-2xl rounded-2xl bg-background">
+                    {/* Header: Exact copy of NotificationsMenu style */}
+                    <div className="flex items-center justify-between px-5 pt-5 pb-3">
+                        <DialogTitle className="text-base font-semibold tracking-tight flex items-center gap-2">
+                             <div className="p-1.5 rounded-lg bg-red-500/10 text-red-500">
+                                <AlertTriangle className="w-4 h-4" />
+                            </div>
+                            Administración
+                        </DialogTitle>
+                    </div>
+
+                    <div className="px-5 pb-5 space-y-4">
+                        <div className="space-y-1.5">
+                            <h3 className="text-sm font-semibold text-foreground">Eliminación de Laboratorio</h3>
+                            <p className="text-[13px] text-muted-foreground leading-relaxed">
+                                Esta acción eliminará permanentemente todos los datos de <strong>{labName}</strong> para la sucursal <strong>{branchName}</strong>.
+                            </p>
+                        </div>
+
+                        <div className="space-y-2 pt-2">
+                            <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 ml-px">
+                                Contraseña
+                            </Label>
+                            <Input
+                                type="password"
+                                value={adminPassword}
+                                onChange={(e) => setAdminPassword(e.target.value)}
+                                placeholder="Ingresa la contraseña para confirmar..."
+                                className="h-11 text-sm bg-muted/30 border-border/40 focus:border-red-500/50 focus:ring-0 focus:ring-offset-0 rounded-xl"
+                                autoFocus
+                                onKeyDown={(e) => e.key === 'Enter' && handleAdminPurge()}
+                            />
+                        </div>
+
+                        <div className="flex items-center gap-3 pt-2">
+                             <Button 
+                                variant="ghost" 
+                                onClick={() => {
+                                    setShowAdminPurgeModal(false);
+                                    setAdminPassword("");
+                                }}
+                                className="h-11 flex-1 text-[13px] text-muted-foreground hover:text-foreground font-medium rounded-xl hover:bg-muted/50"
+                            >
+                                Cancelar
+                            </Button>
+                            <Button 
+                                onClick={handleAdminPurge} 
+                                className="h-11 flex-[2] bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-all shadow-sm active:scale-[0.98]"
+                                disabled={isAdminPurging || !adminPassword}
+                            >
+                                {isAdminPurging ? (
+                                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                ) : (
+                                    <TrashIcon className="w-4 h-4 mr-2" />
+                                )}
+                                {isAdminPurging ? 'Procesando...' : 'Confirmar'}
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div className="h-px bg-border/40" />
+                    
+                    <div className="px-5 py-3.5 bg-muted/20 flex items-center gap-2.5 justify-center text-[10px] text-muted-foreground/70 font-medium">
+                        <div className="w-1.5 h-1.5 rounded-full bg-red-500/50" />
+                        Esta operación quedará registrada en los logs de auditoría.
+                    </div>
+                </DialogContent>
+            </Dialog>
         </PageLayout>
     );
 }

@@ -191,6 +191,17 @@ export const cyclicInventoryService = {
         }
     },
 
+    async adminPurgeLabInventory(branchName: string, labName: string, password: string, userId: string) {
+        const { data, error } = await (supabase as any).rpc('admin_purge_lab_inventory_v1', {
+            p_branch_name: branchName,
+            p_lab_name: labName,
+            p_password: password,
+            p_user_id: userId
+        });
+        if (error) throw error;
+        return data as { success: boolean, message: string, deleted_items?: number };
+    },
+
     // Purga masiva de TODO el sistema (Admin gcoz only)
     purgeAllInventoryData: async () => {
         const { error } = await (supabase as any).rpc('purge_all_inventory_data');

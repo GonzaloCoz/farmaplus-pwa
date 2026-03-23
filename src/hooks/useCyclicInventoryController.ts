@@ -203,6 +203,17 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         notify.success("Operación exitosa", 'Producto controlado');
     }, []);
 
+    const handleBulkCheck = useCallback((ids: string[]) => {
+        if (ids.length === 0) return;
+        if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+        setItems(prev => prev.map(item =>
+            ids.includes(item.id)
+                ? { ...item, status: 'controlled' as const, countedQuantity: item.systemQuantity }
+                : item
+        ));
+        notify.success("Operación exitosa", `${ids.length} producto${ids.length > 1 ? 's' : ''} controlado${ids.length > 1 ? 's' : ''} sin diferencia`);
+    }, []);
+
     const handleRevertItem = useCallback((id: string) => {
         setItems(prev => prev.map(item =>
             item.id === id ? { ...item, status: 'pending' } : item
@@ -447,6 +458,7 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         handleFileUpload,
         handleUpdateQuantity,
         handleCheck,
+        handleBulkCheck,
         handleRevertItem,
         handleFinalizeClick,
         handleSaveInventory,

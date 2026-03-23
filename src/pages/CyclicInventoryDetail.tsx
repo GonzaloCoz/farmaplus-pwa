@@ -128,6 +128,7 @@ export default function CyclicInventoryDetail() {
         handleFileUpload,
         handleUpdateQuantity,
         handleCheck,
+        handleBulkCheck,
         handleRevertItem,
         handleFinalizeClick,
         handleSaveInventory,
@@ -532,6 +533,7 @@ export default function CyclicInventoryDetail() {
                                             items={getSortedItems(pendingItems)}
                                             onUpdateQuantity={handleUpdateQuantity}
                                             onCheck={handleCheck}
+                                            onBulkCheck={handleBulkCheck}
                                             isPending={true}
                                             isExcelUploaded={isExcelUploaded}
                                         />
@@ -542,6 +544,7 @@ export default function CyclicInventoryDetail() {
                                             items={getSortedItems(controlledItems)}
                                             onUpdateQuantity={handleUpdateQuantity}
                                             onCheck={handleCheck}
+                                            onBulkCheck={handleBulkCheck}
                                             onRevert={handleRevertItem}
                                             readOnly={false}
                                             isExcelUploaded={isExcelUploaded}
@@ -553,6 +556,7 @@ export default function CyclicInventoryDetail() {
                                             items={getSortedItems(adjustedItems)}
                                             onUpdateQuantity={handleUpdateQuantity}
                                             onCheck={() => { }} // No check needed for adjusted
+                                            onBulkCheck={handleBulkCheck}
                                             readOnly={false} // Enable editing for readjustments
                                             isExcelUploaded={isExcelUploaded}
                                         />

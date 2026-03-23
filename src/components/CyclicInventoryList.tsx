@@ -1,9 +1,10 @@
-import { useState, memo, CSSProperties } from 'react';
+import { useState, memo, useCallback, CSSProperties } from 'react';
 import { ProductImageHover } from '@/components/ProductImageHover';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     ClockCircle as Clock,
     CheckCircle,
@@ -61,6 +62,7 @@ interface CyclicInventoryListProps {
     items: CyclicItem[];
     onUpdateQuantity: (id: string, quantity: number, reason?: string) => void;
     onCheck: (id: string) => void;
+    onBulkCheck?: (ids: string[]) => void;
     onRevert?: (id: string) => void;
     readOnly?: boolean;
     isPending?: boolean;
@@ -76,6 +78,7 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
     items,
     onUpdateQuantity,
     onCheck,
+    onBulkCheck,
     onRevert,
     readOnly = false,
     isPending = false,
@@ -88,7 +91,39 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
     const [editReason, setEditReason] = useState('');
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
-    const handleStartEdit = (item: CyclicItem) => {
+    // Multi-select state
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [showBulkConfirm, setShowBulkConfirm] = useState(false);
+
+    const toggleSelect = useCallback((id: string) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    }, []);
+
+    const toggleSelectAll = useCallback(() => {
+        setSelectedIds(prev => {
+            if (prev.size === items.length) return new Set();
+            return new Set(items.map(i => i.id));
+        });
+    }, [items]);
+
+    const handleBulkConfirm = useCallback(() => {
+        if (onBulkCheck && selectedIds.size > 0) {
+            onBulkCheck(Array.from(selectedIds));
+            setSelectedIds(new Set());
+            setShowBulkConfirm(false);
+        }
+    }, [onBulkCheck, selectedIds]);
+
+    // Grid layout constants for consistency
+    const GRID_TEMPLATE_PENDING = '48px 65px minmax(200px, 3fr) minmax(130px, 1.2fr) minmax(90px, 0.8fr) minmax(100px, 1fr)';
+    const GRID_TEMPLATE_CONTROLLED = '48px 65px minmax(200px, 2.5fr) minmax(130px, 1.2fr) minmax(90px, 0.8fr) minmax(100px, 0.8fr) minmax(80px, 0.6fr) minmax(85px, 0.8fr) minmax(100px, 1fr)';
+
+    const handleStartEdit = (item: any) => {
         // REGLA DE NEGOCIO: Bloqueo de Re-ajuste si no hay Excel nuevo
         if (item.status === 'adjusted' && !isExcelUploaded) {
             notify.error(
@@ -145,6 +180,7 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
         const diff = item.countedQuantity - item.systemQuantity;
         const hasDiff = diff !== 0;
         const isControlled = item.status === 'controlled';
+        const isSelected = selectedIds.has(item.id);
 
         const diffValue = diff * item.cost;
 
@@ -185,18 +221,34 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                     })}
                 >
                     <div
-                        className="h-full items-center border-b border-border/40 hover:bg-muted/10 transition-colors group cursor-pointer px-4"
+                        className={cn(
+                            "h-full items-center border-b border-border/40 hover:bg-muted/10 transition-colors group cursor-pointer px-4",
+                            isSelected && "bg-primary/5 hover:bg-primary/10"
+                        )}
                         style={{
                             display: 'grid',
-                            gridTemplateColumns: isPending
-                                ? '60px 2.5fr 1.5fr 1fr 1fr'
-                                : '60px 2.5fr 1.5fr 1fr 1fr 0.8fr 0.8fr 1fr',
-                            gap: '0 12px'
+                            gridTemplateColumns: isPending ? GRID_TEMPLATE_PENDING : GRID_TEMPLATE_CONTROLLED,
+                            gap: '0 16px'
                         }}
-                        onClick={() => handleStartEdit(item)}
+                        onClick={() => {
+                            if (selectedIds.size > 0 && isSelected) {
+                                setShowBulkConfirm(true);
+                            } else {
+                                handleStartEdit(item);
+                            }
+                        }}
                     >
+                        {/* CHECKBOX */}
+                        <div className="flex items-center justify-center self-center" onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={() => toggleSelect(item.id)}
+                                aria-label={`Seleccionar ${item.name}`}
+                                className="h-5 w-5 border-2"
+                            />
+                        </div>
                         {/* FECHA */}
-                        <div className="flex flex-col justify-center py-1">
+                        <div className="flex flex-col justify-center py-1 overflow-hidden">
                             <span className="text-xs font-bold text-foreground/80 leading-tight">
                                 {item.updatedAt ? new Date(item.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
                             </span>
@@ -362,30 +414,96 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
 
     return (
         <Card className="border-muted/40 shadow-sm overflow-hidden bg-card">
-            {/* Table Header */}
-            <div
-                className="px-4 py-3 border-b bg-muted/30 text-[10px] md:text-xs font-semibold text-muted-foreground uppercase tracking-wider items-center"
-                style={{
-                    display: 'grid',
-                    gridTemplateColumns: isPending
-                        ? '60px 2.5fr 1.5fr 1fr 1fr'
-                        : '60px 2.5fr 1.5fr 1fr 1fr 0.8fr 0.8fr 1fr',
-                    gap: '0 12px'
-                }}
-            >
-                <div>Fecha</div>
-                <div className="pl-9">Producto</div>
-                <div>EAN</div>
-                <div>Precio</div>
-                <div>Físico / Sistema</div>
-                {!isPending && (
-                    <>
-                        <div className="text-left">ID</div>
-                        <div className="text-left">Diferencia</div>
-                        <div>Total ($)</div>
-                    </>
+            <div className="overflow-x-auto no-scrollbar pb-1">
+                <div className={cn(
+                    "min-w-fit w-full",
+                    isPending ? "min-w-[700px]" : "min-w-[950px]"
+                )}>
+                    {/* Table Header */}
+                    <div
+                        className="px-4 py-3 border-b bg-muted/30 text-[10px] md:text-xs font-semibold text-muted-foreground uppercase tracking-wider items-center"
+                        style={{
+                            display: 'grid',
+                            gridTemplateColumns: isPending ? GRID_TEMPLATE_PENDING : GRID_TEMPLATE_CONTROLLED,
+                            gap: '0 16px'
+                        }}
+                    >
+                        <div className="flex items-center justify-center">
+                            <Checkbox
+                                checked={selectedIds.size === 0 ? false : (selectedIds.size === items.length ? true : 'indeterminate')}
+                                onCheckedChange={toggleSelectAll}
+                                aria-label="Seleccionar todos"
+                                className="h-5 w-5 border-2 border-muted-foreground/40"
+                            />
+                        </div>
+                        <div>Fecha</div>
+                        <div>Producto</div>
+                        <div>EAN</div>
+                        <div>Precio</div>
+                        <div>Físico / Sistema</div>
+                        {!isPending && (
+                            <>
+                                <div className="text-left">ID</div>
+                                <div className="text-left">Diferencia</div>
+                                <div>Total ($)</div>
+                            </>
+                        )}
+                    </div>
+
+                    <div className="h-[600px] w-full bg-card">
+                        <AutoSizer>
+                            {({ height, width }) => (
+                                <List
+                                    height={height}
+                                    itemCount={items.length}
+                                    itemSize={90}
+                                    width={width}
+                                    className="no-scrollbar"
+                                >
+                                    {Row}
+                                </List>
+                            )}
+                        </AutoSizer>
+                    </div>
+                </div>
+            </div>       {/* Floating selection bar */}
+            <AnimatePresence>
+                {selectedIds.size > 0 && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                    >
+                        <div className="px-4 py-2.5 bg-primary/10 border-b border-primary/20 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <CheckCircle className="w-4 h-4 text-primary" />
+                                <span className="text-sm font-semibold text-primary">
+                                    {selectedIds.size} producto{selectedIds.size > 1 ? 's' : ''} seleccionado{selectedIds.size > 1 ? 's' : ''}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 text-xs text-muted-foreground"
+                                    onClick={() => setSelectedIds(new Set())}
+                                >
+                                    Deseleccionar
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    className="h-8 text-xs gap-1.5 bg-success hover:bg-success/90 text-white"
+                                    onClick={() => setShowBulkConfirm(true)}
+                                >
+                                    <CheckCircle className="w-3.5 h-3.5" />
+                                    Confirmar sin diferencia
+                                </Button>
+                            </div>
+                        </div>
+                    </motion.div>
                 )}
-            </div>
+            </AnimatePresence>
 
             <div className="h-[600px] w-full bg-card">
                 <AutoSizer>
@@ -499,6 +617,46 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                         </Button>
                         <Button onClick={handleSaveEdit}>
                             Guardar
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Bulk Confirmation Dialog */}
+            <Dialog open={showBulkConfirm} onOpenChange={(open) => !open && setShowBulkConfirm(false)}>
+                <DialogContent className="sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Confirmar productos sin diferencia</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <p className="text-sm text-muted-foreground">
+                            ¿Confirmar que los siguientes <span className="font-bold text-foreground">{selectedIds.size} productos</span> no presentan diferencia con el sistema?
+                        </p>
+                        <div className="max-h-[300px] overflow-y-auto space-y-1.5 pr-2">
+                            {items.filter(i => selectedIds.has(i.id)).map(item => (
+                                <div key={item.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 border border-border/50">
+                                    <CheckCircle className="w-4 h-4 text-success shrink-0" />
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-medium truncate">{item.name}</p>
+                                        <p className="text-[10px] text-muted-foreground font-mono">{item.ean} · Sist: {item.systemQuantity}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="p-3 rounded-lg bg-success/10 border border-success/20">
+                            <p className="text-xs text-success font-medium flex items-center gap-1.5">
+                                <CheckCircle className="w-3.5 h-3.5" />
+                                Todos pasarán a "Controlados" con cantidad física igual al sistema
+                            </p>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowBulkConfirm(false)}>
+                            Cancelar
+                        </Button>
+                        <Button className="bg-success hover:bg-success/90 text-white gap-1.5" onClick={handleBulkConfirm}>
+                            <CheckCircle className="w-4 h-4" />
+                            Guardar ({selectedIds.size})
                         </Button>
                     </DialogFooter>
                 </DialogContent>

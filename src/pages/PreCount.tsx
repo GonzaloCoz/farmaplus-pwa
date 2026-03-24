@@ -62,6 +62,7 @@ export default function PreCount() {
     const [quantity, setQuantity] = useState('1');
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [showCalculator, setShowCalculator] = useState(false);
+    const lastScanTimeRef = useRef<number>(0);
     const [highSpeedMode, setHighSpeedMode] = useState(false);
     const [isNegativeMode, setIsNegativeMode] = useState(false);
     const [deviceName, setDeviceName] = useState(() => localStorage.getItem('precount_device_name') || '');
@@ -111,7 +112,8 @@ export default function PreCount() {
     // Manejar escaneo de código de barras
     const handleBarcodeScan = async (code: string) => {
         try {
-            console.log('Barcode scanned:', code);
+            console.log('Barcode scanned (Hardware):', code);
+            lastScanTimeRef.current = Date.now();
 
             // Check enhanced cache first (much faster)
             const cached = await enhancedProductCache.get(code);
@@ -706,6 +708,15 @@ export default function PreCount() {
                                         <div className="flex-1 relative z-20">
                                             <SmartProductSearch
                                                 onSelect={(p) => {
+                                                    // Si acabamos de procesar un escaneo por hardware, ignorar este evento
+                                                    // que viene del input enfocado (evita doble procesamiento)
+                                                    const timeSinceScan = Date.now() - lastScanTimeRef.current;
+                                                    if (timeSinceScan < 500) {
+                                                        console.log('Ignoring redundant SmartProductSearch select (scanned by hardware)');
+                                                        return;
+                                                    }
+
+                                                    console.log('Product selected from SmartSearch:', p.ean);
                                                     // Logic for unknown product (empty name or explicit check)
                                                     if (!p.name) {
                                                         notify.warning("Advertencia", 'Producto no encontrado en la base de datos', {

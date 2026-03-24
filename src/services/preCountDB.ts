@@ -114,31 +114,28 @@ export async function getActiveSessions(options?: { branchId?: string, role?: st
 
             if (!sError && remoteSessions) {
                 const rawSessions = remoteSessions as any[];
+                const remoteIds = new Set(rawSessions.map(rs => rs.id));
                 // Filter out those we just deleted locally but haven't synced yet
                 const filteredRemote = rawSessions.filter(rs => !deletedIds.has(rs.id));
 
-                const enrichedSessions: PreCountSession[] = filteredRemote.map(rs => {
-                    const session: PreCountSession = {
-                        id: rs.id,
-                        sector: rs.sector,
-                        start_time: rs.start_time,
-                        status: rs.status as 'active' | 'completed',
-                        user_id: rs.user_id,
-                        branch_id: rs.branch_id,
-                        synced: 1,
-                        totalProducts: rs.items?.length || 0,
-                        totalUnits: rs.items?.reduce((sum: number, it: any) => sum + (it.quantity || 0), 0) || 0
-                    };
-                    return session;
-                });
-
-                // Update local sessions with remote ones (simple merge)
+                // Update local sessions with remote ones (simple merge and sync counts)
                 for (const rs of filteredRemote) {
                     const { items: _items, ...sessionData } = rs;
-                    await db.sessions.put(sessionData as LocalSession);
-                }
+                    const remoteTotalProducts = rs.items?.length || 0;
+                    const remoteTotalUnits = rs.items?.reduce((sum: number, it: any) => sum + (it.quantity || 0), 0) || 0;
 
-                return enrichedSessions;
+                    await db.sessions.put({
+                        ...sessionData,
+                        synced: 1
+                    } as LocalSession);
+                }
+                
+                // Refresh localSessions after merge
+                localSessions = await db.sessions
+                    .where('status')
+                    .equals('active')
+                    .reverse()
+                    .sortBy('start_time') as PreCountSession[];
             }
         } catch (error) {
             console.error('Error fetching remote sessions:', error);

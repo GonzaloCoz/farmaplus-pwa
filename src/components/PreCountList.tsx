@@ -92,7 +92,7 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
                                 transition={{ duration: 0.1 }}
                                 style={{ contentVisibility: 'auto' }}
                             >
-                                <Card className={`h-full relative overflow-hidden group transition-all duration-300 bg-card border ${item.productName.startsWith('Producto ')
+                                <Card className={`h-full relative overflow-hidden group transition-all duration-300 bg-card border ${(item.productName || '').startsWith('Producto ')
                                     ? 'border-destructive shadow-[0_0_0_0.5px_inset_hsl(var(--destructive)/0.1)] bg-destructive/[0.02]'
                                     : item.synced === 0
                                         ? 'border-warning shadow-[0_0_0_0.5px_inset_hsl(var(--warning)/0.2)] bg-warning/[0.03]'
@@ -136,7 +136,7 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
                                                 )}
                                             </button>
 
-                                            {item.productName.startsWith('Producto ') ? (
+                                            {(item.productName || '').startsWith('Producto ') ? (
                                                 <div className="ml-auto">
                                                     <span className="text-[10px] text-destructive flex items-center gap-1.5 font-bold bg-destructive/10 px-2 py-1 rounded-full border border-destructive/20">
                                                         <span className="w-1.5 h-1.5 rounded-full bg-destructive" />

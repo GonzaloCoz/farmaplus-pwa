@@ -167,7 +167,7 @@ export function usePreCount(): UsePreCountReturn {
         id: dbItem.id,
         sessionId: dbItem.session_id,
         ean: dbItem.ean,
-        productName: dbItem.product_name,
+        productName: dbItem.product_name || 'Producto Desconocido',
         quantity: dbItem.quantity,
         timestamp: new Date(dbItem.scanned_at || Date.now()).getTime(),
         synced: dbItem.synced ?? 1,

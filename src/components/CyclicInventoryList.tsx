@@ -464,9 +464,11 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                                 </List>
                             )}
                         </AutoSizer>
-                    </div>
                 </div>
-            </div>       {/* Floating selection bar */}
+            </div>
+        </div>
+
+        {/* Floating selection bar */}
             <AnimatePresence>
                 {selectedIds.size > 0 && (
                     <motion.div
@@ -504,22 +506,6 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                     </motion.div>
                 )}
             </AnimatePresence>
-
-            <div className="h-[600px] w-full bg-card">
-                <AutoSizer>
-                    {({ height, width }) => (
-                        <List
-                            height={height}
-                            itemCount={items.length}
-                            itemSize={90}
-                            width={width}
-                            className="no-scrollbar"
-                        >
-                            {Row}
-                        </List>
-                    )}
-                </AutoSizer>
-            </div>
 
             <div className="p-4 border-t bg-muted/20 flex justify-between items-center text-xs text-muted-foreground">
                 <span>Mostrando {items.length} registros</span>

@@ -387,16 +387,18 @@ export const cyclicInventoryService = {
                 grouped[cat].push(item);
             });
 
-            // --- GLOBAL PROGRESS CALCULATION ---
-            const globalProcessed = items.filter(i => i.status === 'controlled' || i.status === 'adjusted').length;
-            const globalTotal = totalDenominator ?? items.length; // totalDenominator evita 100% falso al finalizar
+            // --- CÁLCULO DE PROGRESO GLOBAL (Basado en el universo completo de ítems) ---
+            // IMPORTANTE: Usamos itemsToProcess para que, aunque se guarde un solo ítem, 
+            // el progreso refleje el estado real de todo el laboratorio en la DB.
+            const globalProcessed = itemsToProcess.filter(i => i.status === 'controlled' || i.status === 'adjusted').length;
+            const globalTotal = totalDenominator ?? itemsToProcess.length;
 
             let globalProgress = 0;
             if (globalTotal > 0) {
                 globalProgress = Number(((globalProcessed / globalTotal) * 100).toFixed(1));
                 if (globalProgress > 100) globalProgress = 100;
             }
-            // -------------------------------------------------------
+            // -------------------------------------------------------------------------
 
             // Iterate each category and upsert its own stats
             const upsertPromises = Object.entries(grouped).map(async ([category, catItems]) => {
@@ -954,8 +956,8 @@ export const cyclicInventoryService = {
                 // Filter items that were actually adjusted in this session
                 const adjustedItems = data.items_snapshot.filter(item =>
                     item.status === 'adjusted' &&
-                    (item.shortageId === data.adjustment_id_shortage ||
-                        item.surplusId === data.adjustment_id_surplus)
+                    ((data.adjustment_id_shortage && item.shortageId?.includes(data.adjustment_id_shortage)) ||
+                        (data.adjustment_id_surplus && item.surplusId?.includes(data.adjustment_id_surplus)))
                 );
 
                 if (adjustedItems.length > 0) {
@@ -1048,14 +1050,15 @@ export const cyclicInventoryService = {
         }
     },
 
-    getAdjustmentHistory: async (branchName: string, labName: string): Promise<any[]> => {
+    getAdjustmentHistory: async (branchName: string, labName: string, limit: number = 50): Promise<any[]> => {
         // Try to fetch from professional SAP-style Ledger first
         const { data: ledgerData, error: ledgerError } = await supabase
             .from('inventory_ledger')
             .select('*')
             .eq('branch_name', normalizeString(branchName))
             .eq('laboratory', normalizeString(labName))
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false })
+            .limit(limit);
 
         if (!ledgerError && ledgerData && ledgerData.length > 0) {
             return ledgerData;
@@ -1067,7 +1070,8 @@ export const cyclicInventoryService = {
             .select('*')
             .eq('branch_name', normalizeString(branchName))
             .eq('laboratory', normalizeString(labName))
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false })
+            .limit(limit);
 
         if (error) {
             console.error("Error fetching history:", error);
@@ -1235,6 +1239,26 @@ export const cyclicInventoryService = {
         } catch (error) {
             console.error("Error en clearInventoryWorkspace:", error);
             throw error;
+        }
+    },
+
+    /**
+     * Registra un evento de escaneo en el sistema 24hs.
+     * Permite auditoría en tiempo real de qué se está escaneando y por quién.
+     */
+    logScanEvent: async (branchName: string, labName: string, ean: string, userId?: string, userName?: string): Promise<void> => {
+        try {
+            await supabase.from('scan_events').insert({
+                branch_name: normalizeString(branchName),
+                laboratory: normalizeString(labName),
+                ean: ean,
+                user_id: userId,
+                user_name: userName || 'Desconocido',
+                scanned_at: new Date().toISOString()
+            });
+        } catch (error) {
+            // Silencioso para no bloquear la UI si el log falla
+            console.warn("[ScanLog] Error logging event:", error);
         }
     }
 };

@@ -111,7 +111,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                             branchId: profile.branch_id,
                             branchSheet: profile.branches?.name || 'Casa Central',
                             permissions: finalPermissions,
-                            assignedBranches: assignedBranches
+                            assignedBranches: assignedBranches || [] // Garantizar que siempre sea un array
                         };
 
                         persistUser(newUser);
@@ -190,7 +190,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                     branchId: data.branch_id,
                     branchSheet: branchName || 'Casa Central',
                     permissions: finalPermissions,
-                    assignedBranches: assignedBranches
+                    assignedBranches: assignedBranches || [] // Garantizar array
                 };
                 persistUser(newUser);
                 return true;
@@ -209,7 +209,8 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                 role: 'mod',
                 branchName: 'Zona No Asignada',
                 branchSheet: 'Zona No Asignada',
-                permissions: []
+                permissions: [],
+                assignedBranches: [] // Asignar vacío por defecto para usuarios hardcoded
             };
             persistUser(newUser);
             return true;

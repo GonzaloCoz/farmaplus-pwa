@@ -6,6 +6,7 @@ export const INVENTORY_KEYS = {
     lab: (branchName: string, labName: string) => [...INVENTORY_KEYS.all, 'lab', branchName, labName] as const,
     stats: (branchName: string, labName: string, category: string) => [...INVENTORY_KEYS.all, 'stats', branchName, labName, category] as const,
     summary: () => [...INVENTORY_KEYS.all, 'summary'] as const,
+    history: (branchName: string, labName: string) => [...INVENTORY_KEYS.all, 'history', branchName, labName] as const,
 };
 
 export function useLabInventoryQuery(branchName: string, labName: string) {
@@ -59,4 +60,12 @@ export function usePrefetchAllLabStats() {
     };
 
     return prefetchAll;
+}
+export function useAdjustmentHistoryQuery(branchName: string, labName: string) {
+    return useQuery({
+        queryKey: INVENTORY_KEYS.history(branchName, labName),
+        queryFn: () => cyclicInventoryService.getAdjustmentHistory(branchName, labName),
+        enabled: !!labName && branchName !== 'Sucursal Desconocida',
+        staleTime: 1000 * 60 * 2, // 2 minutos de caché (más volátil que el inventario)
+    });
 }

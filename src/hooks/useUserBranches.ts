@@ -15,12 +15,12 @@ export function useUserBranches() {
         if (!user) return [];
 
         // Admin sees all branches
-        if (user.role === 'admin') {
+        if (user.role?.toLowerCase() === 'admin') {
             return BRANCH_NAMES;
         }
 
         // Mod sees only assigned branches
-        if (user.role === 'mod') {
+        if (user.role?.toLowerCase() === 'mod') {
             return user.assignedBranches || [];
         }
 

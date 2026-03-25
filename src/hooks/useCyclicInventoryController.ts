@@ -9,7 +9,7 @@ import { useInventoryStats } from '@/hooks/useInventoryStats';
 import { useUser } from '@/contexts/UserContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
-import { INVENTORY_KEYS } from './useInventoryQueries';
+import { INVENTORY_KEYS, useAdjustmentHistoryQuery } from './useInventoryQueries';
 
 const CATEGORIES = ["Medicamentos", "Perfumería", "Accesorios", "Varios"];
 
@@ -115,15 +115,8 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
     const [verificationText, setVerificationText] = useState("");
     const [isDeleting, setIsDeleting] = useState(false);
 
-    // History State
-    const [history, setHistory] = useState<any[]>([]);
-
-    // Load History
-    useEffect(() => {
-        if (branchName && labName) {
-            cyclicInventoryService.getAdjustmentHistory(branchName, labName).then(setHistory);
-        }
-    }, [branchName, labName]);
+    // History Query (React Query)
+    const { data: history = [] } = useAdjustmentHistoryQuery(branchName, labName);
 
     // --- GLOBAL LABORATORY STATS (Standard Header) ---
     // These metrics are calculated from the full items array to ensure 100% consistency
@@ -191,7 +184,13 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
             }
             return item;
         }));
-    }, []);
+
+        // [NEW] 24h Tracking
+        const updatedItem = items.find(i => i.id === id);
+        if (updatedItem) {
+            cyclicInventoryService.logScanEvent(branchName, labName, updatedItem.ean, user?.id, user?.name);
+        }
+    }, [items, branchName, labName, user, isExcelUploaded]);
 
     const handleCheck = useCallback((id: string) => {
         if (navigator.vibrate) navigator.vibrate(50);
@@ -200,8 +199,15 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
                 ? { ...item, status: 'controlled', countedQuantity: item.systemQuantity }
                 : item
         ));
+        
+        // [NEW] 24h Tracking
+        const checkedItem = items.find(i => i.id === id);
+        if (checkedItem) {
+            cyclicInventoryService.logScanEvent(branchName, labName, checkedItem.ean, user?.id, user?.name);
+        }
+
         notify.success("Operación exitosa", 'Producto controlado');
-    }, []);
+    }, [items, branchName, labName, user]);
 
     const handleBulkCheck = useCallback((ids: string[]) => {
         if (ids.length === 0) return;
@@ -211,8 +217,17 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
                 ? { ...item, status: 'controlled' as const, countedQuantity: item.systemQuantity }
                 : item
         ));
+
+        // [NEW] 24h Tracking (Bulk)
+        ids.forEach(id => {
+            const item = items.find(i => i.id === id);
+            if (item) {
+                cyclicInventoryService.logScanEvent(branchName, labName, item.ean, user?.id, user?.name);
+            }
+        });
+
         notify.success("Operación exitosa", `${ids.length} producto${ids.length > 1 ? 's' : ''} controlado${ids.length > 1 ? 's' : ''} sin diferencia`);
-    }, []);
+    }, [items, branchName, labName, user]);
 
     const handleRevertItem = useCallback((id: string) => {
         setItems(prev => prev.map(item =>
@@ -360,11 +375,14 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
             navigate('/cyclic-inventory');
 
             const newHistory = await cyclicInventoryService.getAdjustmentHistory(branchName, labName);
-            setHistory(newHistory);
+            // Non-destructive: React Query will refetch via invalidation
 
-            // Invalidar Caché de React Query para forzar que al volver se cargue la lista limpia (sin pendientes)
+            // Invalidar Caché de React Query
             queryClient.invalidateQueries({
                 queryKey: INVENTORY_KEYS.lab(branchName, labName)
+            });
+            queryClient.invalidateQueries({
+                queryKey: INVENTORY_KEYS.history(branchName, labName)
             });
 
         } catch (error) {
@@ -400,6 +418,9 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
             // Invalidar Caché de React Query para forzar recarga limpia
             queryClient.invalidateQueries({
                 queryKey: INVENTORY_KEYS.lab(branchName, labName)
+            });
+            queryClient.invalidateQueries({
+                queryKey: INVENTORY_KEYS.history(branchName, labName)
             });
 
             setShowDeleteDialog(false);

@@ -38,52 +38,90 @@ export class SyncManager {
                 .anyOf('pending', 'failed') // Retry failed ones too
                 .sortBy('timestamp');
 
+            if (pendingActions.length === 0) return;
+            
+            console.log(`SyncManager: Processing queue (${pendingActions.length} items)`);
+
+            // Group item upserts to batch them
+            const itemUpserts: PendingAction[] = [];
+            const otherActions: PendingAction[] = [];
+
             for (const action of pendingActions) {
+                if (action.entity === 'item' && (action.type === 'create' || action.type === 'update')) {
+                    itemUpserts.push(action);
+                } else {
+                    otherActions.push(action);
+                }
+            }
+
+            // 1. Process Batchable Item Upserts
+            if (itemUpserts.length > 0) {
+                // Batch size of 50 is safe for Nano instances
+                const BATCH_SIZE = 50;
+                for (let i = 0; i < itemUpserts.length; i += BATCH_SIZE) {
+                    const currentBatch = itemUpserts.slice(i, i + BATCH_SIZE);
+                    const batchIds = currentBatch.map(a => a.id!).filter(Boolean);
+                    
+                    await db.pendingActions.where('id').anyOf(batchIds).modify({ status: 'syncing' });
+
+                    try {
+                        const itemsData = currentBatch.map(a => ({
+                            id: a.data.id,
+                            session_id: a.data.session_id,
+                            ean: a.data.ean,
+                            product_name: a.data.product_name,
+                            quantity: a.data.quantity,
+                            scanned_by: a.data.scanned_by,
+                            id_producto: a.data.id_producto,
+                            device_id: a.data.device_id,
+                            device_name: a.data.device_name
+                        }));
+
+                        const { error } = await (supabase as any).rpc('batch_upsert_precount_items', {
+                            p_items: itemsData
+                        });
+
+                        if (error) throw error;
+
+                        // Success! Update local state
+                        const localItemIds = currentBatch.map(a => a.data.id).filter(Boolean);
+                        await db.items.where('id').anyOf(localItemIds).modify({ synced: 1 });
+                        await db.pendingActions.where('id').anyOf(batchIds).delete();
+
+                        console.log(`SyncManager: Successfully synced batch of ${currentBatch.length} items`);
+
+                        // Throttle to let the DB breathe (Nano tier)
+                        if (i + BATCH_SIZE < itemUpserts.length) {
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                        }
+                    } catch (error: any) {
+                        console.error('Batch sync failed:', error);
+                        await db.pendingActions.where('id').anyOf(batchIds).modify({ 
+                            status: 'failed', 
+                            error: error.message || 'Batch error' 
+                        });
+                        // Stop this run on full batch failure to avoid hammering
+                        break;
+                    }
+                }
+            }
+
+            // 2. Process Individual Actions (Sessions, deletes, etc.)
+            for (const action of otherActions) {
                 if (!action.id) continue;
-
                 await db.pendingActions.update(action.id, { status: 'syncing' });
-
                 try {
                     await this.executeAction(action);
-                    await db.pendingActions.update(action.id, { status: 'success' });
-                    
-                    // Update the local entity to synced: 1
                     if (action.entity === 'session') {
                         await db.sessions.update(action.data.id, { synced: 1 });
-                    } else if (action.entity === 'item') {
-                        // For items, we might need to find by EAN or ID depending on the data
-                        const itemId = action.data.id;
-                        if (itemId) {
-                            // Already optimistic 1, but confirm it
-                            await db.items.update(itemId, { synced: 1 });
-                        }
                     }
-
-                    // Remove successfully synced items
                     await db.pendingActions.delete(action.id);
                 } catch (error: any) {
-                    console.error('Sync failed for action:', action, error);
-                    const newRetries = (action.retries || 0) + 1;
-
-                    if (newRetries >= this.maxRetries) {
-                        // Mark as dead letter or stay failed
-                        await db.pendingActions.update(action.id, {
-                            status: 'failed',
-                            retries: newRetries,
-                            error: error.message || 'Unknown error'
-                        });
-
-                        // Fallback: If it permanently failed, mark as un-synced so user sees the warning
-                        if (action.entity === 'item' && action.data.id) {
-                            await db.items.update(action.data.id, { synced: 0 });
-                        }
-                    } else {
-                        await db.pendingActions.update(action.id, {
-                            status: 'pending', // Reset to pending to retry later
-                            retries: newRetries,
-                            error: error.message || 'Unknown error'
-                        });
-                    }
+                    console.error('Individual sync failed:', error);
+                    await db.pendingActions.update(action.id, { 
+                        status: 'failed', 
+                        error: error.message || 'Action error' 
+                    });
                 }
             }
         } finally {

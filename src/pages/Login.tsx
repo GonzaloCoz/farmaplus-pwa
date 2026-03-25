@@ -23,11 +23,15 @@ export default function Login() {
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
+        console.log("[Login] handleLogin started");
         setIsLoading(true);
 
         try {
+            console.log("[Login] Credentials:", { username, hasPassword: !!password });
             if (username && password) {
+                console.log("[Login] Calling context login...");
                 const success = await login(username, password);
+                console.log("[Login] Context login result:", success);
 
                 if (success) {
                     const displayName = username

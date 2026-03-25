@@ -41,69 +41,63 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }, []);
 
     const login = async (usernameInput: string, passwordInput?: string): Promise<boolean> => {
-        setIsLoading(true); // Ensure loading state triggered locally if not already
+        const loginStartTime = performance.now();
+        console.time("[Login] Total");
+        setIsLoading(true);
         const normalizedInput = usernameInput.toLowerCase().trim().replace(/\s+/g, '');
 
         // --- STRATEGY 1: SUPABASE AUTH (SECURE) ---
         try {
-            // Construct email. If user provides "gcoz", try "gcoz@farmaplus.system" (or similar convention)
-            // Or just check if input looks like email.
             const email = normalizedInput.includes('@')
                 ? normalizedInput
                 : `${normalizedInput}@farmaplus.system`;
 
-            // Password is mandatory for Auth. If missing, we can't search Auth.
             if (passwordInput && passwordInput.length > 0) {
+                console.time("[Login] Auth.signIn");
                 const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
                     email: email,
                     password: passwordInput,
                 });
+                console.timeEnd("[Login] Auth.signIn");
 
                 if (!authError && authData.user) {
-                    console.log("Supabase Auth Login Successful", authData.user.id);
+                    console.log("[Login] Auth Successful:", authData.user.id);
 
-                    // Fetch profile using the AUTH ID (linked via foreign key or manual sync)
-                    // Note: In our schema, 'id' in profiles should match auth.users.id
+                    // Fetch profile using the AUTH ID
+                    console.time("[Login] Profile Fetch");
                     const { data: profileData, error: profileError } = await supabase
                         .from('profiles')
                         .select(`*, branches (name)`)
                         .eq('id', authData.user.id)
                         .maybeSingle();
+                    console.timeEnd("[Login] Profile Fetch");
 
                     if (profileData && !profileError) {
-                        // Success! Map to our User object
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         const profile = profileData as any;
 
-                        // Copy-paste of logic from legacy (permissions, etc)
-                        // Fetch assigned branches for mod users
-                        let assignedBranches: string[] | undefined = undefined;
-                        if (profile.role === 'mod') {
-                            const { data: zonalBranches } = await (supabase as any)
-                                .from('zonal_branches')
-                                .select(`branches (name)`)
-                                .eq('zonal_id', profile.id);
+                        // PARALLEL FETCH: Zonal Branches + Role Permissions
+                        console.time("[Login] Permissions & Zonals Fetch");
+                        const [zonalResponse, permissions] = await Promise.all([
+                            profile.role === 'mod'
+                                ? (supabase as any).from('zonal_branches').select(`branches (name)`).eq('zonal_id', profile.id)
+                                : Promise.resolve({ data: [] }),
+                            permissionsService.getRolePermissions(profile.role || 'branch')
+                        ]);
+                        console.timeEnd("[Login] Permissions & Zonals Fetch");
 
-                            if (zonalBranches && zonalBranches.length > 0) {
-                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                assignedBranches = zonalBranches.map((zb: any) => zb.branches?.name).filter(Boolean);
-                            }
-                        }
-
-                        let finalPermissions: string[] = [];
-                        if (profile.permissions && Array.isArray(profile.permissions) && profile.permissions.length > 0) {
-                            finalPermissions = profile.permissions;
-                        } else {
-                            finalPermissions = await permissionsService.getRolePermissions(profile.role || 'branch');
+                        let assignedBranches: string[] = [];
+                        if (zonalResponse.data && zonalResponse.data.length > 0) {
+                            assignedBranches = zonalResponse.data.map((zb: any) => zb.branches?.name).filter(Boolean);
                         }
 
                         // Prevent lockout for gcoz
+                        const finalPermissions = [...permissions];
                         if (profile.username === 'gcoz' && !finalPermissions.includes('MANAGE_USERS')) {
                             finalPermissions.push('MANAGE_USERS');
                         }
 
                         const newUser: User = {
-                            id: profile.id, // Real Auth UUID
+                            id: profile.id,
                             username: profile.username,
                             name: profile.full_name || profile.username,
                             role: (profile.role as 'admin' | 'branch' | 'mod') || 'branch',
@@ -111,34 +105,33 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                             branchId: profile.branch_id,
                             branchSheet: profile.branches?.name || 'Casa Central',
                             permissions: finalPermissions,
-                            assignedBranches: assignedBranches || [] // Garantizar que siempre sea un array
+                            assignedBranches: assignedBranches || []
                         };
 
+                        console.timeEnd("[Login] Total");
+                        console.log(`[Login] Successful Strategy 1 in ${(performance.now() - loginStartTime).toFixed(2)}ms`);
                         persistUser(newUser);
                         return true;
                     }
                 } else {
-                    console.warn("Supabase Auth Login Failed:", authError?.message);
+                    console.warn("[Login] Supabase Auth Login Failed:", authError?.message);
                 }
             }
         } catch (e) {
-            console.error("Auth attempt error:", e);
+            console.error("[Login] Auth attempt error:", e);
         }
 
         // --- STRATEGY 2: LEGACY FALLBACK (UNSECURE / MIGRATION) ---
-        console.log("Falling back to Legacy Login...");
+        console.log("[Login] Falling back to Legacy Login...");
+        console.time("[Login] Legacy Logic");
 
-        // Legacy Password Check (Weak)
         if (passwordInput && passwordInput !== 'farmaplus') {
-            // If they provided a password and it wasn't the legacy global password, 
-            // AND the Auth attempt failed above, then this is a bad login.
-            // UNLESS the user is strictly legacy and uses the global password.
-            // For safety during migration, we reject if not 'farmaplus' only if we assume all legacy users use it.
-            setIsLoading(false); // Ensure loading state is reset on failure
+            setIsLoading(false);
+            console.timeEnd("[Login] Legacy Logic");
+            console.timeEnd("[Login] Total");
             return false;
         }
 
-        // 1. Try to find in Supabase PROFILES (Legacy Lookup by Username)
         try {
             const { data, error } = await supabase
                 .from('profiles')
@@ -147,56 +140,54 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                 .maybeSingle();
 
             if (data && !error) {
-                // ... (Legacy Profile Logic - COPY PASTED essentially)
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const profile = data as any;
 
                 if (profile.active === false && profile.username.toLowerCase() !== 'gcoz') {
-                    notify.error("Acceso Denegado", "Tu cuenta se encuentra inactiva. Contacta al administrador (gcoz).");
-                    setIsLoading(false); // Ensure loading state is reset on failure
+                    notify.error("Acceso Denegado", "Tu cuenta se encuentra inactiva. Contacta al administrador.");
+                    setIsLoading(false);
+                    console.timeEnd("[Login] Legacy Logic");
+                    console.timeEnd("[Login] Total");
                     return false;
                 }
 
-                const branchName = data.branches?.name || undefined;
-                let assignedBranches: string[] | undefined = undefined;
-                if (data.role === 'mod') {
-                    const { data: zonalBranches } = await (supabase as any)
-                        .from('zonal_branches')
-                        .select(`branches (name)`)
-                        .eq('zonal_id', data.id); // Note: data.id here is likely NOT a UUID if not migrated
+                // Parallel legacy fetches
+                const [zonalResponse, permissions] = await Promise.all([
+                    profile.role === 'mod'
+                        ? (supabase as any).from('zonal_branches').select(`branches (name)`).eq('zonal_id', profile.id)
+                        : Promise.resolve({ data: [] }),
+                    permissionsService.getRolePermissions(profile.role || 'branch')
+                ]);
 
-                    if (zonalBranches) {
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        assignedBranches = zonalBranches.map((zb: any) => zb.branches?.name).filter(Boolean);
-                    }
+                let assignedBranches: string[] = [];
+                if (zonalResponse.data) {
+                    assignedBranches = zonalResponse.data.map((zb: any) => zb.branches?.name).filter(Boolean);
                 }
 
-                let finalPermissions: string[] = [];
-                if (profile.permissions && Array.isArray(profile.permissions) && profile.permissions.length > 0) {
-                    finalPermissions = profile.permissions;
-                } else {
-                    finalPermissions = await permissionsService.getRolePermissions(data.role || 'branch');
-                }
-                if (data.username === 'gcoz' && !finalPermissions.includes('MANAGE_USERS')) {
+                const finalPermissions = [...permissions];
+                if (profile.username === 'gcoz' && !finalPermissions.includes('MANAGE_USERS')) {
                     finalPermissions.push('MANAGE_USERS');
                 }
 
                 const newUser: User = {
-                    id: data.id,
-                    username: data.username,
-                    name: data.full_name || data.username,
-                    role: (data.role as 'admin' | 'branch' | 'mod') || 'admin',
-                    branchName: branchName || 'Casa Central',
-                    branchId: data.branch_id,
-                    branchSheet: branchName || 'Casa Central',
+                    id: profile.id,
+                    username: profile.username,
+                    name: profile.full_name || profile.username,
+                    role: (profile.role as 'admin' | 'branch' | 'mod') || 'admin',
+                    branchName: profile.branches?.name || 'Casa Central',
+                    branchId: profile.branch_id,
+                    branchSheet: profile.branches?.name || 'Casa Central',
                     permissions: finalPermissions,
-                    assignedBranches: assignedBranches || [] // Garantizar array
+                    assignedBranches: assignedBranches || []
                 };
+
+                console.timeEnd("[Login] Legacy Logic");
+                console.timeEnd("[Login] Total");
+                console.log(`[Login] Successful Strategy 2 in ${(performance.now() - loginStartTime).toFixed(2)}ms`);
                 persistUser(newUser);
                 return true;
             }
         } catch (e) {
-            console.error("Legacy Supabase lookup error:", e);
+            console.error("[Login] Legacy Supabase lookup error:", e);
         }
 
         // 2. Buscar en Zonales (Mods) - HARDCODED LIST
@@ -210,8 +201,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                 branchName: 'Zona No Asignada',
                 branchSheet: 'Zona No Asignada',
                 permissions: [],
-                assignedBranches: [] // Asignar vacío por defecto para usuarios hardcoded
+                assignedBranches: []
             };
+            console.timeEnd("[Login] Total");
             persistUser(newUser);
             return true;
         }
@@ -232,11 +224,13 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                 branchSheet: branchMatch,
                 permissions: []
             };
+            console.timeEnd("[Login] Total");
             persistUser(newUser);
             return true;
         }
 
-        setIsLoading(false); // Ensure loading state is reset on failure
+        console.timeEnd("[Login] Total");
+        setIsLoading(false);
         return false;
     };
 

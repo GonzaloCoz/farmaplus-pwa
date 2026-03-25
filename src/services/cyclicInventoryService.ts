@@ -629,7 +629,11 @@ export const cyclicInventoryService = {
                 .from('branch_summaries')
                 .select('*');
 
-            if (sumError) throw sumError;
+            if (sumError) {
+                console.error("[Monitor] Error fetching branch_summaries:", sumError);
+                throw sumError;
+            }
+            console.log(`[Monitor] Retrieved ${summaries?.length || 0} summaries from DB.`);
 
             /* 
             // 2. Fetch Goals (REMOVED - Use total_labs_count from master list)
@@ -669,8 +673,7 @@ export const cyclicInventoryService = {
                 });
             }
 
-            // 4. Map to UI format
-            return BRANCH_NAMES.map(branchName => {
+                        const finalResult = BRANCH_NAMES.map(branchName => {
                 const normalizedSearch = normalizeString(branchName);
                 const rawSummary = summaries?.find(s =>
                     normalizeString(s.branch_name || '') === normalizedSearch
@@ -779,6 +782,8 @@ export const cyclicInventoryService = {
                 };
             }).sort((a, b) => b.progress - a.progress);
 
+            console.log(`[Monitor] Returning ${finalResult.length} branches to UI.`);
+            return finalResult;
         } catch (error) {
             console.error("Error fetching Lite summary:", error);
             return [];
@@ -1248,7 +1253,7 @@ export const cyclicInventoryService = {
      */
     logScanEvent: async (branchName: string, labName: string, ean: string, userId?: string, userName?: string): Promise<void> => {
         try {
-            await supabase.from('scan_events').insert({
+            await (supabase as any).from('scan_events').insert({
                 branch_name: normalizeString(branchName),
                 laboratory: normalizeString(labName),
                 ean: ean,

@@ -11,7 +11,7 @@ import { useUser } from '@/contexts/UserContext';
 import { useUserBranches } from '@/hooks/useUserBranches';
 import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { cn, normalizeString } from '@/lib/utils';
 
 const INITIAL_BRANCHES_TO_SHOW = 8;
 
@@ -48,11 +48,17 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
     const { data: branchSummaries = [], isLoading: loading } = useQuery({
         queryKey: ['branch-summaries-lite', availableBranches],
         queryFn: async () => {
+            console.log("[Monitor] Fetching branch summaries... Permissions count:", availableBranches.length);
             const data = await cyclicInventoryService.getBranchesSummaryLite();
+            
             // Filter branches based on user permissions
-            return data.filter(branch =>
-                availableBranches.length === 0 || availableBranches.includes(branch.branchName)
-            );
+            return data.filter(branch => {
+                if (!availableBranches || availableBranches.length === 0) return true;
+                
+                // Use normalized comparison for robustness
+                const normalizedBranch = normalizeString(branch.branchName);
+                return availableBranches.some(ab => normalizeString(ab) === normalizedBranch);
+            });
         },
         staleTime: 1000 * 60 * 5, // 5 minutes cache
         gcTime: 1000 * 60 * 30, // 30 minutes garbage collection

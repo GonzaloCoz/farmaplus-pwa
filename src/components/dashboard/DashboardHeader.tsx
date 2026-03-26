@@ -52,7 +52,7 @@ export function DashboardHeader({
                             — {user.branchName}
                         </span>
                     )}
-                    <span className="wave ml-2">👋</span>
+                    <span className="wave ml-2 hidden lg:inline-block">👋</span>
                 </h1>
 
                 <div className="flex gap-2">
@@ -91,6 +91,7 @@ export function DashboardHeader({
                         <motion.div
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
+                            className="hidden lg:block"
                         >
                             <Button
                                 variant={isEditMode ? "default" : "outline"}

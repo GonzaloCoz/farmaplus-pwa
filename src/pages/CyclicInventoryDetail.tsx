@@ -595,12 +595,12 @@ export default function CyclicInventoryDetail() {
                                                             <div className="bg-destructive/10 p-2 rounded border border-destructive/20">
                                                                 <span className="font-semibold text-destructive block">Faltantes</span>
                                                                 ID: {h.adjustment_id_shortage || '-'}
-                                                                <div className="font-mono mt-1">${Number(h.shortage_value).toLocaleString()}</div>
+                                                                <div className="font-mono mt-1">${(Number(h.shortage_value ?? h.total_shortage_value) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
                                                             </div>
                                                             <div className="bg-success/10 p-2 rounded border border-success/20">
                                                                 <span className="font-semibold text-success block">Sobrantes</span>
                                                                 ID: {h.adjustment_id_surplus || '-'}
-                                                                <div className="font-mono mt-1">${Number(h.surplus_value).toLocaleString()}</div>
+                                                                <div className="font-mono mt-1">${(Number(h.surplus_value ?? h.total_surplus_value) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
                                                             </div>
                                                         </div>
                                                     </Card>

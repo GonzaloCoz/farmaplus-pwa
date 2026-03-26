@@ -11,6 +11,8 @@ import { WidgetGallery } from "@/components/dashboard/WidgetGallery";
 import { CalendarModal } from "@/components/dashboard/CalendarModal";
 import { LayoutPresetsDialog } from "@/components/dashboard/LayoutPresetsDialog";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
+import { GlobalSearchInput } from "@/components/dashboard/GlobalSearchInput";
+import { SuperSearch } from "@/components/SuperSearch";
 import { WidgetRenderer } from "@/components/dashboard/WidgetRenderer";
 import { WidgetErrorBoundary } from "@/components/dashboard/WidgetErrorBoundary";
 import { ConfigDialog } from "@/components/dashboard/ConfigDialog";
@@ -60,6 +62,7 @@ export default function Dashboard() {
   const [showWidgetGallery, setShowWidgetGallery] = useState(false);
   const [showPresetsDialog, setShowPresetsDialog] = useState(false);
   const [showConfigDialog, setShowConfigDialog] = useState(false);
+  const [showSuperSearch, setShowSuperSearch] = useState(false);
 
   // Calendar State
   const [showCalendar, setShowCalendar] = useState(false);
@@ -110,7 +113,7 @@ export default function Dashboard() {
 
   return (
     <motion.div
-      className="pt-3 pb-6 px-6 space-y-6"
+      className="pt-3 pb-6 px-4 lg:px-6 space-y-4 lg:space-y-6"
       variants={containerVariants}
       initial="hidden"
       animate="show"
@@ -124,6 +127,17 @@ export default function Dashboard() {
         hasHiddenWidgets={hiddenWidgets.length > 0}
       />
 
+      {/* Global Search Trigger (@coss/p-input-group-23) - Mobile only */}
+      <GlobalSearchInput 
+        onClick={() => setShowSuperSearch(true)}
+        className="my-2 lg:hidden"
+      />
+
+      <SuperSearch 
+        open={showSuperSearch} 
+        onOpenChange={setShowSuperSearch} 
+      />
+
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -133,7 +147,7 @@ export default function Dashboard() {
           items={displayedWidgets.map(w => w.id)}
           strategy={rectSortingStrategy}
         >
-          <div className="grid grid-cols-12 gap-6 auto-rows-auto">
+          <div className="grid grid-cols-12 gap-4 lg:gap-6 auto-rows-auto">
             {displayedWidgets.map((widget) => (
               <div
                 key={widget.id}

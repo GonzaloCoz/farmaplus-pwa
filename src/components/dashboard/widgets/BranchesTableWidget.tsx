@@ -1,19 +1,49 @@
 import { useState, useMemo } from 'react';
-import { CardHeader, CardContent } from '@/components/ui/card';
+import {
+    type ColumnDef,
+    flexRender,
+    getCoreRowModel,
+    getPaginationRowModel,
+    getSortedRowModel,
+    type PaginationState,
+    type SortingState,
+    useReactTable,
+} from '@tanstack/react-table';
+import { CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Magnifer as Search, TransferVertical, GraphUp as TrendingUp, CheckCircle, DangerCircle as AlertCircle, ClockCircle as Clock, Download } from '@solar-icons/react';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Frame, FrameFooter } from '@/components/ui/frame';
+import {
+    Pagination,
+    PaginationContent,
+    PaginationItem,
+    PaginationNext,
+    PaginationPrevious,
+} from '@/components/ui/pagination';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
+import { Magnifer as Search, AltArrowUp as ChevronUp, AltArrowDown as ChevronDown, Download, GraphUp as TrendingUp } from '@solar-icons/react';
 import * as XLSX from 'xlsx';
-import { motion } from 'framer-motion';
+import { cn, normalizeString } from '@/lib/utils';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { useUser } from '@/contexts/UserContext';
 import { useUserBranches } from '@/hooks/useUserBranches';
 import { useQuery } from '@tanstack/react-query';
-import { Badge } from '@/components/ui/badge';
-import { cn, normalizeString } from '@/lib/utils';
-
-const INITIAL_BRANCHES_TO_SHOW = 8;
 
 interface BranchSummary {
     branchName: string;
@@ -30,6 +60,181 @@ interface BranchSummary {
     status: 'controlado' | 'por_controlar' | 'pendiente';
 }
 
+// Status dot color mapping (matching p-table-4 flights pattern)
+const getStatusColor = (status: BranchSummary['status']) => {
+    switch (status) {
+        case 'controlado':
+            return 'bg-emerald-500';
+        case 'por_controlar':
+            return 'bg-blue-500';
+        case 'pendiente':
+            return 'bg-amber-500';
+        default:
+            return 'bg-muted-foreground/64';
+    }
+};
+
+const getStatusLabel = (status: BranchSummary['status']) => {
+    switch (status) {
+        case 'controlado':
+            return 'Controlado';
+        case 'por_controlar':
+            return 'En Proceso';
+        case 'pendiente':
+            return 'Pendiente';
+        default:
+            return status;
+    }
+};
+
+// Column definitions (matching p-table-4 structure exactly)
+const columns: ColumnDef<BranchSummary>[] = [
+    {
+        id: 'select',
+        size: 28,
+        enableSorting: false,
+        header: ({ table }) => {
+            const isAllSelected = table.getIsAllPageRowsSelected();
+            const isSomeSelected = table.getIsSomePageRowsSelected();
+            return (
+                <Checkbox
+                    aria-label="Select all rows"
+                    checked={isAllSelected}
+                    onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+                />
+            );
+        },
+        cell: ({ row }) => (
+            <Checkbox
+                aria-label="Select row"
+                checked={row.getIsSelected()}
+                onCheckedChange={(value) => row.toggleSelected(!!value)}
+            />
+        ),
+    },
+    {
+        accessorKey: 'branchName',
+        header: 'Sucursal',
+        size: 180,
+        cell: ({ row }) => (
+            <div className="font-medium">
+                {row.getValue('branchName')}
+            </div>
+        ),
+    },
+    {
+        accessorKey: 'deploymentDate',
+        header: 'Fecha Inicio',
+        size: 120,
+        cell: ({ row }) => (
+            <div className="text-muted-foreground tabular-nums">
+                {row.getValue('deploymentDate')}
+            </div>
+        ),
+    },
+    {
+        accessorKey: 'remainingDays',
+        header: 'Días',
+        size: 100,
+        cell: ({ row }) => {
+            const remaining = row.original.remainingDays;
+            const assigned = row.original.assignedDays;
+            return (
+                <div className="tabular-nums">
+                    <span className={cn("font-medium", remaining <= 5 && "text-destructive-foreground")}>
+                        {remaining}
+                    </span>
+                    <span className="text-muted-foreground"> / {assigned}</span>
+                </div>
+            );
+        },
+    },
+    {
+        accessorKey: 'cyclicRound',
+        header: 'Vuelta',
+        size: 60,
+        cell: ({ row }) => (
+            <div className="text-muted-foreground tabular-nums">
+                {row.getValue('cyclicRound')}ª
+            </div>
+        ),
+    },
+    {
+        accessorKey: 'progress',
+        header: '% Avance',
+        size: 90,
+        cell: ({ row }) => {
+            const progress = row.getValue('progress') as number;
+            return (
+                <div className="font-medium tabular-nums">
+                    {progress.toFixed(1)}%
+                </div>
+            );
+        },
+    },
+    {
+        accessorKey: 'inventoryUnits',
+        header: 'Unidades',
+        size: 90,
+        cell: ({ row }) => (
+            <div className="text-muted-foreground tabular-nums">
+                {(row.getValue('inventoryUnits') as number).toLocaleString('es-AR')}
+            </div>
+        ),
+    },
+    {
+        accessorKey: 'differenceUnits',
+        header: 'Diferencia',
+        size: 100,
+        cell: ({ row }) => {
+            const diff = row.getValue('differenceUnits') as number;
+            if (diff === 0) return <span className="text-muted-foreground">–</span>;
+            return (
+                <Badge variant="outline">
+                    <span
+                        aria-hidden="true"
+                        className={cn("size-1.5 rounded-full", diff > 0 ? "bg-emerald-500" : "bg-red-500")}
+                    />
+                    {diff > 0 ? '+' : ''}{diff}
+                </Badge>
+            );
+        },
+    },
+    {
+        accessorKey: 'adjustmentsValue',
+        header: 'Ajustes',
+        size: 140,
+        cell: ({ row }) => {
+            const value = row.getValue('adjustmentsValue') as number;
+            return (
+                <div className={cn(
+                    "font-medium tabular-nums text-right",
+                    value === 0 ? "text-muted-foreground" : value > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+                )}>
+                    {value < 0 && '-'}${Math.abs(value).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                </div>
+            );
+        },
+    },
+    {
+        accessorKey: 'status',
+        header: 'Status',
+        size: 120,
+        cell: ({ row }) => {
+            const status = row.getValue('status') as BranchSummary['status'];
+            return (
+                <Badge variant="outline">
+                    <span
+                        aria-hidden="true"
+                        className={cn("size-1.5 rounded-full", getStatusColor(status))}
+                    />
+                    {getStatusLabel(status)}
+                </Badge>
+            );
+        },
+    },
+];
+
 interface BranchesTableWidgetProps {
     branches?: any[];
 }
@@ -37,76 +242,55 @@ interface BranchesTableWidgetProps {
 export function BranchesTableWidget({ branches: initialBranches }: BranchesTableWidgetProps) {
     const { selectBranch, clearBranchSelection, user } = useUser();
     const { availableBranches } = useUserBranches();
-    const [searchTerm, setSearchTerm] = useState("");
-    const [showAllBranches, setShowAllBranches] = useState(false);
-    const [sortConfig, setSortConfig] = useState<{ key: keyof BranchSummary; direction: 'ascending' | 'descending' }>({
-        key: 'progress',
-        direction: 'descending'
+    const [searchTerm, setSearchTerm] = useState('');
+    const pageSize = 10;
+
+    const [pagination, setPagination] = useState<PaginationState>({
+        pageIndex: 0,
+        pageSize: pageSize,
     });
 
-    // Implementation 2: Client-side Caching with React Query
+    const [sorting, setSorting] = useState<SortingState>([
+        { id: 'progress', desc: true },
+    ]);
+
     const { data: branchSummaries = [], isLoading: loading } = useQuery({
         queryKey: ['branch-summaries-lite', availableBranches],
         queryFn: async () => {
-            console.log("[Monitor] Fetching branch summaries... Permissions count:", availableBranches.length);
             const data = await cyclicInventoryService.getBranchesSummaryLite();
-            
-            // Filter branches based on user permissions
             return data.filter(branch => {
                 if (!availableBranches || availableBranches.length === 0) return true;
-                
-                // Use normalized comparison for robustness
                 const normalizedBranch = normalizeString(branch.branchName);
                 return availableBranches.some(ab => normalizeString(ab) === normalizedBranch);
             });
         },
-        staleTime: 1000 * 60 * 5, // 5 minutes cache
-        gcTime: 1000 * 60 * 30, // 30 minutes garbage collection
+        staleTime: 1000 * 60 * 5,
+        gcTime: 1000 * 60 * 30,
     });
 
-    const filteredBranches = useMemo(() => {
+    const filteredData = useMemo(() => {
+        if (!searchTerm) return branchSummaries;
         return branchSummaries.filter(
-            (branch) =>
-                branch.branchName.toLowerCase().includes(searchTerm.toLowerCase())
+            (branch) => branch.branchName.toLowerCase().includes(searchTerm.toLowerCase())
         );
     }, [branchSummaries, searchTerm]);
 
-    const sortedBranches = useMemo(() => {
-        let sortableItems = [...filteredBranches];
-        if (sortConfig.key) {
-            sortableItems.sort((a, b) => {
-                const aValue = a[sortConfig.key];
-                const bValue = b[sortConfig.key];
+    const table = useReactTable({
+        columns,
+        data: filteredData,
+        enableSortingRemoval: false,
+        getCoreRowModel: getCoreRowModel(),
+        getPaginationRowModel: getPaginationRowModel(),
+        getSortedRowModel: getSortedRowModel(),
+        onPaginationChange: setPagination,
+        onSortingChange: setSorting,
+        state: {
+            pagination,
+            sorting,
+        },
+    });
 
-                if (aValue < bValue) {
-                    return sortConfig.direction === 'ascending' ? -1 : 1;
-                }
-                if (aValue > bValue) {
-                    return sortConfig.direction === 'ascending' ? 1 : -1;
-                }
-                return 0;
-            });
-        }
-        return sortableItems;
-    }, [filteredBranches, sortConfig]);
-
-    const requestSort = (key: keyof BranchSummary) => {
-        let direction: 'ascending' | 'descending' = 'ascending';
-        if (sortConfig.key === key && sortConfig.direction === 'ascending') {
-            direction = 'descending';
-        }
-        setSortConfig({ key, direction });
-    };
-
-    const branchesToShow = showAllBranches
-        ? sortedBranches
-        : sortedBranches.slice(0, INITIAL_BRANCHES_TO_SHOW);
-
-    const formatMoney = (amount: number) => {
-        return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(amount);
-    };
-
-    const handleBranchClick = (branchName: string) => {
+    const handleRowClick = (branchName: string) => {
         if (user?.branchName === branchName) {
             clearBranchSelection?.();
         } else if (selectBranch) {
@@ -115,267 +299,206 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
         }
     };
 
-    const isActiveBranch = (branchName: string) => user?.branchName === branchName;
-
     const exportToExcel = () => {
-        const exportData = sortedBranches.map(branch => ({
+        const exportData = filteredData.map(branch => ({
             'Sucursal': branch.branchName,
             'Fecha Inicio': branch.deploymentDate,
             'Días (Pte / Asig)': `${branch.remainingDays} / ${branch.assignedDays}`,
             'Progreso %': branch.progress,
             'Diferencia Neta (Unidades)': branch.differenceUnits,
-            'Valor de Ajustes': formatMoney(branch.adjustmentsValue),
-            'Estado': branch.status === 'controlado' ? 'Controlado' :
-                branch.status === 'por_controlar' ? 'Por Controlar' : 'Pendiente',
-            'Días Transcurridos': branch.elapsedDays,
-            'Meta Mensual': branch.monthlyGoal
+            'Valor de Ajustes': branch.adjustmentsValue,
+            'Estado': branch.status,
         }));
-
         const ws = XLSX.utils.json_to_sheet(exportData);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Monitor de Sucursales');
-
-        const fileName = `monitor_sucursales_${new Date().toISOString().split('T')[0]}.xlsx`;
-        XLSX.writeFile(wb, fileName);
+        XLSX.writeFile(wb, `monitor_sucursales_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
-    return (
-        <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-            className="w-full h-full"
-        >
-            <div className="h-full flex flex-col">
-                <CardHeader className="p-6">
-                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                        <div>
-                            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                                <TrendingUp className="w-6 h-6 text-primary" />
-                                Monitor de Sucursales
-                            </h2>
-                            <p className="text-sm text-muted-foreground mt-1">
-                                Estado en tiempo real de inventarios cíclicos y cumplimiento.
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-3 w-full md:w-auto">
-                            <div className="relative flex-1 md:w-72">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                <Input
-                                    placeholder="Buscar sucursal..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="pl-10 h-10 bg-muted/50 border-0 focus-visible:ring-1 focus-visible:ring-primary"
-                                />
-                            </div>
-                            <Button
-                                onClick={exportToExcel}
-                                variant="outline"
-                                size="sm"
-                                className="h-10 gap-2"
-                            >
-                                <Download className="h-4 w-4" />
-                                <span className="hidden sm:inline">Exportar</span>
-                            </Button>
-                        </div>
-                    </div>
-                </CardHeader>
-                <CardContent className="p-6 pt-0">
-                    <div className="rounded-xl border bg-card/50 overflow-hidden">
-                        <Table>
-                            <TableHeader className="bg-muted/40 hover:bg-muted/50 transition-colors">
-                                <TableRow>
-                                    <TableHead className="w-[200px] cursor-pointer whitespace-nowrap" onClick={() => requestSort('branchName')}>
-                                        <div className="flex items-center font-semibold text-foreground">
-                                            Sucursal
-                                            <TransferVertical className={cn(
-                                                "ml-2 h-3.5 w-3.5 transition-all",
-                                                sortConfig.key === 'branchName' ? "opacity-100 text-primary" : "opacity-30",
-                                                sortConfig.key === 'branchName' && sortConfig.direction === 'descending' && "rotate-180"
-                                            )} />
-                                        </div>
-                                    </TableHead>
-                                    <TableHead className="text-center cursor-pointer hidden md:table-cell whitespace-nowrap" onClick={() => requestSort('deploymentDate')}>
-                                        <div className="flex items-center justify-center font-semibold text-foreground">
-                                            Fecha Inicio
-                                            <TransferVertical className={cn(
-                                                "ml-2 h-3.5 w-3.5 transition-all",
-                                                sortConfig.key === 'deploymentDate' ? "opacity-100 text-primary" : "opacity-30",
-                                                sortConfig.key === 'deploymentDate' && sortConfig.direction === 'descending' && "rotate-180"
-                                            )} />
-                                        </div>
-                                    </TableHead>
-                                    <TableHead className="text-center cursor-pointer hidden md:table-cell whitespace-nowrap" onClick={() => requestSort('assignedDays')}>
-                                        <div className="flex items-center justify-center font-semibold text-foreground">
-                                            Días
-                                            <TransferVertical className={cn(
-                                                "ml-2 h-3.5 w-3.5 transition-all",
-                                                sortConfig.key === 'assignedDays' ? "opacity-100 text-primary" : "opacity-30",
-                                                sortConfig.key === 'assignedDays' && sortConfig.direction === 'descending' && "rotate-180"
-                                            )} />
-                                        </div>
-                                    </TableHead>
-                                    <TableHead className="text-center hidden lg:table-cell whitespace-nowrap">Vuelta</TableHead>
-                                    <TableHead className="text-center cursor-pointer whitespace-nowrap" onClick={() => requestSort('progress')}>
-                                        <div className="flex items-center justify-center font-semibold text-foreground">
-                                            % Avance
-                                            <TransferVertical className={cn(
-                                                "ml-2 h-3.5 w-3.5 transition-all",
-                                                sortConfig.key === 'progress' ? "opacity-100 text-primary" : "opacity-30",
-                                                sortConfig.key === 'progress' && sortConfig.direction === 'descending' && "rotate-180"
-                                            )} />
-                                        </div>
-                                    </TableHead>
-                                    <TableHead className="text-center hidden md:table-cell whitespace-nowrap">Un. Inventario</TableHead>
-                                    <TableHead className="text-center cursor-pointer hidden md:table-cell whitespace-nowrap" onClick={() => requestSort('differenceUnits')}>
-                                        <div className="flex items-center justify-center font-semibold text-foreground">
-                                            Diferencia
-                                            <TransferVertical className={cn(
-                                                "ml-2 h-3.5 w-3.5 transition-all",
-                                                sortConfig.key === 'differenceUnits' ? "opacity-100 text-primary" : "opacity-30",
-                                                sortConfig.key === 'differenceUnits' && sortConfig.direction === 'descending' && "rotate-180"
-                                            )} />
-                                        </div>
-                                    </TableHead>
-                                    <TableHead className="text-right cursor-pointer whitespace-nowrap" onClick={() => requestSort('adjustmentsValue')}>
-                                        <div className="flex items-center justify-end font-semibold text-foreground">
-                                            $ Ajustes
-                                            <TransferVertical className={cn(
-                                                "ml-2 h-3.5 w-3.5 transition-all",
-                                                sortConfig.key === 'adjustmentsValue' ? "opacity-100 text-primary" : "opacity-30",
-                                                sortConfig.key === 'adjustmentsValue' && sortConfig.direction === 'descending' && "rotate-180"
-                                            )} />
-                                        </div>
-                                    </TableHead>
-                                    <TableHead className="text-center w-[120px] whitespace-nowrap">Status</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {loading ? (
-                                    Array.from({ length: 5 }).map((_, i) => (
-                                        <TableRow key={i}>
-                                            <TableCell><div className="h-5 w-32 bg-muted rounded animate-pulse" /></TableCell>
-                                            <TableCell className="hidden md:table-cell"><div className="h-5 w-20 bg-muted rounded animate-pulse mx-auto" /></TableCell>
-                                            <TableCell className="hidden md:table-cell"><div className="h-5 w-12 bg-muted rounded animate-pulse mx-auto" /></TableCell>
-                                            <TableCell className="hidden lg:table-cell"><div className="h-5 w-10 bg-muted rounded animate-pulse mx-auto" /></TableCell>
-                                            <TableCell><div className="h-5 w-16 bg-muted rounded animate-pulse mx-auto" /></TableCell>
-                                            <TableCell className="hidden md:table-cell"><div className="h-5 w-16 bg-muted rounded animate-pulse mx-auto" /></TableCell>
-                                            <TableCell className="hidden md:table-cell"><div className="h-5 w-16 bg-muted rounded animate-pulse mx-auto" /></TableCell>
-                                            <TableCell className="text-right"><div className="h-5 w-24 bg-muted rounded animate-pulse ml-auto" /></TableCell>
-                                            <TableCell><div className="h-6 w-20 bg-muted rounded-full animate-pulse mx-auto" /></TableCell>
-                                        </TableRow>
-                                    ))
-                                ) : branchesToShow.length > 0 ? (
-                                    branchesToShow.map((branch, index) => (
-                                        <motion.tr
-                                            key={branch.branchName}
-                                            initial={{ opacity: 0, x: -10 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            transition={{ delay: index * 0.05 }}
-                                            onClick={() => handleBranchClick(branch.branchName)}
-                                            className={cn(
-                                                "group cursor-pointer hover:bg-muted/50 transition-all border-b last:border-0",
-                                                isActiveBranch(branch.branchName) && "bg-muted/15 dark:bg-muted/10"
-                                            )}
-                                        >
-                                            <TableCell className="font-medium text-foreground relative">
-                                                <div className="flex items-center gap-2">
-                                                    {isActiveBranch(branch.branchName) && (
-                                                        <motion.div
-                                                            layoutId="active-dot"
-                                                            className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary),0.5)]"
-                                                            initial={{ scale: 0 }}
-                                                            animate={{ scale: 1 }}
-                                                            transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                                                        />
-                                                    )}
-                                                    {branch.branchName}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="text-center text-muted-foreground text-sm hidden md:table-cell">{branch.deploymentDate}</TableCell>
-                                            <TableCell className="text-center text-sm hidden md:table-cell">
-                                                <span className={cn(
-                                                    "font-medium",
-                                                    branch.remainingDays <= 5 ? "text-red-500 font-bold" : "text-primary"
-                                                )}>
-                                                    {branch.remainingDays}
-                                                </span>
-                                                <span className="text-muted-foreground mx-1">/</span>
-                                                <span className="text-muted-foreground">{branch.assignedDays}</span>
-                                            </TableCell>
-                                            <TableCell className="text-center text-muted-foreground text-sm hidden lg:table-cell">{branch.cyclicRound}ª</TableCell>
-                                            <TableCell className="text-center">
-                                                <div className="flex flex-col items-center">
-                                                    <span className={cn(
-                                                        "font-bold text-sm",
-                                                        branch.progress > 0 ? "text-green-600" : "text-muted-foreground"
-                                                    )}>
-                                                        {branch.progress}%
-                                                    </span>
-                                                    <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden mt-1">
-                                                        <div
-                                                            className={cn("h-full rounded-full transition-all",
-                                                                branch.progress >= 100 ? "bg-green-500" :
-                                                                    branch.progress > 0 ? "bg-green-400" : "bg-muted-foreground/20"
-                                                            )}
-                                                            style={{ width: `${Math.min(branch.progress, 100)}%` }}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="text-center font-mono text-sm hidden md:table-cell">{branch.inventoryUnits}</TableCell>
-                                            <TableCell className="text-center font-mono text-sm hidden md:table-cell">
-                                                <span className={branch.differenceUnits === 0 ? 'text-muted-foreground' : branch.differenceUnits > 0 ? 'text-green-600' : 'text-red-600'}>
-                                                    {branch.differenceUnits > 0 ? '+' : ''}{branch.differenceUnits}
-                                                </span>
-                                            </TableCell>
-                                            <TableCell className="text-right font-mono text-sm">
-                                                <span className={branch.adjustmentsValue === 0 ? 'text-muted-foreground' : branch.adjustmentsValue > 0 ? 'text-green-600' : 'text-red-600'}>
-                                                    {formatMoney(branch.adjustmentsValue)}
-                                                </span>
-                                            </TableCell>
-                                            <TableCell className="text-center">
-                                                {branch.status === 'controlado' ? (
-                                                    <Badge variant="outline" className="font-bold text-[10px] px-2 py-0.5 rounded-full border bg-green-50 text-green-600 border-green-200 dark:bg-green-900/20 dark:border-green-800/30 dark:text-green-400 flex items-center justify-center gap-1 w-fit mx-auto whitespace-nowrap">
-                                                        <CheckCircle className="w-3.5 h-3.5" /> COMPLETADO
-                                                    </Badge>
-                                                ) : branch.status === 'por_controlar' ? (
-                                                    <Badge variant="outline" className="font-bold text-[10px] px-2 py-0.5 rounded-full border bg-purple-50 text-purple-600 border-purple-200 dark:bg-purple-900/20 dark:border-purple-800/30 dark:text-purple-400 flex items-center justify-center gap-1 w-fit mx-auto whitespace-nowrap">
-                                                        <Clock className="w-3.5 h-3.5 animate-pulse" /> EN PROCESO
-                                                    </Badge>
-                                                ) : (
-                                                    <Badge variant="outline" className="font-bold text-[10px] px-2 py-0.5 rounded-full border bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:border-red-800/30 dark:text-red-400 flex items-center justify-center gap-1 w-fit mx-auto whitespace-nowrap">
-                                                        <AlertCircle className="w-3.5 h-3.5" /> PENDIENTE
-                                                    </Badge>
-                                                )}
-                                            </TableCell>
-                                        </motion.tr>
-                                    ))
-                                ) : (
-                                    <TableRow>
-                                        <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
-                                            No se encontraron sucursales con esa búsqueda.
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                            </TableBody>
-                        </Table>
-                    </div>
+    // Generate page range options for the Select
+    const pageRangeOptions = useMemo(() => {
+        return Array.from({ length: table.getPageCount() }, (_, i) => {
+            const start = i * pageSize + 1;
+            const end = Math.min((i + 1) * pageSize, table.getRowCount());
+            return { label: `${start}-${end}`, value: String(i + 1) };
+        });
+    }, [table.getPageCount(), table.getRowCount()]);
 
-                    {sortedBranches.length > INITIAL_BRANCHES_TO_SHOW && (
-                        <div className="mt-4 flex justify-center">
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setShowAllBranches(!showAllBranches)}
-                                className="text-muted-foreground hover:text-foreground"
-                            >
-                                {showAllBranches ? 'Mostrar menos' : `Ver todas las sucursales (${sortedBranches.length})`}
-                            </Button>
+    return (
+        <div className="w-full h-full flex flex-col">
+            {/* Header */}
+            <CardHeader className="p-6">
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div>
+                        <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+                            <TrendingUp className="size-6 text-primary" />
+                            Monitor de Sucursales
+                        </h2>
+                        <p className="text-sm text-muted-foreground mt-0.5">
+                            Estado en tiempo real de inventarios cíclicos.
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                        <div className="relative flex-1 md:w-64">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Buscar sucursal..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="pl-10 h-9"
+                            />
                         </div>
-                    )}
-                </CardContent>
+                        <Button onClick={exportToExcel} variant="outline" size="sm" className="h-9 gap-2">
+                            <Download className="size-4" />
+                            <span className="hidden sm:inline">Exportar</span>
+                        </Button>
+                    </div>
+                </div>
+            </CardHeader>
+
+            {/* Table — p-table-4 exact structure */}
+            <div className="px-0 sm:px-6 pb-6">
+                <Frame className="w-full">
+                    <Table className="table-fixed">
+                        <TableHeader>
+                            {table.getHeaderGroups().map((headerGroup) => (
+                                <TableRow className="hover:bg-transparent" key={headerGroup.id}>
+                                    {headerGroup.headers.map((header) => {
+                                        const columnSize = header.column.getSize();
+                                        return (
+                                            <TableHead
+                                                key={header.id}
+                                                style={columnSize ? { width: `${columnSize}px` } : undefined}
+                                            >
+                                                {header.isPlaceholder ? null : header.column.getCanSort() ? (
+                                                    <div
+                                                        className="flex h-full cursor-pointer select-none items-center justify-between gap-2"
+                                                        onClick={header.column.getToggleSortingHandler()}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                                e.preventDefault();
+                                                                header.column.getToggleSortingHandler()?.(e);
+                                                            }
+                                                        }}
+                                                        role="button"
+                                                        tabIndex={0}
+                                                    >
+                                                        {flexRender(header.column.columnDef.header, header.getContext())}
+                                                        {{
+                                                            asc: <ChevronUp aria-hidden="true" className="size-4 shrink-0 opacity-80" />,
+                                                            desc: <ChevronDown aria-hidden="true" className="size-4 shrink-0 opacity-80" />,
+                                                        }[header.column.getIsSorted() as string] ?? null}
+                                                    </div>
+                                                ) : (
+                                                    flexRender(header.column.columnDef.header, header.getContext())
+                                                )}
+                                            </TableHead>
+                                        );
+                                    })}
+                                </TableRow>
+                            ))}
+                        </TableHeader>
+                        <TableBody>
+                            {loading ? (
+                                Array.from({ length: 5 }).map((_, i) => (
+                                    <TableRow key={i}>
+                                        {columns.map((_, colIdx) => (
+                                            <TableCell key={colIdx}>
+                                                <div className="h-4 w-full max-w-[80px] rounded bg-muted animate-pulse" />
+                                            </TableCell>
+                                        ))}
+                                    </TableRow>
+                                ))
+                            ) : table.getRowModel().rows.length ? (
+                                table.getRowModel().rows.map((row) => (
+                                    <TableRow
+                                        key={row.id}
+                                        data-state={row.getIsSelected() ? 'selected' : undefined}
+                                        onClick={() => handleRowClick(row.original.branchName)}
+                                        className="cursor-pointer"
+                                    >
+                                        {row.getVisibleCells().map((cell) => (
+                                            <TableCell key={cell.id}>
+                                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                            </TableCell>
+                                        ))}
+                                    </TableRow>
+                                ))
+                            ) : (
+                                <TableRow>
+                                    <TableCell className="h-24 text-center" colSpan={columns.length}>
+                                        {searchTerm ? `No se encontraron sucursales para "${searchTerm}"` : 'Sin resultados.'}
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+
+                    {/* Footer — pixel-perfect p-table-4 */}
+                    <FrameFooter className="p-2">
+                        <div className="flex items-center justify-between gap-2">
+                            {/* Results range selector */}
+                            <div className="flex items-center gap-2 whitespace-nowrap">
+                                <p className="text-muted-foreground text-sm">Viewing</p>
+                                <Select
+                                    value={String(pagination.pageIndex + 1)}
+                                    onValueChange={(value) => {
+                                        table.setPageIndex(Number(value) - 1);
+                                    }}
+                                >
+                                    <SelectTrigger className="w-fit h-8 min-w-[4rem] text-sm" aria-label="Select result range">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {pageRangeOptions.map((option) => (
+                                            <SelectItem key={option.value} value={option.value}>
+                                                {option.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-muted-foreground text-sm">
+                                    of{' '}
+                                    <strong className="font-medium text-foreground">
+                                        {table.getRowCount()}
+                                    </strong>{' '}
+                                    results
+                                </p>
+                            </div>
+
+                            {/* Pagination */}
+                            <Pagination className="justify-end">
+                                <PaginationContent>
+                                    <PaginationItem>
+                                        <PaginationPrevious
+                                            render={
+                                                <Button
+                                                    disabled={!table.getCanPreviousPage()}
+                                                    onClick={() => table.previousPage()}
+                                                    size="sm"
+                                                    variant="outline"
+                                                />
+                                            }
+                                        />
+                                    </PaginationItem>
+                                    <PaginationItem>
+                                        <PaginationNext
+                                            render={
+                                                <Button
+                                                    disabled={!table.getCanNextPage()}
+                                                    onClick={() => table.nextPage()}
+                                                    size="sm"
+                                                    variant="outline"
+                                                />
+                                            }
+                                        />
+                                    </PaginationItem>
+                                </PaginationContent>
+                            </Pagination>
+                        </div>
+                    </FrameFooter>
+                </Frame>
             </div>
-        </motion.div>
+        </div>
     );
 }

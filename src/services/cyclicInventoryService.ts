@@ -1066,7 +1066,13 @@ export const cyclicInventoryService = {
             .limit(limit);
 
         if (!ledgerError && ledgerData && ledgerData.length > 0) {
-            return ledgerData;
+            // Normalize ledger field names to match the UI's expected schema
+            return ledgerData.map((row: any) => ({
+                ...row,
+                shortage_value: row.shortage_value ?? row.total_shortage_value ?? 0,
+                surplus_value: row.surplus_value ?? row.total_surplus_value ?? 0,
+                total_units_adjusted: row.total_units_adjusted ?? row.total_items_adjusted ?? 0,
+            }));
         }
 
         // Fallback to legacy inventory_adjustments for old data

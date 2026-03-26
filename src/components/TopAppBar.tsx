@@ -29,7 +29,7 @@ export function TopAppBar() {
                     : "bg-transparent border-b-0"
             )}
         >
-            <div className="flex h-16 items-center justify-between px-8">
+            <div className="flex h-16 items-center justify-between px-4">
                 {/* Logo Left */}
                 <div className="flex items-center">
                     <img src={Logo} alt="Farmaplus" className="h-7 w-auto" />

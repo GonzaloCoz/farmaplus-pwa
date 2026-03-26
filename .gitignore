@@ -32,3 +32,9 @@ dist-ssr
 /blob-report/
 /playwright/.cache/
 /playwright/.auth/
+
+# Sensitive files
+.env
+.env.*
+oracle_key.pem
+supabase/.temp/

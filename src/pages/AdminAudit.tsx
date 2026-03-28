@@ -2,12 +2,14 @@ import { useState, useEffect, useMemo } from "react";
 import { auditService, AuditLogEntry } from "@/services/auditService";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
+import { Frame, FramePanel } from "@/components/ui/frame";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { MapPoint as MapPin, Calendar, User, Magnifer as Search, Filter } from "@solar-icons/react";
 import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 
 // Action translations
@@ -269,115 +271,113 @@ export default function AdminAudit() {
                 </div>
             </div>
 
-            <Card className="border-border/50 bg-card/30 backdrop-blur-sm shadow-sm overflow-hidden rounded-2xl flex flex-col h-fit">
-                <CardContent className="p-0 flex-1 overflow-hidden">
-                    <div className="overflow-auto audit-table-container max-h-[70vh]">
-                        <Table className="relative">
-                            <TableHeader className="bg-muted/30 sticky top-0 z-20 backdrop-blur-md">
-                                <TableRow className="hover:bg-transparent border-border/30">
-                                    <TableHead className="w-[180px]">Fecha / Hora</TableHead>
-                                    <TableHead>Usuario</TableHead>
-                                    <TableHead>Sucursal</TableHead>
-                                    <TableHead>Acción</TableHead>
-                                    <TableHead>Sección App</TableHead>
-                                    <TableHead className="min-w-[250px] max-w-[400px]">Detalles de Operación</TableHead>
+            <Frame>
+                <FramePanel className="p-0 overflow-hidden">
+                    <Table className="relative">
+                        <TableHeader className="bg-transparent">
+                            <TableRow className="hover:bg-transparent border-none">
+                                <TableHead className="w-[180px] pl-6">Fecha / Hora</TableHead>
+                                <TableHead>Usuario</TableHead>
+                                <TableHead>Sucursal</TableHead>
+                                <TableHead>Acción</TableHead>
+                                <TableHead>Sección App</TableHead>
+                                <TableHead className="min-w-[250px] max-w-[400px] pr-6">Detalles de Operación</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody className="bg-background rounded-l-xl rounded-r-xl overflow-hidden shadow-xs/5">
+                            {loading ? (
+                                <TableRow>
+                                    <TableCell colSpan={6} className="h-64">
+                                        <div className="flex flex-col items-center justify-center gap-4">
+                                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+                                            <p className="text-muted-foreground animate-pulse font-medium text-sm">Sincronizando registros...</p>
+                                        </div>
+                                    </TableCell>
                                 </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {loading ? (
-                                    <TableRow>
-                                        <TableCell colSpan={6} className="h-64">
-                                            <div className="flex flex-col items-center justify-center gap-4">
-                                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-                                                <p className="text-muted-foreground animate-pulse font-medium text-sm">Sincronizando registros...</p>
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                ) : logs.length > 0 ? (
-                                    logs.map((log) => {
-                                        const profile = profileMap[log.user_id];
-                                        const branch = branchMap[log.branch_id];
+                            ) : logs.length > 0 ? (
+                                logs.map((log) => {
+                                    const profile = profileMap[log.user_id];
+                                    const branch = branchMap[log.branch_id];
 
-                                        return (
-                                            <TableRow key={log.id} className="hover:bg-muted/40 transition-colors group border-border/30">
-                                                <TableCell className="whitespace-nowrap text-xs font-mono text-muted-foreground">
-                                                    <div className="flex items-center gap-2">
-                                                        <Calendar className="w-3.5 h-3.5 opacity-40" />
-                                                        {format(new Date(log.created_at), 'dd/MM/yy HH:mm:ss')}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shadow-inner">
-                                                            <User className="w-3.5 h-3.5 text-primary" />
-                                                        </div>
-                                                        <div className="flex flex-col">
-                                                            <span className="text-sm font-semibold text-foreground/80 leading-snug">
-                                                                {profile?.full_name || profile?.username || 'Sistema'}
-                                                            </span>
-                                                            <span className="text-[10px] text-muted-foreground opacity-70">
-                                                                @{profile?.username || 'system'}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
-                                                        <MapPin className="w-3 h-3 opacity-60 text-primary/60" />
-                                                        {branch?.name || 'Casa Central'}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <Badge
-                                                        variant={log.action.includes('DELETE') || log.action.includes('REMOVE') || log.action.includes('PURGE') ? 'destructive' : 'secondary'}
-                                                        className="rounded-lg text-[10px] px-2 py-0.5 border-none font-bold uppercase tracking-tight shadow-sm"
-                                                    >
-                                                        {getTranslatedAction(log.action)}
-                                                    </Badge>
-                                                </TableCell>
-                                                <TableCell className="text-xs">
-                                                    <Badge variant="outline" className="bg-primary/5 border-primary/10 text-primary/70 rounded-lg font-medium whitespace-nowrap">
-                                                        {getTranslatedEntity(log.entity_type)}
-                                                    </Badge>
-                                                </TableCell>
-                                                <TableCell className="max-w-[400px]">
-                                                    <div className="text-xs text-muted-foreground font-medium group-hover:text-foreground transition-colors leading-relaxed">
-                                                        {formatDetails(log.details, log.action)}
-                                                    </div>
-                                                </TableCell>
-                                            </TableRow>
-                                        );
-                                    })
-                                ) : (
-                                    <TableRow>
-                                        <TableCell colSpan={6} className="text-center py-24">
-                                            <div className="flex flex-col items-center gap-4">
-                                                <div className="w-16 h-16 rounded-full bg-muted/20 flex items-center justify-center">
-                                                    <Search className="w-8 h-8 text-muted-foreground/20" />
+                                    return (
+                                        <TableRow key={log.id} className="group border-t border-border/40 first:border-none">
+                                            <TableCell className="whitespace-nowrap text-xs font-mono text-muted-foreground/80 pl-6">
+                                                <div className="flex items-center gap-2">
+                                                    <Calendar className="w-3.5 h-3.5 opacity-40" />
+                                                    {format(new Date(log.created_at), 'dd/MM/yy HH:mm')}
                                                 </div>
-                                                <div className="space-y-2">
-                                                    <h3 className="text-lg font-semibold text-foreground/60">No hay eventos para mostrar</h3>
-                                                    <p className="text-sm text-muted-foreground/40 max-w-[280px] mx-auto">
-                                                        {startDate === todayStr && endDate === todayStr ?
-                                                            "Hoy no se registraron acciones. Podés consultar días anteriores usando los filtros." :
-                                                            "Intentá ajustando el rango de fechas o la sucursal seleccionada."}
-                                                    </p>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shadow-inner">
+                                                        <User className="w-3.5 h-3.5 text-primary" />
+                                                    </div>
+                                                    <div className="flex flex-col">
+                                                        <span className="text-sm font-semibold text-foreground/90 leading-snug">
+                                                            {profile?.full_name || profile?.username || 'Sistema'}
+                                                        </span>
+                                                        <span className="text-[10px] text-muted-foreground/60">
+                                                            @{profile?.username || 'system'}
+                                                        </span>
+                                                    </div>
                                                 </div>
-                                                <button
-                                                    onClick={() => { setBranchFilter("all"); setStartDate(""); setEndDate(""); }}
-                                                    className="px-6 py-2.5 bg-primary text-primary-foreground hover:bg-primary/90 transition-all rounded-xl text-sm font-bold shadow-lg shadow-primary/20"
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground/80 font-medium">
+                                                    <MapPin className="w-3 h-3 opacity-60 text-primary/60" />
+                                                    {branch?.name || 'Casa Central'}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge
+                                                    variant={log.action.includes('DELETE') || log.action.includes('REMOVE') || log.action.includes('PURGE') ? 'destructive-outline' : 'outline'}
+                                                    className="rounded-lg text-[10px] px-2 py-0 h-5 font-bold uppercase tracking-tight"
                                                 >
-                                                    Ver todo el historial
-                                                </button>
+                                                    {getTranslatedAction(log.action)}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-xs">
+                                                <Badge variant="outline" className="bg-primary/5 border-primary/10 text-primary/70 rounded-lg font-medium whitespace-nowrap h-5 px-2">
+                                                    {getTranslatedEntity(log.entity_type)}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="max-w-[400px] pr-6">
+                                                <div className="text-xs text-muted-foreground/80 font-medium group-hover:text-foreground/90 transition-colors leading-relaxed">
+                                                    {formatDetails(log.details, log.action)}
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })
+                            ) : (
+                                <TableRow>
+                                    <TableCell colSpan={6} className="text-center py-24">
+                                        <div className="flex flex-col items-center gap-4">
+                                            <div className="w-16 h-16 rounded-full bg-muted/20 flex items-center justify-center">
+                                                <Search className="w-8 h-8 text-muted-foreground/20" />
                                             </div>
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                            </TableBody>
-                        </Table>
-                    </div>
-                </CardContent>
-            </Card>
+                                            <div className="space-y-2">
+                                                <h3 className="text-lg font-semibold text-foreground/60">No hay eventos para mostrar</h3>
+                                                <p className="text-sm text-muted-foreground/40 max-w-[280px] mx-auto">
+                                                    {startDate === todayStr && endDate === todayStr ?
+                                                        "Hoy no se registraron acciones. Podés consultar días anteriores usando los filtros." :
+                                                        "Intentá ajustando el rango de fechas o la sucursal seleccionada."}
+                                                </p>
+                                            </div>
+                                            <Button
+                                                onClick={() => { setBranchFilter("all"); setStartDate(""); setEndDate(""); }}
+                                                className="px-6 h-10 shadow-lg shadow-primary/20"
+                                            >
+                                                Ver todo el historial
+                                            </Button>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </FramePanel>
+            </Frame>
         </div>
     );
 }

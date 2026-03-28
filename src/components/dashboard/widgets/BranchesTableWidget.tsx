@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Frame, FrameFooter } from '@/components/ui/frame';
+import { Frame, FrameHeader, FrameTitle, FrameDescription, FramePanel, FrameFooter } from '@/components/ui/frame';
 import {
     Pagination,
     PaginationContent,
@@ -97,19 +97,23 @@ const columns: ColumnDef<BranchSummary>[] = [
             const isAllSelected = table.getIsAllPageRowsSelected();
             const isSomeSelected = table.getIsSomePageRowsSelected();
             return (
-                <Checkbox
-                    aria-label="Select all rows"
-                    checked={isAllSelected}
-                    onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-                />
+                <div className="flex items-center justify-center h-full" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                        aria-label="Select all rows"
+                        checked={isAllSelected || (isSomeSelected && "indeterminate")}
+                        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+                    />
+                </div>
             );
         },
         cell: ({ row }) => (
-            <Checkbox
-                aria-label="Select row"
-                checked={row.getIsSelected()}
-                onCheckedChange={(value) => row.toggleSelected(!!value)}
-            />
+            <div className="flex items-center justify-center h-full" onClick={(e) => e.stopPropagation()}>
+                <Checkbox
+                    aria-label="Select row"
+                    checked={row.getIsSelected()}
+                    onCheckedChange={(value) => row.toggleSelected(!!value)}
+                />
+            </div>
         ),
     },
     {
@@ -127,7 +131,7 @@ const columns: ColumnDef<BranchSummary>[] = [
         header: 'Fecha Inicio',
         size: 120,
         cell: ({ row }) => (
-            <div className="text-muted-foreground tabular-nums">
+            <div className="font-medium font-mono text-muted-foreground whitespace-nowrap">
                 {row.getValue('deploymentDate')}
             </div>
         ),
@@ -208,7 +212,7 @@ const columns: ColumnDef<BranchSummary>[] = [
             const value = row.getValue('adjustmentsValue') as number;
             return (
                 <div className={cn(
-                    "font-medium tabular-nums text-right",
+                    "font-medium tabular-nums text-left",
                     value === 0 ? "text-muted-foreground" : value > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
                 )}>
                     {value < 0 && '-'}${Math.abs(value).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
@@ -325,18 +329,18 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
     }, [table.getPageCount(), table.getRowCount()]);
 
     return (
-        <div className="w-full h-full flex flex-col">
-            {/* Header */}
-            <CardHeader className="p-6">
-                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                    <div>
-                        <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+        <Frame className="w-full flex-1">
+            {/* Header section with Title and Controls */}
+            <FrameHeader className="gap-4">
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 w-full">
+                    <div className="flex flex-col gap-0.5">
+                        <FrameTitle className="text-2xl flex items-center gap-2">
                             <TrendingUp className="size-6 text-primary" />
                             Monitor de Sucursales
-                        </h2>
-                        <p className="text-sm text-muted-foreground mt-0.5">
+                        </FrameTitle>
+                        <FrameDescription>
                             Estado en tiempo real de inventarios cíclicos.
-                        </p>
+                        </FrameDescription>
                     </div>
                     <div className="flex items-center gap-3 w-full md:w-auto">
                         <div className="relative flex-1 md:w-64">
@@ -345,30 +349,31 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                                 placeholder="Buscar sucursal..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="pl-10 h-9"
+                                className="pl-10 h-9 bg-background/40 border-border/30 rounded-xl"
                             />
                         </div>
-                        <Button onClick={exportToExcel} variant="outline" size="sm" className="h-9 gap-2">
-                            <Download className="size-4" />
+                        <Button onClick={exportToExcel} variant="outline" size="sm" className="h-9 gap-2 shadow-xs ring-offset-background">
+                            <Download className="size-4 opacity-50" aria-hidden="true" />
                             <span className="hidden sm:inline">Exportar</span>
                         </Button>
                     </div>
                 </div>
-            </CardHeader>
+            </FrameHeader>
 
-            {/* Table — p-table-4 exact structure */}
-            <div className="px-0 sm:px-6 pb-6">
-                <Frame className="w-full">
+            {/* Unified Table - Browser-native Perfect Alignment */}
+            <div className="w-full flex-1 px-0 pb-1">
+                <FramePanel className="p-0 overflow-hidden border-border/10 bg-background/30 backdrop-blur-xs flex flex-col h-full">
                     <Table className="table-fixed">
-                        <TableHeader>
+                        <TableHeader className="bg-transparent">
                             {table.getHeaderGroups().map((headerGroup) => (
-                                <TableRow className="hover:bg-transparent" key={headerGroup.id}>
+                                <TableRow className="hover:bg-transparent border-none" key={headerGroup.id}>
                                     {headerGroup.headers.map((header) => {
                                         const columnSize = header.column.getSize();
                                         return (
                                             <TableHead
                                                 key={header.id}
                                                 style={columnSize ? { width: `${columnSize}px` } : undefined}
+                                                className="h-11 border-none bg-transparent"
                                             >
                                                 {header.isPlaceholder ? null : header.column.getCanSort() ? (
                                                     <div
@@ -413,12 +418,12 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                                 table.getRowModel().rows.map((row) => (
                                     <TableRow
                                         key={row.id}
-                                        data-state={row.getIsSelected() ? 'selected' : undefined}
+                                        data-selected={row.getIsSelected() || undefined}
                                         onClick={() => handleRowClick(row.original.branchName)}
-                                        className="cursor-pointer"
+                                        className="cursor-pointer border-t border-border/15 transition-colors hover:bg-muted/30 first:border-t-0"
                                     >
                                         {row.getVisibleCells().map((cell) => (
-                                            <TableCell key={cell.id}>
+                                            <TableCell key={cell.id} className="py-3">
                                                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
                                             </TableCell>
                                         ))}
@@ -433,72 +438,88 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                             )}
                         </TableBody>
                     </Table>
-
-                    {/* Footer — pixel-perfect p-table-4 */}
-                    <FrameFooter className="p-2">
-                        <div className="flex items-center justify-between gap-2">
-                            {/* Results range selector */}
-                            <div className="flex items-center gap-2 whitespace-nowrap">
-                                <p className="text-muted-foreground text-sm">Viewing</p>
-                                <Select
-                                    value={String(pagination.pageIndex + 1)}
-                                    onValueChange={(value) => {
-                                        table.setPageIndex(Number(value) - 1);
-                                    }}
-                                >
-                                    <SelectTrigger className="w-fit h-8 min-w-[4rem] text-sm" aria-label="Select result range">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {pageRangeOptions.map((option) => (
-                                            <SelectItem key={option.value} value={option.value}>
-                                                {option.label}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <p className="text-muted-foreground text-sm">
-                                    of{' '}
-                                    <strong className="font-medium text-foreground">
-                                        {table.getRowCount()}
-                                    </strong>{' '}
-                                    results
-                                </p>
-                            </div>
-
-                            {/* Pagination */}
-                            <Pagination className="justify-end">
-                                <PaginationContent>
-                                    <PaginationItem>
-                                        <PaginationPrevious
-                                            render={
-                                                <Button
-                                                    disabled={!table.getCanPreviousPage()}
-                                                    onClick={() => table.previousPage()}
-                                                    size="sm"
-                                                    variant="outline"
-                                                />
-                                            }
-                                        />
-                                    </PaginationItem>
-                                    <PaginationItem>
-                                        <PaginationNext
-                                            render={
-                                                <Button
-                                                    disabled={!table.getCanNextPage()}
-                                                    onClick={() => table.nextPage()}
-                                                    size="sm"
-                                                    variant="outline"
-                                                />
-                                            }
-                                        />
-                                    </PaginationItem>
-                                </PaginationContent>
-                            </Pagination>
-                        </div>
-                    </FrameFooter>
-                </Frame>
+                </FramePanel>
             </div>
-        </div>
+
+            {/* Footer with Pagination */}
+            <FrameFooter className="p-4 border-none mt-0">
+                <div className="flex items-center justify-between w-full gap-2 px-1">
+                    {/* Results range selector */}
+                    <div className="flex items-center gap-2 whitespace-nowrap">
+                        <p className="text-muted-foreground text-[13px]">Viendo</p>
+                        <Select
+                            value={String(pagination.pageIndex + 1)}
+                            onValueChange={(value) => {
+                                table.setPageIndex(Number(value) - 1);
+                            }}
+                        >
+                            <SelectTrigger 
+                                aria-label="Select result range"
+                                className="w-fit h-8 min-w-[4.5rem] text-[13px] bg-background/50 border-border/20 px-2 rounded-lg"
+                                size="sm"
+                            >
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="min-w-[5rem] rounded-xl border-border/40 bg-background/95 backdrop-blur-xl">
+                                {pageRangeOptions.map((option) => (
+                                    <SelectItem 
+                                        key={option.value} 
+                                        value={option.value}
+                                        className="text-[12px] font-medium"
+                                    >
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-muted-foreground text-[13px]">
+                            de{' '}
+                            <strong className="font-semibold text-foreground">
+                                {table.getRowCount()}
+                            </strong>{' '}
+                            resultados
+                        </p>
+                    </div>
+
+                    {/* Pagination buttons */}
+                    <Pagination className="justify-end w-auto mx-0">
+                        <PaginationContent className="gap-2">
+                            <PaginationItem>
+                                <PaginationPrevious
+                                    className="sm:*:[svg]:hidden"
+                                    render={
+                                        <Button
+                                            disabled={!table.getCanPreviousPage()}
+                                            onClick={() => table.previousPage()}
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-8 border-border/20 text-[13px] font-medium transition-all hover:bg-muted active:scale-95"
+                                        >
+                                            Anterior
+                                        </Button>
+                                    }
+                                />
+                            </PaginationItem>
+                            <PaginationItem>
+                                <PaginationNext
+                                    className="sm:*:[svg]:hidden"
+                                    render={
+                                        <Button
+                                            disabled={!table.getCanNextPage()}
+                                            onClick={() => table.nextPage()}
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-8 border-border/20 text-[13px] font-medium transition-all hover:bg-muted active:scale-95"
+                                        >
+                                            Siguiente
+                                        </Button>
+                                    }
+                                />
+                            </PaginationItem>
+                        </PaginationContent>
+                    </Pagination>
+                </div>
+            </FrameFooter>
+        </Frame>
     );
 }

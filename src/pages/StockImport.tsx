@@ -880,7 +880,8 @@ export default function StockImport() {
                 variant={activeTab === 'shortage' ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setActiveTab('shortage')}
-                className="rounded-lg text-xs font-medium h-9 px-4 hover:text-destructive hover:bg-destructive/10 data-[state=active]:bg-destructive data-[state=active]:text-destructive-foreground"
+                className="rounded-lg text-xs font-medium h-9 px-4 hover:text-destructive hover:bg-destructive/10 data-[active]:bg-destructive data-[active]:text-destructive-foreground"
+                data-active={activeTab === 'shortage'}
               >
                 Faltantes ({results.allShortages.length})
               </Button>
@@ -896,7 +897,8 @@ export default function StockImport() {
                 variant={activeTab === 'zero_stock' ? 'default' : 'ghost'}
                 size="sm"
                 onClick={() => setActiveTab('zero_stock')}
-                className="rounded-lg text-xs font-medium h-9 px-4 hover:text-blue-500 hover:bg-blue-500/10 data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+                className="rounded-lg text-xs font-medium h-9 px-4 hover:text-blue-500 hover:bg-blue-500/10 data-[active]:bg-blue-600 data-[active]:text-white"
+                data-active={activeTab === 'zero_stock'}
               >
                 Stock 0 ({results.allSurpluses.filter(p => p.systemStock === 0).length})
               </Button>
@@ -914,11 +916,11 @@ export default function StockImport() {
               </div>
 
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
+                <DropdownMenuTrigger render={
                   <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl border-muted-foreground/20">
                     <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
                   </Button>
-                </DropdownMenuTrigger>
+                } />
                 <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuLabel>Ordenar por</DropdownMenuLabel>
                   <DropdownMenuSeparator />

@@ -138,10 +138,9 @@ export function ExpirationEntryModal({
     };
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
+        <Dialog open={open} onOpenChange={onOpenChange} dismissible={false}>
             <DialogContent
                 className="max-w-md p-0 overflow-hidden gap-0 bg-background/95 backdrop-blur-xl border-white/10 shadow-2xl"
-                onInteractOutside={(e) => e.preventDefault()}
             >
                 {/* Header */}
                 <div className="bg-primary px-6 py-5 relative overflow-hidden">
@@ -218,7 +217,7 @@ export function ExpirationEntryModal({
 
                                     {/* Reminder Popover */}
                                     <Popover>
-                                        <PopoverTrigger asChild>
+                                        <PopoverTrigger render={
                                             <Button
                                                 variant="outline"
                                                 size="icon"
@@ -230,7 +229,7 @@ export function ExpirationEntryModal({
                                                     {manualReminder || reminder}
                                                 </span>
                                             </Button>
-                                        </PopoverTrigger>
+                                        } />
                                         <PopoverContent className="w-64 p-3" align="end">
                                             <div className="space-y-3">
                                                 <h4 className="font-medium text-sm leading-none flex items-center gap-2">

@@ -35,7 +35,6 @@ const CyclicInventoryDetail = lazy(() => import("./pages/CyclicInventoryDetail")
 const Products = lazy(() => import("./pages/Products"));
 const Reports = lazy(() => import("./pages/Reports"));
 const Settings = lazy(() => import("./pages/Settings"));
-const M3ComponentsDemo = lazy(() => import("./pages/M3ComponentsDemo"));
 const AnimationsDemo = lazy(() => import("./pages/AnimationsDemo"));
 const Login = lazy(() => import("./pages/Login"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -238,16 +237,6 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/m3-demo"
-          element={
-            <Suspense fallback={<DashboardSkeleton />}>
-              <PageTransition>
-                <M3ComponentsDemo />
-              </PageTransition>
-            </Suspense>
-          }
-        />
-        <Route
           path="/animations-demo"
           element={
             <Suspense fallback={<DashboardSkeleton />}>
@@ -404,7 +393,13 @@ const App = () => {
                 <OfflineIndicator />
                 <InstallPrompt />
                 <ErrorBoundary>
-                  <BrowserRouter basename={import.meta.env.VITE_BASE?.replace(/\/$/, '') || ''}>
+                  <BrowserRouter 
+                    basename={import.meta.env.VITE_BASE?.replace(/\/$/, '') || ''}
+                    future={{
+                      v7_startTransition: true,
+                      v7_relativeSplatPath: true,
+                    }}
+                  >
                     <WindowManagerProvider>
                       <AppRoutes />
                     </WindowManagerProvider>

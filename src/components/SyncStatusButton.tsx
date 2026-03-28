@@ -37,7 +37,7 @@ export function SyncStatusButton() {
 
     return (
         <Tooltip>
-            <TooltipTrigger asChild>
+            <TooltipTrigger render={
                 <Button
                     variant="ghost"
                     size="sm"
@@ -60,7 +60,7 @@ export function SyncStatusButton() {
                         </span>
                     )}
                 </Button>
-            </TooltipTrigger>
+            } />
             <TooltipContent>
                 <p>{getTooltipText()}</p>
             </TooltipContent>

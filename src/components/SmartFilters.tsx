@@ -148,7 +148,7 @@ export function SmartFilters({ onFilterChange, activeFilters }: SmartFiltersProp
                 setOpen(isOpen);
                 if (!isOpen) setView('grid'); // Reset view on close
             }}>
-                <PopoverTrigger asChild>
+                <PopoverTrigger render={
                     <Button variant="outline" size="sm" className="h-9 border-dashed">
                         <Filter className="w-4 h-4 mr-2" />
                         Filtros
@@ -158,7 +158,7 @@ export function SmartFilters({ onFilterChange, activeFilters }: SmartFiltersProp
                             </Badge>
                         )}
                     </Button>
-                </PopoverTrigger>
+                } />
                 <PopoverContent className="w-[300px] p-4" align="start">
                     {/* Header with Clear Option */}
                     {hasActiveFilters && view === 'grid' && (

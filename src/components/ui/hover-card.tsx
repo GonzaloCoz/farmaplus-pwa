@@ -1,29 +1,45 @@
 import * as React from "react"
-import * as HoverCardPrimitive from "@radix-ui/react-hover-card"
+import { Popover as BasePopover } from "@base-ui-components/react/popover"
 
 import { cn } from "@/lib/utils"
 
-const HoverCard = HoverCardPrimitive.Root
+// Base UI does not have a distinct HoverCard, but Popover can act as one with the right settings
+// However, to perfectly match semantics, we use Popover with focus/hover triggers where available
+const HoverCard = BasePopover.Root
 
-const HoverCardTrigger = HoverCardPrimitive.Trigger
+const HoverCardTrigger = React.forwardRef<
+  HTMLButtonElement,
+  React.ComponentPropsWithoutRef<typeof BasePopover.Trigger> & { render?: React.ReactElement }
+>(({ render, ...props }, ref) => (
+  <BasePopover.Trigger ref={ref} render={render} {...props} />
+));
+HoverCardTrigger.displayName = "HoverCardTrigger";
 
 const HoverCardContent = React.forwardRef<
-  React.ElementRef<typeof HoverCardPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof HoverCardPrimitive.Content>
->(({ className, align = "center", sideOffset = 4, ...props }, ref) => (
-  <HoverCardPrimitive.Portal>
-    <HoverCardPrimitive.Content
+  HTMLDivElement,
+  Omit<React.ComponentPropsWithoutRef<typeof BasePopover.Positioner>, "children"> & { align?: 'start' | 'center' | 'end'; sideOffset?: number; children?: React.ReactNode; }
+>(({ className, align = "center", sideOffset = 4, children, ...props }, ref) => (
+  <BasePopover.Portal>
+    <BasePopover.Positioner
       ref={ref}
-      align={align}
       sideOffset={sideOffset}
+      align={align}
       className={cn(
-        "z-50 w-64 rounded-md border bg-popover p-4 text-popover-foreground shadow-md outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        "z-50 outline-none",
         className
       )}
       {...props}
-    />
-  </HoverCardPrimitive.Portal>
+    >
+      <BasePopover.Popup
+        className={cn(
+          "z-50 w-64 rounded-2xl border border-border/40 bg-background/95 backdrop-blur-xl p-4 text-popover-foreground shadow-2xl outline-none data-[open]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[open]:fade-in-0 data-[closed]:zoom-out-95 data-[open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        )}
+      >
+        {children}
+      </BasePopover.Popup>
+    </BasePopover.Positioner>
+  </BasePopover.Portal>
 ))
-HoverCardContent.displayName = HoverCardPrimitive.Content.displayName
+HoverCardContent.displayName = "HoverCardContent"
 
 export { HoverCard, HoverCardTrigger, HoverCardContent }

@@ -87,7 +87,7 @@ export function SmartAnalystWidget() {
                 tabIndex={0}
             >
                 {/* Header Background Accent */}
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/20 to-transparent opacity-50" />
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/10 to-transparent opacity-30" />
 
                 <CardHeader className="pb-2 pt-4 px-4">
                     <div className="flex justify-between items-start">

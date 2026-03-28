@@ -65,7 +65,7 @@ export function SyncQueuePanel() {
 
     return (
         <Sheet open={isOpen} onOpenChange={setIsOpen}>
-            <SheetTrigger asChild>
+            <SheetTrigger render={
                 <Button
                     variant="outline"
                     size="sm"
@@ -82,7 +82,7 @@ export function SyncQueuePanel() {
                         </Badge>
                     )}
                 </Button>
-            </SheetTrigger>
+            } />
             <SheetContent>
                 <SheetHeader>
                     <SheetTitle>Cola de Sincronización</SheetTitle>

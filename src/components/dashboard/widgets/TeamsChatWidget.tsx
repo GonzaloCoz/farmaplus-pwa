@@ -141,7 +141,7 @@ export function TeamsChatWidget() {
 
                 {/* Single Area Input: Reverted design */}
                 <div className="px-3 pb-4">
-                    <div className="bg-zinc-100 dark:bg-[#1c1c1c] border border-border/40 rounded-full flex items-center p-1 shadow-sm transition-all focus-within:border-primary/40 focus-within:ring-4 focus-within:ring-primary/5">
+                    <div className="bg-muted/40 border border-border/40 rounded-full flex items-center p-1 shadow-sm transition-all focus-within:border-primary/40 focus-within:ring-4 focus-within:ring-primary/5">
                         <div className="flex items-center justify-center w-9 h-9 text-muted-foreground ml-1">
                             <Paperclip className="w-5 h-5 opacity-60" />
                         </div>

@@ -1,26 +1,31 @@
 import * as React from "react";
-import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
-import { CheckCircle as Check } from "@solar-icons/react";
+import { Checkbox } from "@base-ui-components/react/checkbox";
+import { Check, Minus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-const Checkbox = React.forwardRef<
-  React.ElementRef<typeof CheckboxPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>
->(({ className, ...props }, ref) => (
-  <CheckboxPrimitive.Root
+const CheckboxComponent = React.forwardRef<
+  HTMLButtonElement,
+  React.ComponentPropsWithoutRef<typeof Checkbox.Root> & {
+    checked?: boolean | "indeterminate";
+    onCheckedChange?: (checked: boolean | "indeterminate") => void;
+  }
+>(({ className, onCheckedChange, ...props }, ref) => (
+  <Checkbox.Root
     ref={ref}
     className={cn(
-      "peer h-4 w-4 shrink-0 rounded-sm border border-primary ring-offset-background data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-      className,
+      "group flex size-4 shrink-0 items-center justify-center rounded-[4px] border border-border/60 bg-white dark:bg-muted/30 transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[checked]:bg-primary data-[checked]:border-primary data-[indeterminate]:bg-primary data-[indeterminate]:border-primary hover:border-border",
+      className
     )}
+    onCheckedChange={(checked) => onCheckedChange?.(checked)}
     {...props}
   >
-    <CheckboxPrimitive.Indicator className={cn("flex items-center justify-center text-current")}>
-      <Check className="h-[70%] w-[70%]" />
-    </CheckboxPrimitive.Indicator>
-  </CheckboxPrimitive.Root>
+    <Checkbox.Indicator className="flex items-center justify-center text-primary-foreground transition-all">
+      <Check className="size-3 group-data-[indeterminate]:hidden" strokeWidth={4} />
+      <Minus className="size-3 hidden group-data-[indeterminate]:block" strokeWidth={4} />
+    </Checkbox.Indicator>
+  </Checkbox.Root>
 ));
-Checkbox.displayName = CheckboxPrimitive.Root.displayName;
+CheckboxComponent.displayName = "Checkbox";
 
-export { Checkbox };
+export { CheckboxComponent as Checkbox };

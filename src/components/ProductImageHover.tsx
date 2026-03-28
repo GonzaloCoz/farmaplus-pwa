@@ -32,17 +32,16 @@ export function ProductImageHover({ ean, name, children }: ProductImageHoverProp
 
     return (
         <HoverCard open={isOpen} onOpenChange={setIsOpen}>
-            <HoverCardTrigger asChild>
+            <HoverCardTrigger render={
                 <div className="cursor-help decoration-dotted underline-offset-4 w-fit max-w-full">
                     {children}
                 </div>
-            </HoverCardTrigger>
+            } />
             <HoverCardContent
                 className="w-64 p-0 overflow-hidden bg-white border-none shadow-xl"
                 side="right"
                 align="center"
                 sideOffset={10}
-                avoidCollisions={false}
             >
                 <motion.div
                     initial={{ opacity: 0, scale: 0.8 }}

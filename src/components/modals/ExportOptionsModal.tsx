@@ -253,7 +253,7 @@ export function ExportOptionsModal({ isOpen, onClose, onConfirm }: ExportOptions
 function DatePicker({ date, setDate, placeholder = "Seleccionar fecha" }: { date?: Date, setDate: (d?: Date) => void, placeholder?: string }) {
     return (
         <Popover>
-            <PopoverTrigger asChild>
+            <PopoverTrigger render={
                 <Button
                     variant={"outline"}
                     className={cn(
@@ -264,7 +264,7 @@ function DatePicker({ date, setDate, placeholder = "Seleccionar fecha" }: { date
                     <CalendarIcon className="mr-2 h-4 w-4" />
                     {date ? format(date, "PPP", { locale: es }) : <span>{placeholder}</span>}
                 </Button>
-            </PopoverTrigger>
+            } />
             <PopoverContent className="w-auto p-0">
                 <Calendar
                     mode="single"

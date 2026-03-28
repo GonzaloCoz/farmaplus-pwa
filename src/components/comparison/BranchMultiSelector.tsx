@@ -48,7 +48,7 @@ export function BranchMultiSelector({ selectedBranches, onChange }: BranchMultiS
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
+            <PopoverTrigger render={
                 <Button
                     variant="outline"
                     role="combobox"
@@ -82,7 +82,7 @@ export function BranchMultiSelector({ selectedBranches, onChange }: BranchMultiS
                     </div>
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
-            </PopoverTrigger>
+            } />
             <PopoverContent className="w-[300px] p-0" align="start">
                 <Command>
                     <CommandInput placeholder="Buscar sucursal..." />

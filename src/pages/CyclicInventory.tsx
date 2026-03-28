@@ -9,6 +9,7 @@ import { LaboratoryCard, LaboratoryStatus } from "@/components/LaboratoryCard";
 import { CounterAnimation } from "@/components/CounterAnimation";
 import { MetricCarousel } from "@/components/MetricCarousel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Frame, FramePanel } from "@/components/ui/frame";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { cn, normalizeString } from "@/lib/utils";
@@ -512,96 +513,96 @@ export default function CyclicInventory() {
           ))}
         </div>
       ) : (
-        <div className="rounded-2xl border border-border/50 bg-card/10 backdrop-blur-sm overflow-hidden shadow-sm">
-          <Table>
-            <TableHeader className="bg-muted/30">
-              <TableRow className="border-border/50 hover:bg-transparent">
-                <TableHead className="font-bold text-[10px] uppercase tracking-wider text-muted-foreground/70 h-10 px-4">Laboratorio</TableHead>
-                <TableHead className="text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground/70 h-10">Estado</TableHead>
-                <TableHead className="text-right font-bold text-[10px] uppercase tracking-wider text-muted-foreground/70 h-10">Valor (-)</TableHead>
-                <TableHead className="text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground/70 h-10">Un. (-)</TableHead>
-                <TableHead className="text-right font-bold text-[10px] uppercase tracking-wider text-muted-foreground/70 h-10">Valor (+)</TableHead>
-                <TableHead className="text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground/70 h-10">Un. (+)</TableHead>
-                <TableHead className="text-right font-bold text-[10px] uppercase tracking-wider text-muted-foreground/70 h-10">Dif. Neta</TableHead>
-                <TableHead className="text-center font-bold text-[10px] uppercase tracking-wider text-muted-foreground/70 h-10 w-[140px]">Avance</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredAndSortedLabs.map((lab) => (
-                <TableRow 
-                  key={lab.labName}
-                  className="border-border/30 hover:bg-white/5 dark:hover:bg-white/5 cursor-pointer h-12"
-                  onClick={() => navigate(`/cyclic-inventory/${encodeURIComponent(lab.labName)}`)}
-                >
-                  <TableCell className="py-2 px-4 whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]">
-                    <span className="font-bold text-xs text-foreground group-hover:text-primary transition-colors">{lab.labName}</span>
-                  </TableCell>
-                  <TableCell className="text-center px-1">
-                    <div className="flex justify-center">
-                      <div className={cn(
-                        "w-2.5 h-2.5 rounded-full shadow-sm transition-colors",
-                        lab.status === 'controlado' ? "bg-green-500" : 
-                        lab.status === 'por_controlar' ? "bg-purple-500 animate-pulse" : 
-                        "bg-red-500"
-                      )} title={lab.status.toUpperCase()} />
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right py-2 leading-tight">
-                    <span className="font-bold text-destructive text-[11px]">
-                      {lab.negativeValue !== 0 ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(lab.negativeValue) : "-"}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-center py-2 leading-tight">
-                    <span className="font-bold text-destructive text-[11px]">
-                      {(() => {
-                        // Si tenemos persistencia (db), la usamos. Si es 0 (post-migracion), calculamos del neto
-                        // para que el usuario no vea "-" hasta el proximo sync.
-                        const units = lab.negativeUnits !== 0 ? Math.abs(lab.negativeUnits) : (lab.netUnits < 0 ? Math.abs(lab.netUnits) : 0);
-                        return units !== 0 ? units : "-";
-                      })()}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right py-2 leading-tight">
-                    <span className="font-bold text-success text-[11px]">
-                      {lab.positiveValue !== 0 ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(lab.positiveValue) : "-"}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-center py-2 leading-tight">
-                    <span className="font-bold text-success text-[11px]">
-                      {(() => {
-                        const units = lab.positiveUnits !== 0 ? lab.positiveUnits : (lab.netUnits > 0 ? lab.netUnits : 0);
-                        return units !== 0 ? units : "-";
-                      })()}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right py-2 leading-tight">
-                    <span className={cn(
-                      "font-mono font-bold text-[11px]",
-                      lab.differenceValue > 0 ? "text-success" : 
-                      lab.differenceValue < 0 ? "text-destructive" : 
-                        "text-muted-foreground/30"
-                    )}>
-                      {lab.differenceValue !== 0 ? (lab.differenceValue > 0 ? "+" : "") + new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(lab.differenceValue) : "-"}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-center py-2 px-4">
-                    <div className="flex flex-col gap-0.5 w-full max-w-[100px] mx-auto">
-                      <div className="flex items-center justify-between text-[9px] font-bold tabular-nums">
-                        <span className={lab.progress > 0 ? "text-primary" : "text-muted-foreground/30"}>{lab.progress}%</span>
-                      </div>
-                      <div className="h-1 bg-muted/20 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-primary"
-                          style={{ width: `${lab.progress}%` }}
-                        />
-                      </div>
-                    </div>
-                  </TableCell>
+        <Frame>
+          <FramePanel className="p-0 overflow-hidden">
+            <Table>
+              <TableHeader className="bg-transparent">
+                <TableRow className="hover:bg-transparent border-none">
+                  <TableHead className="pl-6">Laboratorio</TableHead>
+                  <TableHead className="text-center">Estado</TableHead>
+                  <TableHead className="text-right">Valor (-)</TableHead>
+                  <TableHead className="text-center">Un. (-)</TableHead>
+                  <TableHead className="text-right">Valor (+)</TableHead>
+                  <TableHead className="text-center">Un. (+)</TableHead>
+                  <TableHead className="text-right">Dif. Neta</TableHead>
+                  <TableHead className="text-center w-[140px] pr-6">Avance</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody className="bg-background rounded-l-xl rounded-r-xl overflow-hidden shadow-xs/5">
+                {filteredAndSortedLabs.map((lab) => (
+                  <TableRow 
+                    key={lab.labName}
+                    className="cursor-pointer border-t border-border/40 first:border-none"
+                    onClick={() => navigate(`/cyclic-inventory/${encodeURIComponent(lab.labName)}`)}
+                  >
+                    <TableCell className="pl-6 whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]">
+                      <span className="font-semibold text-foreground/90">{lab.labName}</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="flex justify-center">
+                        <div className={cn(
+                          "size-1.5 rounded-full shadow-sm",
+                          lab.status === 'controlado' ? "bg-emerald-500" : 
+                          lab.status === 'por_controlar' ? "bg-blue-500" : 
+                          "bg-amber-500"
+                        )} />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className="font-medium text-destructive/80 tabular-nums">
+                        {lab.negativeValue !== 0 ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(lab.negativeValue) : "–"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className="font-medium text-destructive/80 tabular-nums">
+                        {(() => {
+                          const units = lab.negativeUnits !== 0 ? Math.abs(lab.negativeUnits) : (lab.netUnits < 0 ? Math.abs(lab.netUnits) : 0);
+                          return units !== 0 ? units : "–";
+                        })()}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className="font-medium text-emerald-600 dark:text-emerald-400 tabular-nums">
+                        {lab.positiveValue !== 0 ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(lab.positiveValue) : "–"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className="font-medium text-emerald-600 dark:text-emerald-400 tabular-nums">
+                        {(() => {
+                          const units = lab.positiveUnits !== 0 ? lab.positiveUnits : (lab.netUnits > 0 ? lab.netUnits : 0);
+                          return units !== 0 ? units : "–";
+                        })()}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className={cn(
+                        "font-mono font-medium tabular-nums",
+                        lab.differenceValue > 0 ? "text-emerald-600 dark:text-emerald-400" : 
+                        lab.differenceValue < 0 ? "text-red-600 dark:text-red-400" : 
+                          "text-muted-foreground"
+                      )}>
+                        {lab.differenceValue !== 0 ? (lab.differenceValue > 0 ? "+" : "") + new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(lab.differenceValue) : "–"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-center pr-6">
+                      <div className="flex flex-col gap-0.5 w-full max-w-[100px] mx-auto">
+                        <div className="flex items-center justify-between text-[11px] font-medium tabular-nums">
+                          <span className={lab.progress > 0 ? "text-foreground" : "text-muted-foreground"}>{lab.progress}%</span>
+                        </div>
+                        <div className="h-1 bg-muted/40 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-foreground/70"
+                            style={{ width: `${lab.progress}%` }}
+                          />
+                        </div>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </FramePanel>
+        </Frame>
       )}
     </div>
   );

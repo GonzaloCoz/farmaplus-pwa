@@ -524,13 +524,13 @@ export const StockRecountServer: React.FC<StockRecountServerProps> = ({ file, on
               <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-muted/20 p-4 rounded-2xl border border-muted/50">
                 <Tabs value={filterTab} onValueChange={(v: any) => setFilterTab(v)} className="w-full md:w-auto">
                   <TabsList className="bg-background/50 p-1 h-11 ring-1 ring-border/50">
-                    <TabsTrigger value="all" className="px-5 rounded-lg data-[state=active]:bg-primary data-[state=active]:text-white">
+                    <TabsTrigger value="all" className="px-5 rounded-lg data-[selected]:bg-primary data-[selected]:text-white">
                       Todos ({recountItems.length})
                     </TabsTrigger>
-                    <TabsTrigger value="pending" className="px-5 rounded-lg data-[state=active]:bg-destructive data-[state=active]:text-white">
+                    <TabsTrigger value="pending" className="px-5 rounded-lg data-[selected]:bg-destructive data-[selected]:text-white">
                       Faltantes ({recountItems.filter(i => (i.counted_qty - i.systemStock) < 0).length})
                     </TabsTrigger>
-                    <TabsTrigger value="counted" className="px-5 rounded-lg data-[state=active]:bg-success data-[state=active]:text-white">
+                    <TabsTrigger value="counted" className="px-5 rounded-lg data-[selected]:bg-success data-[selected]:text-white">
                       Sobrantes ({recountItems.filter(i => (i.counted_qty - i.systemStock) > 0).length})
                     </TabsTrigger>
                   </TabsList>

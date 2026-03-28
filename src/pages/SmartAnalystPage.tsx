@@ -315,7 +315,7 @@ export default function SmartAnalystPage() {
                     </div>
                 </div>
 
-                <TabsContent value="pending" className="space-y-4 data-[state=inactive]:hidden focus-visible:outline-none">
+                <TabsContent value="pending" className="space-y-4 data-[hidden]:hidden focus-visible:outline-none">
                     <AnimatePresence mode="popLayout">
                         {filteredBatches.length === 0 ? (
                             <motion.div

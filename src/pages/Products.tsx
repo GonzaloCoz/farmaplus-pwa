@@ -20,6 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Frame, FramePanel } from "@/components/ui/frame";
 import {
   Select,
   SelectContent,
@@ -262,78 +263,51 @@ export default function Products() {
       </div>
 
       <div className="flex-1 overflow-auto">
-        <div className="border rounded-xl overflow-hidden bg-card shadow-sm">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4" />
-              <p>Cargando productos...</p>
-            </div>
-          ) : filteredProducts.length > 0 ? (
+        <Frame>
+          <FramePanel className="p-0 overflow-hidden">
             <Table>
-              <TableHeader className="bg-muted/50">
-                <TableRow>
-                  <TableHead className="w-[140px]">EAN</TableHead>
-                  <TableHead>Producto</TableHead>
-                  <TableHead className="hidden md:table-cell">Laboratorio</TableHead>
+              <TableHeader className="bg-transparent">
+                <TableRow className="hover:bg-transparent border-none">
+                  <TableHead className="w-[140px] pl-6 font-semibold py-4">EAN</TableHead>
+                  <TableHead className="font-semibold">Producto</TableHead>
+                  <TableHead className="hidden md:table-cell pr-6 font-semibold">Laboratorio</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody className="bg-background rounded-l-xl rounded-r-xl overflow-hidden shadow-xs/5">
                 {filteredProducts.slice(0, 100).map((product) => (
                   <TableRow
                     key={product.ean}
-                    className="cursor-pointer hover:bg-muted/50"
+                    className="cursor-pointer border-t border-border/40 first:border-none"
                     onClick={() => handleRowClick(product)}
                   >
-                    <TableCell className="font-mono text-primary font-medium">
+                    <TableCell className="font-mono font-medium text-muted-foreground/80 pl-6 py-4">
                       {product.ean}
                     </TableCell>
                     <TableCell>
                       <ProductImageHover ean={product.ean} name={product.name}>
-                        <div className="font-medium hover:underline decoration-dotted underline-offset-4 w-fit">
+                        <div className="font-semibold text-foreground/90 hover:underline decoration-dotted underline-offset-4 w-fit transition-colors">
                           {product.name}
                         </div>
                       </ProductImageHover>
-                      <div className="md:hidden text-xs text-muted-foreground mt-1">
+                      <div className="md:hidden text-xs text-muted-foreground/70 mt-1">
                         {product.laboratory || 'Sin laboratorio'}
                       </div>
                     </TableCell>
-                    <TableCell className="hidden md:table-cell">
+                    <TableCell className="hidden md:table-cell pr-6">
                       {product.laboratory ? (
-                        <Badge variant="outline" className="font-normal">
+                        <Badge variant="outline" className="font-normal text-xs py-0 h-5 px-2">
                           {product.laboratory}
                         </Badge>
                       ) : (
-                        <span className="text-muted-foreground text-sm">-</span>
+                        <span className="text-muted-foreground/50">–</span>
                       )}
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
-          ) : (
-            <div className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground">
-              <Search className="w-12 h-12 mb-4 opacity-20" />
-              <p>No se encontraron productos.</p>
-              {selectedLab !== 'all' && (
-                <Button
-                  variant="link"
-                  onClick={() => setSelectedLab('all')}
-                  className="mt-2"
-                >
-                  Limpiar filtros
-                </Button>
-              )}
-            </div>
-          )}
-
-          {!loading && filteredProducts.length > 100 && (
-            <div className="p-4 text-center border-t bg-muted/20">
-              <p className="text-xs text-muted-foreground">
-                Mostrando 100 de {filteredProducts.length} resultados.
-              </p>
-            </div>
-          )}
-        </div>
+          </FramePanel>
+        </Frame>
       </div>
 
       {/* --- Dialog para Generar EAN --- */}

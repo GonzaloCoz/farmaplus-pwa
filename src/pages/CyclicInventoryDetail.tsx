@@ -400,7 +400,7 @@ export default function CyclicInventoryDetail() {
                                     <TabsList className="grid w-full grid-cols-4 mb-6 p-1 bg-muted/20 rounded-2xl h-14 border border-muted/40">
                                         <TabsTrigger
                                             value="pending"
-                                            className="relative rounded-xl transition-all duration-300 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:scale-[0.98] h-full"
+                                            className="relative rounded-xl transition-all duration-300 data-[selected]:bg-background data-[selected]:shadow-sm data-[selected]:scale-[0.98] h-full"
                                         >
                                             <span className="font-bold">Pendientes</span>
                                             {pendingItems.length > 0 && (
@@ -411,7 +411,7 @@ export default function CyclicInventoryDetail() {
                                         </TabsTrigger>
                                         <TabsTrigger
                                             value="controlled"
-                                            className="relative rounded-xl transition-all duration-300 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:scale-[0.98] h-full"
+                                            className="relative rounded-xl transition-all duration-300 data-[selected]:bg-background data-[selected]:shadow-sm data-[selected]:scale-[0.98] h-full"
                                         >
                                             <span className="font-bold">Controlados</span>
                                             {controlledItems.length > 0 && (
@@ -422,7 +422,7 @@ export default function CyclicInventoryDetail() {
                                         </TabsTrigger>
                                         <TabsTrigger
                                             value="adjusted"
-                                            className="relative rounded-xl transition-all duration-300 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:scale-[0.98] h-full"
+                                            className="relative rounded-xl transition-all duration-300 data-[selected]:bg-background data-[selected]:shadow-sm data-[selected]:scale-[0.98] h-full"
                                         >
                                             <span className="font-bold">Ajustados</span>
                                             {adjustedItems.length > 0 && (
@@ -433,7 +433,7 @@ export default function CyclicInventoryDetail() {
                                         </TabsTrigger>
                                         <TabsTrigger
                                             value="history"
-                                            className="relative rounded-xl transition-all duration-300 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:scale-[0.98] h-full"
+                                            className="relative rounded-xl transition-all duration-300 data-[selected]:bg-background data-[selected]:shadow-sm data-[selected]:scale-[0.98] h-full"
                                         >
                                             <span className="font-bold">Historial</span>
                                             {history.length > 0 && (

@@ -47,7 +47,7 @@ export function WidgetSizeSelector({
 
     return (
         <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+            <DropdownMenuTrigger render={
                 <Button
                     variant="ghost"
                     size="icon"
@@ -56,7 +56,7 @@ export function WidgetSizeSelector({
                 >
                     <CurrentIcon className="h-4 w-4" />
                 </Button>
-            </DropdownMenuTrigger>
+            } />
             <DropdownMenuContent align="end">
                 {availableSizes.map((size) => {
                     const config = SIZE_CONFIG[size];

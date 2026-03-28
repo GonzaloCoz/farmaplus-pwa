@@ -42,14 +42,14 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
     return (
         <div className="flex items-center w-full h-full gap-2 px-2 lg:px-4 overflow-hidden bg-transparent">
             {/* Logo */}
-            <div className="flex items-center justify-center h-11 w-11 shrink-0 bg-muted/50 border border-border/40 rounded-xl">
-                <img src={Logo} alt="Logo" className="h-[24px] w-auto opacity-100" />
+            <div className="flex items-center justify-center h-10 w-10 shrink-0 bg-muted/50 border border-border/40 rounded-xl">
+                <img src={Logo} alt="Logo" className="h-[20px] w-auto opacity-100" />
             </div>
 
             {/* Search Button */}
             <Button
                 variant="ghost"
-                className="h-11 gap-3 px-5 rounded-xl bg-[#f0eeef] dark:bg-[#2a2a2a] hover:bg-muted/80 text-gray-700 dark:text-gray-200 hover:text-black dark:hover:text-white shrink-0 border border-border/40 transition-all font-medium"
+                className="h-10 gap-2 px-4 rounded-xl bg-[var(--layout-content)] hover:bg-muted/80 text-muted-foreground hover:text-foreground shrink-0 border border-border/5 shadow-sm transition-all font-medium"
                 onClick={onSearchClick}
             >
                 <Search className="w-[18px] h-[18px]" />
@@ -59,7 +59,7 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
             {/* Create Job Button */}
             <Button
                 variant="ghost"
-                className="h-11 gap-2 px-5 rounded-xl bg-[#f0eeef] dark:bg-[#2a2a2a] hover:bg-muted/80 text-gray-700 dark:text-gray-200 hover:text-black dark:hover:text-white shrink-0 border border-border/40 transition-all font-medium"
+                className="h-10 gap-2 px-4 rounded-xl bg-[var(--layout-content)] hover:bg-muted/80 text-muted-foreground hover:text-foreground shrink-0 border border-border/5 shadow-sm transition-all font-medium"
                 onClick={handleCreateJob}
             >
                 <Plus className="w-[18px] h-[18px]" />
@@ -79,24 +79,24 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
                         <div
                             key={win.id}
                             className={cn(
-                                "group relative flex items-center h-11 px-5 gap-3 rounded-xl border transition-all cursor-pointer shrink-0 select-none",
+                                "group relative flex items-center h-10 px-4 gap-3 rounded-xl border transition-all cursor-pointer shrink-0 select-none",
                                 isSpecialGreen 
-                                    ? "bg-[#0e5e4d] border-[#0e5e4d] text-white shadow-md hover:bg-[#0c5041] hover:border-[#0c5041]"
+                                    ? "bg-[#0e5e4d] border-[#0e5e4d] text-white shadow-sm hover:bg-[#0c5041] hover:border-[#0c5041]"
                                     : isActive
-                                        ? "bg-white dark:bg-[#1e1e1e] border-border/60 shadow-md text-black dark:text-white ring-1 ring-black/[0.01] dark:ring-white/[0.03] elevation-3 animate-in fade-in zoom-in-95 duration-200"
-                                        : "bg-[#f0eeef] dark:bg-[#2a2a2a] border-transparent text-gray-500 dark:text-zinc-400 hover:bg-muted/80 hover:text-black dark:hover:text-white transition-colors"
+                                        ? "bg-background dark:bg-white/10 border-border/5 shadow-sm text-foreground dark:text-white ring-1 ring-black/[0.02] animate-in fade-in zoom-in-95 duration-200 backdrop-blur-md"
+                                        : "bg-[var(--layout-content)] border-border/5 shadow-sm text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors"
                             )}
                             onClick={() => handleTabClick(win.id, win.path)}
                         >
                             <span className={cn(
                                 "shrink-0 transition-colors uppercase", 
-                                isSpecialGreen ? "text-white" : isActive ? "text-primary" : "text-gray-500 dark:text-zinc-400 group-hover:text-black dark:group-hover:text-white"
+                                isSpecialGreen ? "text-white" : isActive ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
                             )}>
                                 {win.icon || <FileText className="w-4 h-4" />}
                             </span>
                             <span className={cn(
-                                "text-[15px] font-semibold truncate max-w-[150px] transition-colors",
-                                isSpecialGreen ? "text-white" : isActive ? "text-black dark:text-white" : "text-gray-600 dark:text-zinc-400 group-hover:text-black dark:group-hover:text-white"
+                                "text-[14px] font-semibold truncate max-w-[150px] transition-colors",
+                                isSpecialGreen ? "text-white" : isActive ? "text-foreground" : "text-muted-foreground/80 group-hover:text-foreground"
                             )}>
                                 {win.title}
                             </span>
@@ -120,11 +120,11 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
 
                 {/* More Button */}
                 <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-11 w-11 rounded-xl shrink-0 text-muted-foreground bg-[#f0eeef] dark:bg-[#2a2a2a] hover:bg-muted/80 border border-border/40 data-[state=open]:bg-muted/80">
+                    <DropdownMenuTrigger render={
+                        <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl shrink-0 text-muted-foreground bg-muted/40 hover:bg-muted/80 border border-border/40 data-[open]:bg-muted/80">
                             <MoreHorizontal className="w-[18px] h-[18px]" />
                         </Button>
-                    </DropdownMenuTrigger>
+                    } />
                     <DropdownMenuContent align="start">
                         <DropdownMenuItem onClick={closeAllWindows} className="text-destructive focus:text-destructive cursor-pointer">
                             <Trash2 className="w-4 h-4 mr-2" />

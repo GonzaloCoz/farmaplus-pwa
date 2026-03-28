@@ -1,30 +1,46 @@
 import * as React from "react";
-import * as PopoverPrimitive from "@radix-ui/react-popover";
+import { Popover as BasePopover } from "@base-ui-components/react/popover";
 
 import { cn } from "@/lib/utils";
 
-const Popover = PopoverPrimitive.Root;
+const Popover = BasePopover.Root;
 
-const PopoverTrigger = PopoverPrimitive.Trigger;
+const PopoverTrigger = React.forwardRef<
+  HTMLButtonElement,
+  React.ComponentPropsWithoutRef<typeof BasePopover.Trigger> & { render?: React.ReactElement }
+>(({ render, ...props }, ref) => (
+  <BasePopover.Trigger ref={ref} render={render} {...props} />
+));
+PopoverTrigger.displayName = "PopoverTrigger";
+
+const PopoverPortal = BasePopover.Portal;
 
 const PopoverContent = React.forwardRef<
-  React.ElementRef<typeof PopoverPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
->(({ className, align = "center", sideOffset = 4, ...props }, ref) => (
-  <PopoverPrimitive.Portal>
-    <PopoverPrimitive.Content
-      ref={ref}
-      align={align}
+  HTMLDivElement,
+  React.ComponentPropsWithoutRef<typeof BasePopover.Popup> & { align?: 'start' | 'center' | 'end'; sideOffset?: number; positionerClassName?: string; }
+>(({ className, align = "center", sideOffset = 4, children, positionerClassName, ...props }, ref) => (
+  <BasePopover.Portal>
+    <BasePopover.Positioner
       sideOffset={sideOffset}
-      collisionPadding={10}
+      align={align}
       className={cn(
-        "z-50 w-72 rounded-2xl border border-border/40 bg-background/95 backdrop-blur-xl p-4 text-popover-foreground shadow-2xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
-        className,
+        "z-50 outline-none",
+        positionerClassName
       )}
-      {...props}
-    />
-  </PopoverPrimitive.Portal>
+    >
+      <BasePopover.Popup
+        ref={ref}
+        className={cn(
+          "z-50 w-72 rounded-2xl border border-border/40 bg-background/95 backdrop-blur-xl p-4 text-popover-foreground shadow-2xl outline-none data-[open]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[open]:fade-in-0 data-[closed]:zoom-out-95 data-[open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </BasePopover.Popup>
+    </BasePopover.Positioner>
+  </BasePopover.Portal>
 ));
-PopoverContent.displayName = PopoverPrimitive.Content.displayName;
+PopoverContent.displayName = "PopoverContent";
 
-export { Popover, PopoverTrigger, PopoverContent };
+export { Popover, PopoverTrigger, PopoverContent, PopoverPortal };

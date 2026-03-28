@@ -42,7 +42,7 @@ export function ProfileDropdown() {
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
+            <PopoverTrigger render={
                 <button
                     className="group flex items-center justify-center h-10 w-10 rounded-xl overflow-hidden hover:ring-2 hover:ring-primary/20 transition-all bg-muted/50 border border-border/40"
                 >
@@ -50,7 +50,7 @@ export function ProfileDropdown() {
                         {initials}
                     </div>
                 </button>
-            </PopoverTrigger>
+            } />
             <PopoverContent
                 align="end"
                 sideOffset={8}

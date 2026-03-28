@@ -11,6 +11,7 @@ import {
   PreCountSession,
   PreCountItem
 } from "@/services/preCountDB";
+import { Frame, FramePanel } from "@/components/ui/frame";
 import {
   Table,
   TableBody,
@@ -417,26 +418,26 @@ export default function Reports() {
             <TabsList className="bg-muted/30 p-1 rounded-xl border border-border/50 backdrop-blur-sm shadow-inner overflow-hidden">
               <TabsTrigger
                 value="pre-count"
-                className="rounded-lg px-8 py-2 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:text-primary transition-all duration-300 font-medium"
+                className="rounded-lg px-8 py-2 data-[active]:bg-background data-[active]:shadow-md data-[active]:text-primary transition-all duration-300 font-medium"
               >
                 Colector
               </TabsTrigger>
               <TabsTrigger
                 value="vencimientos"
-                className="rounded-lg px-8 py-2 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:text-primary transition-all duration-300 font-medium"
+                className="rounded-lg px-8 py-2 data-[active]:bg-background data-[active]:shadow-md data-[active]:text-primary transition-all duration-300 font-medium"
               >
                 Vencimientos
               </TabsTrigger>
               <TabsTrigger
                 value="audits"
-                className="rounded-lg px-8 py-2 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:text-primary transition-all duration-300 font-medium"
+                className="rounded-lg px-8 py-2 data-[active]:bg-background data-[active]:shadow-md data-[active]:text-primary transition-all duration-300 font-medium"
               >
                 Auditorías
               </TabsTrigger>
               {isAdmin && (
                 <TabsTrigger
                   value="system-audit"
-                  className="rounded-lg px-8 py-2 data-[state=active]:bg-background data-[state=active]:shadow-md data-[state=active]:text-primary transition-all duration-300 font-medium"
+                  className="rounded-lg px-8 py-2 data-[active]:bg-background data-[active]:shadow-md data-[active]:text-primary transition-all duration-300 font-medium"
                 >
                   <ShieldCheck className="w-4 h-4 mr-2" />
                   Log de Auditoría
@@ -447,7 +448,7 @@ export default function Reports() {
 
           <div className="flex-1 overflow-hidden px-1">
             {/* --- TAB: COLECTOR --- */}
-            <TabsContent value="pre-count" className="h-full m-0 data-[state=inactive]:hidden outline-none">
+            <TabsContent value="pre-count" className="h-full m-0 data-[hidden]:hidden outline-none">
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -466,50 +467,45 @@ export default function Reports() {
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-auto rounded-xl border bg-card/30 backdrop-blur-sm shadow-sm border-border/50">
-                  {loadingSessions ? (
-                    <div className="flex flex-col items-center justify-center p-12 text-center text-muted-foreground">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4" />
-                      <p>Cargando historial...</p>
-                    </div>
-                  ) : filteredSessions.length > 0 ? (
+                <Frame>
+                  <FramePanel className="p-0 overflow-hidden">
                     <Table>
-                      <TableHeader className="bg-muted/30 sticky top-0 z-10">
-                        <TableRow>
-                          <TableHead>Sector</TableHead>
-                          <TableHead>Fecha</TableHead>
-                          <TableHead className="text-right">Productos</TableHead>
-                          <TableHead className="text-right">Unidades</TableHead>
-                          <TableHead className="w-[100px]"></TableHead>
+                      <TableHeader className="bg-transparent">
+                        <TableRow className="hover:bg-transparent border-none">
+                          <TableHead className="pl-6 font-semibold py-4">Sector</TableHead>
+                          <TableHead className="font-semibold">Fecha</TableHead>
+                          <TableHead className="text-right font-semibold">Productos</TableHead>
+                          <TableHead className="text-right font-semibold">Unidades</TableHead>
+                          <TableHead className="w-[100px] pr-6 font-semibold"></TableHead>
                         </TableRow>
                       </TableHeader>
-                      <TableBody>
+                      <TableBody className="bg-background rounded-l-xl rounded-r-xl overflow-hidden shadow-xs/5">
                         {filteredSessions.map((session) => (
-                          <TableRow key={session.id} className="hover:bg-muted/50 transition-colors group/row">
-                            <TableCell className="font-medium">
+                          <TableRow key={session.id} className="group/row border-t border-border/40 first:border-none">
+                            <TableCell className="font-semibold text-foreground/90 pl-6 py-4">
                               <div className="flex items-center gap-2">
                                 <Layers className="w-4 h-4 text-primary opacity-70 group-hover/row:opacity-100 transition-opacity" />
                                 {session.sector}
                               </div>
                             </TableCell>
                             <TableCell>
-                              <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                              <div className="flex items-center gap-2 text-muted-foreground/70 text-xs">
                                 <Calendar className="w-3 h-3" />
                                 {new Date(session.start_time).toLocaleDateString()}
                               </div>
                             </TableCell>
-                            <TableCell className="text-right font-mono text-sm font-semibold">
+                            <TableCell className="text-right font-mono text-sm font-semibold text-foreground/80">
                               {session.totalProducts}
                             </TableCell>
-                            <TableCell className="text-right font-mono text-sm font-semibold">
+                            <TableCell className="text-right font-mono text-sm font-semibold text-foreground/80">
                               {session.totalUnits}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="pr-6">
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleViewDetails(session)}
-                                className="hover:text-primary rounded-lg"
+                                className="hover:text-primary rounded-lg h-8"
                               >
                                 <Eye className="w-4 h-4 mr-2" />
                                 Ver
@@ -519,21 +515,13 @@ export default function Reports() {
                         ))}
                       </TableBody>
                     </Table>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center p-20 text-center">
-                      <div className="w-20 h-20 rounded-full bg-muted/30 flex items-center justify-center mb-6">
-                        <FileText className="w-10 h-10 text-muted-foreground/40 stroke-1" />
-                      </div>
-                      <h3 className="text-xl font-semibold text-foreground/70 mb-2">No hay sesiones</h3>
-                      <p className="text-muted-foreground max-w-[250px]">Los conteos finalizados en el colector aparecerán listados aquí.</p>
-                    </div>
-                  )}
-                </div>
+                  </FramePanel>
+                </Frame>
               </motion.div>
             </TabsContent>
 
             {/* --- TAB: VENCIMIENTOS --- */}
-            <TabsContent value="vencimientos" className="h-full m-0 data-[state=inactive]:hidden outline-none">
+            <TabsContent value="vencimientos" className="h-full m-0 data-[hidden]:hidden outline-none">
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -601,7 +589,7 @@ export default function Reports() {
             </TabsContent>
 
             {/* --- TAB: AUDITORÍAS --- */}
-            <TabsContent value="audits" className="h-full m-0 data-[state=inactive]:hidden outline-none">
+            <TabsContent value="audits" className="h-full m-0 data-[hidden]:hidden outline-none">
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -712,7 +700,7 @@ export default function Reports() {
 
             {/* --- TAB: SYSTEM AUDIT --- */}
             {isAdmin && (
-              <TabsContent value="system-audit" className="flex-1 m-0 data-[state=inactive]:hidden outline-none overflow-y-auto">
+              <TabsContent value="system-audit" className="flex-1 m-0 data-[hidden]:hidden outline-none overflow-y-auto">
                 <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -764,24 +752,26 @@ export default function Reports() {
               </div>
             ) : (
               <div className="p-6 pt-0">
-                <Table>
-                  <TableHeader className="sticky top-0 bg-background/50 backdrop-blur-md z-10">
-                    <TableRow className="hover:bg-transparent border-border/50">
-                      <TableHead className="py-4">EAN</TableHead>
-                      <TableHead className="py-4">Producto</TableHead>
-                      <TableHead className="text-right py-4">Cantidad</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sessionItems.map((item) => (
-                      <TableRow key={item.id} className="border-border/40 hover:bg-muted/30 transition-colors">
-                        <TableCell className="font-mono text-xs font-semibold py-4">{item.ean}</TableCell>
-                        <TableCell className="text-sm py-4">{item.product_name}</TableCell>
-                        <TableCell className="text-right py-4 font-bold text-lg">{item.quantity}</TableCell>
+                <Frame>
+                  <Table>
+                    <TableHeader className="bg-transparent">
+                      <TableRow className="hover:bg-transparent border-none">
+                        <TableHead className="pl-6">EAN</TableHead>
+                        <TableHead>Producto</TableHead>
+                        <TableHead className="text-right pr-6">Cantidad</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody className="bg-background rounded-l-xl rounded-r-xl overflow-hidden shadow-xs/5">
+                      {sessionItems.map((item) => (
+                        <TableRow key={item.id} className="border-t border-border/40 first:border-none">
+                          <TableCell className="font-mono text-xs font-semibold text-muted-foreground/80 pl-6">{item.ean}</TableCell>
+                          <TableCell className="text-sm font-medium text-foreground/90">{item.product_name}</TableCell>
+                          <TableCell className="text-right pr-6 font-bold text-lg tabular-nums">{item.quantity}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </Frame>
               </div>
             )}
           </div>
@@ -828,8 +818,8 @@ export default function Reports() {
           <div className="flex-1 overflow-auto bg-card/10">
             <div className="p-6 pt-0">
               <Table>
-                <TableHeader className="sticky top-0 bg-background/50 backdrop-blur-md z-10">
-                  <TableRow className="hover:bg-transparent border-border/50">
+                <TableHeader className="sticky top-0 bg-background/80 backdrop-blur-sm z-10">
+                  <TableRow className="hover:bg-transparent">
                     <TableHead className="py-4">Producto / EAN</TableHead>
                     <TableHead className="py-4">Lote</TableHead>
                     <TableHead className="py-4">Vencimiento</TableHead>
@@ -839,7 +829,7 @@ export default function Reports() {
                 <TableBody>
                   {selectedExpReport?.items.map((item: any) => (
                     item.batches.map((batch: any, idx: number) => (
-                      <TableRow key={item.id + idx} className="border-border/40 hover:bg-muted/30 transition-colors">
+                      <TableRow key={item.id + idx}>
                         <TableCell className="py-4">
                           {idx === 0 ? (
                             <div className="space-y-0.5">

@@ -70,8 +70,8 @@ export function SyncStatusBottomSheet({ children }: { children?: React.ReactNode
 
     return (
         <Sheet open={isOpen} onOpenChange={setIsOpen}>
-            <SheetTrigger asChild>
-                {children || (
+            <SheetTrigger render={
+                (children as React.ReactElement) || (
                     <Button variant="ghost" size="icon" className="relative">
                         {isOnline ? (
                             unsyncedItems.length > 0 ? (
@@ -86,8 +86,8 @@ export function SyncStatusBottomSheet({ children }: { children?: React.ReactNode
                             <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-destructive animate-pulse" />
                         )}
                     </Button>
-                )}
-            </SheetTrigger>
+                )
+            } />
             <SheetContent side="bottom" className="h-[50vh] rounded-t-3xl">
                 <SheetHeader className="mb-6">
                     <SheetTitle className="flex items-center gap-2">

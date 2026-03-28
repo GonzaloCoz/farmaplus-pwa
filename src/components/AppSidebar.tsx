@@ -49,8 +49,8 @@ function AppSidebarMenuItem({ item, end, isCollapsed, userRole }: AppSidebarMenu
       className={({ isActive }) => cn(
         "group flex items-center h-10 transition-all duration-300 rounded-xl outline-none border-none ring-0 w-full !bg-transparent !shadow-none !ring-transparent",
         isActive
-          ? "text-primary"
-          : "text-gray-500 dark:text-zinc-400 hover:text-black dark:hover:text-white"
+              ? "bg-[var(--layout-card)] text-foreground shadow-md ring-1 ring-black/[0.02] dark:ring-white/[0.05]"
+              : "text-muted-foreground/80 hover:bg-muted hover:text-foreground"
       )}
     >
       {({ isActive }) => (
@@ -75,7 +75,7 @@ function AppSidebarMenuItem({ item, end, isCollapsed, userRole }: AppSidebarMenu
                 transition={{ duration: 0.2, ease: "easeOut" }}
                 className={cn(
                   "text-sm font-semibold tracking-tight transition-colors whitespace-nowrap ml-1",
-                  isActive ? "text-black dark:text-white" : "text-gray-600 dark:text-zinc-400 group-hover:text-black dark:group-hover:text-white"
+                  isActive ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
                 )}
               >
                 {item.title}
@@ -90,13 +90,12 @@ function AppSidebarMenuItem({ item, end, isCollapsed, userRole }: AppSidebarMenu
   return (
     <div className="w-full flex justify-start px-1 py-0.5">
       {isCollapsed ? (
-        <Tooltip delayDuration={0}>
-          <TooltipTrigger asChild>
-            {/* When collapsed, we can restrict the NavLink width if desired, but centering is safer */}
+        <Tooltip>
+          <TooltipTrigger render={
             <div className="w-12 h-10">
               {content}
             </div>
-          </TooltipTrigger>
+          } />
           <TooltipContent side="right" className="font-semibold" sideOffset={10}>
             {item.title}
           </TooltipContent>
@@ -129,13 +128,13 @@ export function AppSidebar() {
         {/* Header Section - Perfectly Aligned Indicator */}
         <div className="h-10 w-full flex items-center px-1 mb-6">
           <div className="w-12 h-10 flex items-center justify-center shrink-0">
-            <div className="h-[2px] w-4 bg-gray-300 dark:bg-zinc-800 rounded-full" />
+            <div className="h-[2px] w-4 bg-muted-foreground/20 rounded-full" />
           </div>
           {!isCollapsed && (
             <motion.h2
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="text-[10px] font-black text-gray-400/80 uppercase tracking-[0.2em] whitespace-nowrap ml-1"
+              className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-[0.2em] whitespace-nowrap ml-1"
             >
               Menu
             </motion.h2>
@@ -159,7 +158,7 @@ export function AppSidebar() {
         <div className="h-14 w-full flex items-center px-1 mt-auto">
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="w-12 h-10 flex items-center justify-center transition-colors duration-300 outline-none focus:outline-none focus:ring-0 !border-none !bg-transparent !shadow-none text-gray-400 hover:text-black dark:hover:text-white"
+            className="w-12 h-10 flex items-center justify-center transition-colors duration-300 outline-none focus:outline-none focus:ring-0 !border-none !bg-transparent !shadow-none text-muted-foreground/60 hover:text-foreground"
           >
             <ChevronLeft className={cn("h-5 w-5 transition-transform duration-400", isCollapsed && "rotate-180")} />
           </button>

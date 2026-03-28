@@ -77,7 +77,7 @@ const PaginationPrevious = ({
     {...props}
   >
     <ChevronLeft className="size-4" />
-    <span>{children ?? "Previous"}</span>
+    <span>{children ?? "Anterior"}</span>
   </PaginationLink>
 );
 PaginationPrevious.displayName = "PaginationPrevious";
@@ -94,7 +94,7 @@ const PaginationNext = ({
     render={render}
     {...props}
   >
-    <span>{children ?? "Next"}</span>
+    <span>{children ?? "Siguiente"}</span>
     <ChevronRight className="size-4" />
   </PaginationLink>
 );

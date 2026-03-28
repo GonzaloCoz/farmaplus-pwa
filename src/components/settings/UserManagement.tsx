@@ -306,7 +306,7 @@ export function UserManagement() {
                                                             checked={profile.active}
                                                             disabled={updatingUserId === profile.id}
                                                             onCheckedChange={() => toggleUserStatus(profile.id, profile.active)}
-                                                            className="data-[state=checked]:bg-emerald-500 scale-110"
+                                                            className="data-[checked]:bg-emerald-500 scale-110"
                                                         />
                                                         <Badge variant="outline" className={cn(
                                                             "px-2 py-0 border-none font-black text-[10px] uppercase",
@@ -415,7 +415,7 @@ export function UserManagement() {
                                                                                             <Switch
                                                                                                 checked={isEnabled}
                                                                                                 onCheckedChange={() => toggleUserPermission(profile.id, perm.code, profile.permissions)}
-                                                                                                className="data-[state=checked]:bg-primary"
+                                                                                                className="data-[checked]:bg-primary"
                                                                                             />
                                                                                         </div>
                                                                                     </div>

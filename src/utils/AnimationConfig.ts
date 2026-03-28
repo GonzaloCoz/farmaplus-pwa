@@ -1,5 +1,5 @@
-// Material Design 3 Expressive Animation Configuration
-// Following M3 motion guidelines for fluid, fast, and expressive animations
+// Expressive Animation Configuration
+// Fluid, fast, and expressive animations
 
 import { Variants } from "framer-motion";
 
@@ -12,7 +12,7 @@ export const DURATION = {
     slower: 0.5,
 } as const;
 
-// Easing Functions (M3 Standard)
+// Easing Functions
 export const EASING = {
     standard: [0.2, 0.0, 0, 1.0],
     emphasized: [0.2, 0.0, 0, 1.0],

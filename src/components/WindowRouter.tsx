@@ -14,7 +14,6 @@ const CyclicInventoryDetail = lazy(() => import("@/pages/CyclicInventoryDetail")
 const Products = lazy(() => import("@/pages/Products"));
 const Reports = lazy(() => import("@/pages/Reports"));
 const Settings = lazy(() => import("@/pages/Settings"));
-const M3ComponentsDemo = lazy(() => import("@/pages/M3ComponentsDemo"));
 const AnimationsDemo = lazy(() => import("@/pages/AnimationsDemo"));
 const AdminBranches = lazy(() => import("@/pages/AdminBranches"));
 const SmartAnalystPage = lazy(() => import("@/pages/SmartAnalystPage"));
@@ -39,7 +38,6 @@ const ROUTE_MAP: Record<string, React.ReactNode> = {
     "/reports": <Reports />,
     "/comparison": <BranchComparison />,
     "/settings": <Settings />,
-    "/m3-demo": <M3ComponentsDemo />,
     "/animations-demo": <AnimationsDemo />,
     "/admin/audit": <AdminAudit />,
     "/admin/users": <AdminUsers />,

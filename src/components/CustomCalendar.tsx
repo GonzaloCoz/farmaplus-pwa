@@ -129,7 +129,7 @@ export default function CustomCalendar({
 
                 return (
                   <Tooltip key={iso}>
-                    <TooltipTrigger asChild>{dayButton}</TooltipTrigger>
+                    <TooltipTrigger render={dayButton} />
                     <TooltipContent side="top">{content}</TooltipContent>
                   </Tooltip>
                 );

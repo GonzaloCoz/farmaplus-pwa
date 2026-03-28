@@ -39,7 +39,7 @@ export function WidgetSpanSelector({
 
     return (
         <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+            <DropdownMenuTrigger render={
                 <Button
                     variant="ghost"
                     size="icon"
@@ -48,7 +48,7 @@ export function WidgetSpanSelector({
                 >
                     <CurrentIcon className="h-4 w-4" />
                 </Button>
-            </DropdownMenuTrigger>
+            } />
             <DropdownMenuContent align="end">
                 {availableSpans.map((span) => {
                     const config = SPAN_CONFIG[span];

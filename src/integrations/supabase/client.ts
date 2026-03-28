@@ -2,12 +2,13 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-// Diagnóstico: El puerto 8000 está bloqueado. Usamos el puerto 80 (Caddy) que es el estándar.
-const SUPABASE_URL = "http://159.112.184.84";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE";
+// Leemos las variables de Vercel (o el local .env), con un fallback seguro por si acaso
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://supabase.halu.com.ar";
+// Manejamos VITE_SUPABASE_ANON_KEY o el nombre viejo VITE_SUPABASE_PUBLISHABLE_KEY
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE";
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.error("Supabase Error: Missing environment variables. Using hardcoded fallbacks.");
+  console.error("Supabase Error: Missing environment variables.");
 }
 
 // Import the supabase client like this:

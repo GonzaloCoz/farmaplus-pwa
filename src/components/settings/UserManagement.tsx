@@ -182,7 +182,7 @@ export function UserManagement() {
     };
 
     const filteredProfiles = profiles.filter(p =>
-        p.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (p.username || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (p.full_name?.toLowerCase() || "").includes(searchTerm.toLowerCase())
     );
 

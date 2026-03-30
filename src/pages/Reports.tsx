@@ -130,7 +130,7 @@ export default function Reports() {
   };
 
   const filteredSessions = sessions.filter(session =>
-    session.sector.toLowerCase().includes(searchSessionTerm.toLowerCase())
+    (session.sector || '').toLowerCase().includes(searchSessionTerm.toLowerCase())
   );
 
   const handleExportPDF = (session: PreCountSession, items: PreCountItem[]) => {
@@ -249,18 +249,18 @@ export default function Reports() {
 
     if (search) {
       filtered = filtered.filter(r =>
-        r.name.toLowerCase().includes(search.toLowerCase()) ||
-        r.branch.toLowerCase().includes(search.toLowerCase()) ||
-        r.sector.toLowerCase().includes(search.toLowerCase())
+        (r.name || '').toLowerCase().includes(search.toLowerCase()) ||
+        (r.branch || '').toLowerCase().includes(search.toLowerCase()) ||
+        (r.sector || '').toLowerCase().includes(search.toLowerCase())
       );
     }
 
     if (branch) {
-      filtered = filtered.filter(r => r.branch.toLowerCase().includes(branch.toLowerCase()));
+      filtered = filtered.filter(r => (r.branch || '').toLowerCase().includes(branch.toLowerCase()));
     }
 
     if (sector) {
-      filtered = filtered.filter(r => r.sector.toLowerCase().includes(sector.toLowerCase()));
+      filtered = filtered.filter(r => (r.sector || '').toLowerCase().includes(sector.toLowerCase()));
     }
 
     setFilteredReports(filtered.reverse());

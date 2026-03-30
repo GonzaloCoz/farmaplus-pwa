@@ -533,8 +533,8 @@ export default function StockImport() {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       items = items.filter(p =>
-        p.name.toLowerCase().includes(q) ||
-        p.codebar.toLowerCase().includes(q)
+        (p.name || '').toLowerCase().includes(q) ||
+        (p.codebar || '').toLowerCase().includes(q)
       );
     }
 

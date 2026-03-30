@@ -215,7 +215,7 @@ export default function CyclicInventory() {
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       result = result.filter((lab) =>
-        lab.labName.toLowerCase().includes(term)
+        (lab.labName || '').toLowerCase().includes(term)
       );
     }
 

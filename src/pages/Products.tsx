@@ -93,8 +93,8 @@ export default function Products() {
     return products.filter(product => {
       const term = searchTerm.toLowerCase();
       const matchesSearch =
-        product.name.toLowerCase().includes(term) ||
-        product.ean.includes(term);
+        (product.name || '').toLowerCase().includes(term) ||
+        (product.ean || '').includes(term);
 
       const matchesLab = selectedLab === 'all' || product.laboratory === selectedLab;
 

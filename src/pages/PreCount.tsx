@@ -27,29 +27,41 @@ import {
     Bolt as Zap,
     Forbidden as ZapOff
 } from '@solar-icons/react';
-import { Calculator as CalculatorIcon } from '@solar-icons/react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
-// import { ProductSearchInput } from '@/components/ProductSearchInput'; // Replaced by SmartProductSearch
 import { SmartProductSearch } from '@/components/SmartProductSearch';
 import { PreCountList } from '@/components/PreCountList';
 import { usePreCount } from '@/hooks/usePreCount';
-// import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { Product, getProductByEAN, addProducts } from '@/services/productService';
 import { notify } from '@/lib/notifications';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
-import { Calculator } from '@/components/Calculator';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import JsBarcode from 'jsbarcode';
-import { FabMenu } from '@/components/FabMenu';
 import { enhancedProductCache } from '@/services/enhancedProductCache';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useHaptic } from '@/hooks/useHaptic';
 import { playSound } from '@/utils/soundUtils';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import {
+    NumberField,
+    NumberFieldDecrement,
+    NumberFieldIncrement,
+    NumberFieldInput,
+} from '@/components/ui/number-field';
+import {
+    Dialog,
+    DialogClose,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogPopup,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Field, FieldLabel } from '@/components/ui/field';
+import { Form } from '@/components/ui/form';
 
 type Step = 'config' | 'counting';
 
@@ -59,19 +71,16 @@ export default function PreCount() {
     const [sector, setSector] = useState('');
     const [scannerOpen, setScannerOpen] = useState(false);
     const [manualEAN, setManualEAN] = useState('');
-    const [quantity, setQuantity] = useState('1');
+    const [quantity, setQuantity] = useState(1);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-    const [showCalculator, setShowCalculator] = useState(false);
     const lastScanTimeRef = useRef<number>(0);
     const [highSpeedMode, setHighSpeedMode] = useState(false);
     const [isNegativeMode, setIsNegativeMode] = useState(false);
     const [deviceName, setDeviceName] = useState(() => localStorage.getItem('precount_device_name') || '');
     const { trigger } = useHaptic();
-
-    const handleCalculatorResult = (result: number) => {
-        setQuantity(Math.floor(result).toString());
-        // setShowCalculator(false); // Optional: close on result
-    };
+    const [showFinishDialog, setShowFinishDialog] = useState(false);
+    const [finishPassword, setFinishPassword] = useState('');
+    const [finishPasswordError, setFinishPasswordError] = useState('');
 
     const {
         items,
@@ -199,15 +208,13 @@ export default function PreCount() {
             return;
         }
 
-        const baseQty = parseInt(quantity, 10);
+        const baseQty = quantity;
         if (isNaN(baseQty) || baseQty === 0) {
             notify.error("Error", 'Por favor, ingresa una cantidad válida');
             return;
         }
 
         // Apply negative mode if active
-        // If the user entered a negative number manually, we treat it as is.
-        // If the user entered a positive number but mode is negative, we invert it.
         const qty = isNegativeMode ? -Math.abs(baseQty) : baseQty;
 
         let productName = selectedProduct?.name;
@@ -243,7 +250,7 @@ export default function PreCount() {
 
         // Limpiar formulario y devolver foco al buscador
         setManualEAN('');
-        setQuantity('1');
+        setQuantity(1);
         setSelectedProduct(null);
 
         // Timeout breve para asegurar que el renderizado limpie el estado antes de enfocar
@@ -252,13 +259,25 @@ export default function PreCount() {
         }, 50);
     };
 
-    // Finalizar sesión
-    const handleFinish = async () => {
+    // Abrir diálogo de finalización
+    const handleFinishClick = () => {
         if (items.length === 0) {
             notify.error("Error", 'No hay productos para finalizar');
             return;
         }
+        setFinishPassword('');
+        setFinishPasswordError('');
+        setShowFinishDialog(true);
+    };
 
+    // Confirmar finalización con contraseña
+    const handleConfirmFinish = async () => {
+        if (finishPassword !== 'farmaplus') {
+            setFinishPasswordError('Contraseña incorrecta');
+            return;
+        }
+        setShowFinishDialog(false);
+        setFinishPassword('');
         await finishSession();
         navigate('/stock');
     };
@@ -614,110 +633,104 @@ export default function PreCount() {
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
                             transition={{ duration: 0.3 }}
-                            className="h-[calc(100vh-6rem)] p-4 md:p-6 flex flex-col gap-4 max-w-7xl mx-auto"
+                            className="h-[calc(100vh-6rem)] p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-[1600px] mx-auto"
                         >
-                            {/* 1. Enhanced Status Bar - Full Width Single Row */}
-                            <Card className="min-h-[120px] flex flex-col justify-center px-6 sm:px-8 bg-gradient-to-br from-secondary/40 to-secondary/20 border-muted/50 shadow-sm">
-                                <div className="flex items-center justify-between gap-4 w-full">
-                                    {/* Left: Sector Label + Name */}
-                                    <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                                        <div className="flex flex-col">
-                                            <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap">Sector</span>
-                                            <span className="font-bold text-foreground text-sm truncate">{session?.sector}</span>
-                                        </div>
-                                        <div className="flex flex-col border-l border-border/40 pl-3">
-                                            <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap">PC</span>
-                                            <button 
-                                                onClick={() => {
-                                                    const newName = prompt("Nombre de esta PC:", deviceName);
-                                                    if (newName !== null) {
-                                                        const trimmed = newName.trim();
-                                                        setDeviceName(trimmed);
-                                                        localStorage.setItem('precount_device_name', trimmed);
-                                                        notify.success("PC Actualizada", `Identificada como: ${trimmed}`);
-                                                    }
-                                                }}
-                                                className="font-bold text-primary text-sm truncate hover:underline text-left"
-                                            >
-                                                {deviceName || 'Sin nombre'}
-                                            </button>
+                            {/* Left Column: Escaneo */}
+                            <div className="lg:col-span-4 lg:col-start-1 flex flex-col gap-4 min-h-0">
+                                <Card className="flex flex-col flex-1 overflow-hidden bg-gradient-to-br from-secondary/5 to-secondary/10 border-muted/50 shadow-md">
+                                    {/* 1. Info Header */}
+                                    <div className="p-5 border-b border-border/40 bg-card/50">
+                                        <div className="flex items-center justify-between gap-4 w-full">
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap mb-1">Sector</span>
+                                                <span className="font-bold text-foreground text-lg leading-none truncate">{session?.sector}</span>
+                                            </div>
+                                            <div className="flex flex-col items-end text-right">
+                                                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap mb-1">PC</span>
+                                                <button 
+                                                    onClick={() => {
+                                                        const newName = prompt("Nombre de esta PC:", deviceName);
+                                                        if (newName !== null) {
+                                                            const trimmed = newName.trim();
+                                                            setDeviceName(trimmed);
+                                                            localStorage.setItem('precount_device_name', trimmed);
+                                                            notify.success("PC Actualizada", `Identificada como: ${trimmed}`);
+                                                        }
+                                                    }}
+                                                    className="font-bold text-primary text-sm truncate hover:underline"
+                                                >
+                                                    {deviceName || 'Sin nombre'}
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <div className="h-10 sm:h-12 w-px bg-border/40 flex-shrink-0" />
-
-                                    {/* Center: Counters - Horizontal Layout */}
-                                    <div className="flex items-center gap-8 sm:gap-12 flex-1 justify-center">
-                                        <div className="flex items-center gap-3 sm:gap-4">
-                                            <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap">Productos</span>
-                                            <div className="text-2xl sm:text-3xl font-bold text-primary">
+                                    {/* 2. Counters Grid */}
+                                    <div className="grid grid-cols-3 divide-x divide-border/40 border-b border-border/40 bg-card/30">
+                                        <div className="p-4 flex flex-col items-center justify-center text-center">
+                                            <span className="text-[10px] sm:text-[11px] text-muted-foreground uppercase tracking-wider font-bold mb-2">Productos</span>
+                                            <div className="text-2xl font-black text-primary">
                                                 <AnimatedCounter value={totalProducts} digits={4} />
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-3 sm:gap-4">
-                                            <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap">Unidades</span>
-                                            <div className="text-2xl sm:text-3xl font-bold text-foreground">
+                                        <div className="p-4 flex flex-col items-center justify-center text-center">
+                                            <span className="text-[10px] sm:text-[11px] text-muted-foreground uppercase tracking-wider font-bold mb-2">Unidades</span>
+                                            <div className="text-2xl font-bold text-foreground">
                                                 <AnimatedCounter value={totalUnits} digits={4} />
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-3 sm:gap-4">
-                                            <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap">Desconocidos</span>
-                                            <div className="text-2xl sm:text-3xl font-bold text-amber-500">
+                                        <div className="p-4 flex flex-col items-center justify-center text-center">
+                                            <span className="text-[10px] sm:text-[11px] text-muted-foreground uppercase tracking-wider font-bold mb-2">Desconocid.</span>
+                                            <div className="text-2xl font-bold text-amber-500">
                                                 <AnimatedCounter value={errorCount} digits={3} />
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* Right: Status Icons */}
-                                    <div className="flex items-center gap-4 flex-shrink-0">
-                                        <div 
-                                            className="flex flex-col items-center gap-1 group cursor-pointer" 
-                                            onClick={() => {
-                                                setIsNegativeMode(!isNegativeMode);
-                                                if (!isNegativeMode) {
-                                                    notify.info("Modo Devolución", "La carga ahora será en negativo");
-                                                }
-                                            }}
-                                        >
-                                            <div className={`p-2 rounded-full transition-all ${isNegativeMode ? 'bg-destructive/20 text-destructive shadow-[0_0_15px_rgba(239,68,68,0.4)]' : 'bg-muted text-muted-foreground'}`}>
-                                                <RotateCcw className={cn("w-4 h-4", isNegativeMode && "animate-spin-slow")} />
+                                    {/* 3. Actions / Modes */}
+                                    <div className="p-4 border-b border-border/40 flex items-center justify-between bg-card/50">
+                                        <span className="text-xs font-semibold text-muted-foreground">Configuración de Escaneo</span>
+                                        <div className="flex items-center gap-3">
+                                            <div 
+                                                className="flex flex-col items-center gap-1 group cursor-pointer" 
+                                                onClick={() => {
+                                                    setIsNegativeMode(!isNegativeMode);
+                                                    if (!isNegativeMode) {
+                                                        notify.info("Modo Devolución", "La carga ahora será en negativo");
+                                                    }
+                                                }}
+                                                title="Modo Retiro/Devolución"
+                                            >
+                                                <div className={`p-2 rounded-full transition-all ${isNegativeMode ? 'bg-destructive/15 text-destructive shadow-[0_0_15px_rgba(239,68,68,0.3)]' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>
+                                                    <RotateCcw className={cn("w-4 h-4", isNegativeMode && "animate-spin-slow")} />
+                                                </div>
                                             </div>
-                                            <span className="text-[8px] uppercase font-bold tracking-tighter">Negativo</span>
-                                        </div>
 
-                                        <div className="flex flex-col items-center gap-1 group cursor-pointer" onClick={() => setHighSpeedMode(!highSpeedMode)}>
-                                            <div className={`p-2 rounded-full transition-all ${highSpeedMode ? 'bg-primary/20 text-primary shadow-glow' : 'bg-muted text-muted-foreground'}`}>
-                                                {highSpeedMode ? <Zap className="w-4 h-4" /> : <ZapOff className="w-4 h-4" />}
+                                            <div 
+                                                className="flex flex-col items-center gap-1 group cursor-pointer" 
+                                                onClick={() => setHighSpeedMode(!highSpeedMode)}
+                                                title="Modo Alta Velocidad (Zebra)"
+                                            >
+                                                <div className={`p-2 rounded-full transition-all ${highSpeedMode ? 'bg-primary/20 text-primary shadow-glow' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>
+                                                    {highSpeedMode ? <Zap className="w-4 h-4" /> : <ZapOff className="w-4 h-4" />}
+                                                </div>
                                             </div>
-                                            <span className="text-[8px] uppercase font-bold tracking-tighter">Zebra</span>
-                                        </div>
-                                        <div
-                                            className={`p-2 rounded-full bg-success/10 text-success`}
-                                            title="En línea (Cloud Sync)"
-                                        >
-                                            <Wifi className="w-4 h-4" />
+
+                                            <div className={`p-2 rounded-full bg-success/10 text-success`} title="En línea (Cloud Sync)">
+                                                <Wifi className="w-4 h-4" />
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            </Card>
 
-                            {/* 2. Compact Hero Input Section */}
-                            <Card className="p-2 sm:p-3 shadow-md border-primary/20 bg-card/80 backdrop-blur-sm relative z-50">
-                                <div className="space-y-2">
-                                    <div className="flex flex-col sm:flex-row gap-2">
-                                        <div className="flex-1 relative z-20">
+                                    {/* 4. Search & Quantity Input (right below scan config) */}
+                                    <div className="p-4 space-y-3 border-b border-border/40 bg-card/50">
+                                        {/* Search bar */}
+                                        <div className="relative z-20 w-full">
                                             <SmartProductSearch
                                                 onSelect={(p) => {
-                                                    // Si acabamos de procesar un escaneo por hardware, ignorar este evento
-                                                    // que viene del input enfocado (evita doble procesamiento)
                                                     const timeSinceScan = Date.now() - lastScanTimeRef.current;
-                                                    if (timeSinceScan < 500) {
-                                                        console.log('Ignoring redundant SmartProductSearch select (scanned by hardware)');
-                                                        return;
-                                                    }
+                                                    if (timeSinceScan < 500) return;
 
-                                                    console.log('Product selected from SmartSearch:', p.ean);
-                                                    // Logic for unknown product (empty name or explicit check)
                                                     if (!p.name) {
                                                         notify.warning("Advertencia", 'Producto no encontrado en la base de datos', {
                                                             description: 'Puedes agregarlo manualmente',
@@ -727,14 +740,11 @@ export default function PreCount() {
                                                         notify.success("Operación exitosa", `Producto encontrado: ${p.name}`);
                                                     }
 
-                                                    // Set EAN and Name
                                                     setManualEAN(p.ean);
-                                                    setSelectedProduct({ ...p, stock: 0, salePrice: 0, cost: 0, id_producto: p.id_producto }); // partial product
+                                                    setSelectedProduct({ ...p, stock: 0, salePrice: 0, cost: 0, id_producto: p.id_producto });
 
-                                                    // Auto-focus quantity input after short delay to allow state update
                                                     setTimeout(() => {
                                                         document.getElementById('quantity-input')?.focus();
-                                                        // Select all text in quantity input for easy overwrite
                                                         (document.getElementById('quantity-input') as HTMLInputElement)?.select();
                                                     }, 50);
                                                 }}
@@ -743,59 +753,37 @@ export default function PreCount() {
                                             />
                                         </div>
 
-                                        <div className="flex gap-2">
-                                            <div className="flex items-center gap-1">
-                                                <div className="w-20">
-                                                    <Input
+                                        {/* Quantity + Add */}
+                                        <div className="flex gap-2 items-center">
+                                            <NumberField
+                                                value={quantity}
+                                                onValueChange={(val) => setQuantity(val ?? 1)}
+                                                min={1}
+                                                className="flex-1 relative"
+                                            >
+                                                <div className="relative">
+                                                    <NumberFieldDecrement />
+                                                    <NumberFieldInput
                                                         id="quantity-input"
-                                                        type="number"
-                                                        className="h-12 text-center text-lg font-medium bg-muted/30 border-muted-foreground/20 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
-                                                        min="1"
-                                                        value={quantity}
-                                                        onChange={(e) => setQuantity(e.target.value)}
-                                                        onKeyDown={(e) => {
+                                                        className="h-11 text-base font-semibold"
+                                                        onKeyDown={(e: React.KeyboardEvent) => {
                                                             if (e.key === 'Enter') handleAddProduct();
                                                         }}
-                                                        placeholder="#"
                                                     />
+                                                    <NumberFieldIncrement />
                                                 </div>
-                                                <Button
-                                                    variant={showCalculator ? "secondary" : "outline"}
-                                                    size="icon"
-                                                    className="h-12 w-12 border-dashed border-border/60 hover:border-primary/50"
-                                                    onClick={() => setShowCalculator(!showCalculator)}
-                                                    title="Calculadora"
-                                                >
-                                                    <CalculatorIcon className="w-5 h-5 opacity-70" />
-                                                </Button>
-                                            </div>
+                                            </NumberField>
 
                                             <Button
                                                 onClick={handleAddProduct}
                                                 size="lg"
-                                                className="h-12 px-6 text-lg shadow-sm font-bold tracking-wide"
+                                                className="h-11 px-6 shadow-sm font-bold tracking-wide flex-shrink-0"
                                                 disabled={!manualEAN.trim()}
                                             >
-                                                <Plus className="w-6 h-6" />
+                                                <Plus className="w-5 h-5" />
                                             </Button>
                                         </div>
                                     </div>
-
-                                    <AnimatePresence>
-                                        {showCalculator && (
-                                            <motion.div
-                                                initial={{ height: 0, opacity: 0 }}
-                                                animate={{ height: 'auto', opacity: 1 }}
-                                                exit={{ height: 0, opacity: 0 }}
-                                                className="overflow-hidden border rounded-lg bg-muted/20"
-                                            >
-                                                <Calculator
-                                                    onResult={handleCalculatorResult}
-                                                    onClose={() => setShowCalculator(false)}
-                                                />
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
 
                                     {/* Product Feedback / Selection - Ultra Compact */}
                                     <AnimatePresence>
@@ -804,7 +792,7 @@ export default function PreCount() {
                                                 initial={{ opacity: 0, height: 0, scale: 0.95 }}
                                                 animate={{ opacity: 1, height: 'auto', scale: 1 }}
                                                 exit={{ opacity: 0, height: 0 }}
-                                                className="bg-primary/5 rounded border border-primary/10 flex items-center justify-between p-2 overflow-hidden"
+                                                className="bg-primary/5 mx-4 mt-3 rounded border border-primary/10 flex items-center justify-between p-2 overflow-hidden"
                                             >
                                                 <div className="flex items-center gap-2 min-w-0">
                                                     <CheckCircle className="w-4 h-4 text-primary shrink-0" />
@@ -827,16 +815,46 @@ export default function PreCount() {
                                             </motion.div>
                                         )}
                                     </AnimatePresence>
-                                </div>
-                            </Card>
 
-                            {/* 3. Dense List */}
-                            <div className="flex-1 min-h-0 relative z-10">
-                                <div className="flex items-center justify-between px-1">
-                                    <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-                                        Historial ({totalProducts})
-                                    </h3>
-                                </div>
+                                    {/* Spacer to push action buttons to bottom */}
+                                    <div className="flex-1" />
+
+                                    {/* Action Buttons Footer */}
+                                    {items.length > 0 && (
+                                        <div className="p-3 border-t border-border/40 bg-card/50 flex items-center gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="flex-1 h-8 text-xs font-medium gap-1.5"
+                                                onClick={handleExportPDF}
+                                            >
+                                                <FileText className="w-3.5 h-3.5" />
+                                                PDF
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="flex-1 h-8 text-xs font-medium gap-1.5"
+                                                onClick={handleExportTXT}
+                                            >
+                                                <Upload className="w-3.5 h-3.5" />
+                                                TXT
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                className="flex-[2] h-8 text-xs font-bold gap-1.5"
+                                                onClick={handleFinishClick}
+                                            >
+                                                <CheckCircle className="w-3.5 h-3.5" />
+                                                Finalizar
+                                            </Button>
+                                        </div>
+                                    )}
+                                </Card>
+                            </div>
+
+                            {/* Right Column: Dense List / Table */}
+                            <div className="lg:col-span-8 lg:col-start-5 flex flex-col min-h-0 min-h-[500px] lg:h-full bg-card border border-border/40 rounded-xl overflow-hidden shadow-sm">
                                 <PreCountList
                                     items={items}
                                     onUpdate={updateItem}
@@ -848,35 +866,47 @@ export default function PreCount() {
                 </AnimatePresence>
             </motion.div>
 
-            {/* Acciones flotantes (FAB) */}
 
-            {
-                items.length > 0 && step === 'counting' && (
-                    <FabMenu
-                        actions={[
-                            {
-                                label: "Finalizar",
-                                icon: <CheckCircle className="w-5 h-5" />,
-                                onClick: handleFinish,
-                                variant: 'default',
-                                color: 'bg-primary text-primary-foreground'
-                            },
-                            {
-                                label: "Exportar PDF",
-                                icon: <FileText className="w-5 h-5" />,
-                                onClick: handleExportPDF,
-                                variant: 'outline'
-                            },
-                            {
-                                label: "Exportar TXT",
-                                icon: <Upload className="w-5 h-5" />,
-                                onClick: handleExportTXT,
-                                variant: 'secondary'
-                            }
-                        ]}
-                    />
-                )
-            }
+            {/* Finalizar Confirmation Dialog */}
+            <Dialog open={showFinishDialog} onOpenChange={setShowFinishDialog}>
+                <DialogPopup className="sm:max-w-sm">
+                    <Form className="contents" onSubmit={(e) => { e.preventDefault(); handleConfirmFinish(); }}>
+                        <DialogHeader>
+                            <DialogTitle>Finalizar Sesión</DialogTitle>
+                            <DialogDescription>
+                                ¿Estás seguro de que deseas finalizar esta sesión? Se guardará el registro de {totalProducts} productos y {totalUnits} unidades.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="px-6 py-4">
+                            <Field>
+                                <FieldLabel>Contraseña</FieldLabel>
+                                <Input
+                                    type="password"
+                                    value={finishPassword}
+                                    onChange={(e) => {
+                                        setFinishPassword(e.target.value);
+                                        setFinishPasswordError('');
+                                    }}
+                                    placeholder="Ingresa la contraseña para confirmar"
+                                    autoFocus
+                                />
+                                {finishPasswordError && (
+                                    <p className="text-xs text-destructive mt-1.5 font-medium">{finishPasswordError}</p>
+                                )}
+                            </Field>
+                        </div>
+                        <DialogFooter variant="bare">
+                            <DialogClose render={<Button type="button" variant="ghost" />}>
+                                Cancelar
+                            </DialogClose>
+                            <Button type="submit" disabled={!finishPassword.trim()}>
+                                <CheckCircle className="w-4 h-4" />
+                                Confirmar y Finalizar
+                            </Button>
+                        </DialogFooter>
+                    </Form>
+                </DialogPopup>
+            </Dialog>
 
             {/* Scanner Modal */}
             <BarcodeScanner

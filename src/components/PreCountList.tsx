@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Pen as Pencil, TrashBinMinimalistic as Trash2, Widget as Package, Copy, CheckCircle as Check } from '@solar-icons/react';
+import { Pen as Pencil, TrashBinMinimalistic as Trash2, Widget as Package, Copy, CheckCircle as Check, Magnifer as SearchIcon } from '@solar-icons/react';
 import { cn } from '@/lib/utils';
 import { UIPreCountItem } from '@/hooks/usePreCount';
 import {
@@ -13,6 +12,44 @@ import {
     DialogTitle,
     DialogFooter,
 } from '@/components/ui/dialog';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
+import { Frame, FramePanel, FrameFooter } from "@/components/ui/frame";
+import {
+    Select,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+    SelectContent,
+} from "@/components/ui/select";
+import {
+    Pagination,
+    PaginationContent,
+    PaginationItem,
+    PaginationNext,
+    PaginationPrevious,
+} from "@/components/ui/pagination";
+import {
+    NumberField,
+    NumberFieldDecrement,
+    NumberFieldIncrement,
+    NumberFieldInput,
+} from '@/components/ui/number-field';
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
+import {
+    type ColumnDef,
+    flexRender,
+    getCoreRowModel,
+    getPaginationRowModel,
+    type PaginationState,
+    useReactTable,
+} from "@tanstack/react-table";
 
 interface PreCountListProps {
     items: UIPreCountItem[];
@@ -22,40 +59,43 @@ interface PreCountListProps {
 
 export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
     const [editingId, setEditingId] = useState<string | null>(null);
-    const [editQuantity, setEditQuantity] = useState('');
+    const [editQuantity, setEditQuantity] = useState<number>(1);
     const [copiedId, setCopiedId] = useState<string | null>(null);
+
+    const [pagination, setPagination] = useState<PaginationState>({
+        pageIndex: 0,
+        pageSize: 20,
+    });
+
+    const [searchTerm, setSearchTerm] = useState('');
+
+    // Reverse items so newest (last added) appear first, then filter by search
+    const filteredItems = useMemo(() => {
+        const reversed = [...items].reverse();
+        if (!searchTerm.trim()) return reversed;
+        const term = searchTerm.toLowerCase().trim();
+        return reversed.filter(item =>
+            (item.ean?.toLowerCase() || '').includes(term) ||
+            (item.productName?.toLowerCase() || '').includes(term)
+        );
+    }, [items, searchTerm]);
 
     const handleStartEdit = (item: UIPreCountItem) => {
         setEditingId(item.id);
-        setEditQuantity(item.quantity.toString());
+        setEditQuantity(item.quantity);
     };
 
     const handleSaveEdit = () => {
-        if (editingId && editQuantity) {
-            const quantity = parseInt(editQuantity, 10);
-            if (quantity !== 0) {
-                onUpdate(editingId, quantity);
-                setEditingId(null);
-                setEditQuantity('');
-            }
+        if (editingId && editQuantity !== 0) {
+            onUpdate(editingId, editQuantity);
+            setEditingId(null);
+            setEditQuantity(1);
         }
     };
 
     const handleCancelEdit = () => {
         setEditingId(null);
-        setEditQuantity('');
-    };
-
-
-    const getDeviceColor = (deviceId?: string) => {
-        if (!deviceId) return 'transparent';
-        // Simple hash to generate a hue
-        let hash = 0;
-        for (let i = 0; i < deviceId.length; i++) {
-            hash = deviceId.charCodeAt(i) + ((hash << 5) - hash);
-        }
-        const hue = Math.abs(hash % 360);
-        return `hsl(${hue}, 70%, 45%)`;
+        setEditQuantity(1);
     };
 
     const copyToClipboard = (text: string, id: string) => {
@@ -64,150 +104,288 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
         setTimeout(() => setCopiedId(null), 2000);
     };
 
+    const getDeviceColor = (deviceId?: string) => {
+        if (!deviceId) return 'transparent';
+        let hash = 0;
+        for (let i = 0; i < deviceId.length; i++) {
+            hash = deviceId.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const hue = Math.abs(hash % 360);
+        return `hsl(${hue}, 70%, 45%)`;
+    };
+
+    const columns = useMemo<ColumnDef<UIPreCountItem>[]>(() => [
+        {
+            accessorKey: "productName",
+            header: "Descripción",
+            size: 300,
+            cell: ({ row }) => {
+                const item = row.original;
+                const isUnknown = (item.productName || '').startsWith('Producto ');
+                return (
+                    <div className="flex flex-col gap-1 pr-2">
+                        <span className={cn("font-semibold text-[13px] leading-tight text-foreground/90", isUnknown && "text-destructive")}>
+                            {item.productName}
+                        </span>
+                        {isUnknown ? (
+                            <span className="text-[9px] text-destructive flex w-fit items-center gap-1.5 font-bold bg-destructive/10 px-2 py-0.5 rounded-full border border-destructive/20">
+                                <span className="w-1 h-1 rounded-full bg-destructive" /> NO ENCONTRADO
+                            </span>
+                        ) : item.synced === 0 ? (
+                            <span className="text-[9px] text-warning flex w-fit items-center gap-1.5 font-bold bg-warning/10 px-2 py-0.5 rounded-full border border-warning/20">
+                                <span className="w-1 h-1 rounded-full bg-warning animate-pulse" /> SINCRONIZANDO
+                            </span>
+                        ) : null}
+                    </div>
+                );
+            },
+        },
+        {
+            accessorKey: "ean",
+            header: "Código (EAN)",
+            size: 160,
+            cell: ({ row }) => {
+                const item = row.original;
+                return (
+                    <button
+                        onClick={() => copyToClipboard(item.ean, item.id)}
+                        className="flex items-center gap-2 text-foreground/90 hover:bg-muted/50 px-2.5 py-1.5 rounded-md transition-all group/ean active:scale-95 text-left border border-transparent hover:border-border/50"
+                        title="Copiar EAN"
+                    >
+                        <span className="text-xs font-mono tracking-wider font-medium">
+                            {item.ean}
+                        </span>
+                        {copiedId === item.id ? (
+                            <Check className="w-3.5 h-3.5 text-success animate-bounce-in flex-shrink-0" />
+                        ) : (
+                            <Copy className="w-3.5 h-3.5 opacity-0 group-hover/ean:opacity-50 transition-opacity flex-shrink-0" />
+                        )}
+                    </button>
+                );
+            },
+        },
+        {
+            accessorKey: "quantity",
+            header: () => <div className="text-right">Cant.</div>,
+            size: 80,
+            cell: ({ row }) => {
+                const item = row.original;
+                return (
+                    <div className="flex justify-end pr-2">
+                        <span className={cn(
+                            "text-lg font-black tracking-tighter",
+                            item.quantity < 0 ? "text-destructive" : "text-foreground"
+                        )}>
+                            {item.quantity}
+                        </span>
+                    </div>
+                );
+            },
+        },
+        {
+            id: "actions",
+            header: () => <div className="text-right w-full pr-2">Acciones</div>,
+            size: 90,
+            cell: ({ row }) => {
+                const item = row.original;
+                return (
+                    <div className="flex justify-end gap-1.5 pr-2">
+                        <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            className="text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md transition-colors h-8 w-8"
+                            onClick={() => handleStartEdit(item)}
+                            title="Editar"
+                        >
+                            <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors h-8 w-8"
+                            onClick={() => onDelete(item.id)}
+                            title="Eliminar"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </Button>
+                    </div>
+                );
+            },
+        },
+    ], [copiedId, onDelete]);
+
+    const table = useReactTable({
+        data: filteredItems,
+        columns,
+        getCoreRowModel: getCoreRowModel(),
+        getPaginationRowModel: getPaginationRowModel(),
+        onPaginationChange: setPagination,
+        state: {
+            pagination,
+        },
+    });
+
     if (items.length === 0) {
         return (
-            <Card className="p-8 text-center">
-                <Package className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="text-muted-foreground">
-                    No hay productos agregados aún
-                </p>
-                <p className="text-sm text-muted-foreground mt-2">
-                    Escanea o busca productos para comenzar
-                </p>
-            </Card>
+            <div className="flex flex-col items-center justify-center h-full p-8 text-center text-muted-foreground opacity-60">
+                <Package className="w-16 h-16 mx-auto mb-4" />
+                <p className="text-lg font-medium">No hay productos agregados aún</p>
+                <p className="text-sm">Escanea o busca productos para comenzar</p>
+            </div>
         );
     }
 
     return (
-        <>
-            <div className="max-h-[600px] overflow-y-auto">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    <AnimatePresence>
-                        {items.map((item) => (
-                            <motion.div
-                                key={item.id}
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                transition={{ duration: 0.1 }}
-                                style={{ contentVisibility: 'auto' }}
-                            >
-                                <Card className={`h-full relative overflow-hidden group transition-all duration-300 bg-card border ${(item.productName || '').startsWith('Producto ')
-                                    ? 'border-destructive shadow-[0_0_0_0.5px_inset_hsl(var(--destructive)/0.1)] bg-destructive/[0.02]'
-                                    : item.synced === 0
-                                        ? 'border-warning shadow-[0_0_0_0.5px_inset_hsl(var(--warning)/0.2)] bg-warning/[0.03]'
-                                        : 'border-muted/40 elevation-1 hover:elevation-2 hover:bg-muted/5'
-                                    }`}>
-                                    <div className="p-4 flex flex-col h-full gap-3">
-                                        {/* Header: Name */}
-                                        <div className="flex justify-between items-start gap-2">
-                                            <h4 className="text-title-small md:text-title-medium leading-tight line-clamp-2 text-foreground/90 font-semibold tracking-tight" title={item.productName}>
-                                                {item.productName}
-                                            </h4>
-                                        </div>
-
-                                        {/* Meta: EAN with Copy functionality */}
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                onClick={() => copyToClipboard(item.ean, item.id)}
-                                                className="flex items-center gap-2 text-foreground/90 hover:brightness-110 px-2.5 py-1.5 rounded-lg border transition-all group/ean active:scale-95 shadow-sm"
-                                                style={{ 
-                                                    backgroundColor: `${getDeviceColor(item.deviceId)}15`, // 15 is hex for ~8% opacity
-                                                    borderColor: `${getDeviceColor(item.deviceId)}40`,     // 40 is hex for ~25% opacity
-                                                }}
-                                                title="Copiar EAN"
-                                            >
-                                                <span 
-                                                    className="text-[10px] font-bold uppercase tracking-widest border-r pr-2"
-                                                    style={{ borderColor: `${getDeviceColor(item.deviceId)}40` }}
-                                                >
-                                                    EAN
-                                                </span>
-                                                <span className="text-xs sm:text-sm font-mono tracking-wider font-medium">
-                                                    {item.ean}
-                                                </span>
-                                                {copiedId === item.id ? (
-                                                    <Check className="w-3.5 h-3.5 text-success animate-bounce-in" />
-                                                ) : (
-                                                    <Copy 
-                                                        className="w-3.5 h-3.5 opacity-40 group-hover/ean:opacity-100 transition-opacity"
-                                                        style={{ color: getDeviceColor(item.deviceId) }}
-                                                    />
-                                                )}
-                                            </button>
-
-                                            {(item.productName || '').startsWith('Producto ') ? (
-                                                <div className="ml-auto">
-                                                    <span className="text-[10px] text-destructive flex items-center gap-1.5 font-bold bg-destructive/10 px-2 py-1 rounded-full border border-destructive/20">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-destructive" />
-                                                        NO ENCONTRADO
-                                                    </span>
-                                                </div>
-                                            ) : item.synced === 0 && (
-                                                <div className="ml-auto">
-                                                    <span className="text-[10px] text-warning flex items-center gap-1.5 font-bold bg-warning/10 px-2 py-1 rounded-full border border-warning/20">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-warning animate-pulse" />
-                                                        SINCRONIZANDO
-                                                    </span>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Footer: Qty & Actions */}
-                                        <div className="flex items-center justify-between pt-3 mt-auto border-t border-border/30">
-                                            <div className="flex items-baseline gap-1.5">
-                                                <span className={cn(
-                                                    "text-3xl font-black tracking-tighter",
-                                                    item.quantity < 0 ? "text-destructive" : "text-foreground"
-                                                )}>
-                                                    {item.quantity}
-                                                </span>
-                                                <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em] opacity-80">
-                                                    unid.
-                                                </span>
-                                            </div>
-
-                                            <div className="flex flex-col items-end gap-1">
-                                                {item.deviceName && item.deviceName !== 'Generic Device' && (
-                                                    <span 
-                                                        className="text-[9px] font-bold uppercase tracking-tighter px-1.5 py-0.5 rounded border shadow-sm"
-                                                        style={{ 
-                                                            color: getDeviceColor(item.deviceId),
-                                                            backgroundColor: `${getDeviceColor(item.deviceId)}10`,
-                                                            borderColor: `${getDeviceColor(item.deviceId)}30`
-                                                        }}
-                                                    >
-                                                        PC: {item.deviceName.replace('dev-', '')}
-                                                    </span>
-                                                )}
-                                                <div className="flex items-center gap-1.5">
-                                                    <Button
-                                                        size="icon"
-                                                        variant="ghost"
-                                                        className="h-9 w-9 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-full transition-colors"
-                                                        onClick={() => handleStartEdit(item)}
-                                                    >
-                                                        <Pencil className="w-4.5 h-4.5" />
-                                                    </Button>
-                                                    <Button
-                                                        size="icon"
-                                                        variant="ghost"
-                                                        className="h-9 w-9 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full transition-colors"
-                                                        onClick={() => onDelete(item.id)}
-                                                        title="Eliminar"
-                                                    >
-                                                        <Trash2 className="w-4.5 h-4.5" />
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </Card>
-                            </motion.div>
+        <Frame className="w-full h-full flex flex-col border-none shadow-none rounded-none bg-transparent">
+            <FramePanel className="p-0 overflow-y-auto border-none flex-1">
+                <Table className="table-fixed border-separate border-spacing-0 w-full min-w-[600px]">
+                    <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-sm shadow-sm">
+                        {table.getHeaderGroups().map((headerGroup) => (
+                            <TableRow className="hover:bg-transparent border-none" key={headerGroup.id}>
+                                {headerGroup.headers.map((header) => {
+                                    const columnSize = header.column.getSize();
+                                    return (
+                                        <TableHead
+                                            key={header.id}
+                                            style={columnSize ? { width: `${columnSize}px` } : undefined}
+                                            className="h-10 border-b border-border/50 bg-transparent text-[11px] font-bold tracking-wider uppercase text-muted-foreground"
+                                        >
+                                            {header.isPlaceholder
+                                                ? null
+                                                : flexRender(
+                                                      header.column.columnDef.header,
+                                                      header.getContext()
+                                                  )}
+                                        </TableHead>
+                                    );
+                                })}
+                            </TableRow>
                         ))}
-                    </AnimatePresence>
+                    </TableHeader>
+                    <TableBody>
+                        <AnimatePresence>
+                            {table.getRowModel().rows.map((row) => (
+                                <TableRow
+                                    key={row.id}
+                                    className="transition-colors hover:bg-muted/30 border-b border-border/40 group relative"
+                                >
+                                    {row.getVisibleCells().map((cell) => (
+                                        <TableCell key={cell.id} className="py-2.5 align-middle">
+                                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                        </TableCell>
+                                    ))}
+                                </TableRow>
+                            ))}
+                        </AnimatePresence>
+                    </TableBody>
+                </Table>
+            </FramePanel>
+            
+            <FrameFooter className="p-2 border-t border-border/20 bg-card/80 backdrop-blur shrink-0 min-h-[50px] flex items-center">
+                <div className="flex items-center justify-between gap-2 w-full">
+                    {/* Search filter */}
+                    <InputGroup className="h-8 w-40 lg:w-52 bg-popover border-input shadow-xs shrink-0">
+                        <InputGroupAddon className="bg-transparent border-none">
+                            <SearchIcon className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
+                        </InputGroupAddon>
+                        <InputGroupInput
+                            aria-label="Buscar"
+                            placeholder="Buscar EAN o descripción..."
+                            type="search"
+                            value={searchTerm}
+                            onChange={(e) => {
+                                setSearchTerm(e.target.value);
+                                setPagination(prev => ({ ...prev, pageIndex: 0 }));
+                            }}
+                            className="bg-transparent border-none focus-visible:ring-0 text-xs h-full"
+                        />
+                    </InputGroup>
+
+                    <div className="flex items-center gap-2 whitespace-nowrap px-2">
+                        <p className="text-muted-foreground text-[13px]">Viendo</p>
+                        <Select
+                            items={Array.from({ length: table.getPageCount() }, (_, i) => {
+                                const start = i * table.getState().pagination.pageSize + 1;
+                                const end = Math.min(
+                                    (i + 1) * table.getState().pagination.pageSize,
+                                    table.getRowCount()
+                                );
+                                const pageNum = i + 1;
+                                return { label: `${start}-${end}`, value: pageNum.toString() };
+                            })}
+                            onValueChange={(value) => {
+                                table.setPageIndex((parseInt(value.toString())) - 1);
+                            }}
+                            value={(table.getState().pagination.pageIndex + 1).toString()}
+                        >
+                            <SelectTrigger
+                                aria-label="Seleccionar rango de resultados"
+                                className="w-fit"
+                                size="sm"
+                            >
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {Array.from({ length: table.getPageCount() }, (_, i) => {
+                                    const start = i * table.getState().pagination.pageSize + 1;
+                                    const end = Math.min(
+                                        (i + 1) * table.getState().pagination.pageSize,
+                                        table.getRowCount()
+                                    );
+                                    const pageNum = i + 1;
+                                    return (
+                                        <SelectItem key={pageNum} value={pageNum.toString()} className="text-xs">
+                                            {`${start}-${end}`}
+                                        </SelectItem>
+                                    );
+                                })}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-muted-foreground text-[13px]">
+                            de <strong className="font-medium text-foreground">{table.getRowCount()}</strong>
+                        </p>
+                    </div>
+
+                    <Pagination className="justify-end px-2">
+                        <PaginationContent>
+                            <PaginationItem>
+                                <PaginationPrevious
+                                    children="Ant."
+                                    className="sm:*:[svg]:hidden"
+                                    render={
+                                        <Button
+                                            disabled={!table.getCanPreviousPage()}
+                                            onClick={() => table.previousPage()}
+                                            size="sm"
+                                            variant="outline"
+                                            className="border-border/40 text-xs font-medium hover:bg-muted/50 h-8"
+                                        >
+                                            Ant.
+                                        </Button>
+                                    }
+                                />
+                            </PaginationItem>
+                            <PaginationItem>
+                                <PaginationNext
+                                    children="Sig."
+                                    className="sm:*:[svg]:hidden"
+                                    render={
+                                        <Button
+                                            disabled={!table.getCanNextPage()}
+                                            onClick={() => table.nextPage()}
+                                            size="sm"
+                                            variant="outline"
+                                            className="border-border/40 text-xs font-medium hover:bg-muted/50 h-8"
+                                        >
+                                            Sig.
+                                        </Button>
+                                    }
+                                />
+                            </PaginationItem>
+                        </PaginationContent>
+                    </Pagination>
                 </div>
-            </div>
+            </FrameFooter>
 
             {/* Dialog de edición */}
             <Dialog open={editingId !== null} onOpenChange={(open) => !open && handleCancelEdit()}>
@@ -215,38 +393,41 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
                     <DialogHeader>
                         <DialogTitle>Editar Cantidad</DialogTitle>
                     </DialogHeader>
-                    <div className="space-y-4 py-4">
+                    <div className="px-6 py-4">
                         <div>
                             <label className="text-sm font-medium text-foreground mb-2 block">
                                 Nueva cantidad
                             </label>
-                            <Input
-                                type="number"
-                                min="1"
+                            <NumberField
                                 value={editQuantity}
-                                onChange={(e) => setEditQuantity(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        handleSaveEdit();
-                                    }
-                                }}
-                                placeholder="Ingresa la cantidad"
-                                autoFocus
-                            />
+                                onValueChange={(val) => setEditQuantity(val ?? 1)}
+                                min={1}
+                                className="w-full relative"
+                            >
+                                <div className="relative">
+                                    <NumberFieldDecrement />
+                                    <NumberFieldInput
+                                        className="h-11 text-base font-semibold"
+                                        autoFocus
+                                        onKeyDown={(e: React.KeyboardEvent) => {
+                                            if (e.key === 'Enter') handleSaveEdit();
+                                        }}
+                                    />
+                                    <NumberFieldIncrement />
+                                </div>
+                            </NumberField>
                         </div>
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={handleCancelEdit}>
                             Cancelar
                         </Button>
-                        <Button onClick={handleSaveEdit} disabled={!editQuantity || parseInt(editQuantity) === 0}>
+                        <Button onClick={handleSaveEdit} disabled={editQuantity === 0}>
                             Guardar
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-
-            {/* Removed AlertDialog for instant delete */}
-        </>
+        </Frame>
     );
 }

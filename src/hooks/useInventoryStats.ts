@@ -12,7 +12,7 @@ export function useInventoryStats(items: CyclicItem[], initialCategory = "Medica
             // Filter by search term
             if (searchTerm) {
                 const search = searchTerm.toLowerCase();
-                if (!item.name.toLowerCase().includes(search) && !item.ean.includes(search)) {
+                if (!(item.name || '').toLowerCase().includes(search) && !(item.ean || '').includes(search)) {
                     return false;
                 }
             }

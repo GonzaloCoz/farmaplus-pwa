@@ -31,7 +31,9 @@ export function FramePanel({
   return (
     <div
       className={cn(
-        "relative rounded-xl border border-border/20 bg-background/50 bg-clip-padding p-5 shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
+        "relative rounded-xl border border-input bg-card bg-clip-padding p-5 shadow-sm shadow-black/5 transition-all dark:bg-input/20",
+        "before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit]",
+        "before:shadow-[0_1px_rgba(0,0,0,0.04)] dark:before:shadow-[0_-1px_rgba(255,255,255,0.06)]",
         className,
       )}
       data-slot="frame-panel"

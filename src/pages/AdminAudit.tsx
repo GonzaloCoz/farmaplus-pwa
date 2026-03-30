@@ -223,8 +223,8 @@ export default function AdminAudit() {
                 <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground ml-1">Sucursal</label>
                     <Select value={branchFilter} onValueChange={setBranchFilter}>
-                        <SelectTrigger className="bg-background/50 border-border/50 rounded-xl">
-                            <SelectValue placeholder="Todas las sucursales" />
+                        <SelectTrigger>
+                            <SelectValue>Todas las sucursales</SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">Todas las sucursales</SelectItem>
@@ -330,7 +330,7 @@ export default function AdminAudit() {
                                             </TableCell>
                                             <TableCell>
                                                 <Badge
-                                                    variant={log.action.includes('DELETE') || log.action.includes('REMOVE') || log.action.includes('PURGE') ? 'destructive-outline' : 'outline'}
+                                                    variant={log.action.includes('DELETE') || log.action.includes('REMOVE') || log.action.includes('PURGE') ? 'destructive' : 'outline'}
                                                     className="rounded-lg text-[10px] px-2 py-0 h-5 font-bold uppercase tracking-tight"
                                                 >
                                                     {getTranslatedAction(log.action)}

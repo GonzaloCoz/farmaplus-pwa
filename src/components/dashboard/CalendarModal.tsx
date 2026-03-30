@@ -297,7 +297,7 @@ export function CalendarModal({ open, onOpenChange, initialDate }: CalendarModal
                                             <label className="text-sm font-medium ml-1 text-muted-foreground">Sucursal</label>
                                             <Select value={formBranch} onValueChange={setFormBranch}>
                                                 <SelectTrigger className="bg-muted/30 border-border/50 focus:bg-background h-11 rounded-xl">
-                                                    <SelectValue placeholder="Seleccionar" />
+                                                    <SelectValue>Seleccionar</SelectValue>
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     {BRANCH_NAMES.map((branch) => (
@@ -312,7 +312,7 @@ export function CalendarModal({ open, onOpenChange, initialDate }: CalendarModal
                                             <label className="text-sm font-medium ml-1 text-muted-foreground">Sector</label>
                                             <Select value={formSector} onValueChange={setFormSector}>
                                                 <SelectTrigger className="bg-muted/30 border-border/50 focus:bg-background h-11 rounded-xl">
-                                                    <SelectValue placeholder="Seleccionar" />
+                                                    <SelectValue>Seleccionar</SelectValue>
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     {SECTORS.map((sector) => (

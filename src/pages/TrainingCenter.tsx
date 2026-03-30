@@ -14,7 +14,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/ui/menu";
 
 type SortOption = "newest" | "oldest" | "title-asc" | "title-desc";
 

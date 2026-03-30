@@ -100,7 +100,7 @@ const columns: ColumnDef<BranchSummary>[] = [
                 <div className="flex items-center justify-center h-full" onClick={(e) => e.stopPropagation()}>
                     <Checkbox
                         aria-label="Select all rows"
-                        checked={isAllSelected || (isSomeSelected && "indeterminate")}
+                        checked={isAllSelected ? true : isSomeSelected ? "indeterminate" as const : false}
                         onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
                     />
                 </div>
@@ -455,17 +455,16 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                         >
                             <SelectTrigger 
                                 aria-label="Select result range"
-                                className="w-fit h-8 min-w-[4.5rem] text-[13px] bg-background/50 border-border/20 px-2 rounded-lg"
+                                className="w-fit"
                                 size="sm"
                             >
                                 <SelectValue />
                             </SelectTrigger>
-                            <SelectContent className="min-w-[5rem] rounded-xl border-border/40 bg-background/95 backdrop-blur-xl">
+                            <SelectContent className="min-w-[5rem]">
                                 {pageRangeOptions.map((option) => (
                                     <SelectItem 
                                         key={option.value} 
                                         value={option.value}
-                                        className="text-[12px] font-medium"
                                     >
                                         {option.label}
                                     </SelectItem>

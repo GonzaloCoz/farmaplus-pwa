@@ -29,7 +29,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
   DropdownMenuLabel,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/ui/menu";
 import { useUser } from "@/contexts/UserContext";
 import { useNavigate } from "react-router-dom";
 

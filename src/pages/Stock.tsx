@@ -1,10 +1,9 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
-import { ClipboardList, Upload, AltArrowRight as ArrowRight, ClockCircle as Clock, Laptop, Smartphone } from '@solar-icons/react';
+import { AltArrowRight as ArrowRight, ClockCircle as Clock, Laptop, Smartphone } from '@solar-icons/react';
 import { ZebraIcon } from '@/components/icons/ZebraIcon';
 import { PageLayout } from '@/components/layout/PageLayout';
-import { PageHeader } from '@/components/layout/PageHeader';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 export default function Stock() {

@@ -10,6 +10,7 @@ import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { WindowRouter } from "@/components/WindowRouter";
 import { getTabMetaForPath } from "@/config/tabConfig";
+import { ScrollArea, ScrollAreaViewport, ScrollAreaScrollbar } from "@/components/ui/scroll-area";
 import { AppUpdater } from "@/components/AppUpdater";
 
 export function AppLayout() {
@@ -33,15 +34,16 @@ export function AppLayout() {
 
             {/* Main-content - Top-most Floating Dashboard Box */}
             <div className="flex-1 bg-[var(--layout-content)] lg:m-2.5 lg:rounded-[1.5rem] lg:shadow-md lg:border border-black/[0.03] dark:border-white/[0.03] overflow-hidden flex flex-col z-10 transition-all duration-300">
-              <main id="main-content" className="flex-1 overflow-y-auto w-full relative">
-                <div className="lg:hidden h-16" /> {/* Spacer for mobile TopAppBar */}
-                <div className="w-full h-full relative px-4 lg:px-0">
+              <ScrollArea id="main-content" className="flex-1 w-full relative h-full">
+                <ScrollAreaViewport className="w-full relative px-4 lg:px-0">
+                  <div className="lg:hidden h-16" /> {/* Spacer for mobile TopAppBar */}
+                  
                   {/* Render windows as isolated instances */}
                   {windows.map((win) => (
                     <div
                       key={win.id}
                       className={cn(
-                        "absolute inset-0 w-full h-full overflow-y-auto transition-opacity duration-300",
+                        "absolute inset-0 w-full h-full transition-opacity duration-300",
                         activeWindowId === win.id ? "opacity-100 z-10" : "opacity-0 pointer-events-none z-0"
                       )}
                     >
@@ -54,9 +56,10 @@ export function AppLayout() {
                   ))}
 
                   {/* Fallback for cases where no windows exist yet */}
-                  {windows.length === 0 && <Outlet />}
-                </div>
-              </main>
+                  {windows.length === 0 && <div className="p-4"><Outlet /></div>}
+                </ScrollAreaViewport>
+                <ScrollAreaScrollbar />
+              </ScrollArea>
             </div>
           </div>
 

@@ -71,7 +71,7 @@ export function AddEventDialog({ open, onOpenChange, onEventAdded }: AddEventDia
                         <Label htmlFor="branch">Sucursal</Label>
                         <Select value={branch} onValueChange={setBranch}>
                             <SelectTrigger>
-                                <SelectValue placeholder="Seleccionar sucursal" />
+                                <SelectValue>Seleccionar sucursal</SelectValue>
                             </SelectTrigger>
                             <SelectContent className="max-h-[200px]">
                                 {BRANCH_NAMES.map((b) => (
@@ -85,7 +85,7 @@ export function AddEventDialog({ open, onOpenChange, onEventAdded }: AddEventDia
                         <Label htmlFor="sector">Sector</Label>
                         <Select value={sector} onValueChange={setSector}>
                             <SelectTrigger>
-                                <SelectValue placeholder="Seleccionar sector" />
+                                <SelectValue>Seleccionar sector</SelectValue>
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="Farmacia">Farmacia</SelectItem>

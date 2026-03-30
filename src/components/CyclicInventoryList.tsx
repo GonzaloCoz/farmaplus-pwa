@@ -34,12 +34,15 @@ import { SwipeableItem } from './SwipeableItem';
 import { Calculator } from './Calculator';
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
+import { Field, FieldLabel, FieldError } from '@/components/ui/field';
+import { Form } from '@/components/ui/form';
 import {
     Dialog,
-    DialogContent,
+    DialogPopup,
     DialogHeader,
     DialogTitle,
     DialogFooter,
+    DialogClose,
 } from '@/components/ui/dialog';
 
 export interface CyclicItem {
@@ -512,7 +515,7 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
             </div>
 
             <Dialog open={editingId !== null} onOpenChange={(open) => !open && handleCancelEdit()}>
-                <DialogContent className="sm:max-w-md">
+                <DialogPopup className="sm:max-w-md">
                     <DialogHeader>
                         <DialogTitle>Editar Cantidad</DialogTitle>
                     </DialogHeader>
@@ -520,97 +523,95 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                         const currentItem = items.find(i => i.id === editingId);
                         if (!currentItem) return null;
                         return (
-                            <div className="space-y-4 py-4">
-                                <div className="p-3 bg-muted/30 rounded-lg border border-border">
-                                    <span className="font-mono text-xs text-muted-foreground">{currentItem.ean}</span>
-                                    <h4 className="font-semibold text-sm leading-tight mt-1">{currentItem.name}</h4>
-                                </div>
-                                <div className="flex gap-2 items-end">
-                                    <div className="flex-1">
-                                        <label className="text-sm font-medium text-foreground mb-2 block">
-                                            Nueva Cantidad Física
-                                        </label>
-                                        <Input
-                                            type="number"
-                                            min="0"
-                                            value={editQuantity}
-                                            onChange={(e) => setEditQuantity(e.target.value)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    // Validar motivo si está ajustado
-                                                    if (currentItem.status === 'adjusted' && !editReason.trim()) return;
-                                                    handleSaveEdit();
-                                                }
-                                            }}
-                                            placeholder="Ingresa la cantidad"
-                                            autoFocus
-                                        />
+                            <Form
+                                className="contents"
+                                onSubmit={(e) => {
+                                    e.preventDefault();
+                                    if (currentItem.status === 'adjusted' && !editReason.trim()) return;
+                                    handleSaveEdit();
+                                }}
+                            >
+                                <div className="px-6 py-4 flex flex-col gap-6">
+                                    <div className="p-3 bg-muted/30 rounded-xl border border-border/60">
+                                        <span className="font-mono text-xs text-muted-foreground">{currentItem.ean}</span>
+                                        <h4 className="font-semibold text-sm leading-tight mt-1">{currentItem.name}</h4>
                                     </div>
-                                    <Button
-                                        variant={showCalculator ? "secondary" : "outline"}
-                                        size="icon"
-                                        onClick={() => setShowCalculator(!showCalculator)}
-                                        title="Calculadora"
-                                    >
-                                        <CalculatorIcon className="w-4 h-4" />
+                                    <div className="flex gap-3 items-end">
+                                        <Field className="flex-1">
+                                            <FieldLabel>Nueva Cantidad Física</FieldLabel>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                value={editQuantity}
+                                                onChange={(e) => setEditQuantity(e.target.value)}
+                                                placeholder="Ej. 10"
+                                                autoFocus
+                                            />
+                                        </Field>
+                                        <Button
+                                            type="button"
+                                            variant={showCalculator ? "secondary" : "outline"}
+                                            size="icon"
+                                            onClick={() => setShowCalculator(!showCalculator)}
+                                            title="Calculadora"
+                                            className="h-10 w-10 shrink-0"
+                                        >
+                                            <CalculatorIcon className="w-5 h-5" />
+                                        </Button>
+                                    </div>
+
+                                    {currentItem.status === 'adjusted' && (
+                                        <Field>
+                                            <FieldLabel className="text-destructive">
+                                                Motivo de Re-ajuste <span className="text-destructive/80">*</span>
+                                            </FieldLabel>
+                                            <Input
+                                                value={editReason}
+                                                onChange={(e) => setEditReason(e.target.value)}
+                                                placeholder="Ej. Se encontraron 2 más en depósito..."
+                                                className="border-warning focus-visible:ring-warning"
+                                            />
+                                            {editReason.trim().length === 0 ? (
+                                                <FieldError className="text-warning flex items-center gap-1 mt-1">
+                                                    <AlertTriangle className="w-3 h-3" /> Requerido para modificar ítems ya ajustados.
+                                                </FieldError>
+                                            ) : null}
+                                        </Field>
+                                    )}
+
+                                    <AnimatePresence>
+                                        {showCalculator && (
+                                            <motion.div
+                                                initial={{ height: 0, opacity: 0 }}
+                                                animate={{ height: 'auto', opacity: 1 }}
+                                                exit={{ height: 0, opacity: 0 }}
+                                                className="overflow-hidden"
+                                            >
+                                                <Calculator
+                                                    onResult={handleCalculatorResult}
+                                                    onClose={() => setShowCalculator(false)}
+                                                />
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </div>
+                                <DialogFooter>
+                                    <DialogClose render={<Button type="button" variant="ghost" />}>
+                                        Cancelar
+                                    </DialogClose>
+                                    <Button type="submit">
+                                        Guardar
                                     </Button>
-                                </div>
-
-                                {currentItem.status === 'adjusted' && (
-                                    <div className="mt-4">
-                                        <label className="text-sm font-medium text-destructive mb-2 block">
-                                            Motivo de Re-ajuste *
-                                        </label>
-                                        <Input
-                                            value={editReason}
-                                            onChange={(e) => setEditReason(e.target.value)}
-                                            placeholder="Ej. Se encontraron 2 más en el depósito..."
-                                            className="border-warning focus-visible:ring-warning"
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter' && editReason.trim()) {
-                                                    handleSaveEdit();
-                                                }
-                                            }}
-                                        />
-                                        <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
-                                            <AlertTriangle className="w-3.5 h-3.5 text-warning" />
-                                            Requerido para modificar ítems ya ajustados.
-                                        </p>
-                                    </div>
-                                )}
-
-                        <AnimatePresence>
-                            {showCalculator && (
-                                <motion.div
-                                    initial={{ height: 0, opacity: 0 }}
-                                    animate={{ height: 'auto', opacity: 1 }}
-                                    exit={{ height: 0, opacity: 0 }}
-                                    className="overflow-hidden"
-                                >
-                                    <Calculator
-                                        onResult={handleCalculatorResult}
-                                        onClose={() => setShowCalculator(false)}
-                                    />
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
-                    );
+                                </DialogFooter>
+                            </Form>
+                        );
                     })()}
-                    <DialogFooter>
-                        <Button variant="outline" onClick={handleCancelEdit}>
-                            Cancelar
-                        </Button>
-                        <Button onClick={handleSaveEdit}>
-                            Guardar
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
+                </DialogPopup>
             </Dialog>
 
             {/* Bulk Confirmation Dialog */}
             <Dialog open={showBulkConfirm} onOpenChange={(open) => !open && setShowBulkConfirm(false)}>
-                <DialogContent className="sm:max-w-lg">
+                <DialogPopup className="sm:max-w-lg">
                     <DialogHeader>
                         <DialogTitle>Confirmar productos sin diferencia</DialogTitle>
                     </DialogHeader>
@@ -637,15 +638,15 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setShowBulkConfirm(false)}>
+                        <DialogClose render={<Button variant="outline" />}>
                             Cancelar
-                        </Button>
+                        </DialogClose>
                         <Button className="bg-success hover:bg-success/90 text-white gap-1.5" onClick={handleBulkConfirm}>
                             <CheckCircle className="w-4 h-4" />
                             Guardar ({selectedIds.size})
                         </Button>
                     </DialogFooter>
-                </DialogContent>
+                </DialogPopup>
             </Dialog>
         </Card>
     );

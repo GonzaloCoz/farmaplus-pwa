@@ -876,7 +876,7 @@ export default function Settings() {
                             <Label>Sucursal a actualizar</Label>
                             <Select value={selectedBranchImport} onValueChange={setSelectedBranchImport}>
                               <SelectTrigger>
-                                <SelectValue placeholder="Seleccionar sucursal..." />
+                                <SelectValue>Seleccionar sucursal...</SelectValue>
                               </SelectTrigger>
                               <SelectContent>
                                 {BRANCH_NAMES.map(name => (

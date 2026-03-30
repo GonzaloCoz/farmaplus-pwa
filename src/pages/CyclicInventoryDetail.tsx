@@ -1,11 +1,15 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from "framer-motion";
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { GradientButton } from '@/components/ui/gradient-button';
+import { Group, GroupSeparator } from '@/components/ui/group';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTab } from "@/components/ui/tabs";
+import { ScrollArea, ScrollAreaViewport, ScrollAreaScrollbar } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 import { 
     Upload, 
     Magnifer as Search, 
@@ -22,19 +26,29 @@ import {
     Danger as AlertTriangle
 } from "@solar-icons/react";
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+    InputGroup,
+    InputGroupAddon,
+    InputGroupInput,
+} from "@/components/ui/input-group";
+import {
+    Menu,
+    MenuPopup,
+    MenuItem,
+    MenuTrigger,
+} from "@/components/ui/menu";
 import { CyclicInventoryList } from '@/components/CyclicInventoryList';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
+import { Field, FieldLabel } from '@/components/ui/field';
+import { Form } from '@/components/ui/form';
 import {
     Dialog,
     DialogContent,
+    DialogPopup,
     DialogHeader,
     DialogTitle,
     DialogDescription,
+    DialogFooter,
+    DialogClose,
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Onboarding } from '@/components/Onboarding';
@@ -61,7 +75,6 @@ export default function CyclicInventoryDetail() {
     const navigate = useNavigate();
     const { activeWindowId, updateWindowMeta } = useWindowManager();
     const { user } = useUser();
-    const [isSearchExpanded, setIsSearchExpanded] = useState(false);
     const [activeTab, setActiveTab] = useState("pending");
 
     // Admin Mode State
@@ -186,6 +199,15 @@ export default function CyclicInventoryDetail() {
 
     return (
         <PageLayout className="pb-32 lg:pb-10">
+            {/* Hidden Input for Toolbar Excel Upload */}
+            <input
+                id="inventory-upload-hidden"
+                type="file"
+                accept=".xlsx, .xls"
+                className="hidden"
+                onChange={handleFileUpload}
+                disabled={isUploading || isSaving}
+            />
 
             {/* Loading State */}
             {isLoading ? (
@@ -209,7 +231,7 @@ export default function CyclicInventoryDetail() {
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             {/* Stats Cards */}
                             {/* 1. Enhanced Status Bar - Full Width Single Row */}
-                            <Card className="lg:col-span-3 min-h-[110px] mb-8 flex flex-col justify-center px-6 sm:px-8 bg-muted/20 border-muted/40 shadow-sm overflow-hidden">
+                            <Card className="lg:col-span-3 min-h-[110px] mb-4 flex flex-col justify-center px-6 sm:px-8 bg-muted/20 border-muted/40 shadow-sm overflow-hidden">
                                 <div className="flex items-center justify-between gap-4 w-full">
                                     {/* Left: Navigation + Lab Label + Name */}
                                     <div className="flex items-center gap-4 min-w-0">
@@ -297,374 +319,455 @@ export default function CyclicInventoryDetail() {
 
                             {/* Main Content */}
                             <div className="lg:col-span-3">
-                                {/* Toolbar & Categories - Sticky with Blur */}
-                                <div className="flex items-center justify-between sticky top-0 bg-[#f0eeef]/40 dark:bg-[#1a1a1a]/40 backdrop-blur-xl z-20 py-4 -mx-4 px-4 md:-mx-6 md:px-6 transition-all gap-4 mb-6">
+                                {/* Toolbar & Categories */}
+                                <div className="flex items-center justify-between gap-4 mb-4">
                                     {/* Categorías */}
-                                    <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar shrink-0">
-                                        {CATEGORIES.map(cat => (
-                                            <Button
-                                                key={cat}
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => setCurrentCategory(cat)}
-                                                className={cn(
-                                                    "whitespace-nowrap rounded-xl px-5 h-9 font-semibold transition-all",
-                                                    currentCategory === cat
-                                                        ? "bg-primary text-white shadow-sm dark:bg-white dark:text-black"
-                                                        : "text-muted-foreground hover:bg-white/50 dark:hover:bg-white/10 hover:text-foreground"
-                                                )}
-                                            >
-                                                {cat}
-                                            </Button>
-                                        ))}
-                                    </div>
+                                    <Group aria-label="Filtros de categoría" className="shrink-0 flex w-full md:w-fit overflow-x-auto no-scrollbar">
+                                        {CATEGORIES.map((cat, index) => {
+                                            const catCount = items.filter(i => {
+                                                if (i.status !== 'pending') return false;
+                                                const itemCat = i.category ? i.category.trim() : '';
+                                                const normalizedTarget = cat.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+                                                const normalizedItem = itemCat.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+                                                return normalizedItem === normalizedTarget;
+                                            }).length;
+
+                                            return (
+                                                <React.Fragment key={cat}>
+                                                    {index > 0 && <GroupSeparator />}
+                                                    <Button
+                                                        variant={currentCategory === cat ? "secondary" : "outline"}
+                                                        size="lg"
+                                                        onClick={() => setCurrentCategory(cat)}
+                                                        className={cn(
+                                                            "whitespace-nowrap font-semibold transition-all px-6 flex-1 md:flex-none",
+                                                            currentCategory === cat ? "opacity-100" : "opacity-80 hover:opacity-100"
+                                                        )}
+                                                    >
+                                                        {cat}
+                                                        <Badge className="ml-2 rounded-full px-2" variant={currentCategory === cat ? "secondary" : "outline"}>
+                                                            {catCount}
+                                                        </Badge>
+                                                    </Button>
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                    </Group>
 
                                     {/* Toolbar de Acciones */}
-                                    <div className="flex items-center gap-1.5 flex-1 justify-end">
-                                        {/* Barra de búsqueda expandible */}
-                                        <div className="flex items-center">
-                                            <motion.div
-                                                initial={false}
-                                                animate={{ 
-                                                    width: isSearchExpanded ? (window.innerWidth < 768 ? '160px' : '240px') : '36px',
-                                                    opacity: 1
-                                                }}
-                                                className="relative flex items-center h-9 bg-white/40 dark:bg-[#2a2a2a]/40 rounded-xl border-none overflow-hidden"
-                                            >
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-9 w-9 shrink-0 hover:bg-white dark:hover:bg-white/10 transition-colors"
-                                                    onClick={() => setIsSearchExpanded(!isSearchExpanded)}
-                                                >
-                                                    <Search className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-                                                </Button>
-                                                <input
-                                                    type="text"
+                                    <div className="flex items-center gap-3 flex-1 justify-end">
+                                        {/* Barra de búsqueda fija como InputGroup */}
+                                        <div className="flex-1 max-w-[240px] md:max-w-xs transition-all">
+                                            <InputGroup className="h-10 w-full bg-popover border-input shadow-xs">
+                                                <InputGroupAddon className="bg-transparent border-none">
+                                                    <Search className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                                                </InputGroupAddon>
+                                                <InputGroupInput 
+                                                    aria-label="Search" 
+                                                    placeholder="Buscar por nombre..." 
+                                                    type="search"
                                                     value={searchTerm}
                                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                                    placeholder="Buscar por nombre o EAN..."
-                                                    className={cn(
-                                                        "bg-transparent border-none focus:outline-none text-sm w-full pr-3 transition-opacity duration-300",
-                                                        isSearchExpanded ? "opacity-100" : "opacity-0 pointer-events-none"
-                                                    )}
+                                                    className="bg-transparent border-none focus-visible:ring-0 text-sm h-full"
                                                 />
-                                            </motion.div>
+                                            </InputGroup>
                                         </div>
 
-                                        {/* Botón Solo Diferencias */}
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => setShowDifferencesOnly(!showDifferencesOnly)}
-                                            className={cn(
-                                                "h-9 w-9 rounded-xl transition-all",
-                                                showDifferencesOnly 
-                                                    ? "bg-primary text-white dark:bg-white dark:text-black shadow-sm" 
-                                                    : "bg-white/40 dark:bg-[#2a2a2a]/40 text-muted-foreground hover:bg-white/60 dark:hover:bg-white/10 hover:text-foreground"
-                                            )}
-                                            title="Solo Diferencias"
-                                        >
-                                            <DiffIcon className="w-4 h-4" />
-                                        </Button>
+                                        <Group aria-label="Acciones de tabla" className="shrink-0">
+                                            {/* Botón Solo Diferencias */}
+                                            <Button
+                                                variant={showDifferencesOnly ? "secondary" : "outline"}
+                                                size="icon"
+                                                onClick={() => setShowDifferencesOnly(!showDifferencesOnly)}
+                                                title="Solo Diferencias"
+                                            >
+                                                <DiffIcon className="w-4 h-4" />
+                                            </Button>
 
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl bg-white/40 dark:bg-[#2a2a2a]/40 group">
-                                                    <Filter className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-                                                </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end" className="w-48 rounded-xl p-1">
-                                                <DropdownMenuItem onClick={() => setSortBy('name-asc')} className="rounded-lg text-xs font-semibold">
-                                                    Nombre (A-Z)
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => setSortBy('name-desc')} className="rounded-lg text-xs font-semibold">
-                                                    Nombre (Z-A)
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => setSortBy('value-asc')} className="rounded-lg text-xs font-semibold">
-                                                    Valor (Menor a Mayor)
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => setSortBy('value-desc')} className="rounded-lg text-xs font-semibold">
-                                                    Valor (Mayor a Menor)
-                                                </DropdownMenuItem>
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
+                                            <GroupSeparator />
 
-                                        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl bg-white/40 dark:bg-[#2a2a2a]/40 group">
-                                            <MoreVertical className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-                                        </Button>
+                                            <Menu>
+                                                <MenuTrigger render={
+                                                    <Button variant="outline" size="icon" className="group">
+                                                        <Filter className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                                                    </Button>
+                                                } />
+                                                <MenuPopup align="end" className="w-48 rounded-xl p-1">
+                                                    <MenuItem onClick={() => setSortBy('name-asc')} className="rounded-lg text-xs font-semibold">
+                                                        Nombre (A-Z)
+                                                    </MenuItem>
+                                                    <MenuItem onClick={() => setSortBy('name-desc')} className="rounded-lg text-xs font-semibold">
+                                                        Nombre (Z-A)
+                                                    </MenuItem>
+                                                    <MenuItem onClick={() => setSortBy('value-asc')} className="rounded-lg text-xs font-semibold">
+                                                        Valor (Menor a Mayor)
+                                                    </MenuItem>
+                                                    <MenuItem onClick={() => setSortBy('value-desc')} className="rounded-lg text-xs font-semibold">
+                                                        Valor (Mayor a Menor)
+                                                    </MenuItem>
+                                                </MenuPopup>
+                                            </Menu>
+
+                                            <GroupSeparator />
+
+                                            <Button variant="outline" size="icon" className="group">
+                                                <MoreVertical className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                                            </Button>
+                                        </Group>
                                     </div>
                                 </div>
+                                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full shrink-0">
+                                    {/* Row 2: Tabs + Actions Wrapper */}
+                                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                                                <Group aria-label="Filtros de estado" className="shrink-0 flex w-full md:w-fit overflow-x-auto no-scrollbar">
+                                                    <Button
+                                                        variant={activeTab === "pending" ? "secondary" : "outline"}
+                                                        size="lg"
+                                                        onClick={() => setActiveTab("pending")}
+                                                        className={cn(
+                                                            "whitespace-nowrap font-semibold transition-all px-6 flex-1 md:flex-none",
+                                                            activeTab === "pending" ? "opacity-100" : "opacity-80 hover:opacity-100"
+                                                        )}
+                                                    >
+                                                        Pendientes
+                                                        {pendingItems.length > 0 && (
+                                                            <Badge className="ml-2 rounded-full px-2" variant={activeTab === "pending" ? "secondary" : "outline"}>
+                                                                {pendingItems.length}
+                                                            </Badge>
+                                                        )}
+                                                    </Button>
+                                                    <GroupSeparator />
 
-                                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full transition-all duration-500">
-                                    <TabsList className="grid w-full grid-cols-4 mb-6 p-1 bg-muted/20 rounded-2xl h-14 border border-muted/40">
-                                        <TabsTrigger
-                                            value="pending"
-                                            className="relative rounded-xl transition-all duration-300 data-[selected]:bg-background data-[selected]:shadow-sm data-[selected]:scale-[0.98] h-full"
-                                        >
-                                            <span className="font-bold">Pendientes</span>
-                                            {pendingItems.length > 0 && (
-                                                <span className="ml-2 bg-warning text-warning-foreground text-[10px] px-2 py-0.5 rounded-full font-black animate-pulse">
-                                                    {pendingItems.length}
-                                                </span>
-                                            )}
-                                        </TabsTrigger>
-                                        <TabsTrigger
-                                            value="controlled"
-                                            className="relative rounded-xl transition-all duration-300 data-[selected]:bg-background data-[selected]:shadow-sm data-[selected]:scale-[0.98] h-full"
-                                        >
-                                            <span className="font-bold">Controlados</span>
-                                            {controlledItems.length > 0 && (
-                                                <span className="ml-2 bg-success text-success-foreground text-[10px] px-2 py-0.5 rounded-full font-black">
-                                                    {controlledItems.length}
-                                                </span>
-                                            )}
-                                        </TabsTrigger>
-                                        <TabsTrigger
-                                            value="adjusted"
-                                            className="relative rounded-xl transition-all duration-300 data-[selected]:bg-background data-[selected]:shadow-sm data-[selected]:scale-[0.98] h-full"
-                                        >
-                                            <span className="font-bold">Ajustados</span>
-                                            {adjustedItems.length > 0 && (
-                                                <span className="ml-2 bg-blue-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black">
-                                                    {adjustedItems.length}
-                                                </span>
-                                            )}
-                                        </TabsTrigger>
-                                        <TabsTrigger
-                                            value="history"
-                                            className="relative rounded-xl transition-all duration-300 data-[selected]:bg-background data-[selected]:shadow-sm data-[selected]:scale-[0.98] h-full"
-                                        >
-                                            <span className="font-bold">Historial</span>
-                                            {history.length > 0 && (
-                                                <span className="ml-2 bg-muted-foreground text-background text-[10px] px-2 py-0.5 rounded-full font-black opacity-60">
-                                                    {history.length}
-                                                </span>
-                                            )}
-                                        </TabsTrigger>
-                                    </TabsList>
+                                                    <Button
+                                                        variant={activeTab === "controlled" ? "secondary" : "outline"}
+                                                        size="lg"
+                                                        onClick={() => setActiveTab("controlled")}
+                                                        className={cn(
+                                                            "whitespace-nowrap font-semibold transition-all px-6 flex-1 md:flex-none",
+                                                            activeTab === "controlled" ? "opacity-100" : "opacity-80 hover:opacity-100"
+                                                        )}
+                                                    >
+                                                        Controlados
+                                                        {controlledItems.length > 0 && (
+                                                            <Badge className="ml-2 rounded-full px-2" variant={activeTab === "controlled" ? "secondary" : "outline"}>
+                                                                {controlledItems.length}
+                                                            </Badge>
+                                                        )}
+                                                    </Button>
+                                                    <GroupSeparator />
 
-                                    <TabsContent value="pending" className="space-y-4">
-                                        {pendingItems.length === 0 && controlledItems.length === 0 && (
-                                            <Card className="p-12 border-dashed border-2 flex flex-col items-center justify-center text-center space-y-4 bg-muted/10 my-4 animate-in fade-in zoom-in duration-500 rounded-3xl">
-                                                <div className="p-4 bg-primary/10 rounded-full">
-                                                    <Upload className="w-8 h-8 text-primary" />
-                                                </div>
-                                                
-                                                {history.length === 0 ? (
-                                                    // Initial Opening State
-                                                    <>
-                                                        <div>
-                                                            <h3 className="text-lg font-semibold">Cargar Archivo de Inventario</h3>
-                                                            <p className="text-muted-foreground max-w-sm mx-auto mt-1">
-                                                                Sube el archivo Excel (.xlsx) descargado del sistema para comenzar el control de {labName}.
-                                                            </p>
+                                                    <Button
+                                                        variant={activeTab === "adjusted" ? "secondary" : "outline"}
+                                                        size="lg"
+                                                        onClick={() => setActiveTab("adjusted")}
+                                                        className={cn(
+                                                            "whitespace-nowrap font-semibold transition-all px-6 flex-1 md:flex-none",
+                                                            activeTab === "adjusted" ? "opacity-100" : "opacity-80 hover:opacity-100"
+                                                        )}
+                                                    >
+                                                        Ajustados
+                                                        {adjustedItems.length > 0 && (
+                                                            <Badge className="ml-2 rounded-full px-2 shadow-xs" variant={activeTab === "adjusted" ? "secondary" : "outline"}>
+                                                                {adjustedItems.length}
+                                                            </Badge>
+                                                        )}
+                                                    </Button>
+                                                    <GroupSeparator />
+
+                                                    <Button
+                                                        variant={activeTab === "history" ? "secondary" : "outline"}
+                                                        size="lg"
+                                                        onClick={() => setActiveTab("history")}
+                                                        className={cn(
+                                                            "whitespace-nowrap font-semibold transition-all px-6 flex-1 md:flex-none",
+                                                            activeTab === "history" ? "opacity-100" : "opacity-80 hover:opacity-100"
+                                                        )}
+                                                    >
+                                                        Historial
+                                                        {history.length > 0 && (
+                                                            <Badge className="ml-2 rounded-full px-2 shadow-xs" variant={activeTab === "history" ? "secondary" : "outline"}>
+                                                                {history.length}
+                                                            </Badge>
+                                                        )}
+                                                    </Button>
+                                                </Group>
+
+                                        {/* Row 2 Actions (Right) */}
+                                        <div className="flex items-center gap-3 self-end md:self-auto">
+                                            {/* Action Group: Cargar Excel & Reiniciar - same pattern as Row 1 filter group */}
+                                            <Group className="shrink-0">
+                                                <Button
+                                                    variant="outline"
+                                                    size="icon"
+                                                    onClick={() => document.getElementById('inventory-upload-hidden')?.click()}
+                                                    disabled={isUploading || isSaving}
+                                                    className="group"
+                                                    title="Cargar Excel"
+                                                >
+                                                    <Upload className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                                                </Button>
+                                                <GroupSeparator />
+                                                <Button
+                                                    variant="outline"
+                                                    size="icon"
+                                                    onClick={handleResetData}
+                                                    disabled={isUploading || isSaving}
+                                                    className="group"
+                                                    title="Reiniciar"
+                                                >
+                                                    <RotateCcw className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                                                </Button>
+                                            </Group>
+
+                                            {/* Finalizar Button */}
+                                            <GradientButton
+                                                onClick={handleFinalizeClick}
+                                                disabled={isSaving || (pendingItems.length === 0 && controlledItems.length === 0 && adjustedItems.length === 0)}
+                                                className="h-10 whitespace-nowrap"
+                                            >
+                                                <CheckCircle className="w-4 h-4" />
+                                                Finalizar
+                                            </GradientButton>
+                                        </div>
+                                    </div>
+                                    <ScrollArea className="flex-1 -mx-4 px-4 overflow-hidden">
+                                        <ScrollAreaViewport className="pb-8">
+                                            <TabsContent value="pending" className="space-y-4 pt-4">
+                                                {pendingItems.length === 0 && controlledItems.length === 0 && (
+                                                    <Card className="p-12 border-dashed border-2 flex flex-col items-center justify-center text-center space-y-4 bg-muted/10 my-4 animate-in fade-in zoom-in duration-500 rounded-3xl">
+                                                        <div className="p-4 bg-primary/10 rounded-full">
+                                                            <Upload className="w-8 h-8 text-primary" />
                                                         </div>
-                                                        <div className="relative">
-                                                            <Button disabled={isUploading} className="rounded-full px-8">
-                                                                {isUploading ? 'Procesando...' : 'Seleccionar Archivo'}
-                                                            </Button>
-                                                            <Input
-                                                                type="file"
-                                                                accept=".xlsx, .xls"
-                                                                className="absolute inset-0 opacity-0 cursor-pointer"
-                                                                onChange={handleFileUpload}
-                                                                disabled={isUploading}
-                                                            />
-                                                        </div>
-                                                        <p className="text-[10px] text-muted-foreground mt-4 opacity-70 uppercase tracking-tighter">
-                                                            Columnas requeridas: C (EAN), D (Producto), E (Cantidad), K (Costo), J (Rubro), O (Laboratorio)
-                                                        </p>
-                                                    </>
-                                                ) : (
-                                                    // New Cycle State
-                                                    <>
-                                                        <div>
-                                                            <h3 className="text-lg font-semibold">Cargar Nuevo Ciclo</h3>
-                                                            <p className="text-muted-foreground max-w-sm mx-auto mt-1">
-                                                                No hay ítems para contar en este laboratorio. Cargá un nuevo Excel para iniciar el siguiente ciclo.
-                                                            </p>
-                                                        </div>
-                                                        <div className="relative">
-                                                            <Button disabled={isUploading} className="rounded-full px-8">
-                                                                {isUploading ? 'Procesando...' : 'Cargar Excel de Sistema'}
-                                                            </Button>
-                                                            <Input
-                                                                type="file"
-                                                                accept=".xlsx, .xls"
-                                                                className="absolute inset-0 opacity-0 cursor-pointer"
-                                                                onChange={handleFileUpload}
-                                                                disabled={isUploading}
-                                                            />
-                                                        </div>
-                                                    </>
-                                                )}
-                                            </Card>
-                                        )}
-
-                                        {pendingItems.length > 0 && (
-                                            <Alert className="bg-muted/10 border-muted/20 mb-4 rounded-2xl py-3 shadow-none">
-                                                <Info className="h-4 w-4 text-primary" />
-                                                <AlertDescription className="text-sm font-medium text-muted-foreground ml-2">
-                                                    Desliza a la derecha para confirmar (verde) o a la izquierda para reportar diferencia (naranja).
-                                                </AlertDescription>
-                                            </Alert>
-                                        )}
-                                        
-                                        {shouldHidePendings && (
-                                            <Alert className="bg-primary/10 border-primary/20 mb-4 rounded-2xl py-3 shadow-none">
-                                                <Info className="h-4 w-4 text-primary" />
-                                                <AlertDescription className="text-sm font-medium text-primary/80 ml-2">
-                                                    <strong>Vista de Cierre:</strong> Los productos pendientes están ocultos para mantener el laboratorio limpio. Se volverán a activar automáticamente cuando cargues un nuevo Excel.
-                                                </AlertDescription>
-                                            </Alert>
-                                        )}
-
-                                        {!isExcelUploaded && adjustedItems.length > 0 && (
-                                            <Alert className="bg-warning/10 border-warning/20 mb-4 rounded-2xl py-3 shadow-none">
-                                                <AlertTriangle className="h-4 w-4 text-warning" />
-                                                <AlertDescription className="text-sm font-medium text-warning/80 ml-2">
-                                                    <strong>Regla de Re-ajuste:</strong> Para modificar productos ya finalizados, debes cargar el Excel de sistema más reciente.
-                                                </AlertDescription>
-                                            </Alert>
-                                        )}
-
-                                        <CyclicInventoryList
-                                            items={getSortedItems(pendingItems)}
-                                            onUpdateQuantity={handleUpdateQuantity}
-                                            onCheck={handleCheck}
-                                            onBulkCheck={handleBulkCheck}
-                                            isPending={true}
-                                            isExcelUploaded={isExcelUploaded}
-                                        />
-                                    </TabsContent>
-
-                                    <TabsContent value="controlled" className="space-y-4">
-                                        <CyclicInventoryList
-                                            items={getSortedItems(controlledItems)}
-                                            onUpdateQuantity={handleUpdateQuantity}
-                                            onCheck={handleCheck}
-                                            onBulkCheck={handleBulkCheck}
-                                            onRevert={handleRevertItem}
-                                            readOnly={false}
-                                            isExcelUploaded={isExcelUploaded}
-                                        />
-                                    </TabsContent>
-
-                                    <TabsContent value="adjusted" className="space-y-4">
-                                        <CyclicInventoryList
-                                            items={getSortedItems(adjustedItems)}
-                                            onUpdateQuantity={handleUpdateQuantity}
-                                            onCheck={() => { }} // No check needed for adjusted
-                                            onBulkCheck={handleBulkCheck}
-                                            readOnly={false} // Enable editing for readjustments
-                                            isExcelUploaded={isExcelUploaded}
-                                        />
-                                    </TabsContent>
-
-                                    <TabsContent value="history" className="space-y-4">
-                                        {history.length === 0 ? (
-                                            <div className="text-center py-8 text-muted-foreground bg-muted/20 rounded-lg border-dashed border-2">
-                                                No hay historial de ajustes para este laboratorio.
-                                            </div>
-                                        ) : (
-                                            <div className="space-y-4">
-                                                {history.map((h: any) => (
-                                                    <Card key={h.id} className="p-4 flex flex-col gap-2">
-                                                        <div className="flex justify-between items-start">
-                                                            <div>
-                                                                <p className="text-sm font-bold text-primary">
-                                                                    {new Date(h.created_at).toLocaleDateString()} {new Date(h.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        
+                                                        {history.length === 0 ? (
+                                                            // Initial Opening State
+                                                            <>
+                                                                <div>
+                                                                    <h3 className="text-lg font-semibold">Cargar Archivo de Inventario</h3>
+                                                                    <p className="text-muted-foreground max-w-sm mx-auto mt-1">
+                                                                        Sube el archivo Excel (.xlsx) descargado del sistema para comenzar el control de {labName}.
+                                                                    </p>
+                                                                </div>
+                                                                <div className="relative">
+                                                                    <Button disabled={isUploading} className="rounded-full px-8">
+                                                                        {isUploading ? 'Procesando...' : 'Seleccionar Archivo'}
+                                                                    </Button>
+                                                                    <Input
+                                                                        type="file"
+                                                                        accept=".xlsx, .xls"
+                                                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                                                        onChange={handleFileUpload}
+                                                                        disabled={isUploading}
+                                                                    />
+                                                                </div>
+                                                                <p className="text-[10px] text-muted-foreground mt-4 opacity-70 uppercase tracking-tighter">
+                                                                    Columnas requeridas: C (EAN), D (Producto), E (Cantidad), K (Costo), J (Rubro), O (Laboratorio)
                                                                 </p>
-                                                                <div className="flex gap-2 items-center">
-                                                                    <p className="text-xs text-muted-foreground">Por: {h.user_name || 'Desconocido'}</p>
-                                                                    {h.category && (
-                                                                        <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold">
-                                                                            {h.category}
-                                                                        </span>
-                                                                    )}
+                                                            </>
+                                                        ) : (
+                                                            // New Cycle State
+                                                            <>
+                                                                <div>
+                                                                    <h3 className="text-lg font-semibold">Cargar Nuevo Ciclo</h3>
+                                                                    <p className="text-muted-foreground max-w-sm mx-auto mt-1">
+                                                                        No hay ítems para contar en este laboratorio. Cargá un nuevo Excel para iniciar el siguiente ciclo.
+                                                                    </p>
                                                                 </div>
-                                                            </div>
-                                                            <div className="text-right">
-                                                                <div className="text-xs font-mono bg-muted px-2 py-1 rounded">
-                                                                    {h.total_units_adjusted} items
+                                                                <div className="relative">
+                                                                    <Button disabled={isUploading} className="rounded-full px-8">
+                                                                        {isUploading ? 'Procesando...' : 'Cargar Excel de Sistema'}
+                                                                    </Button>
+                                                                    <Input
+                                                                        type="file"
+                                                                        accept=".xlsx, .xls"
+                                                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                                                        onChange={handleFileUpload}
+                                                                        disabled={isUploading}
+                                                                    />
                                                                 </div>
-                                                            </div>
-                                                        </div>
-                                                        <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
-                                                            <div className="bg-destructive/10 p-2 rounded border border-destructive/20">
-                                                                <span className="font-semibold text-destructive block">Faltantes</span>
-                                                                ID: {h.adjustment_id_shortage || '-'}
-                                                                <div className="font-mono mt-1">${(Number(h.shortage_value ?? h.total_shortage_value) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
-                                                            </div>
-                                                            <div className="bg-success/10 p-2 rounded border border-success/20">
-                                                                <span className="font-semibold text-success block">Sobrantes</span>
-                                                                ID: {h.adjustment_id_surplus || '-'}
-                                                                <div className="font-mono mt-1">${(Number(h.surplus_value ?? h.total_surplus_value) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
-                                                            </div>
-                                                        </div>
+                                                            </>
+                                                        )}
                                                     </Card>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </TabsContent>
+                                                )}
+
+                                                {pendingItems.length > 0 && (
+                                                    <Alert className="bg-muted/10 border-muted/20 mb-4 rounded-2xl py-3 shadow-none">
+                                                        <Info className="h-4 w-4 text-primary" />
+                                                        <AlertDescription className="text-sm font-medium text-muted-foreground ml-2">
+                                                            Desliza a la derecha para confirmar (verde) o a la izquierda para reportar diferencia (naranja).
+                                                        </AlertDescription>
+                                                    </Alert>
+                                                )}
+                                                
+                                                {shouldHidePendings && (
+                                                    <Alert className="bg-primary/10 border-primary/20 mb-4 rounded-2xl py-3 shadow-none">
+                                                        <Info className="h-4 w-4 text-primary" />
+                                                        <AlertDescription className="text-sm font-medium text-primary/80 ml-2">
+                                                            <strong>Vista de Cierre:</strong> Los productos pendientes están ocultos para mantener el laboratorio limpio. Se volverán a activar automáticamente cuando cargues un nuevo Excel.
+                                                        </AlertDescription>
+                                                    </Alert>
+                                                )}
+
+                                                {!isExcelUploaded && adjustedItems.length > 0 && (
+                                                    <Alert className="bg-warning/10 border-warning/20 mb-4 rounded-2xl py-3 shadow-none">
+                                                        <AlertTriangle className="h-4 w-4 text-warning" />
+                                                        <AlertDescription className="text-sm font-medium text-warning/80 ml-2">
+                                                            <strong>Regla de Re-ajuste:</strong> Para modificar productos ya finalizados, debes cargar el Excel de sistema más reciente.
+                                                        </AlertDescription>
+                                                    </Alert>
+                                                )}
+
+                                                <CyclicInventoryList
+                                                    items={getSortedItems(pendingItems)}
+                                                    onUpdateQuantity={handleUpdateQuantity}
+                                                    onCheck={handleCheck}
+                                                    onBulkCheck={handleBulkCheck}
+                                                    isPending={true}
+                                                    isExcelUploaded={isExcelUploaded}
+                                                />
+                                            </TabsContent>
+
+                                            <TabsContent value="controlled" className="space-y-4 pt-4">
+                                                <CyclicInventoryList
+                                                    items={getSortedItems(controlledItems)}
+                                                    onUpdateQuantity={handleUpdateQuantity}
+                                                    onCheck={handleCheck}
+                                                    onBulkCheck={handleBulkCheck}
+                                                    onRevert={handleRevertItem}
+                                                    readOnly={false}
+                                                    isExcelUploaded={isExcelUploaded}
+                                                />
+                                            </TabsContent>
+
+                                            <TabsContent value="adjusted" className="space-y-4 pt-4">
+                                                <CyclicInventoryList
+                                                    items={getSortedItems(adjustedItems)}
+                                                    onUpdateQuantity={handleUpdateQuantity}
+                                                    onCheck={() => { }} // No check needed for adjusted
+                                                    onBulkCheck={handleBulkCheck}
+                                                    readOnly={false} // Enable editing for readjustments
+                                                    isExcelUploaded={isExcelUploaded}
+                                                />
+                                            </TabsContent>
+
+                                            <TabsContent value="history" className="space-y-4 pt-4">
+                                                {history.length === 0 ? (
+                                                    <div className="text-center py-8 text-muted-foreground bg-muted/20 rounded-lg border-dashed border-2">
+                                                        No hay historial de ajustes para este laboratorio.
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-4">
+                                                        {history.map((h: any) => (
+                                                            <Card key={h.id} className="p-4 flex flex-col gap-2 border shadow-xs/5 rounded-2xl">
+                                                                <div className="flex justify-between items-start">
+                                                                    <div>
+                                                                        <p className="text-sm font-bold text-primary">
+                                                                            {new Date(h.created_at).toLocaleDateString()} {new Date(h.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                        </p>
+                                                                        <div className="flex gap-2 items-center">
+                                                                            <p className="text-xs text-muted-foreground">Por: {h.user_name || 'Desconocido'}</p>
+                                                                            {h.category && (
+                                                                                <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold">
+                                                                                    {h.category}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="text-right">
+                                                                        <div className="text-xs font-mono bg-muted px-2 py-1 rounded">
+                                                                            {h.total_units_adjusted} items
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                                                                    <div className="bg-destructive/10 p-2 rounded border border-destructive/20">
+                                                                        <span className="font-semibold text-destructive block">Faltantes</span>
+                                                                        ID: {h.adjustment_id_shortage || '-'}
+                                                                        <div className="font-mono mt-1">${(Number(h.shortage_value ?? h.total_shortage_value) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
+                                                                    </div>
+                                                                    <div className="bg-success/10 p-2 rounded border border-success/20">
+                                                                        <span className="font-semibold text-success block">Sobrantes</span>
+                                                                        ID: {h.adjustment_id_surplus || '-'}
+                                                                        <div className="font-mono mt-1">${(Number(h.surplus_value ?? h.total_surplus_value) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</div>
+                                                                    </div>
+                                                                </div>
+                                                            </Card>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </TabsContent>
+                                        </ScrollAreaViewport>
+                                        <ScrollAreaScrollbar />
+                                    </ScrollArea>
                                 </Tabs>
+                                </div>
                             </div>
-                        </div>
-                </>
-            )}
+                        </>
+                    )}
 
             {/* Save Dialog */}
             <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
-                <DialogContent>
+                <DialogPopup>
                     <DialogHeader>
                         <DialogTitle>Finalizar Inventario</DialogTitle>
                         <DialogDescription id="finalize-dialog-description">
                             Confirma los valores de ajuste para finalizar el control de este laboratorio.
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="py-4 space-y-6">
-                        {/* Shortages Section */}
-                        <div className="space-y-2 p-4 bg-destructive/5 rounded-lg border border-destructive/10">
-                            <div className="flex justify-between items-center">
-                                <Label className="text-destructive font-bold">Faltantes (Negativos)</Label>
-                                <span className="font-mono font-bold text-destructive">
-                                    ${shortageValue.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                                </span>
+                    <Form 
+                        className="contents" 
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            handleSaveInventory();
+                        }}
+                    >
+                        <div className="px-6 py-4 flex flex-col gap-6">
+                            {/* Shortages Section */}
+                            <div className="space-y-3 p-4 bg-destructive/5 rounded-2xl border border-destructive/10">
+                                <div className="flex justify-between items-center">
+                                    <Label className="text-destructive font-bold">Faltantes (Negativos)</Label>
+                                    <span className="font-mono font-bold text-destructive">
+                                        ${shortageValue.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                    </span>
+                                </div>
+                                <Field>
+                                    <Input
+                                        value={shortageId}
+                                        onChange={(e) => setShortageId(e.target.value)}
+                                        placeholder="ID Ajuste Faltantes (PLEX)"
+                                    />
+                                </Field>
                             </div>
-                            <Input
-                                value={shortageId}
-                                onChange={(e) => setShortageId(e.target.value)}
-                                placeholder="ID Ajuste Faltantes (PLEX)"
-                            />
+
+                            {/* Surpluses Section */}
+                            <div className="space-y-3 p-4 bg-success/5 rounded-2xl border border-success/10">
+                                <div className="flex justify-between items-center">
+                                    <Label className="text-success font-bold">Sobrantes (Positivos)</Label>
+                                    <span className="font-mono font-bold text-success">
+                                        ${surplusValue.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                    </span>
+                                </div>
+                                <Field>
+                                    <Input
+                                        value={surplusId}
+                                        onChange={(e) => setSurplusId(e.target.value)}
+                                        placeholder="ID Ajuste Sobrantes (PLEX)"
+                                    />
+                                </Field>
+                            </div>
                         </div>
 
-                        {/* Surpluses Section */}
-                        <div className="space-y-2 p-4 bg-success/5 rounded-lg border border-success/10">
-                            <div className="flex justify-between items-center">
-                                <Label className="text-success font-bold">Sobrantes (Positivos)</Label>
-                                <span className="font-mono font-bold text-success">
-                                    ${surplusValue.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                                </span>
-                            </div>
-                            <Input
-                                value={surplusId}
-                                onChange={(e) => setSurplusId(e.target.value)}
-                                placeholder="ID Ajuste Sobrantes (PLEX)"
-                            />
-                        </div>
-
-                    </div>
-                    <div className="flex justify-end gap-2">
-                        <Button variant="outline" onClick={() => setShowSaveDialog(false)}>
-                            Cancelar
-                        </Button>
-                        <Button onClick={handleSaveInventory} disabled={isSaving}>
-                            {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                            Confirmar y Finalizar
-                        </Button>
-                    </div>
-                </DialogContent>
+                        <DialogFooter>
+                            <DialogClose render={<Button type="button" variant="outline" disabled={isSaving} />}>
+                                Cancelar
+                            </DialogClose>
+                            <Button type="submit" disabled={isSaving}>
+                                {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                                Confirmar y Finalizar
+                            </Button>
+                        </DialogFooter>
+                    </Form>
+                </DialogPopup>
             </Dialog>
 
             {/* Security Delete Dialog */}
@@ -685,49 +788,6 @@ export default function CyclicInventoryDetail() {
                         </ul>
                     </div>
                 }
-            />
-
-            {/* Hidden Input for Excel Upload */}
-            <input
-                id="inventory-upload-hidden"
-                type="file"
-                accept=".xlsx, .xls"
-                className="hidden"
-                onChange={handleFileUpload}
-                disabled={isUploading || isLoading}
-            />
-
-            {/* Inventory Floating Action Button (FabMenu) */}
-            <FabMenu
-                actions={[
-                    {
-                        label: "Cargar Excel",
-                        icon: <Upload className="w-5 h-5" />,
-                        onClick: () => document.getElementById('inventory-upload-hidden')?.click(),
-                        disabled: isUploading || isSaving,
-                        variant: 'secondary' as const
-                    },
-                    {
-                        label: "Reiniciar",
-                        icon: <RotateCcw className="w-5 h-5" />,
-                        onClick: handleResetData,
-                        disabled: isUploading || isSaving,
-                        variant: 'destructive' as const,
-                        color: 'bg-red-100 text-red-600 hover:bg-red-200'
-                    },
-                    {
-                        label: "Finalizar",
-                        icon: <CheckCircle className="w-5 h-5" />,
-                        onClick: handleFinalizeClick,
-                        disabled: isSaving,
-                        variant: 'default' as const, // Primary style
-                        color: 'bg-primary text-primary-foreground'
-                    }
-                ].filter(action => {
-                    // Filter out Finalize if no items (optional, or just disable it)
-                    if (action.label === "Finalizar" && (pendingItems.length === 0 && controlledItems.length === 0 && adjustedItems.length === 0)) return false;
-                    return true;
-                })}
             />
 
             {/* Onboarding Overlay */}

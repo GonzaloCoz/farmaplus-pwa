@@ -31,7 +31,7 @@ const TableBody = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes
   ({ className, ...props }, ref) => (
     <tbody
       ref={ref}
-      className={cn("[&_tr]:border-t border-border/40", className)}
+      className={cn("[&_tr]:border-t [&_tr]:border-input", className)}
       data-slot="table-body"
       {...props}
     />
@@ -43,7 +43,7 @@ const TableFooter = React.forwardRef<HTMLTableSectionElement, React.HTMLAttribut
   ({ className, ...props }, ref) => (
     <tfoot
       ref={ref}
-      className={cn("border-t bg-muted/50 font-medium [&>tr]:last:border-b-0", className)}
+      className={cn("border-t border-input bg-muted/50 font-medium [&>tr]:last:border-b-0", className)}
       data-slot="table-footer"
       {...props}
     />

@@ -10,7 +10,7 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/ui/menu";
 import { NotificationsMenu } from "@/components/HeaderMenus";
 import { TrainingCenterButton } from "./TrainingCenterButton";
 import { ProfileDropdown } from "@/components/ProfileDropdown";
@@ -49,7 +49,7 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
             {/* Search Button */}
             <Button
                 variant="ghost"
-                className="h-10 gap-2 px-4 rounded-xl bg-[var(--layout-content)] hover:bg-muted/80 text-muted-foreground hover:text-foreground shrink-0 border border-border/5 shadow-sm transition-all font-medium"
+                className="h-10 gap-2 px-4 rounded-xl bg-background hover:bg-muted/80 text-muted-foreground hover:text-foreground shrink-0 border border-input shadow-sm shadow-black/5 dark:shadow-white/5 transition-all font-medium"
                 onClick={onSearchClick}
             >
                 <Search className="w-[18px] h-[18px]" />
@@ -59,7 +59,7 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
             {/* Create Job Button */}
             <Button
                 variant="ghost"
-                className="h-10 gap-2 px-4 rounded-xl bg-[var(--layout-content)] hover:bg-muted/80 text-muted-foreground hover:text-foreground shrink-0 border border-border/5 shadow-sm transition-all font-medium"
+                className="h-10 gap-2 px-4 rounded-xl bg-background hover:bg-muted/80 text-muted-foreground hover:text-foreground shrink-0 border border-input shadow-sm shadow-black/5 dark:shadow-white/5 transition-all font-medium"
                 onClick={handleCreateJob}
             >
                 <Plus className="w-[18px] h-[18px]" />

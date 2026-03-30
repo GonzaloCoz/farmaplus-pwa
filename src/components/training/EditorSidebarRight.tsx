@@ -198,7 +198,7 @@ export function EditorSidebarRight({
                                 <label className="text-[9px] font-semibold uppercase tracking-wider text-zinc-400 block mb-1">Personalizar fuente</label>
                                 <Select value={font} onValueChange={setFont}>
                                     <SelectTrigger className="h-8 border-none bg-white dark:bg-zinc-800 rounded-lg text-[11px] font-semibold px-3 shadow-sm">
-                                        <SelectValue placeholder="Seleccionar" />
+                                        <SelectValue>Seleccionar</SelectValue>
                                     </SelectTrigger>
                                     <SelectContent className="rounded-xl">
                                         <SelectItem value="Inter" className="text-sm">Inter</SelectItem>

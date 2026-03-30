@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:is(.dark *));
+
 @theme inline {
   --font-sans: var(--font-sans);
   --font-heading: var(--font-heading);
@@ -40,7 +42,7 @@
   --animate-skeleton: skeleton 2s -1s infinite linear;
   @keyframes skeleton {
     to {
-      background-position: -200% 0;
+      background: -200% 0;
     }
   }
 }
@@ -78,20 +80,24 @@
   --ring: var(--color-neutral-400);
 
   /* Reference Image 6 Tone Matching */
-  --layout-desktop: #e5e7eb;      /* Level 0: Desktop Grey */
-  --layout-tray: #ffffff;         /* Level 1: White Header Tray */
-  --layout-wrapper: #f8f9fb;      /* Level 2: Sidebar/Wrapper Tone */
-  --layout-frame: #ffffff;        /* Level 3: Unused currently but kept for structure */
-  --layout-content: #f3f4f6;     /* Level 4: Dashboard Area Tone */
-  --layout-card: #ffffff;         /* Level 5: Pure White Cards */
-  
+  --layout-desktop: #e5e7eb;
+  --layout-tray: #ffffff;
+  --layout-wrapper: #f8f9fb;
+  --layout-frame: #ffffff;
+  --layout-content: #f3f4f6;
+  --layout-card: #ffffff;
+
   --app-bg: var(--layout-desktop);
   --content-bg: var(--layout-content);
   --sidebar-bg: var(--layout-frame);
   --header-bg: var(--layout-tray);
 
-  --sidebar: var(--sidebar-bg);
-  --sidebar-foreground: var(--color-neutral-800);
+  --sidebar: var(--color-neutral-50);
+  --sidebar-foreground: color-mix(
+    in srgb,
+    var(--color-neutral-800) 64%,
+    var(--sidebar)
+  );
   --sidebar-primary: var(--color-neutral-800);
   --sidebar-primary-foreground: var(--color-neutral-50);
   --sidebar-accent: color-mix(in srgb, var(--color-black) 4%, transparent);
@@ -117,22 +123,16 @@
   --color-neutral-800: #262626;
   --color-neutral-950: #0a0a0a;
 
-  /* Red */
+  /* Color Palette - Brands */
   --color-red-500: #ef4444;
   --color-red-700: #b91c1c;
   --color-red-400: #f87171;
-
-  /* Blue */
   --color-blue-500: #3b82f6;
   --color-blue-700: #1d4ed8;
   --color-blue-400: #60a5fa;
-
-  /* Emerald */
   --color-emerald-500: #10b981;
   --color-emerald-700: #047857;
   --color-emerald-400: #34d399;
-
-  /* Amber */
   --color-amber-500: #f59e0b;
   --color-amber-700: #b45309;
   --color-amber-400: #fbbf24;
@@ -194,7 +194,11 @@
   --content-bg: var(--layout-content);
   --sidebar-bg: var(--layout-frame);
 
-  --sidebar: var(--sidebar-bg);
+  --sidebar: color-mix(
+    in srgb,
+    var(--color-neutral-950) 97%,
+    var(--color-white)
+  );
   --sidebar-foreground: color-mix(
     in srgb,
     var(--color-neutral-100) 64%,
@@ -228,9 +232,157 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    background-color: #ced4da;
+    @apply text-foreground;
     font-family: var(--font-sans);
     overscroll-behavior: none;
     isolation: isolate;
   }
+  
+  .dark body {
+    background-color: var(--background);
+  }
+}
+
+@layer components {
+  /* Exact styling from jh3y CodePen for the Finalizar button */
+  .control {
+    --radius: 0.75rem;
+    --text-padding: 8px 16px;
+    --border: 1px;
+    --padding: 1px;
+    --hover: 0;
+    
+    border-radius: var(--radius);
+    border: 0;
+    background: hsl(0 0% 90%);
+    box-shadow:
+      inset 0 1px 0px 0px hsl(0 0% 100% / 0.5),
+      inset 0 -1px 0px 0px hsl(0 0% 0% / 0.5);
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    position: relative;
+    display: grid;
+    place-items: center;
+    padding: var(--padding);
+    border: var(--border) solid hsl(0 0% 80%);
+    transition: transform 0.1s, border-color 0.2s;
+    color: hsl(0 0% 20%);
+    cursor: pointer;
+    overflow: hidden;
+    outline: none;
+    height: 2.5rem; /* h-10 */
+  }
+
+  .control:is(:hover, :focus-visible) {
+    --hover: 1;
+    border-color: hsl(0 0% 70%);
+  }
+
+  .control:before {
+    content: "";
+    position: absolute;
+    inset: 0px;
+    border-radius: calc(var(--radius) - var(--border));
+    background: conic-gradient(
+      from calc(var(--rx, 0) * 180deg) at
+        calc(var(--x, 0) * 100%) calc(var(--y, 0) * 100%),
+      hsl(10 90% 70%),
+      hsl(140 80% 70%),
+      hsl(320 80% 70%),
+      hsl(210 80% 70%),
+      hsl(10 80% 70%)
+    );
+    filter: saturate(0.8);
+    opacity: var(--hover, 0);
+    transition: opacity 0.2s;
+  }
+
+  .control .backdrop {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: hsl(0 0% 98% / 0.6);
+    border-radius: calc(var(--radius) - var(--padding));
+    display: block;
+    grid-column: 1;
+    grid-row: 1;
+    backdrop-filter: blur(20px) brightness(1.5);
+    -webkit-backdrop-filter: blur(20px) brightness(1.5);
+  }
+
+  .control .text {
+    padding: var(--text-padding);
+    grid-row: 1;
+    grid-column: 1;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 100%;
+    white-space: nowrap;
+  }
+
+  /* Dark mode specific for the control button */
+  .dark .control {
+    border-color: hsl(0 0% 20%);
+    color: hsl(0 0% 98%);
+    background: hsl(0 0% 10%);
+  }
+
+  .dark .control .backdrop {
+    background: hsl(0 0% 10% / 0.4);
+    backdrop-filter: blur(20px) brightness(1.2) saturate(1);
+    -webkit-backdrop-filter: blur(20px) brightness(1.2) saturate(1);
+  }
+
+  .control:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    filter: grayscale(1);
+  }
+
+  /* ScrollArea utilities */
+  .scrollbar-gutter-stable {
+    scrollbar-gutter: stable;
+  }
+
+  .mask-fade-v {
+    mask-image: linear-gradient(
+      to bottom,
+      transparent,
+      black 1rem,
+      black calc(100% - 1rem),
+      transparent
+    );
+  }
+}
+
+/* Global scrollbar styling for Chrome/Safari/Edge as fallback */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--muted-foreground);
+  border-radius: 10px;
+  opacity: 0.3;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--muted-foreground) 80%, white);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-white) 16%, transparent);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-white) 32%, transparent);
 }

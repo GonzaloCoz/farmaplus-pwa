@@ -405,7 +405,8 @@ export default function AdminBranches() {
                                 >
                                     <SelectTrigger
                                         aria-label="Seleccionar rango de resultados"
-                                        className="w-fit min-w-none h-8 text-xs border-border/50 bg-transparent px-2"
+                                        className="w-fit"
+                                        size="sm"
                                     >
                                         <SelectValue />
                                     </SelectTrigger>

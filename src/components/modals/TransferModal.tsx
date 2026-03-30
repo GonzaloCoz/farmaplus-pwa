@@ -88,7 +88,7 @@ export function TransferModal({ isOpen, onClose, onConfirm, batch, branches }: T
                             <Label htmlFor="branch">Sucursal de Destino</Label>
                             <Select value={destinationBranch} onValueChange={setDestinationBranch}>
                                 <SelectTrigger id="branch">
-                                    <SelectValue placeholder="Seleccionar sucursal..." />
+                                    <SelectValue>Seleccionar sucursal...</SelectValue>
                                 </SelectTrigger>
                                 <SelectContent className="max-h-[200px]">
                                     {branches.map((branch) => (

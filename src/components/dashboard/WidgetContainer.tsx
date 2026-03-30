@@ -45,7 +45,7 @@ export const WidgetContainer = memo(({ widget, isEditMode, onRemove, onSizeChang
             )}
         >
             <Card className={cn(
-                "h-full transition-all duration-300 border-border/5 bg-white dark:bg-card/20 rounded-2xl overflow-hidden relative group/card shadow-sm hover:shadow-md",
+                "h-full transition-all duration-300 overflow-hidden relative group/card hover:shadow-md",
                 isEditMode && "ring-2 ring-primary/20 hover:ring-primary/40 cursor-move"
             )}>
                 {isEditMode && (

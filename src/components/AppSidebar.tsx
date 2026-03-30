@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { NavLink } from "@/components/NavLink";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ScrollArea, ScrollAreaViewport, ScrollAreaScrollbar } from "@/components/ui/scroll-area";
 import { useUser } from "@/contexts/UserContext";
 
 // roles: si se omite, todos los roles pueden ver el item
@@ -142,17 +143,20 @@ export function AppSidebar() {
         </div>
 
         {/* Navigation Items */}
-        <nav className="flex-1 flex flex-col gap-1 overflow-x-hidden overflow-y-auto no-scrollbar">
-          {filteredMenuItems.map((item) => (
-            <AppSidebarMenuItem
-              key={item.title}
-              item={item}
-              end={item.url === '/'}
-              isCollapsed={isCollapsed}
-              userRole={user?.role}
-            />
-          ))}
-        </nav>
+        <ScrollArea className="flex-1 overflow-hidden" scrollbarGutter>
+          <ScrollAreaViewport className="flex flex-col gap-1 px-1">
+            {filteredMenuItems.map((item) => (
+              <AppSidebarMenuItem
+                key={item.title}
+                item={item}
+                end={item.url === '/'}
+                isCollapsed={isCollapsed}
+                userRole={user?.role}
+              />
+            ))}
+          </ScrollAreaViewport>
+          <ScrollAreaScrollbar />
+        </ScrollArea>
 
         {/* Toggle Button - Perfectly aligned on the same w-12 grid */}
         <div className="h-14 w-full flex items-center px-1 mt-auto">

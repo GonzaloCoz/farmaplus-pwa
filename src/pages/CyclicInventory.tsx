@@ -1,8 +1,9 @@
-import { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import { notify } from '@/lib/notifications';
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Group, GroupSeparator } from "@/components/ui/group";
 import { Card } from "@/components/ui/card";
 import { Chart as BarChart3, CheckCircle, DangerCircle as AlertCircle, Dollar, GraphDown as TrendingDown, GraphUp as TrendingUp, Restart as Loader2, Dollar as DollarSign, Magnifer as Search, Filter, MenuDots as MoreVertical, Widget as GridIcon, List as ListIcon, ClockCircle as Clock } from "@solar-icons/react";
 import { LaboratoryCard, LaboratoryStatus } from "@/components/LaboratoryCard";
@@ -14,14 +15,21 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { cn, normalizeString } from "@/lib/utils";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuLabel,
-  DropdownMenuCheckboxItem,
-} from "@/components/ui/dropdown-menu";
+  Menu,
+  MenuPopup,
+  MenuItem,
+  MenuTrigger,
+  MenuCheckboxItem,
+  MenuSeparator,
+  MenuGroupLabel,
+  MenuGroup
+} from "@/components/ui/menu";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
+import { Tabs, TabsList, TabsTab } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getLaboratoriesForBranch } from "@/services/preCountDB";
 import { cyclicInventoryService, CyclicInventoryStats } from "@/services/cyclicInventoryService";
@@ -31,6 +39,8 @@ import { usePrefetchLabInventory } from "@/hooks/useInventoryQueries";
 type SortOption = "name-asc" | "name-desc" | "value-asc" | "value-desc";
 type FilterCategory = "MEDICAMENTOS" | "PERFUMERIA" | "ACCESORIOS" | "VARIOS";
 type StatusFilter = "all" | "controlado" | "pendiente" | "por_controlar";
+
+const CATEGORIES: FilterCategory[] = ["MEDICAMENTOS", "PERFUMERIA", "ACCESORIOS", "VARIOS"];
 
 export default function CyclicInventory() {
   const navigate = useNavigate();
@@ -123,6 +133,26 @@ export default function CyclicInventory() {
     checkLockStatus();
   }, [user]);
 
+  // Calcula la cantidad total de laboratorios por categoría
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    CATEGORIES.forEach(cat => counts.set(cat, 0));
+    
+    // Usamos mapa temporal para agrupar únicos de todo el dataset
+    const groupedLocal = new Map<string, CyclicInventoryStats>();
+    laboratories.forEach(lab => {
+      const key = lab.labName.trim().toUpperCase();
+      if (!groupedLocal.has(key)) {
+        groupedLocal.set(key, lab);
+        const catNorm = lab.category ? lab.category.trim().toUpperCase() : '';
+        if (counts.has(catNorm)) {
+          counts.set(catNorm, counts.get(catNorm)! + 1);
+        }
+      }
+    });
+    return counts;
+  }, [laboratories]);
+
   // Agrupar laboratorios por nombre para eliminar duplicados
   // IMPORTANTE: NO sumar valores - solo tomar la primera entrada para evitar contar duplicados
   const groupedLaboratories = useMemo(() => {
@@ -213,7 +243,6 @@ export default function CyclicInventory() {
   }, [groupedLaboratories, searchTerm, sortBy, statusFilter]);
 
 
-  const categories: FilterCategory[] = ["MEDICAMENTOS", "PERFUMERIA", "ACCESORIOS", "VARIOS"];
 
   if (isLoading) {
     return (
@@ -336,162 +365,135 @@ export default function CyclicInventory() {
         />
       </div>
 
-      {/* Filtros y Búsqueda - Sticky con Blur */}
-      <div className="flex items-center justify-between sticky top-0 bg-[#f0eeef]/40 dark:bg-[#1a1a1a]/40 backdrop-blur-xl z-20 py-4 -mx-4 px-4 md:-mx-6 md:px-6 transition-all gap-4 mb-6">
+      {/* Filtros y Búsqueda */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between transition-all gap-4 mb-4">
         {/* Filtros de Categoría */}
-        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar shrink-0">
-          {categories.map((cat) => (
-            <Button
-              key={cat}
-              variant="ghost"
-              size="sm"
-              onClick={() => setCategoryFilter(cat)}
-              className={cn(
-                "whitespace-nowrap rounded-xl px-5 h-9 font-semibold transition-all",
-                categoryFilter === cat
-                  ? "bg-primary text-white shadow-sm dark:bg-white dark:text-black"
-                  : "text-muted-foreground hover:bg-white/50 dark:hover:bg-white/10 hover:text-foreground"
-              )}
-            >
-              {cat === "MEDICAMENTOS" ? "Medicamentos" :
-                cat === "PERFUMERIA" ? "Perfumería" :
-                  cat === "ACCESORIOS" ? "Accesorios" : "Varios"}
-            </Button>
+        <Group aria-label="Filtros de categoría" className="shrink-0">
+          {CATEGORIES.map((cat, index) => (
+            <React.Fragment key={cat}>
+              {index > 0 && <GroupSeparator />}
+              <Button
+                variant={categoryFilter === cat ? "secondary" : "outline"}
+                size="lg"
+                onClick={() => setCategoryFilter(cat)}
+                className={cn(
+                  "whitespace-nowrap font-semibold transition-all px-6",
+                  categoryFilter === cat
+                    ? "opacity-100"
+                    : "opacity-80 hover:opacity-100"
+                )}
+              >
+                {cat === "MEDICAMENTOS" ? "Medicamentos" :
+                  cat === "PERFUMERIA" ? "Perfumería" :
+                    cat === "ACCESORIOS" ? "Accesorios" : "Varios"}
+              </Button>
+            </React.Fragment>
           ))}
-        </div>
+        </Group>
 
         {/* Toolbar de Acciones */}
-        <div className="flex items-center gap-1.5 flex-1 justify-end">
-          {/* Barra de búsqueda expandible */}
-          <div className="flex items-center">
-            <motion.div
-              initial={false}
-              animate={{ 
-                width: isSearchExpanded ? (window.innerWidth < 768 ? '160px' : '240px') : '36px',
-                opacity: 1
-              }}
-              className="relative flex items-center h-9 bg-white/40 dark:bg-[#2a2a2a]/40 rounded-xl border-none overflow-hidden"
-            >
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 shrink-0 hover:bg-white dark:hover:bg-white/10 transition-colors"
-                onClick={() => setIsSearchExpanded(!isSearchExpanded)}
-              >
-                <Search className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-              </Button>
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar laboratorio..."
-                className={cn(
-                  "bg-transparent border-none focus:outline-none text-sm w-full pr-3 transition-opacity duration-300",
-                  isSearchExpanded ? "opacity-100" : "opacity-0 pointer-events-none"
-                )}
-              />
-            </motion.div>
+        <div className="flex items-center gap-3 flex-1 justify-end">
+          {/* Barra de búsqueda fija como InputGroup */}
+          <div className="flex-1 max-w-[240px] md:max-w-xs transition-all">
+              <InputGroup className="h-10 w-full bg-popover border-input shadow-xs">
+                  <InputGroupAddon className="bg-transparent border-none">
+                      <Search className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+                  </InputGroupAddon>
+                  <InputGroupInput 
+                      aria-label="Search" 
+                      placeholder="Buscar por nombre..." 
+                      type="search"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="bg-transparent border-none focus-visible:ring-0 text-sm h-full"
+                  />
+              </InputGroup>
           </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl bg-white/40 dark:bg-[#2a2a2a]/40 group">
-                <Filter className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+          <Group aria-label="Acciones de tabla" className="shrink-0">
+              {/* Botón Alerta / Info */}
+              <Button variant="outline" size="icon" className="group">
+                  <AlertCircle className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52 rounded-2xl p-2">
-              <DropdownMenuLabel className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">Ordenar por</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => setSortBy("name-asc")} className="rounded-xl">
-                <Search className="w-4 h-4 text-muted-foreground" />
-                <span>Nombre (A-Z)</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortBy("name-desc")} className="rounded-xl">
-                <Search className="w-4 h-4 text-muted-foreground" />
-                <span>Nombre (Z-A)</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortBy("value-desc")} className="rounded-xl">
-                <TrendingUp className="w-4 h-4 text-success" />
-                <span>Mayor Diferencia</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortBy("value-asc")} className="rounded-xl">
-                <TrendingDown className="w-4 h-4 text-destructive" />
-                <span>Menor Diferencia</span>
-              </DropdownMenuItem>
-              
-              <DropdownMenuSeparator className="my-2" />
-              
-              <DropdownMenuLabel className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">Filtrar por Estado</DropdownMenuLabel>
-              <DropdownMenuCheckboxItem 
-                checked={statusFilter === "all"} 
-                onCheckedChange={() => setStatusFilter("all")}
-                className="rounded-xl"
-              >
-                <div className="flex items-center gap-3">
-                  <ListIcon className="w-4 h-4 text-muted-foreground" />
-                  <span>Todas</span>
-                </div>
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem 
-                checked={statusFilter === "controlado"} 
-                onCheckedChange={() => setStatusFilter("controlado")}
-                className="rounded-xl"
-              >
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="w-4 h-4 text-success" />
-                  <span>Controlados</span>
-                </div>
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem 
-                checked={statusFilter === "por_controlar"} 
-                onCheckedChange={() => setStatusFilter("por_controlar")}
-                className="rounded-xl"
-              >
-                <div className="flex items-center gap-3">
-                  <Clock className="w-4 h-4 text-purple-500" />
-                  <span>En Proceso</span>
-                </div>
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem 
-                checked={statusFilter === "pendiente"} 
-                onCheckedChange={() => setStatusFilter("pendiente")}
-                className="rounded-xl"
-              >
-                <div className="flex items-center gap-3">
-                  <AlertCircle className="w-4 h-4 text-red-500" />
-                  <span>Pendientes</span>
-                </div>
-              </DropdownMenuCheckboxItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              <GroupSeparator />
+              <Menu>
+                  <MenuTrigger render={
+                      <Button variant="outline" size="icon" className="group">
+                          <Filter className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                      </Button>
+                  } />
+                  <MenuPopup align="end" className="w-52 p-2">
+                    <MenuGroup>
+                      <MenuGroupLabel>Ordenar por</MenuGroupLabel>
+                      <MenuItem onClick={() => setSortBy("name-asc")}>
+                        <Search className="w-4 h-4 text-muted-foreground" />
+                        <span>Nombre (A-Z)</span>
+                      </MenuItem>
+                      <MenuItem onClick={() => setSortBy("name-desc")}>
+                        <Search className="w-4 h-4 text-muted-foreground" />
+                        <span>Nombre (Z-A)</span>
+                      </MenuItem>
+                      <MenuItem onClick={() => setSortBy("value-desc")}>
+                        <TrendingUp className="w-4 h-4 text-success" />
+                        <span>Mayor Diferencia</span>
+                      </MenuItem>
+                      <MenuItem onClick={() => setSortBy("value-asc")}>
+                        <TrendingDown className="w-4 h-4 text-destructive" />
+                        <span>Menor Diferencia</span>
+                      </MenuItem>
+                    </MenuGroup>
+                    
+                    <MenuSeparator className="my-2" />
+                    
+                    <MenuGroup>
+                      <MenuGroupLabel>Filtrar por Estado</MenuGroupLabel>
+                      <MenuCheckboxItem checked={statusFilter === "all"} onCheckedChange={() => setStatusFilter("all")}>
+                        <div className="flex items-center gap-3">
+                          <ListIcon className="w-4 h-4 text-muted-foreground" />
+                          <span>Todas</span>
+                        </div>
+                      </MenuCheckboxItem>
+                      <MenuCheckboxItem checked={statusFilter === "controlado"} onCheckedChange={() => setStatusFilter("controlado")}>
+                        <div className="flex items-center gap-3">
+                          <CheckCircle className="w-4 h-4 text-success" />
+                          <span>Controlados</span>
+                        </div>
+                      </MenuCheckboxItem>
+                      <MenuCheckboxItem checked={statusFilter === "por_controlar"} onCheckedChange={() => setStatusFilter("por_controlar")}>
+                        <div className="flex items-center gap-3">
+                          <Clock className="w-4 h-4 text-purple-500" />
+                          <span>En Proceso</span>
+                        </div>
+                      </MenuCheckboxItem>
+                      <MenuCheckboxItem checked={statusFilter === "pendiente"} onCheckedChange={() => setStatusFilter("pendiente")}>
+                        <div className="flex items-center gap-3">
+                          <AlertCircle className="w-4 h-4 text-red-500" />
+                          <span>Pendientes</span>
+                        </div>
+                      </MenuCheckboxItem>
+                    </MenuGroup>
+                  </MenuPopup>
+              </Menu>
+              <GroupSeparator />
+              <Button variant="outline" size="icon" className="group">
+                  <MoreVertical className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+              </Button>
+          </Group>
 
-          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl bg-white/40 dark:bg-[#2a2a2a]/40 group">
-            <MoreVertical className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-          </Button>
-
-          <div className="flex p-1 bg-card/40 dark:bg-[#1e1e1e] rounded-xl border border-border/50 shadow-sm">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setViewMode('grid')}
-              className={cn(
-                "h-7 w-8 rounded-[10px] transition-all",
-                viewMode === 'grid' ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <GridIcon className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setViewMode('list')}
-              className={cn(
-                "h-7 w-8 rounded-[10px] transition-all",
-                viewMode === 'list' ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <ListIcon className="w-4 h-4" />
-            </Button>
-          </div>
+          <Tabs 
+            value={viewMode} 
+            onValueChange={(val) => setViewMode(val as 'grid' | 'list')}
+            className="items-center shrink-0"
+          >
+            <TabsList className="bg-popover border border-input shadow-sm p-1 rounded-xl h-10 w-fit inline-flex">
+              <TabsTab aria-label="Vista Cuadrícula" value="grid" className="h-full rounded-[8px] px-3 data-[selected]:bg-accent data-[selected]:text-accent-foreground data-[selected]:shadow-sm text-muted-foreground transition-all">
+                <GridIcon className="w-4 h-4" aria-hidden="true" />
+              </TabsTab>
+              <TabsTab aria-label="Vista Lista" value="list" className="h-full rounded-[8px] px-3 data-[selected]:bg-accent data-[selected]:text-accent-foreground data-[selected]:shadow-sm text-muted-foreground transition-all">
+                <ListIcon className="w-4 h-4" aria-hidden="true" />
+              </TabsTab>
+            </TabsList>
+          </Tabs>
         </div>
       </div>
 

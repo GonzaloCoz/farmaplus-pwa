@@ -307,12 +307,16 @@ export default function Settings() {
       const sheetMap = new Map<string, string>();
       workbook.SheetNames.forEach(s => sheetMap.set(s.toLowerCase().trim(), s));
 
-      const nBranch = selectedBranchImport.toLowerCase().trim();
-      let sheetName = sheetMap.get(nBranch);
+      const selectedBranchUpper = selectedBranchImport.toUpperCase().trim();
+      const nBranchSearch = selectedBranchImport.toLowerCase().trim();
+      let sheetName = sheetMap.get(nBranchSearch);
 
+      // --- NEW STRICT MATCHING LOGIC ---
       if (!sheetName) {
+        const simplifiedBranch = nBranchSearch.replace(/\s+/g, '');
         for (const [sKey, sName] of sheetMap.entries()) {
-          if (nBranch.startsWith(sKey) && sKey.length > 3) {
+          const simplifiedKey = sKey.replace(/\s+/g, '');
+          if (simplifiedKey === simplifiedBranch) {
             sheetName = sName;
             break;
           }
@@ -320,15 +324,16 @@ export default function Settings() {
       }
 
       if (!sheetName) {
-        throw new Error(`No se encontró una hoja coincidente para ${selectedBranchImport} en el Excel.`);
+        throw new Error(`No se encontró una hoja coincidente para "${selectedBranchImport}" en el archivo Excel. Verifica que el nombre de la pestaña coincida.`);
       }
 
       const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 }) as any[][];
       if (jsonData.length < 2) throw new Error("La hoja seleccionada no tiene datos válidos.");
 
       const headers = jsonData[1];
-      const excelLabs = new Set<string>(); // composite keys: "LAB|CAT"
-      const newAssignments: Array<{ lab: string, category: string }> = [];
+      const excelLabsSet = new Set<string>(); // composite keys: "LAB|CAT"
+      const excelLabNamesOnlySet = new Set<string>(); // unique names: "LAB"
+      const newAssignments: any[] = [];
 
       for (let c = 0; c < headers.length; c++) {
         const category = String(headers[c] || '').trim().toUpperCase();
@@ -340,77 +345,100 @@ export default function Settings() {
             const labName = String(row[c]).trim().toUpperCase();
             if (labName.length > 0) {
               const key = `${labName}|${category}`;
-              excelLabs.add(key);
-              newAssignments.push({ lab: labName, category });
+              excelLabNamesOnlySet.add(labName);
+              if (!excelLabsSet.has(key)) {
+                excelLabsSet.add(key);
+                newAssignments.push({
+                   branch_name: selectedBranchUpper,
+                   laboratory: labName,
+                   category: category,
+                   status: 'pending',
+                   progress_percentage: 0
+                });
+              }
             }
           }
         }
       }
 
-      // 1. Fetch existing labs for this branch
+      // 1. Fetch existing labs for this branch (WITH PROGRESS)
       const { data: existingLabs, error: fetchError } = await supabase
         .from('branch_laboratories')
         .select('id, laboratory, category, progress_percentage')
-        .eq('branch_name', selectedBranchImport);
+        .eq('branch_name', selectedBranchUpper);
 
       if (fetchError) throw fetchError;
 
-      const existingMap = new Map<string, any>();
-      existingLabs?.forEach(l => existingMap.set(`${l.laboratory}|${l.category}`, l));
-
-      // 2. Determine what to Insert, What to Keep/Ignore, and what to Delete
-      const toUpsert: any[] = [];
-      let totalExcelCount = newAssignments.length;
-      let ignoredCount = 0;
-      let newCount = 0;
-
-      newAssignments.forEach(a => {
-        const key = `${a.lab}|${a.category}`;
-        if (existingMap.has(key)) {
-          ignoredCount++;
-          // We still upsert to ensure config is consistent, but it counts as "already there"
-        } else {
-          newCount++;
-        }
-        toUpsert.push({
-          branch_name: selectedBranchImport,
-          laboratory: a.lab,
-          category: a.category,
-          status: 'pending',
-          progress_percentage: 0
-        });
-      });
-
-      // 3. Orphans cleanup
+      // 2. Identify Orphans with DATA GUARD & MULTI-RUBRO PROTECTION
+      const protectedLabsProgress: string[] = [];
+      const protectedLabsMultiRubro: string[] = [];
+      
       const idsToDelete = existingLabs
-        ?.filter(row => !excelLabs.has(`${row.laboratory}|${row.category}`))
+        ?.filter(row => {
+          const labName = row.laboratory.toUpperCase();
+          const category = row.category.toUpperCase();
+          const key = `${labName}|${category}`;
+          
+          const isMissingInExcelForKey = !excelLabsSet.has(key);
+          const hasProgress = (row.progress_percentage || 0) > 0;
+          const existsInExcelSomewhere = excelLabNamesOnlySet.has(labName);
+          
+          // Protection 1: Progress
+          if (isMissingInExcelForKey && hasProgress) {
+            protectedLabsProgress.push(labName);
+            return false; // KEEP
+          }
+          
+          // Protection 2: Multi-Rubro ("esos no los toques")
+          // If the lab name exists in ANY category in Excel, we don't delete this category in DB
+          if (isMissingInExcelForKey && existsInExcelSomewhere) {
+            protectedLabsMultiRubro.push(`${labName} (${category})`);
+            return false; // KEEP
+          }
+          
+          return isMissingInExcelForKey; // Delete ONLY if missing from Excel completely AND has no progress
+        })
         .map(row => row.id) || [];
 
-      // Execute Changes
-      if (toUpsert.length > 0) {
-        const { error: upsError } = await supabase
+      // 3. Execute Upsert
+      if (newAssignments.length > 0) {
+        const { error: upsError } = await (supabase as any)
           .from('branch_laboratories')
-          .upsert(toUpsert, { onConflict: 'branch_name,laboratory,category' });
-        if (upsError) throw upsError;
+          .upsert(newAssignments, { onConflict: 'branch_name,laboratory,category' });
+        
+        if (upsError) {
+          console.error("Postgres Error 23505/Conflict:", upsError);
+          throw new Error(`Error de Sincronización: Probablemente existen laboratorios duplicados. Por favor ejecuta el Script de Reparación en Supabase.`);
+        }
       }
 
+      // 4. Execute Batch Deletion (50 IDs at a time to prevent CORS/URL Length errors)
       if (idsToDelete.length > 0) {
-        const { error: delError } = await supabase
-          .from('branch_laboratories')
-          .delete()
-          .in('id', idsToDelete);
-        if (delError) throw delError;
+        const CHUNK_SIZE = 50;
+        for (let i = 0; i < idsToDelete.length; i += CHUNK_SIZE) {
+          const chunk = idsToDelete.slice(i, i + CHUNK_SIZE);
+          const { error: delError } = await supabase
+            .from('branch_laboratories')
+            .delete()
+            .in('id', chunk);
+          
+          if (delError) {
+            console.error("Batch delete error:", delError);
+            throw delError;
+          }
+        }
       }
 
       notify.success(
-        "Sincronización Individual Completada",
+        "Sincronización Exitosa",
         `Sucursal: ${selectedBranchImport}\n\n` +
-        `✅ ${newCount} laboratorios nuevos cargados.\n` +
-        `ℹ️ ${ignoredCount} laboratorios ya existían (sin cambios).\n` +
-        `🗑️ ${idsToDelete.length} laboratorios obsoletos eliminados.`
+        `✅ ${newAssignments.length} laboratorios actualizados.\n` +
+        `🗑️ ${idsToDelete.length} laboratorios obsoletos eliminados.\n` +
+        (protectedLabsProgress.length > 0 ? `🛡️ ${protectedLabsProgress.length} protegidos por tener progreso.\n` : "") +
+        (protectedLabsMultiRubro.length > 0 ? `📂 ${protectedLabsMultiRubro.length} protegidos por pertenecer a varios rubros.` : "")
       );
       
-      toast.success('Actualización de sucursal exitosa');
+      toast.success('Actualización de sucursal completada');
       event.target.value = '';
     } catch (error: any) {
       console.error("Individual import error:", error);

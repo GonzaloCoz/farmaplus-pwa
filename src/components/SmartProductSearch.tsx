@@ -22,6 +22,7 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
     const [selectedIndex, setSelectedIndex] = useState(0);
     const debouncedQuery = useDebounce(query, 300);
     const inputRef = useRef<HTMLInputElement>(null);
+    const selectionLockRef = useRef(false);
     const containerRef = useRef<HTMLDivElement>(null);
 
     // Focus management
@@ -45,22 +46,22 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
     // Search Effect
     useEffect(() => {
         const performSearch = async () => {
-            // If query is empty or just 1-2 chars, don't search unless it looks like EAN start? 
-            // Actually for names 2 chars might be enough
+            if (selectionLockRef.current) return;
+            
             if (debouncedQuery.length < 2) {
                 setResults([]);
                 setIsOpen(false);
                 return;
             }
 
-            // If it looks like a full EAN (numeric & long), we might just want to wait for Enter? 
-            // But user asked for suggestions. Let's search.
             setIsLoading(true);
             try {
                 const data = await searchProducts(debouncedQuery);
-                setResults(data);
-                setIsOpen(data.length > 0);
-                setSelectedIndex(0);
+                if (!selectionLockRef.current) {
+                    setResults(data);
+                    setIsOpen(data.length > 0);
+                    setSelectedIndex(0);
+                }
             } catch (error) {
                 console.error(error);
             } finally {
@@ -80,13 +81,38 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
             setSelectedIndex(prev => (prev - 1 + results.length) % results.length);
         } else if (e.key === 'Enter') {
             e.preventDefault();
+            
+            selectionLockRef.current = true;
+            const currentQuery = query.trim();
+            
+            // Immediate NATIVE UI update
+            if (inputRef.current) inputRef.current.value = '';
+            setQuery('');
+            setIsOpen(false);
+            setResults([]);
+
             if (isOpen && results.length > 0) {
-                // Select currently highlighted suggestion
-                handleSelect(results[selectedIndex]);
-            } else if (query.trim()) {
-                // Submit raw query as EAN (User scanned something that might not be in suggestion list yet or just wants fast mode)
-                // We treat it as a direct EAN entry
-                handleSelect({ ean: query.trim(), name: '' });
+                onSelect(results[selectedIndex]);
+                setTimeout(() => { selectionLockRef.current = false; }, 500);
+            } else if (currentQuery) {
+                // If scanner was too fast for debounce, lookup manually now
+                const quickLookup = async () => {
+                    try {
+                        const data = await searchProducts(currentQuery);
+                        if (data.length > 0) {
+                            onSelect(data[0]);
+                        } else {
+                            onSelect({ ean: currentQuery, name: '' });
+                        }
+                    } catch (err) {
+                        onSelect({ ean: currentQuery, name: '' });
+                    } finally {
+                        setTimeout(() => { selectionLockRef.current = false; }, 500);
+                    }
+                };
+                quickLookup();
+            } else {
+                selectionLockRef.current = false;
             }
         } else if (e.key === 'Escape') {
             setIsOpen(false);
@@ -94,12 +120,46 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
     };
 
     const handleSelect = (product: { name: string, ean: string, id_producto?: string }) => {
-        onSelect(product);
-        setQuery(''); // Clear after select? Or keep? Usually clear to be ready for next or to show selected.
-        // For this flow (Search -> Qty -> Next), clearing is better as the "Selected Product" info is shown elsewhere usually.
+        selectionLockRef.current = true;
+        
+        // Immediate NATIVE UI update
+        if (inputRef.current) inputRef.current.value = '';
+        setQuery('');
         setIsOpen(false);
-        // We do NOT refocus here because parent will move focus to Quantity.
+        setResults([]);
+        onSelect(product);
+        setTimeout(() => { selectionLockRef.current = false; }, 500);
     };
+
+    // Auto-EAN detection (Omit Enter)
+    useEffect(() => {
+        const q = query.trim();
+        // Standard EAN full lengths: 13, 14
+        if (!selectionLockRef.current && (q.length === 13 || q.length === 14) && /^\d+$/.test(q)) {
+            const timer = setTimeout(async () => {
+                selectionLockRef.current = true;
+                if (inputRef.current) inputRef.current.value = '';
+                setQuery('');
+                setIsOpen(false);
+                setResults([]);
+                
+                try {
+                    const data = await searchProducts(q);
+                    if (data.length > 0) {
+                        onSelect(data[0]);
+                    } else {
+                        onSelect({ ean: q, name: '' });
+                    }
+                } catch (err) {
+                    onSelect({ ean: q, name: '' });
+                } finally {
+                    setTimeout(() => { selectionLockRef.current = false; }, 300);
+                }
+            }, 150); // Small 150ms delay to allow manual typing a 14th digit without EAN-13 cutting it
+            
+            return () => clearTimeout(timer);
+        }
+    }, [query]);
 
     const handleClear = () => {
         setQuery('');

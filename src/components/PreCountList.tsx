@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Pen as Pencil, TrashBinMinimalistic as Trash2, Widget as Package, Copy, CheckCircle as Check, Magnifer as SearchIcon } from '@solar-icons/react';
 import { cn } from '@/lib/utils';
 import { UIPreCountItem } from '@/hooks/usePreCount';
+import { ProductPreview } from '@/components/ProductPreview';
 import {
     Dialog,
     DialogContent,
@@ -51,13 +52,16 @@ import {
     useReactTable,
 } from "@tanstack/react-table";
 
+import { MasterCatalogItem } from '@/services/preCountDB';
+
 interface PreCountListProps {
     items: UIPreCountItem[];
     onUpdate: (id: string, quantity: number) => void;
     onDelete: (id: string) => void;
+    masterCatalog?: MasterCatalogItem[];
 }
 
-export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
+export function PreCountList({ items, onUpdate, onDelete, masterCatalog }: PreCountListProps) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editQuantity, setEditQuantity] = useState<number>(1);
     const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -117,25 +121,43 @@ export function PreCountList({ items, onUpdate, onDelete }: PreCountListProps) {
     const columns = useMemo<ColumnDef<UIPreCountItem>[]>(() => [
         {
             accessorKey: "productName",
-            header: "Descripción",
-            size: 300,
+            header: "Producto",
+            size: 340,
             cell: ({ row }) => {
                 const item = row.original;
                 const isUnknown = (item.productName || '').startsWith('Producto ');
+                const isUnknownToMaster = masterCatalog && masterCatalog.length > 0 
+                    ? !masterCatalog.some(m => m.ean === item.ean)
+                    : false;
+
                 return (
-                    <div className="flex flex-col gap-1 pr-2">
-                        <span className={cn("font-semibold text-[13px] leading-tight text-foreground/90", isUnknown && "text-destructive")}>
-                            {item.productName}
-                        </span>
-                        {isUnknown ? (
-                            <span className="text-[9px] text-destructive flex w-fit items-center gap-1.5 font-bold bg-destructive/10 px-2 py-0.5 rounded-full border border-destructive/20">
-                                <span className="w-1 h-1 rounded-full bg-destructive" /> NO ENCONTRADO
+                    <div className="flex items-center gap-3 pr-2">
+                        <ProductPreview
+                            ean={item.ean}
+                            productName={item.productName}
+                        />
+                        <div className="flex flex-col gap-1 min-w-0">
+                            <span className={cn("font-semibold text-[13px] leading-tight text-foreground/90 truncate", isUnknown && "text-destructive", isUnknownToMaster && "text-blue-500")}>
+                                {item.productName}
                             </span>
-                        ) : item.synced === 0 ? (
-                            <span className="text-[9px] text-warning flex w-fit items-center gap-1.5 font-bold bg-warning/10 px-2 py-0.5 rounded-full border border-warning/20">
-                                <span className="w-1 h-1 rounded-full bg-warning animate-pulse" /> SINCRONIZANDO
-                            </span>
-                        ) : null}
+                            {isUnknown ? (
+                                <span className="text-[9px] text-destructive flex w-fit items-center gap-1.5 font-bold bg-destructive/10 px-2 py-0.5 rounded-full border border-destructive/20">
+                                    <span className="w-1 h-1 rounded-full bg-destructive" /> NO ENCONTRADO
+                                </span>
+                            ) : isUnknownToMaster ? (
+                               <span className="text-[9px] text-blue-500 flex w-fit items-center gap-1.5 font-bold bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">
+                                    <span className="w-1 h-1 rounded-full bg-blue-500" /> NUEVO
+                                </span>
+                            ) : item.synced === 0 ? (
+                                <span className="text-[9px] text-warning flex w-fit items-center gap-1.5 font-bold bg-warning/10 px-2 py-0.5 rounded-full border border-warning/20">
+                                    <span className="w-1 h-1 rounded-full bg-warning animate-pulse" /> SINCRONIZANDO
+                                </span>
+                            ) : (
+                                <span className="text-[11px] font-mono text-muted-foreground/60 tracking-wider">
+                                    {item.ean}
+                                </span>
+                            )}
+                        </div>
                     </div>
                 );
             },

@@ -45,7 +45,4 @@ const ToolbarSeparator = React.forwardRef<
 ));
 ToolbarSeparator.displayName = "ToolbarSeparator";
 
-const ToolbarToggleGroup = BaseToolbar.ToggleGroup;
-const ToolbarToggleItem = BaseToolbar.ToggleItem;
-
-export { Toolbar, ToolbarButton, ToolbarSeparator, ToolbarToggleGroup, ToolbarToggleItem };
+export { Toolbar, ToolbarButton, ToolbarSeparator };

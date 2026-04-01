@@ -139,6 +139,7 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
             worker.postMessage({
                 fileData: bstr,
                 labName,
+                branchName,
                 currentItems: mergedCurrentItems
             });
         };

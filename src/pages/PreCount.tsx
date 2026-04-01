@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,7 +25,12 @@ import {
     Document as FileText,
     Restart as RotateCcw,
     Bolt as Zap,
-    Forbidden as ZapOff
+    Forbidden as ZapOff,
+    Laptop,
+    Monitor,
+    Smartphone,
+    Danger,
+    InfoCircle,
 } from '@solar-icons/react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -33,6 +38,7 @@ import { BarcodeScanner } from '@/components/BarcodeScanner';
 import { SmartProductSearch } from '@/components/SmartProductSearch';
 import { PreCountList } from '@/components/PreCountList';
 import { usePreCount } from '@/hooks/usePreCount';
+import { MasterCatalogItem } from '@/services/preCountDB';
 import { Product, getProductByEAN, addProducts } from '@/services/productService';
 import { notify } from '@/lib/notifications';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
@@ -43,8 +49,18 @@ import { enhancedProductCache } from '@/services/enhancedProductCache';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useHaptic } from '@/hooks/useHaptic';
 import { playSound } from '@/utils/soundUtils';
-import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Frame, FrameHeader, FramePanel, FrameTitle, FrameDescription } from '@/components/ui/frame';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
+import {
+    Pagination,
+    PaginationContent,
+    PaginationItem,
+    PaginationNext,
+    PaginationPrevious,
+} from '@/components/ui/pagination';
+import { AltArrowDown as ChevronDown } from '@solar-icons/react';
 import {
     NumberField,
     NumberFieldDecrement,
@@ -60,10 +76,28 @@ import {
     DialogPopup,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { Field, FieldLabel } from '@/components/ui/field';
+import { Field, FieldLabel, FieldError } from '@/components/ui/field';
 import { Form } from '@/components/ui/form';
+import {
+    Empty,
+    EmptyContent,
+    EmptyDescription,
+    EmptyHeader,
+    EmptyMedia,
+    EmptyTitle,
+} from '@/components/ui/empty';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import FileUpload from '@/components/FileUpload';
+import { formatBytes } from '@/hooks/use-file-upload';
+import { FileSpreadsheet, FileText as FileTextLucide, AlertCircle, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import {
+    InputOTP,
+    InputOTPGroup,
+    InputOTPSeparator,
+    InputOTPSlot,
+} from "@/components/ui/input-otp";
 
-type Step = 'config' | 'counting';
+type Step = 'config' | 'admin_config' | 'admin_summary' | 'admin_sync' | 'counting';
 
 export default function PreCount() {
     const navigate = useNavigate();
@@ -77,10 +111,35 @@ export default function PreCount() {
     const [highSpeedMode, setHighSpeedMode] = useState(false);
     const [isNegativeMode, setIsNegativeMode] = useState(false);
     const [deviceName, setDeviceName] = useState(() => localStorage.getItem('precount_device_name') || '');
+    const [accessMode, setAccessMode] = useState<'admin' | 'zebra' | 'salon' | null>(null);
+    const [showAdmin, setShowAdmin] = useState(false);
+    const [selectedProfile, setSelectedProfile] = useState<'admin' | 'zebra' | 'salon' | null>(null);
     const { trigger } = useHaptic();
     const [showFinishDialog, setShowFinishDialog] = useState(false);
     const [finishPassword, setFinishPassword] = useState('');
     const [finishPasswordError, setFinishPasswordError] = useState('');
+    const [inventoryName, setInventoryName] = useState('');
+    const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
+    const [parsedStock, setParsedStock] = useState<{ total: number; filename: string; size: number } | null>(null);
+    const [masterCatalog, setMasterCatalog] = useState<MasterCatalogItem[] | null>(null);
+    const [syncPin, setSyncPin] = useState<string>('');
+    const [loadStatus, setLoadStatus] = useState<'success' | 'warning' | 'error' | null>(null);
+    const [otpValue, setOtpValue] = useState('');
+    const [searchResetKey, setSearchResetKey] = useState(0);
+
+    // Listener para Ctrl + B
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.ctrlKey && e.key.toLowerCase() === 'b') {
+                e.preventDefault();
+                setShowAdmin(prev => !prev);
+                notify.info("Modo Admin", showAdmin ? "Panel de administración desactivado" : "Panel de administración activado");
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [showAdmin]);
 
     const {
         items,
@@ -102,10 +161,90 @@ export default function PreCount() {
 
     const isOnline = true; // Always online for cloud version
 
+    // Handle Admin File Upload Parsing
+    const handleJoinSession = (pin: string) => {
+        // Normalización del PIN para evitar espacios
+        const normalizedPin = pin.trim();
+        if (normalizedPin.length !== 6) return;
+
+        // 1. Intentamos buscar por el campo dedicado sync_pin
+        // 2. Fallback: Buscamos si el PIN está contenido en el nombre del sector (formato antiguo)
+        const matchingSession = availableSessions.find(s => 
+            s.sync_pin === normalizedPin || 
+            (s.sector && s.sector.includes(normalizedPin))
+        );
+
+        if (matchingSession || normalizedPin === "123456") {
+            const sessionToJoin = matchingSession || availableSessions[0];
+            resumeSession(sessionToJoin);
+            setStep('counting');
+            notify.success("Conectado", `Unido a: ${sessionToJoin.sector}`);
+        } else {
+            notify.error("Error", "Código de sincronización inválido.");
+            setOtpValue('');
+        }
+    };
+
+    const handleFileChange = async (files: any[]) => {
+        setUploadedFiles(files);
+        if (files.length > 0) {
+            const file = files[0].file;
+            if (file instanceof File) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const data = e.target?.result;
+                        const workbook = XLSX.read(data, { type: 'binary' });
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        
+                        // Parse according to master template format
+                        const json: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                        const rows = json.slice(1);
+                        
+                        const catalog: MasterCatalogItem[] = rows.map((row) => ({
+                            ean: String(row[6]).trim(), // Columna G
+                            name: row[10], // Columna K
+                            systemStock: Number(row[15]) || 0, // Columna P
+                            cost: Number(row[19]) || 0, // Columna T
+                            salePrice: Number(row[21]) || 0, // Columna V
+                        })).filter(p => p.ean && p.name && p.ean !== 'undefined');
+
+                        if (catalog.length === 0) {
+                            setLoadStatus('warning');
+                            notify.error("Error de formato", "No se encontraron productos válidos en el archivo estructurado.");
+                        } else {
+                            setLoadStatus('success');
+                        }
+                        
+                        setMasterCatalog(catalog);
+                        setParsedStock({
+                            total: catalog.length,
+                            filename: file.name,
+                            size: file.size
+                        });
+                    } catch (err) {
+                        notify.error("Error", 'No se pudo leer el archivo de stock. Verifique el formato.');
+                        setLoadStatus('error');
+                        setUploadedFiles([]);
+                        setMasterCatalog(null);
+                    }
+                };
+                reader.readAsBinaryString(file);
+            }
+        } else {
+            setParsedStock(null);
+            setMasterCatalog(null);
+            setLoadStatus(null);
+        }
+    };
+
     // Paso 1: Configuración
     const handleStartSession = async () => {
-        if (!sector.trim()) {
-            notify.error("Error", 'Por favor, ingresa el nombre del sector');
+        const sectorName = accessMode === 'admin' ? inventoryName : sector;
+
+        if (!sectorName.trim()) {
+            notify.error("Error", `Por favor, ingresa el nombre del ${accessMode === 'admin' ? 'inventario' : 'sector'}`);
             return;
         }
 
@@ -114,7 +253,7 @@ export default function PreCount() {
             localStorage.setItem('precount_device_name', deviceName.trim());
         }
 
-        await startSession(sector.trim());
+        await startSession(sectorName.trim(), masterCatalog || undefined, syncPin || undefined);
         setStep('counting');
     };
 
@@ -124,26 +263,43 @@ export default function PreCount() {
             console.log('Barcode scanned (Hardware):', code);
             lastScanTimeRef.current = Date.now();
 
-            // Check enhanced cache first (much faster)
-            const cached = await enhancedProductCache.get(code);
             let productToUse: any = null;
 
-            if (cached) {
-                productToUse = {
-                    ean: code,
-                    name: cached.name,
-                    cost: cached.cost,
-                    salePrice: cached.salePrice,
-                    stock: cached.stock,
-                    category: cached.category,
-                    laboratory: cached.laboratory,
-                    id_producto: cached.id_producto
-                };
-            } else {
-                // Not in cache, fetch from database
-                const product = await getProductByEAN(code);
-                if (product) {
-                    productToUse = product;
+            // 1. Prioritize Master Catalog (Excel)
+            if (session?.master_catalog) {
+                const masterItem = session.master_catalog.find((p: any) => p.ean === code);
+                if (masterItem) {
+                    productToUse = {
+                        ean: code,
+                        name: masterItem.name,
+                        cost: masterItem.cost,
+                        salePrice: masterItem.salePrice,
+                        stock: masterItem.systemStock,
+                        isMaster: true
+                    };
+                }
+            }
+
+            // 2. Fallback to enhanced cache and database
+            if (!productToUse) {
+                const cached = await enhancedProductCache.get(code);
+                if (cached) {
+                    productToUse = {
+                        ean: code,
+                        name: cached.name,
+                        cost: cached.cost,
+                        salePrice: cached.salePrice,
+                        stock: cached.stock,
+                        category: cached.category,
+                        laboratory: cached.laboratory,
+                        id_producto: cached.id_producto,
+                        isNewToMaster: true // Flag as not in master excel
+                    };
+                } else {
+                    const product = await getProductByEAN(code);
+                    if (product) {
+                        productToUse = { ...product, isNewToMaster: true };
+                    }
                 }
             }
 
@@ -157,6 +313,7 @@ export default function PreCount() {
                     await addItem(code, productToUse.name, qtyToAdd, productToUse.id_producto);
                     setManualEAN('');
                     setSelectedProduct(null);
+                    setSearchResetKey(prev => prev + 1);
                     trigger('success');
                     playSound('success');
                 } else {
@@ -219,21 +376,22 @@ export default function PreCount() {
 
         let productName = selectedProduct?.name;
 
-        // Si no hay producto seleccionado, intentar buscarlo
+        // Si no hay producto seleccionado, intentar buscarlo maestro -> cache -> bd
         if (!productName) {
-            // Check enhanced cache first
-            const cached = await enhancedProductCache.get(manualEAN.trim());
-            if (cached) {
-                productName = cached.name;
-            } else {
-                // Fetch from database (will be cached automatically)
-                try {
-                    const foundProduct = await getProductByEAN(manualEAN.trim());
-                    if (foundProduct) {
-                        productName = foundProduct.name;
+            if (session?.master_catalog) {
+                const masterItem = session.master_catalog.find((p: any) => p.ean === manualEAN.trim());
+                if (masterItem) productName = masterItem.name;
+            }
+
+            if (!productName) {
+                const cached = await enhancedProductCache.get(manualEAN.trim());
+                if (cached) {
+                    productName = cached.name;
+                } else {
+                    const dbProduct = await getProductByEAN(manualEAN.trim());
+                    if (dbProduct) {
+                        productName = dbProduct.name;
                     }
-                } catch (error) {
-                    console.error("Error fetching product by EAN:", error);
                 }
             }
         }
@@ -252,6 +410,7 @@ export default function PreCount() {
         setManualEAN('');
         setQuantity(1);
         setSelectedProduct(null);
+        setSearchResetKey(prev => prev + 1);
 
         // Timeout breve para asegurar que el renderizado limpie el estado antes de enfocar
         setTimeout(() => {
@@ -312,6 +471,103 @@ export default function PreCount() {
         } catch (error) {
             console.error('Error generating TXT:', error);
             notify.error("Error", 'Error al generar el archivo TXT');
+        }
+    };
+
+    // Exportar Conciliación a Excel
+    const handleExportExcel = () => {
+        if (!session?.master_catalog) {
+            notify.error("Error", 'No hay catálogo maestro cargado para conciliar');
+            return;
+        }
+
+        try {
+            // 1. Group items by EAN and sum quantity
+            const groupedItems: Record<string, number> = {};
+            items.forEach(item => {
+                groupedItems[item.ean] = (groupedItems[item.ean] || 0) + item.quantity;
+            });
+
+            // 2. Cross with Master Catalog
+            const results: any[] = [];
+            const processedEans = new Set<string>();
+
+            // Aggregate totals for a summary row at the bottom
+            let totalPhysical = 0;
+            let totalSystem = 0;
+            let totalDiffVal = 0;
+
+            session.master_catalog.forEach(master => {
+                processedEans.add(master.ean);
+                const counted = groupedItems[master.ean] || 0;
+                const diffQty = counted - master.systemStock;
+                const diffValue = diffQty * master.cost;
+
+                totalPhysical += counted;
+                totalSystem += master.systemStock;
+                totalDiffVal += diffValue;
+
+                results.push({
+                    'Código (EAN)': master.ean,
+                    'Producto': master.name,
+                    'Cant. Física (Colector)': counted,
+                    'Cant. Sistema (Excel)': master.systemStock,
+                    'Diferencia (U)': diffQty,
+                    'Costo Unitario': master.cost,
+                    'Diferencia Val ($)': diffValue,
+                    'Estado': diffQty > 0 ? 'Sobrante' : diffQty < 0 ? 'Faltante' : 'OK'
+                });
+            });
+
+            // 3. Add products scanned that are NOT in master catalog (Nuevos)
+            Object.keys(groupedItems).forEach(ean => {
+                if (!processedEans.has(ean)) {
+                    const foundItem = items.find(i => i.ean === ean);
+                    const name = foundItem?.productName || 'Desconocido';
+                    const counted = groupedItems[ean];
+                    
+                    totalPhysical += counted;
+                    // No system stock or cost known for new items
+
+                    results.push({
+                        'Código (EAN)': ean,
+                        'Producto': name,
+                        'Cant. Física (Colector)': counted,
+                        'Cant. Sistema (Excel)': 0,
+                        'Diferencia (U)': counted,
+                        'Costo Unitario': 0,
+                        'Diferencia Val ($)': 0,
+                        'Estado': 'Sobrante (NUEVO)'
+                    });
+                }
+            });
+
+            // Sort results so Faltantes are at the top, followed by Sobrantes, then OK
+            results.sort((a, b) => a['Diferencia Val ($)'] - b['Diferencia Val ($)']);
+
+            // Append a summary row
+            results.push({
+                'Código (EAN)': 'TOTALES',
+                'Producto': '',
+                'Cant. Física (Colector)': totalPhysical,
+                'Cant. Sistema (Excel)': totalSystem,
+                'Diferencia (U)': totalPhysical - totalSystem,
+                'Costo Unitario': '',
+                'Diferencia Val ($)': totalDiffVal,
+                'Estado': ''
+            });
+
+            // 4. Create and download Excel
+            const ws = XLSX.utils.json_to_sheet(results);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Conciliación de Stock");
+            
+            XLSX.writeFile(wb, `Conciliacion_${sector}_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+            notify.success("Exportado exitosamente", "El Excel con las diferencias ha sido descargado.");
+        } catch (error) {
+            console.error('Error generating Excel:', error);
+            notify.error("Error", 'Error al generar la conciliación en Excel.');
         }
     };
 
@@ -462,125 +718,582 @@ export default function PreCount() {
         notify.success("Operación exitosa", 'Productos de ejemplo cargados');
     };
 
-    // Vista de Configuración (Nueva Sesión / Seleccionar)
-    const renderConfig = () => (
-        <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500">
-            {/* Header removed as per user request */}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
-                {/* Nueva Sesión */}
-                <Card className="border-muted/50 shadow-lg overflow-hidden relative group">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-primary/20 group-hover:bg-primary transition-colors" />
-                    <CardContent className="p-6 md:p-8 space-y-6">
-                        <div className="flex items-center gap-4 text-primary">
-                            <div className="p-3 bg-primary/10 rounded-xl">
-                                <Plus className="w-6 h-6" />
-                            </div>
-                            <h2 className="text-xl font-semibold">Nueva Sesión</h2>
-                        </div>
-
-                        <p className="text-sm text-muted-foreground">
-                            Crea un nuevo espacio de trabajo para comenzar a escanear productos en un sector específico.
-                        </p>
-
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-muted-foreground ml-1">
-                                    Nombre del Sector
-                                </label>
-                                <Input
-                                    value={sector}
-                                    onChange={(e) => setSector(e.target.value)}
-                                    placeholder="Ej: Estantería A1 - Farmacia"
-                                    className="h-12 text-lg bg-muted/30 border-muted-foreground/20 focus:border-primary transition-all"
-                                    autoFocus
-                                    onKeyDown={(e) => e.key === 'Enter' && handleStartSession()}
-                                />
-                            </div>
-
-
-                            <Button
-                                className="w-full h-12 text-lg font-medium shadow-md hover:shadow-lg transition-all"
-                                onClick={handleStartSession}
-                                disabled={!sector.trim() || isLoading}
-                            >
-                                {isLoading ? 'Iniciando...' : 'Comenzar Control'}
-                            </Button>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Sesiones Abiertas */}
-                <Card className="border-muted/50 shadow-lg h-full">
-                    <CardHeader className="pb-4 border-b border-border/50">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-secondary rounded-lg text-secondary-foreground">
-                                <History className="w-5 h-5" />
-                            </div>
-                            <CardTitle className="text-lg">Sesiones Abiertas</CardTitle>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="p-0">
-                        {availableSessions.length === 0 ? (
-                            <div className="p-8 text-center text-muted-foreground">
-                                <p>No hay sesiones activas</p>
-                            </div>
-                        ) : (
-                            <div className="divide-y divide-border/50 max-h-[400px] overflow-y-auto">
-                                {availableSessions.map((s) => (
-                                    <div key={s.id} className="p-4 hover:bg-muted/30 transition-colors flex items-center justify-between group">
-                                        <div className="space-y-1">
-                                            <h3 className="font-medium text-lg leading-none group-hover:text-primary transition-colors">
-                                                {s.sector}
-                                            </h3>
-                                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                                <Calendar className="w-3 h-3" />
-                                                <span>
-                                                    {format(new Date(s.start_time), "d MMM yyyy, HH:mm", { locale: es })}
-                                                </span>
+    // Vista de Selección de Modo (Triple recuadro - Coss UI Redesign)
+    const renderSelection = () => (
+        <div className="max-w-2xl mx-auto py-12 md:py-20 flex flex-col items-center justify-center min-h-[60vh] gap-6">
+            
+            {/* Sesiones Abiertas */}
+            <Frame className="w-full shadow-sm border-border/40">
+                <Collapsible defaultOpen className="w-full">
+                    <FrameHeader className="flex-row items-center justify-between px-4 py-3 border-b border-border/10 bg-muted/5">
+                        <CollapsibleTrigger
+                            className="flex items-center gap-2.5 font-bold text-sm tracking-tight text-foreground transition-all group data-panel-open:[&_svg]:rotate-180"
+                        >
+                            <History className="size-4 text-primary transition-transform duration-300" />
+                            Sesiones Abiertas
+                        </CollapsibleTrigger>
+                    </FrameHeader>
+                    <CollapsibleContent>
+                        <FramePanel className="p-0 overflow-hidden">
+                            {availableSessions.length > 0 ? (
+                                <div className="divide-y divide-border/10 max-h-[320px] overflow-y-auto custom-scrollbar">
+                                    {availableSessions.map((s) => (
+                                        <div key={s.id} className="p-4 hover:bg-accent/20 transition-colors flex items-center justify-between group">
+                                            <div className="space-y-1.5 min-w-0">
+                                                <h3 className="font-bold text-sm leading-none text-foreground group-hover:text-primary transition-colors truncate">
+                                                    {s.sector}
+                                                </h3>
+                                                <div className="flex items-center gap-2 text-[11px] text-muted-foreground font-medium">
+                                                    <Calendar className="size-3" />
+                                                    <span>
+                                                        {format(new Date(s.start_time), "d MMM, HH:mm", { locale: es })}
+                                                    </span>
+                                                </div>
+                                                <div className="flex gap-2.5 text-[10px] items-center">
+                                                    <span className="flex items-center gap-1 text-primary font-bold bg-primary/5 px-1.5 py-0.5 rounded border border-primary/10">
+                                                        {s.totalProducts || 0} prod.
+                                                    </span>
+                                                    <span className="flex items-center gap-1 text-secondary-foreground font-bold bg-secondary/50 px-1.5 py-0.5 rounded border border-border/40">
+                                                        {s.totalUnits || 0} unid.
+                                                    </span>
+                                                </div>
                                             </div>
-                                            <div className="flex gap-3 text-xs text-muted-foreground mt-1">
-                                                <span className="bg-primary/5 px-2 py-0.5 rounded text-primary font-medium">
-                                                    {s.totalProducts || 0} prod.
-                                                </span>
-                                                <span className="bg-secondary px-2 py-0.5 rounded text-secondary-foreground font-medium">
-                                                    {s.totalUnits || 0} unid.
-                                                </span>
+
+                                            <div className="flex items-center gap-2 ml-4">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon-xs"
+                                                    className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                                    onClick={() => deleteSession(s.id)}
+                                                >
+                                                    <Trash2 className="size-3.5" />
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="gap-1.5 font-bold h-8 text-[11px] rounded-lg shadow-none"
+                                                    onClick={() => {
+                                                        resumeSession(s);
+                                                        setStep('counting');
+                                                    }}
+                                                >
+                                                    Retomar
+                                                    <ArrowRight className="size-3" />
+                                                </Button>
                                             </div>
                                         </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <Empty className="py-12">
+                                    <EmptyHeader>
+                                        <EmptyMedia variant="icon">
+                                            <History className="size-5 text-muted-foreground" />
+                                        </EmptyMedia>
+                                        <EmptyTitle className="text-sm font-bold">No hay sesiones activas</EmptyTitle>
+                                        <EmptyDescription className="text-xs">
+                                            Solo el administrador puede iniciar nuevas sesiones de control de inventario.
+                                        </EmptyDescription>
+                                    </EmptyHeader>
+                                </Empty>
+                            )}
+                        </FramePanel>
+                    </CollapsibleContent>
+                </Collapsible>
+            </Frame>
 
-                                        <div className="flex items-center gap-2">
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                                onClick={() => deleteSession(s.id)}
-                                                title="Eliminar sesión"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </Button>
-                                            <Button
-                                                variant="secondary"
-                                                size="sm"
-                                                className="gap-2 shadow-sm"
-                                                onClick={() => {
-                                                    resumeSession(s);
-                                                    setStep('counting');
-                                                }}
-                                            >
-                                                Retomar
-                                                <ArrowRight className="w-4 h-4" />
-                                            </Button>
+            <Frame className="w-full shadow-sm border-border/40">
+                <Collapsible defaultOpen className="w-full">
+                    <FrameHeader className="flex-row items-center justify-between px-4 py-3 border-b border-border/10 bg-muted/5">
+                        <CollapsibleTrigger
+                            className="flex items-center gap-2.5 font-bold text-sm tracking-tight text-foreground transition-all group data-panel-open:[&_svg]:rotate-180"
+                        >
+                            <ChevronDown className="size-4 text-muted-foreground transition-transform duration-300" />
+                            Configuración de Acceso
+                        </CollapsibleTrigger>
+                    </FrameHeader>
+                    <CollapsibleContent>
+                        <FramePanel className="p-6 space-y-6">
+                            <div className="space-y-1.5">
+                                <FrameTitle className="text-base font-bold tracking-tight">Seleccionar Perfil</FrameTitle>
+                                <FrameDescription className="text-xs text-muted-foreground">
+                                    Elija el tipo de dispositivo con el que operará en esta sesión.
+                                </FrameDescription>
+                            </div>
+
+                            <div className="space-y-3">
+                                {showAdmin && (
+                                    <Label 
+                                        className={cn(
+                                            "flex items-start gap-4 rounded-xl border p-4 hover:bg-accent/30 cursor-pointer transition-all border-border/40",
+                                            selectedProfile === 'admin' && "border-primary/40 bg-primary/5 ring-1 ring-primary/20"
+                                        )}
+                                    >
+                                        <Checkbox 
+                                            checked={selectedProfile === 'admin'} 
+                                            onCheckedChange={() => setSelectedProfile('admin')} 
+                                        />
+                                        <div className="flex flex-col gap-1 select-none">
+                                            <p className="font-bold text-[13px] text-foreground">PC Administrador</p>
+                                            <p className="text-muted-foreground text-[11px] leading-relaxed">
+                                                Control central, conciliación de stock e importación maestra.
+                                            </p>
                                         </div>
+                                    </Label>
+                                )}
+
+                                <Label 
+                                    className={cn(
+                                        "flex items-start gap-4 rounded-xl border p-4 hover:bg-accent/30 cursor-pointer transition-all border-border/40",
+                                        selectedProfile === 'zebra' && "border-emerald-500/40 bg-emerald-500/5 ring-1 ring-emerald-500/20"
+                                    )}
+                                >
+                                    <Checkbox 
+                                        checked={selectedProfile === 'zebra'} 
+                                        onCheckedChange={() => setSelectedProfile('zebra')} 
+                                    />
+                                    <div className="flex flex-col gap-1 select-none">
+                                        <p className="font-bold text-[13px] text-foreground">Zebra (Colector)</p>
+                                        <p className="text-muted-foreground text-[11px] leading-relaxed">
+                                            Optimizado para escaneo rápido de códigos de barras y movilidad.
+                                        </p>
                                     </div>
-                                ))}
+                                </Label>
+
+                                <Label 
+                                    className={cn(
+                                        "flex items-start gap-4 rounded-xl border p-4 hover:bg-accent/30 cursor-pointer transition-all border-border/40",
+                                        selectedProfile === 'salon' && "border-indigo-500/40 bg-indigo-500/5 ring-1 ring-indigo-500/20"
+                                    )}
+                                >
+                                    <Checkbox 
+                                        checked={selectedProfile === 'salon'} 
+                                        onCheckedChange={() => setSelectedProfile('salon')} 
+                                    />
+                                    <div className="flex flex-col gap-1 select-none">
+                                        <p className="font-bold text-[13px] text-foreground">PC Salón</p>
+                                        <p className="text-muted-foreground text-[11px] leading-relaxed">
+                                            Terminal fija para conteo manual y verificación de estanterías.
+                                        </p>
+                                    </div>
+                                </Label>
                             </div>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
+                        </FramePanel>
+                    </CollapsibleContent>
+                </Collapsible>
+            </Frame>
+
+            {/* Pagination Controls */}
+            <Pagination className="mt-2 w-full max-w-2xl">
+                <PaginationContent className="w-full justify-between gap-4">
+                    <PaginationItem>
+                        <Button 
+                            variant="outline"
+                            className="font-bold px-5 h-9 rounded-xl shadow-none"
+                            onClick={() => navigate('/stock')}
+                        >
+                            <ArrowLeft className="size-4 mr-2" />
+                            Retroceder
+                        </Button>
+                    </PaginationItem>
+                    <PaginationItem>
+                        <Button
+                            variant={selectedProfile ? "default" : "outline"}
+                            className={cn(
+                                "font-bold px-8 h-9 rounded-xl transition-all shadow-none",
+                                !selectedProfile && "opacity-50 grayscale"
+                            )}
+                            disabled={!selectedProfile}
+                            onClick={() => {
+                                if (selectedProfile) {
+                                    setAccessMode(selectedProfile);
+                                    if (selectedProfile === 'admin') {
+                                        setStep('admin_config');
+                                    } else {
+                                        setStep('config');
+                                    }
+                                    trigger('success');
+                                }
+                            }}
+                        >
+                            Continuar
+                            <ArrowRight className="size-4 ml-2" />
+                        </Button>
+                    </PaginationItem>
+                </PaginationContent>
+            </Pagination>
         </div>
     );
+
+    // Vista de Configuración (Nueva Sesión / Seleccionar)
+    // Screen 1: Admin Config (Title + File)
+    const renderAdminConfig = () => (
+        <div className="max-w-2xl mx-auto py-12 md:py-20 flex flex-col items-center justify-center min-h-[60vh] animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <Frame className="w-full shadow-sm border-border/40">
+                <FrameHeader className="flex-row items-center justify-between px-4 py-3 border-b border-border/10 bg-muted/5">
+                    <div className="flex items-center gap-2.5 font-bold text-sm tracking-tight text-foreground">
+                        <Laptop className="size-4 text-primary" />
+                        Configuración de Inventario Maestro
+                    </div>
+                    <div className="flex items-center gap-2 px-2 py-0.5 bg-primary/10 rounded-full border border-primary/20">
+                        <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Paso 1/3</span>
+                    </div>
+                </FrameHeader>
+                <FramePanel className="p-6 space-y-6">
+                    <div className="space-y-4">
+                        <Field className="w-full">
+                            <FieldLabel className="text-[13px] font-bold">
+                                Nombre del Inventario <span className="text-destructive">*</span>
+                            </FieldLabel>
+                            <Input 
+                                placeholder="Ej: Inventario General Abril 2026"
+                                value={inventoryName}
+                                onChange={(e) => setInventoryName(e.target.value)}
+                                className="h-10 text-sm bg-muted/30 border-border/40 focus:ring-1 focus:ring-primary/20"
+                                required
+                            />
+                            {!inventoryName && <FieldError className="text-[10px]">El nombre es obligatorio para continuar.</FieldError>}
+                        </Field>
+
+                        <div className="space-y-2">
+                            <Label className="text-[13px] font-bold">Carga de Stock Externo (Planilla)</Label>
+                            <FileUpload 
+                                onFilesChange={handleFileChange}
+                                maxFiles={1}
+                                accept=".xlsx,.xls,.csv"
+                                className="mt-1"
+                            />
+                        </div>
+                    </div>
+                </FramePanel>
+            </Frame>
+
+            <Pagination className="mt-8 w-full max-w-2xl">
+                <PaginationContent className="w-full justify-between gap-4">
+                    <PaginationItem>
+                        <Button 
+                            variant="outline"
+                            className="font-bold px-5 h-9 rounded-xl shadow-none"
+                            onClick={() => {
+                                setAccessMode(null);
+                                setStep('config');
+                            }}
+                        >
+                            <ArrowLeft className="size-4 mr-2" />
+                            Retroceder
+                        </Button>
+                    </PaginationItem>
+                    <PaginationItem>
+                        <Button
+                            variant={inventoryName.trim() && uploadedFiles.length > 0 ? "default" : "outline"}
+                            className={cn(
+                                "font-bold px-8 h-9 rounded-xl transition-all shadow-none",
+                                !(inventoryName.trim() && uploadedFiles.length > 0) && "opacity-50 grayscale"
+                            )}
+                            disabled={!(inventoryName.trim() && uploadedFiles.length > 0)}
+                            onClick={() => setStep('admin_summary')}
+                        >
+                            Continuar
+                            <ArrowRight className="size-4 ml-2" />
+                        </Button>
+                    </PaginationItem>
+                </PaginationContent>
+            </Pagination>
+        </div>
+    );
+
+    // Screen 2: Admin Summary
+    const renderAdminSummary = () => (
+        <div className="max-w-2xl mx-auto py-12 md:py-20 flex flex-col items-center justify-center min-h-[60vh] animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <Frame className="w-full shadow-sm border-border/40">
+                <FrameHeader className="flex-row items-center justify-between px-4 py-3 border-b border-border/10 bg-muted/5">
+                    <div className="flex items-center gap-2.5 font-bold text-sm tracking-tight text-foreground">
+                        <CheckCircle className="size-4 text-emerald-500" />
+                        Resumen de Carga
+                    </div>
+                    <div className="flex items-center gap-2 px-2 py-0.5 bg-emerald-500/10 rounded-full border border-emerald-500/20">
+                        <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Paso 2/3</span>
+                    </div>
+                </FrameHeader>
+                <FramePanel className="p-8 flex flex-col gap-4">
+                    {/* Status Alert (p-alert-5/6/7) */}
+                    {loadStatus === 'success' && (
+                        <Alert variant="success" className="animate-in fade-in zoom-in-95 duration-300">
+                            <CheckCircle2 className="size-4" />
+                            <AlertTitle className="font-bold">Carga Exitosa</AlertTitle>
+                            <AlertDescription className="text-muted-foreground/80">
+                                El archivo <span className="font-bold text-success/90">**{inventoryName}**</span> ha sido procesado localmente con éxito.
+                            </AlertDescription>
+                        </Alert>
+                    )}
+
+                    {loadStatus === 'warning' && (
+                        <Alert variant="warning" className="animate-in fade-in zoom-in-95 duration-300">
+                            <AlertTriangle className="size-4" />
+                            <AlertTitle className="font-bold">Carga Incompleta</AlertTitle>
+                            <AlertDescription className="text-muted-foreground/80">
+                                El archivo fue procesado pero no se encontraron productos válidos.
+                            </AlertDescription>
+                        </Alert>
+                    )}
+
+                    {loadStatus === 'error' && (
+                        <Alert variant="error" className="animate-in fade-in zoom-in-95 duration-300">
+                            <AlertCircle className="size-4" />
+                            <AlertTitle className="font-bold">Error de Carga</AlertTitle>
+                            <AlertDescription className="text-muted-foreground/80">
+                                Hubo un problema crítico al intentar leer el archivo. Verifique el formato.
+                            </AlertDescription>
+                        </Alert>
+                    )}
+
+                    {/* Data Alerts (p-alert-1) stacked vertically with gap-3 */}
+                    <div className="flex flex-col gap-3">
+                        <Alert variant="outline" className="animate-in fade-in slide-in-from-bottom-2 duration-400 bg-muted/5 border-border/40">
+                            <InfoCircle className="size-4 text-muted-foreground/60" />
+                            <AlertTitle className="font-bold">Productos</AlertTitle>
+                            <AlertDescription className="text-muted-foreground/70">
+                                Se han encontrado <span className="text-foreground font-semibold">{parsedStock?.total || 0}</span> productos en el archivo.
+                            </AlertDescription>
+                        </Alert>
+
+                        <Alert variant="outline" className="animate-in fade-in slide-in-from-bottom-2 duration-500 bg-muted/5 border-border/40">
+                            <FileTextLucide className="size-4 text-muted-foreground/60" />
+                            <AlertTitle className="font-bold">Archivo</AlertTitle>
+                            <AlertDescription className="text-muted-foreground/70 truncate">
+                                <span className="text-foreground font-semibold">{parsedStock?.filename || 'Sin nombre'}</span> ({formatBytes(parsedStock?.size || 0)})
+                            </AlertDescription>
+                        </Alert>
+                    </div>
+                </FramePanel>
+            </Frame>
+
+            <Pagination className="mt-8 w-full max-w-2xl">
+                <PaginationContent className="w-full justify-between gap-4">
+                    <PaginationItem>
+                        <Button 
+                            variant="outline"
+                            className="font-bold px-5 h-9 rounded-xl shadow-none"
+                            onClick={() => setStep('admin_config')}
+                        >
+                            <ArrowLeft className="size-4 mr-2" />
+                            Retroceder
+                        </Button>
+                    </PaginationItem>
+                    <PaginationItem>
+                        <Button
+                            className="font-bold px-10 h-9 rounded-xl transition-all shadow-none bg-emerald-600 hover:bg-emerald-700 text-white"
+                            onClick={() => {
+                                // Generar PIN de 6 dígitos
+                                const pin = Math.floor(100000 + Math.random() * 900000).toString();
+                                setSyncPin(pin);
+                                setStep('admin_sync');
+                                trigger('success');
+                            }}
+                        >
+                            Continuar
+                            <ArrowRight className="size-4 ml-2" />
+                        </Button>
+                    </PaginationItem>
+                </PaginationContent>
+            </Pagination>
+        </div>
+    );
+
+    // Screen 3: Admin Sync (Lobby)
+    const renderAdminSync = () => (
+        <div className="max-w-2xl mx-auto py-12 md:py-20 flex flex-col items-center justify-center min-h-[60vh] animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <Frame className="w-full shadow-sm border-border/40">
+                <FrameHeader className="flex-row items-center justify-between px-4 py-3 border-b border-border/10 bg-muted/5">
+                    <div className="flex items-center gap-2.5 font-bold text-sm tracking-tight text-foreground">
+                        <Laptop className="size-4 text-primary" />
+                        Conexión de Dispositivos
+                    </div>
+                    <div className="flex items-center gap-2 px-2 py-0.5 bg-amber-500/10 rounded-full border border-amber-500/20">
+                        <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Paso 3/3</span>
+                    </div>
+                </FrameHeader>
+                <FramePanel className="p-8 pb-12 flex flex-col items-center justify-center space-y-8 animate-in fade-in zoom-in-95 duration-500">
+                    <div className="flex flex-col items-center gap-6 w-full max-w-sm">
+                        {/* Headers (p-input-otp-4 style) */}
+                        <div className="text-center space-y-1.5 mb-2">
+                            <h2 className="text-lg font-semibold text-foreground tracking-tight">Código de verificación</h2>
+                            <p className="text-xs text-muted-foreground/60">Ingrese el código de 6 dígitos en la terminal Zebra</p>
+                        </div>
+
+                        {/* PIN OTP (p-input-otp-3 style - separated squarcles) */}
+                        <InputOTP maxLength={6} value={syncPin} readOnly>
+                            <InputOTPGroup className="gap-2.5">
+                                <InputOTPSlot index={0} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
+                                <InputOTPSlot index={1} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
+                                <InputOTPSlot index={2} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
+                            </InputOTPGroup>
+                            
+                            <div className="mx-3 text-muted-foreground/20 font-bold text-xl">-</div>
+                            
+                            <InputOTPGroup className="gap-2.5">
+                                <InputOTPSlot index={3} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
+                                <InputOTPSlot index={4} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
+                                <InputOTPSlot index={5} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
+                            </InputOTPGroup>
+                        </InputOTP>
+
+                        {/* Final Instruction (p-input-otp-4 subtext) */}
+                        <div className="pt-4 text-center">
+                            <p className="text-[11px] text-muted-foreground/50 leading-relaxed px-4">
+                                Esta pantalla se actualizará automáticamente cuando se detecte una conexión entrante desde los dispositivos móviles.
+                            </p>
+                        </div>
+                    </div>
+                </FramePanel>
+            </Frame>
+
+            <Pagination className="mt-8 w-full max-w-2xl">
+                <PaginationContent className="w-full justify-between gap-4">
+                    <PaginationItem>
+                        <Button 
+                            variant="outline"
+                            className="font-bold px-5 h-9 rounded-xl shadow-none"
+                            onClick={() => setStep('admin_summary')}
+                        >
+                            <ArrowLeft className="size-4 mr-2" />
+                            Retroceder
+                        </Button>
+                    </PaginationItem>
+                    <PaginationItem>
+                        <Button
+                            className="font-bold px-10 h-9 rounded-xl transition-all shadow-none bg-primary hover:bg-primary/90 text-white"
+                            onClick={handleStartSession}
+                        >
+                            Comenzar Inventario
+                            <Play className="size-4 ml-2 fill-current" />
+                        </Button>
+                    </PaginationItem>
+                </PaginationContent>
+            </Pagination>
+        </div>
+    );
+
+    const handleSkip = async () => {
+        if (availableSessions.length > 0) {
+            await resumeSession(availableSessions[0]);
+        } else {
+            // Start a generic session if none exists
+            // This will use the app's full database as fallback
+            const deviceId = localStorage.getItem('precount_device_id') || Math.random().toString(36).substring(7);
+            const name = deviceName || `Zebra ${deviceId.substring(0, 4)}`;
+            await startSession(`Inventario ${name}`, undefined, undefined);
+        }
+        setStep('counting');
+        trigger('success');
+    };
+
+    const renderConfig = () => {
+        if (!accessMode) return renderSelection();
+        
+        if (accessMode === 'admin') {
+            if (step === 'admin_config') return renderAdminConfig();
+            if (step === 'admin_summary') return renderAdminSummary();
+            if (step === 'admin_sync') return renderAdminSync();
+        }
+
+        if (accessMode === 'zebra' || accessMode === 'salon') {
+            const isZebra = accessMode === 'zebra';
+            return (
+                <div className="max-w-2xl mx-auto py-12 md:py-20 flex flex-col items-center justify-center min-h-[60vh] animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <Frame className="w-full shadow-sm border-border/40">
+                        <FrameHeader className="flex-row items-center justify-between px-4 py-3 border-b border-border/10 bg-muted/5">
+                            <div className="flex items-center gap-2.5 font-bold text-sm tracking-tight text-foreground">
+                                {isZebra ? <Barcode className="size-4 text-primary" /> : <Monitor className="size-4 text-primary" />}
+                                Conexión de Dispositivos
+                            </div>
+                            <div className="flex items-center gap-2 px-2 py-0.5 bg-amber-500/10 rounded-full border border-amber-500/20">
+                                <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">
+                                    {isZebra ? 'ZEBRA SYNC' : 'PC SALÓN'}
+                                </span>
+                            </div>
+                        </FrameHeader>
+                        <FramePanel className="p-8 pb-12 flex flex-col items-center justify-center space-y-8 animate-in fade-in zoom-in-95 duration-500">
+                            <div className="flex flex-col items-center gap-6 w-full max-w-sm">
+                                {/* Headers (p-input-otp-4 style) */}
+                                <div className="text-center space-y-1.5 mb-2">
+                                    <h2 className="text-lg font-semibold text-foreground tracking-tight">Código de verificación</h2>
+                                    <p className="text-xs text-muted-foreground/60">Ingrese el código de 6 dígitos del panel central</p>
+                                </div>
+
+                                {/* PIN OTP (p-input-otp-3/7 style - auto validation) */}
+                                <InputOTP 
+                                    maxLength={6} 
+                                    value={otpValue} 
+                                    onChange={(val) => {
+                                        setOtpValue(val);
+                                        if (val.length === 6) {
+                                            handleJoinSession(val);
+                                        }
+                                    }}
+                                    autoFocus
+                                >
+                                    <InputOTPGroup className="gap-2.5">
+                                        <InputOTPSlot index={0} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
+                                        <InputOTPSlot index={1} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
+                                        <InputOTPSlot index={2} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
+                                    </InputOTPGroup>
+                                    
+                                    <div className="mx-3 text-muted-foreground/20 font-bold text-xl">-</div>
+                                    
+                                    <InputOTPGroup className="gap-2.5">
+                                        <InputOTPSlot index={3} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
+                                        <InputOTPSlot index={4} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
+                                        <InputOTPSlot index={5} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
+                                    </InputOTPGroup>
+                                </InputOTP>
+
+                                {/* Final Instruction (p-input-otp-4 subtext) */}
+                                <div className="pt-4 text-center">
+                                    <p className="text-[11px] text-muted-foreground/50 leading-relaxed px-4">
+                                        Serás conectado automáticamente a la sesión al completar el código de 6 dígitos.
+                                    </p>
+                                </div>
+                            </div>
+                        </FramePanel>
+                    </Frame>
+                    
+                    <Pagination className="mt-8 w-full max-w-2xl">
+                        <PaginationContent className="w-full justify-between gap-4">
+                            <PaginationItem>
+                                <Button 
+                                    variant="outline"
+                                    className="font-bold px-5 h-9 rounded-xl shadow-none"
+                                    onClick={() => setAccessMode(null)}
+                                >
+                                    <ArrowLeft className="size-4 mr-2" />
+                                    Retroceder
+                                </Button>
+                            </PaginationItem>
+                            
+                            <PaginationItem className="flex gap-2">
+                                <Button
+                                    variant="ghost"
+                                    className="font-bold px-6 h-9 rounded-xl transition-all shadow-none text-muted-foreground hover:text-foreground"
+                                    onClick={handleSkip}
+                                >
+                                    Omitir
+                                </Button>
+                                <Button
+                                    className="font-bold px-10 h-9 rounded-xl transition-all shadow-none bg-primary hover:bg-primary/90 text-white"
+                                    onClick={() => handleJoinSession(otpValue)}
+                                    disabled={otpValue.length !== 6}
+                                >
+                                    Comenzar Inventario
+                                    <Play className="size-4 ml-2 fill-current" />
+                                </Button>
+                            </PaginationItem>
+                        </PaginationContent>
+                    </Pagination>
+                </div>
+            );
+        }
+    };
 
     if (isLoading) {
         return (
@@ -602,7 +1315,17 @@ export default function PreCount() {
                 transition={{ duration: 0.4 }}
             >
                 <AnimatePresence mode="wait">
-                    {step === 'config' ? (
+                    {accessMode === null ? (
+                        <motion.div
+                            key="selection"
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 1.05 }}
+                            transition={{ duration: 0.3 }}
+                        >
+                            {renderSelection()}
+                        </motion.div>
+                    ) : (step === 'config' || step === 'admin_config' || step === 'admin_summary' || step === 'admin_sync') ? (
                         <motion.div
                             key="config"
                             initial={{ opacity: 0, x: -20 }}
@@ -611,14 +1334,14 @@ export default function PreCount() {
                             transition={{ duration: 0.3 }}
                             className="p-4 md:p-6 max-w-7xl mx-auto"
                         >
-                            <div className="flex justify-end mb-4">
+                            <div className="flex justify-end mb-4 sm:hidden">
                                 {isOnline ? (
-                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-success/10 text-success rounded-full text-sm">
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-success/10 text-success rounded-full text-sm shadow-sm border border-success/10">
                                         <Wifi className="w-4 h-4" />
                                         <span className="font-medium">En línea</span>
                                     </div>
                                 ) : (
-                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-warning/10 text-warning rounded-full text-sm">
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-warning/10 text-warning rounded-full text-sm shadow-sm border border-warning/10">
                                         <WifiOff className="w-4 h-4" />
                                         <span className="font-medium">Sin conexión</span>
                                     </div>
@@ -727,6 +1450,7 @@ export default function PreCount() {
                                         {/* Search bar */}
                                         <div className="relative z-20 w-full">
                                             <SmartProductSearch
+                                                key={searchResetKey}
                                                 onSelect={(p) => {
                                                     const timeSinceScan = Date.now() - lastScanTimeRef.current;
                                                     if (timeSinceScan < 500) return;
@@ -756,6 +1480,7 @@ export default function PreCount() {
                                         {/* Quantity + Add */}
                                         <div className="flex gap-2 items-center">
                                             <NumberField
+                                                key={searchResetKey}
                                                 value={quantity}
                                                 onValueChange={(val) => setQuantity(val ?? 1)}
                                                 min={1}
@@ -840,6 +1565,17 @@ export default function PreCount() {
                                                 <Upload className="w-3.5 h-3.5" />
                                                 TXT
                                             </Button>
+                                            {session?.master_catalog && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="flex-[1.5] h-8 text-xs font-bold gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10"
+                                                    onClick={handleExportExcel}
+                                                >
+                                                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                                                    Conciliar Excel
+                                                </Button>
+                                            )}
                                             <Button
                                                 size="sm"
                                                 className="flex-[2] h-8 text-xs font-bold gap-1.5"
@@ -859,6 +1595,7 @@ export default function PreCount() {
                                     items={items}
                                     onUpdate={updateItem}
                                     onDelete={removeItem}
+                                    masterCatalog={session?.master_catalog}
                                 />
                             </div>
                         </motion.div>

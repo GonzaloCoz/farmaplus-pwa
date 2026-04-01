@@ -34,30 +34,42 @@ export {
 
 // ============ COLECTOR DE DATOS (OFFLINE FIRST) ============
 
+export interface MasterCatalogItem {
+    ean: string;
+    name: string;
+    systemStock: number;
+    cost: number;
+    salePrice: number;
+}
+
 export interface PreCountSession extends LocalSession {
     totalProducts?: number;
     totalUnits?: number;
     errorCount?: number;
+    sync_pin?: string;
+    master_catalog?: MasterCatalogItem[];
 }
 
 export type PreCountItem = LocalItem;
 
 // --- Sesiones ---
 
-export async function createSession(sector: string, branch_id?: string): Promise<PreCountSession> {
+export async function createSession(sector: string, branch_id?: string, master_catalog?: MasterCatalogItem[], sync_pin?: string): Promise<PreCountSession> {
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData.user?.id;
     const sessionId = uuidv4();
     const now = new Date().toISOString();
 
-    const newSession: LocalSession = {
+    const newSession: PreCountSession = {
         id: sessionId,
         sector,
         start_time: now,
         status: 'active',
         user_id: userId,
         branch_id: branch_id,
-        synced: 0
+        synced: 0,
+        sync_pin,
+        master_catalog: master_catalog || []
     };
 
     // 1. Save to Local DB

@@ -38,3 +38,7 @@ dist-ssr
 .env.*
 oracle_key.pem
 supabase/.temp/
+
+# Agent specific
+.agents/
+skills-lock.json

@@ -21,6 +21,8 @@ export interface LocalSession {
     user_id?: string;
     branch_id?: string;
     synced: number; // 0 = false, 1 = true
+    sync_pin?: string;
+    master_catalog?: any[]; // Used for device validation & recon
 }
 
 export interface LocalItem {

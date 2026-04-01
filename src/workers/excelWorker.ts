@@ -16,7 +16,7 @@ const normalizeStringWorker = (str: string): string => {
 };
 
 self.onmessage = async (e: MessageEvent) => {
-    const { fileData, labName, currentItems } = e.data;
+    const { fileData, labName, branchName, currentItems } = e.data;
 
     try {
         // 1. Procesar Excel
@@ -40,15 +40,18 @@ self.onmessage = async (e: MessageEvent) => {
             return;
         }
 
-        // 3. Verificación de Laboratorio (Accent-Insensitive & robust)
+        // 3. Verificación de Laboratorio (Strict matching)
         const currentLab = normalizeStringWorker(labName);
+        const currentBranch = normalizeStringWorker(branchName || "");
         const uploadLab = normalizeStringWorker(fileLabName);
 
-        if (currentLab !== uploadLab) {
-            if (!uploadLab.includes(currentLab) && !currentLab.includes(uploadLab)) {
-                self.postMessage({ error: `El archivo pertenece a "${fileLabName}", pero estás en "${labName}"` });
-                return;
-            }
+        // El archivo es válido si coincide EXACTAMENTE con el laboratorio O con la sucursal
+        // (A veces el Excel trae el nombre de sucursal en lugar de laboratorio para inventarios generales)
+        if (uploadLab !== currentLab && uploadLab !== currentBranch) {
+            self.postMessage({ 
+                error: `El archivo pertenece a "${fileLabName}", pero estás intentando cargar datos para "${labName}" en "${branchName}".` 
+            });
+            return;
         }
 
         // 4. Lógica de Procesamiento (Sincronización Maestra - MODO MERGE)

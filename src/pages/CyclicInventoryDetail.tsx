@@ -248,6 +248,9 @@ export default function CyclicInventoryDetail() {
                                                     <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap opacity-60">Lab</span>
                                                     <div className="flex items-center gap-2">
                                                         <span className="font-bold text-foreground text-lg sm:text-xl truncate">{labName}</span>
+                                                        <Badge variant="outline" className="ml-2 bg-primary/5 text-primary text-[10px] font-bold border-primary/20">
+                                                            {branchName}
+                                                        </Badge>
 
                                                         {/* Admin Secret Button Next to Title */}
                                                         <AnimatePresence>

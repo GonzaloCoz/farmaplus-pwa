@@ -40,7 +40,7 @@ interface UsePreCountReturn {
     errorCount: number;
     isLoading: boolean;
     availableSessions: PreCountSession[];
-    startSession: (sector: string) => Promise<void>;
+    startSession: (sector: string, masterCatalog?: any[], syncPin?: string) => Promise<void>;
     resumeSession: (session: PreCountSession) => Promise<void>;
     deleteSession: (id: string) => Promise<void>;
     addItem: (ean: string, productName: string, quantity: number, id_producto?: string) => Promise<void>;
@@ -181,11 +181,11 @@ export function usePreCount(): UsePreCountReturn {
     const totalUnits = useMemo(() => items.reduce((sum, item) => sum + item.quantity, 0), [items]);
 
     // Iniciar nueva sesión
-    const startSession = async (sector: string) => {
+    const startSession = async (sector: string, masterCatalog?: any[], syncPin?: string) => {
         if (!user) return;
         setIsLoading(true);
         try {
-            const newSession = await createSession(sector, user.branchId);
+            const newSession = await createSession(sector, user.branchId, masterCatalog, syncPin);
             setSession(newSession);
             // Refresh sessions list
             const sessions = await getActiveSessions({ branchId: user.branchId, role: user.role });

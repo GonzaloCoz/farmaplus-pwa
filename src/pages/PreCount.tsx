@@ -38,6 +38,7 @@ import { BarcodeScanner } from '@/components/BarcodeScanner';
 import { SmartProductSearch } from '@/components/SmartProductSearch';
 import { PreCountList } from '@/components/PreCountList';
 import { usePreCount } from '@/hooks/usePreCount';
+import { MapPin } from 'lucide-react';
 import { MasterCatalogItem } from '@/services/preCountDB';
 import { Product, getProductByEAN, addProducts } from '@/services/productService';
 import { notify } from '@/lib/notifications';
@@ -96,8 +97,11 @@ import {
     InputOTPSeparator,
     InputOTPSlot,
 } from "@/components/ui/input-otp";
+import { QRPrintLayout } from '@/components/qr/QRPrintLayout';
+import { Printer, XCircle, Download } from 'lucide-react';
+import QRCode from 'qrcode';
 
-type Step = 'config' | 'admin_config' | 'admin_summary' | 'admin_sync' | 'counting';
+type Step = 'config' | 'admin_config' | 'admin_summary' | 'admin_sync' | 'qr_generator' | 'counting';
 
 export default function PreCount() {
     const navigate = useNavigate();
@@ -126,6 +130,14 @@ export default function PreCount() {
     const [loadStatus, setLoadStatus] = useState<'success' | 'warning' | 'error' | null>(null);
     const [otpValue, setOtpValue] = useState('');
     const [searchResetKey, setSearchResetKey] = useState(0);
+    const [qrQuantities, setQrQuantities] = useState<Record<string, number>>({
+        'GO': 5,
+        'CA': 10,
+        'HE': 2,
+        'DE': 1,
+        'ES': 5
+    });
+    const [showQRPrintView, setShowQRPrintView] = useState(false);
 
     // Listener para Ctrl + B
     useEffect(() => {
@@ -152,12 +164,16 @@ export default function PreCount() {
         updateItem,
         removeItem,
         finishSession,
-        availableSessions, // Added for new config view
-        deleteSession,    // Added for new config view
-        resumeSession,    // Added for new config view
+        availableSessions,
+        deleteSession,
+        resumeSession,
         errorCount,
         registerError,
     } = usePreCount();
+
+    const [activeLocation, setActiveLocation] = useState<string | null>(null);
+    const [showLocationSummary, setShowLocationSummary] = useState(false);
+    const [locationStats, setLocationStats] = useState({ products: 0, units: 0 });
 
     const isOnline = true; // Always online for cloud version
 
@@ -343,14 +359,185 @@ export default function PreCount() {
         }
     };
 
+    // Nueva lógica para manejar escaneo de zonas (Apertura/Cierre)
+    const handleLocationScan = async (code: string) => {
+        if (!session) return;
+
+        // Reglas de negocio: ESP-, CA-, DEP-, EST-
+        const isZoneCode = /^(ESP|CA|DEP|EST)-/i.test(code);
+        if (!isZoneCode) return false;
+
+        const normalizedCode = code.toUpperCase();
+
+        // 1. Si ya estamos en ESA zona -> Intentar CERRAR
+        if (activeLocation === normalizedCode) {
+            const { getPreCountItemsBySessionId } = await import('@/services/preCountDB');
+            const sessionItems = await getPreCountItemsBySessionId(session.id);
+            const zoneItems = sessionItems.filter(i => i.location_tag === normalizedCode);
+            
+            const stats = {
+                products: zoneItems.length,
+                units: zoneItems.reduce((acc, curr) => acc + curr.quantity, 0)
+            };
+            
+            setLocationStats(stats);
+            setShowLocationSummary(true);
+            trigger('warning');
+            return true;
+        }
+
+        // 2. Si estamos en OTRA zona -> Forzar cierre de la anterior
+        if (activeLocation && activeLocation !== normalizedCode) {
+            notify.warning("Zona ocupada", `Debes cerrar ${activeLocation} antes de abrir una nueva zona.`);
+            trigger('error');
+            return true;
+        }
+
+        // 3. Abrir nueva zona
+        try {
+            const { getLocationStatus } = await import('@/services/preCountDB') as any;
+            const statusResult = await getLocationStatus(session.id, normalizedCode);
+            
+            if (statusResult?.status === 'closed') {
+                notify.error("Zona Bloqueada", `La zona ${normalizedCode} ya fue cerrada y no puede reabrirse.`);
+                trigger('error');
+                playSound('error');
+                return true;
+            }
+
+            setActiveLocation(normalizedCode);
+            notify.success("Zona Abierta", `📍 Contando en: ${normalizedCode}`);
+            trigger('success');
+            playSound('success');
+            return true;
+        } catch (err) {
+            console.error(err);
+            return true;
+        }
+    };
+
+    const confirmCloseLocation = async () => {
+        if (!session || !activeLocation) return;
+        
+        try {
+            const { updateLocationStatus } = await import('@/services/preCountDB');
+            await updateLocationStatus(session.id, activeLocation, 'closed');
+            
+            notify.success("Zona Cerrada", `Se ha bloqueado la zona ${activeLocation}`);
+            setActiveLocation(null);
+            setShowLocationSummary(false);
+            trigger('success');
+            playSound('success');
+        } catch (err) {
+            notify.error("Error", "No se pudo cerrar la zona");
+        }
+    };
+    
+    // Generar PDF de Etiquetas QR
+    const generateLocationQRPDF = async () => {
+        try {
+            notify.info("Generando PDF", "Preparando etiquetas para impresión...");
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
+            const margin = 10;
+            const cols = 4;
+            const rows = 5;
+            const cellWidth = (pageWidth - (margin * 2)) / cols;
+            const cellHeight = (pageHeight - (margin * 2)) / rows;
+            
+            let x = margin;
+            let y = margin;
+            let count = 0;
+
+            const allLabels = Object.entries(qrQuantities).flatMap(([prefix, qty]) => {
+                const name = prefix === 'GO' ? 'Góndola' : 
+                            prefix === 'CA' ? 'Cajón' : 
+                            prefix === 'HE' ? 'Heladera' : 
+                            prefix === 'DE' ? 'Depósito' : 
+                            prefix === 'ES' ? 'Estantería' : prefix;
+                return Array.from({ length: qty }, (_, i) => ({
+                    code: `${prefix}-${(i + 1).toString().padStart(2, '0')}`,
+                    name
+                }));
+            });
+
+            if (allLabels.length === 0) {
+                notify.warning("Sin etiquetas", "No has definido cantidades para imprimir.");
+                return;
+            }
+
+            for (const label of allLabels) {
+                if (count > 0 && count % (cols * rows) === 0) {
+                    doc.addPage();
+                    x = margin;
+                    y = margin;
+                }
+
+                // Dibujar Celda (Borde punteado simulado)
+                doc.setDrawColor(200);
+                doc.setLineWidth(0.1);
+                doc.setLineDashPattern([2, 2], 0);
+                doc.roundedRect(x, y, cellWidth, cellHeight, 3, 3, 'S');
+                doc.setLineDashPattern([], 0);
+
+                // Generar QR
+                const qrSize = cellWidth * 0.6;
+                const qrX = x + (cellWidth - qrSize) / 2;
+                const qrY = y + 8;
+                
+                const qrDataUrl = await QRCode.toDataURL(label.code, {
+                    margin: 0,
+                    errorCorrectionLevel: 'H',
+                    color: { dark: '#000000', light: '#ffffff' }
+                });
+                
+                doc.addImage(qrDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+
+                // Texto descriptivo (Tipo de Zona)
+                doc.setFontSize(8);
+                doc.setTextColor(150);
+                doc.setFont("helvetica", "bold");
+                const typeWidth = doc.getTextWidth(label.name.toUpperCase());
+                doc.text(label.name.toUpperCase(), x + (cellWidth - typeWidth) / 2, qrY + qrSize + 5);
+
+                // Código (GO-01)
+                doc.setFontSize(12);
+                doc.setTextColor(0);
+                doc.setFont("helvetica", "bold");
+                const codeWidth = doc.getTextWidth(label.code);
+                doc.text(label.code, x + (cellWidth - codeWidth) / 2, qrY + qrSize + 12);
+
+                // Actualizar coordenadas
+                x += cellWidth;
+                if ((count + 1) % cols === 0) {
+                    x = margin;
+                    y += cellHeight;
+                }
+                count++;
+            }
+
+            doc.save(`Etiquetas_QR_${inventoryName || 'Sucursal'}_${new Date().getTime()}.pdf`);
+            notify.success("PDF Generado", "Se ha descargado el archivo de etiquetas.");
+            trigger('success');
+        } catch (err) {
+            console.error(err);
+            notify.error("Error", "No se pudo generar el PDF de etiquetas.");
+        }
+    };
+
     // Hardware Scanner Listener
     useHardwareScanner({
-        onScan: (code) => {
+        onScan: async (code) => {
             if (step === 'counting') {
-                handleBarcodeScan(code);
+                // Primero intentamos ver si es una ubicación
+                const handledAsLocation = await handleLocationScan(code);
+                if (!handledAsLocation) {
+                    handleBarcodeScan(code);
+                }
             }
         },
-        minChars: 6
+        minChars: 4 // Permitir códigos de zona cortos
     });
 
     const handleProductSelect = (product: Product) => {
@@ -404,7 +591,7 @@ export default function PreCount() {
             if (cached) idProducto = cached.id_producto;
         }
 
-        await addItem(manualEAN, productName, qty, idProducto);
+        await addItem(manualEAN, productName || 'Producto Desconocido', qty, idProducto, activeLocation || undefined);
 
         // Limpiar formulario y devolver foco al buscador
         setManualEAN('');
@@ -482,10 +669,16 @@ export default function PreCount() {
         }
 
         try {
-            // 1. Group items by EAN and sum quantity
+            // 1. Group items by EAN and sum quantity, also track locations
             const groupedItems: Record<string, number> = {};
+            const itemLocations: Record<string, Set<string>> = {};
+            
             items.forEach(item => {
                 groupedItems[item.ean] = (groupedItems[item.ean] || 0) + item.quantity;
+                if (item.location_tag) {
+                    if (!itemLocations[item.ean]) itemLocations[item.ean] = new Set();
+                    itemLocations[item.ean].add(item.location_tag);
+                }
             });
 
             // 2. Cross with Master Catalog
@@ -515,7 +708,8 @@ export default function PreCount() {
                     'Diferencia (U)': diffQty,
                     'Costo Unitario': master.cost,
                     'Diferencia Val ($)': diffValue,
-                    'Estado': diffQty > 0 ? 'Sobrante' : diffQty < 0 ? 'Faltante' : 'OK'
+                    'Estado': diffQty > 0 ? 'Sobrante' : diffQty < 0 ? 'Faltante' : 'OK',
+                    'Ubicación': Array.from(itemLocations[master.ean] || []).join(', ')
                 });
             });
 
@@ -537,7 +731,8 @@ export default function PreCount() {
                         'Diferencia (U)': counted,
                         'Costo Unitario': 0,
                         'Diferencia Val ($)': 0,
-                        'Estado': 'Sobrante (NUEVO)'
+                        'Estado': 'Sobrante (NUEVO)',
+                        'Ubicación': Array.from(itemLocations[ean] || []).join(', ')
                     });
                 }
             });
@@ -928,7 +1123,7 @@ export default function PreCount() {
     // Vista de Configuración (Nueva Sesión / Seleccionar)
     // Screen 1: Admin Config (Title + File)
     const renderAdminConfig = () => (
-        <div className="max-w-2xl mx-auto py-12 md:py-20 flex flex-col items-center justify-center min-h-[60vh] animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <>
             <Frame className="w-full shadow-sm border-border/40">
                 <FrameHeader className="flex-row items-center justify-between px-4 py-3 border-b border-border/10 bg-muted/5">
                     <div className="flex items-center gap-2.5 font-bold text-sm tracking-tight text-foreground">
@@ -968,43 +1163,42 @@ export default function PreCount() {
                 </FramePanel>
             </Frame>
 
-            <Pagination className="mt-8 w-full max-w-2xl">
-                <PaginationContent className="w-full justify-between gap-4">
-                    <PaginationItem>
-                        <Button 
-                            variant="outline"
-                            className="font-bold px-5 h-9 rounded-xl shadow-none"
-                            onClick={() => {
-                                setAccessMode(null);
-                                setStep('config');
-                            }}
-                        >
-                            <ArrowLeft className="size-4 mr-2" />
-                            Retroceder
-                        </Button>
-                    </PaginationItem>
-                    <PaginationItem>
-                        <Button
-                            variant={inventoryName.trim() && uploadedFiles.length > 0 ? "default" : "outline"}
-                            className={cn(
-                                "font-bold px-8 h-9 rounded-xl transition-all shadow-none",
-                                !(inventoryName.trim() && uploadedFiles.length > 0) && "opacity-50 grayscale"
-                            )}
-                            disabled={!(inventoryName.trim() && uploadedFiles.length > 0)}
-                            onClick={() => setStep('admin_summary')}
-                        >
-                            Continuar
-                            <ArrowRight className="size-4 ml-2" />
-                        </Button>
-                    </PaginationItem>
-                </PaginationContent>
-            </Pagination>
-        </div>
+            {/* Spacer */}
+            <div className="flex-1" />
+
+            {/* Navigation Footer */}
+            <div className="p-3 border-t border-border/40 bg-card/50 flex items-center justify-between">
+                <Button 
+                    variant="outline"
+                    className="font-bold px-5 h-9 rounded-xl shadow-none"
+                    onClick={() => {
+                        setAccessMode(null);
+                        setStep('config');
+                    }}
+                >
+                    <ArrowLeft className="size-4 mr-2" />
+                    Retroceder
+                </Button>
+                <Button
+                    variant={inventoryName.trim() && uploadedFiles.length > 0 ? "default" : "outline"}
+                    className={cn(
+                        "font-bold px-8 h-9 rounded-xl transition-all shadow-none",
+                        !(inventoryName.trim() && uploadedFiles.length > 0) && "opacity-50 grayscale"
+                    )}
+                    disabled={!(inventoryName.trim() && uploadedFiles.length > 0)}
+                    onClick={() => setStep('admin_summary')}
+                >
+                    Continuar
+                    <ArrowRight className="size-4 ml-2" />
+                </Button>
+            </div>
+        </>
     );
+
 
     // Screen 2: Admin Summary
     const renderAdminSummary = () => (
-        <div className="max-w-2xl mx-auto py-12 md:py-20 flex flex-col items-center justify-center min-h-[60vh] animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <>
             <Frame className="w-full shadow-sm border-border/40">
                 <FrameHeader className="flex-row items-center justify-between px-4 py-3 border-b border-border/10 bg-muted/5">
                     <div className="flex items-center gap-2.5 font-bold text-sm tracking-tight text-foreground">
@@ -1015,8 +1209,7 @@ export default function PreCount() {
                         <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Paso 2/3</span>
                     </div>
                 </FrameHeader>
-                <FramePanel className="p-8 flex flex-col gap-4">
-                    {/* Status Alert (p-alert-5/6/7) */}
+                <FramePanel className="p-6 flex flex-col gap-4">
                     {loadStatus === 'success' && (
                         <Alert variant="success" className="animate-in fade-in zoom-in-95 duration-300">
                             <CheckCircle2 className="size-4" />
@@ -1047,7 +1240,6 @@ export default function PreCount() {
                         </Alert>
                     )}
 
-                    {/* Data Alerts (p-alert-1) stacked vertically with gap-3 */}
                     <div className="flex flex-col gap-3">
                         <Alert variant="outline" className="animate-in fade-in slide-in-from-bottom-2 duration-400 bg-muted/5 border-border/40">
                             <InfoCircle className="size-4 text-muted-foreground/60" />
@@ -1068,41 +1260,37 @@ export default function PreCount() {
                 </FramePanel>
             </Frame>
 
-            <Pagination className="mt-8 w-full max-w-2xl">
-                <PaginationContent className="w-full justify-between gap-4">
-                    <PaginationItem>
-                        <Button 
-                            variant="outline"
-                            className="font-bold px-5 h-9 rounded-xl shadow-none"
-                            onClick={() => setStep('admin_config')}
-                        >
-                            <ArrowLeft className="size-4 mr-2" />
-                            Retroceder
-                        </Button>
-                    </PaginationItem>
-                    <PaginationItem>
-                        <Button
-                            className="font-bold px-10 h-9 rounded-xl transition-all shadow-none bg-emerald-600 hover:bg-emerald-700 text-white"
-                            onClick={() => {
-                                // Generar PIN de 6 dígitos
-                                const pin = Math.floor(100000 + Math.random() * 900000).toString();
-                                setSyncPin(pin);
-                                setStep('admin_sync');
-                                trigger('success');
-                            }}
-                        >
-                            Continuar
-                            <ArrowRight className="size-4 ml-2" />
-                        </Button>
-                    </PaginationItem>
-                </PaginationContent>
-            </Pagination>
-        </div>
+            <div className="flex-1" />
+
+            <div className="p-3 border-t border-border/40 bg-card/50 flex items-center justify-between">
+                <Button 
+                    variant="outline"
+                    className="font-bold px-5 h-9 rounded-xl shadow-none"
+                    onClick={() => setStep('admin_config')}
+                >
+                    <ArrowLeft className="size-4 mr-2" />
+                    Retroceder
+                </Button>
+                <Button
+                    className="font-bold px-10 h-9 rounded-xl transition-all shadow-none bg-emerald-600 hover:bg-emerald-700 text-white"
+                    onClick={() => {
+                        const pin = Math.floor(100000 + Math.random() * 900000).toString();
+                        setSyncPin(pin);
+                        setStep('admin_sync');
+                        trigger('success');
+                    }}
+                >
+                    Continuar
+                    <ArrowRight className="size-4 ml-2" />
+                </Button>
+            </div>
+        </>
     );
+
 
     // Screen 3: Admin Sync (Lobby)
     const renderAdminSync = () => (
-        <div className="max-w-2xl mx-auto py-12 md:py-20 flex flex-col items-center justify-center min-h-[60vh] animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <>
             <Frame className="w-full shadow-sm border-border/40">
                 <FrameHeader className="flex-row items-center justify-between px-4 py-3 border-b border-border/10 bg-muted/5">
                     <div className="flex items-center gap-2.5 font-bold text-sm tracking-tight text-foreground">
@@ -1113,33 +1301,30 @@ export default function PreCount() {
                         <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Paso 3/3</span>
                     </div>
                 </FrameHeader>
-                <FramePanel className="p-8 pb-12 flex flex-col items-center justify-center space-y-8 animate-in fade-in zoom-in-95 duration-500">
-                    <div className="flex flex-col items-center gap-6 w-full max-w-sm">
-                        {/* Headers (p-input-otp-4 style) */}
+                <FramePanel className="p-6 pb-10 flex flex-col items-center justify-center space-y-6 animate-in fade-in zoom-in-95 duration-500">
+                    <div className="flex flex-col items-center gap-6 w-full">
                         <div className="text-center space-y-1.5 mb-2">
                             <h2 className="text-lg font-semibold text-foreground tracking-tight">Código de verificación</h2>
                             <p className="text-xs text-muted-foreground/60">Ingrese el código de 6 dígitos en la terminal Zebra</p>
                         </div>
 
-                        {/* PIN OTP (p-input-otp-3 style - separated squarcles) */}
                         <InputOTP maxLength={6} value={syncPin} readOnly>
-                            <InputOTPGroup className="gap-2.5">
-                                <InputOTPSlot index={0} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
-                                <InputOTPSlot index={1} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
-                                <InputOTPSlot index={2} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
+                            <InputOTPGroup className="gap-2">
+                                <InputOTPSlot index={0} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
+                                <InputOTPSlot index={1} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
+                                <InputOTPSlot index={2} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
                             </InputOTPGroup>
                             
-                            <div className="mx-3 text-muted-foreground/20 font-bold text-xl">-</div>
+                            <div className="mx-2 text-muted-foreground/20 font-bold text-xl">-</div>
                             
-                            <InputOTPGroup className="gap-2.5">
-                                <InputOTPSlot index={3} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
-                                <InputOTPSlot index={4} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
-                                <InputOTPSlot index={5} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
+                            <InputOTPGroup className="gap-2">
+                                <InputOTPSlot index={3} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
+                                <InputOTPSlot index={4} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
+                                <InputOTPSlot index={5} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
                             </InputOTPGroup>
                         </InputOTP>
 
-                        {/* Final Instruction (p-input-otp-4 subtext) */}
-                        <div className="pt-4 text-center">
+                        <div className="pt-2 text-center">
                             <p className="text-[11px] text-muted-foreground/50 leading-relaxed px-4">
                                 Esta pantalla se actualizará automáticamente cuando se detecte una conexión entrante desde los dispositivos móviles.
                             </p>
@@ -1148,31 +1333,176 @@ export default function PreCount() {
                 </FramePanel>
             </Frame>
 
-            <Pagination className="mt-8 w-full max-w-2xl">
-                <PaginationContent className="w-full justify-between gap-4">
-                    <PaginationItem>
+            <div className="flex-1" />
+
+            <div className="p-3 border-t border-border/40 bg-card/50 flex items-center justify-between">
+                <Button 
+                    variant="outline"
+                    className="font-bold px-5 h-9 rounded-xl shadow-none"
+                    onClick={() => setStep('admin_summary')}
+                >
+                    <ArrowLeft className="size-4 mr-2" />
+                    Retroceder
+                </Button>
+                <Button
+                    className="font-bold px-8 h-9 rounded-xl transition-all shadow-none bg-primary hover:bg-primary/90 text-white"
+                    onClick={() => {
+                        setStep('qr_generator');
+                        trigger('success');
+                    }}
+                >
+                    Siguiente Paso
+                    <ArrowRight className="size-4 ml-2" />
+                </Button>
+            </div>
+        </>
+    );
+
+
+    // Step 4: QR Generator
+    const renderQRGenerator = () => (
+        <>
+            {showQRPrintView ? (
+                <Frame className="w-full shadow-lg border-border/40 overflow-hidden bg-white">
+                    <FrameHeader className="flex-row items-center justify-between px-4 py-3 border-b border-border/10 bg-muted/5 print:hidden">
+                        <div className="flex items-center gap-2.5 font-bold text-sm tracking-tight text-foreground">
+                            <Printer className="size-4 text-primary" />
+                            Vista Previa
+                        </div>
                         <Button 
-                            variant="outline"
-                            className="font-bold px-5 h-9 rounded-xl shadow-none"
-                            onClick={() => setStep('admin_summary')}
+                            variant="ghost" 
+                            size="icon-xs" 
+                            onClick={() => setShowQRPrintView(false)}
+                            className="print:hidden"
                         >
-                            <ArrowLeft className="size-4 mr-2" />
-                            Retroceder
+                            <XCircle className="size-4" />
                         </Button>
-                    </PaginationItem>
-                    <PaginationItem>
+                    </FrameHeader>
+                    <FramePanel className="p-0 overflow-auto max-h-[50vh] custom-scrollbar bg-gray-50 print:bg-white">
+                        <div className="print:block">
+                            <QRPrintLayout quantities={qrQuantities} branchName={inventoryName} />
+                        </div>
+                    </FramePanel>
+                    <div className="p-3 border-t border-border/10 flex flex-col gap-2 bg-card print:hidden">
+                        <Button 
+                            className="w-full bg-primary text-white font-bold" 
+                            onClick={generateLocationQRPDF}
+                        >
+                            <Download className="size-4 mr-2" />
+                            Descargar PDF
+                        </Button>
+                        <Button variant="outline" className="w-full" onClick={() => setShowQRPrintView(false)}>
+                            Cerrar Vista Previa
+                        </Button>
+                    </div>
+                </Frame>
+            ) : (
+                <Frame className="w-full shadow-sm border-border/40">
+                    <FrameHeader className="flex-row items-center justify-between px-4 py-3 border-b border-border/10 bg-muted/5">
+                        <div className="flex items-center gap-2.5 font-bold text-sm tracking-tight text-foreground">
+                            <Camera className="size-4 text-primary" />
+                            Ubicaciones (QR)
+                        </div>
+                        <div className="flex items-center gap-2 px-2 py-0.5 bg-indigo-500/10 rounded-full border border-indigo-500/20">
+                            <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">OPCIONAL</span>
+                        </div>
+                    </FrameHeader>
+                    <FramePanel className="p-5 space-y-5">
+                        <div className="text-center space-y-1">
+                            <h2 className="text-base font-bold">Generador de Etiquetas</h2>
+                            <p className="text-[11px] text-muted-foreground">
+                                Define cuántas etiquetas de cada tipo necesitas imprimir.
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3">
+                            {Object.entries(qrQuantities).map(([prefix, count]) => (
+                                <div key={prefix} className="flex items-center gap-3 p-3 rounded-xl border border-border/40 bg-muted/20">
+                                    <div className="flex flex-col flex-1 min-w-0">
+                                        <span className="text-[11px] font-black uppercase tracking-widest text-primary/60">
+                                            {prefix === 'GO' ? 'Góndolas' : 
+                                             prefix === 'CA' ? 'Cajones' : 
+                                             prefix === 'HE' ? 'Heladeras' : 
+                                             prefix === 'DE' ? 'Depósito' : 
+                                             prefix === 'ES' ? 'Estantería' : prefix}
+                                        </span>
+                                        <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[9px] font-bold border border-primary/20 w-fit mt-1">
+                                            {prefix}-XX
+                                        </span>
+                                    </div>
+                                    <NumberField 
+                                        value={count} 
+                                        onValueChange={(val) => setQrQuantities(prev => ({ ...prev, [prefix]: val || 0 }))}
+                                        min={0}
+                                        className="w-28 shrink-0"
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <NumberFieldDecrement className="shrink-0 h-8 w-8 rounded-lg border border-border/40 bg-background hover:bg-accent transition-colors" />
+                                            <NumberFieldInput className="h-8 w-full text-center font-bold text-sm bg-background border border-border/40 rounded-lg focus:ring-1 focus:ring-primary/20" />
+                                            <NumberFieldIncrement className="shrink-0 h-8 w-8 rounded-lg border border-border/40 bg-background hover:bg-accent transition-colors" />
+                                        </div>
+                                    </NumberField>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                            <Button 
+                                variant="outline" 
+                                className="w-full border-primary/40 text-primary hover:bg-primary/5 font-bold rounded-xl h-9 shadow-none"
+                                onClick={() => {
+                                    setShowQRPrintView(true);
+                                    trigger('success');
+                                }}
+                            >
+                                <Search className="size-4 mr-2" />
+                                Vista Previa
+                            </Button>
+                            <Button 
+                                className="w-full bg-primary text-white font-bold rounded-xl h-9"
+                                onClick={generateLocationQRPDF}
+                            >
+                                <Download className="size-4 mr-2" />
+                                Generar PDF de Etiquetas
+                            </Button>
+                        </div>
+                    </FramePanel>
+                </Frame>
+            )}
+
+            <div className="flex-1" />
+
+            {!showQRPrintView && (
+                <div className="p-3 border-t border-border/40 bg-card/50 flex items-center justify-between">
+                    <Button 
+                        variant="outline"
+                        className="font-bold px-5 h-9 rounded-xl shadow-none"
+                        onClick={() => setStep('admin_sync')}
+                    >
+                        <ArrowLeft className="size-4 mr-2" />
+                        Retroceder
+                    </Button>
+                    <div className="flex gap-2">
                         <Button
-                            className="font-bold px-10 h-9 rounded-xl transition-all shadow-none bg-primary hover:bg-primary/90 text-white"
+                            variant="ghost"
+                            className="font-bold px-4 h-9 rounded-xl transition-all shadow-none text-muted-foreground hover:text-foreground text-xs"
                             onClick={handleStartSession}
                         >
-                            Comenzar Inventario
-                            <Play className="size-4 ml-2 fill-current" />
+                            Omitir
                         </Button>
-                    </PaginationItem>
-                </PaginationContent>
-            </Pagination>
-        </div>
+                        <Button
+                            className="font-bold px-6 h-9 rounded-xl transition-all shadow-none bg-primary hover:bg-primary/90 text-white text-xs"
+                            onClick={handleStartSession}
+                        >
+                            Comenzar
+                            <Play className="size-3.5 ml-1.5 fill-current" />
+                        </Button>
+                    </div>
+                </div>
+            )}
+        </>
     );
+
 
     const handleSkip = async () => {
         if (availableSessions.length > 0) {
@@ -1195,12 +1525,13 @@ export default function PreCount() {
             if (step === 'admin_config') return renderAdminConfig();
             if (step === 'admin_summary') return renderAdminSummary();
             if (step === 'admin_sync') return renderAdminSync();
+            if (step === 'qr_generator') return renderQRGenerator();
         }
 
         if (accessMode === 'zebra' || accessMode === 'salon') {
             const isZebra = accessMode === 'zebra';
             return (
-                <div className="max-w-2xl mx-auto py-12 md:py-20 flex flex-col items-center justify-center min-h-[60vh] animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <>
                     <Frame className="w-full shadow-sm border-border/40">
                         <FrameHeader className="flex-row items-center justify-between px-4 py-3 border-b border-border/10 bg-muted/5">
                             <div className="flex items-center gap-2.5 font-bold text-sm tracking-tight text-foreground">
@@ -1213,15 +1544,13 @@ export default function PreCount() {
                                 </span>
                             </div>
                         </FrameHeader>
-                        <FramePanel className="p-8 pb-12 flex flex-col items-center justify-center space-y-8 animate-in fade-in zoom-in-95 duration-500">
-                            <div className="flex flex-col items-center gap-6 w-full max-w-sm">
-                                {/* Headers (p-input-otp-4 style) */}
+                        <FramePanel className="p-6 pb-10 flex flex-col items-center justify-center space-y-6 animate-in fade-in zoom-in-95 duration-500">
+                            <div className="flex flex-col items-center gap-6 w-full">
                                 <div className="text-center space-y-1.5 mb-2">
                                     <h2 className="text-lg font-semibold text-foreground tracking-tight">Código de verificación</h2>
                                     <p className="text-xs text-muted-foreground/60">Ingrese el código de 6 dígitos del panel central</p>
                                 </div>
 
-                                {/* PIN OTP (p-input-otp-3/7 style - auto validation) */}
                                 <InputOTP 
                                     maxLength={6} 
                                     value={otpValue} 
@@ -1233,23 +1562,22 @@ export default function PreCount() {
                                     }}
                                     autoFocus
                                 >
-                                    <InputOTPGroup className="gap-2.5">
-                                        <InputOTPSlot index={0} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
-                                        <InputOTPSlot index={1} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
-                                        <InputOTPSlot index={2} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
+                                    <InputOTPGroup className="gap-2">
+                                        <InputOTPSlot index={0} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
+                                        <InputOTPSlot index={1} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
+                                        <InputOTPSlot index={2} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
                                     </InputOTPGroup>
                                     
-                                    <div className="mx-3 text-muted-foreground/20 font-bold text-xl">-</div>
+                                    <div className="mx-2 text-muted-foreground/20 font-bold text-xl">-</div>
                                     
-                                    <InputOTPGroup className="gap-2.5">
-                                        <InputOTPSlot index={3} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
-                                        <InputOTPSlot index={4} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
-                                        <InputOTPSlot index={5} className="!h-14 !w-11 !rounded-2xl !border border-border/30 bg-background shadow-xs text-2xl font-black ring-offset-background" />
+                                    <InputOTPGroup className="gap-2">
+                                        <InputOTPSlot index={3} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
+                                        <InputOTPSlot index={4} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
+                                        <InputOTPSlot index={5} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
                                     </InputOTPGroup>
                                 </InputOTP>
 
-                                {/* Final Instruction (p-input-otp-4 subtext) */}
-                                <div className="pt-4 text-center">
+                                <div className="pt-2 text-center">
                                     <p className="text-[11px] text-muted-foreground/50 leading-relaxed px-4">
                                         Serás conectado automáticamente a la sesión al completar el código de 6 dígitos.
                                     </p>
@@ -1258,53 +1586,41 @@ export default function PreCount() {
                         </FramePanel>
                     </Frame>
                     
-                    <Pagination className="mt-8 w-full max-w-2xl">
-                        <PaginationContent className="w-full justify-between gap-4">
-                            <PaginationItem>
-                                <Button 
-                                    variant="outline"
-                                    className="font-bold px-5 h-9 rounded-xl shadow-none"
-                                    onClick={() => setAccessMode(null)}
-                                >
-                                    <ArrowLeft className="size-4 mr-2" />
-                                    Retroceder
-                                </Button>
-                            </PaginationItem>
-                            
-                            <PaginationItem className="flex gap-2">
-                                <Button
-                                    variant="ghost"
-                                    className="font-bold px-6 h-9 rounded-xl transition-all shadow-none text-muted-foreground hover:text-foreground"
-                                    onClick={handleSkip}
-                                >
-                                    Omitir
-                                </Button>
-                                <Button
-                                    className="font-bold px-10 h-9 rounded-xl transition-all shadow-none bg-primary hover:bg-primary/90 text-white"
-                                    onClick={() => handleJoinSession(otpValue)}
-                                    disabled={otpValue.length !== 6}
-                                >
-                                    Comenzar Inventario
-                                    <Play className="size-4 ml-2 fill-current" />
-                                </Button>
-                            </PaginationItem>
-                        </PaginationContent>
-                    </Pagination>
-                </div>
+                    <div className="flex-1" />
+
+                    <div className="p-3 border-t border-border/40 bg-card/50 flex items-center justify-between">
+                        <Button 
+                            variant="outline"
+                            className="font-bold px-5 h-9 rounded-xl shadow-none"
+                            onClick={() => setAccessMode(null)}
+                        >
+                            <ArrowLeft className="size-4 mr-2" />
+                            Retroceder
+                        </Button>
+                        <div className="flex gap-2">
+                            <Button
+                                variant="ghost"
+                                className="font-bold px-4 h-9 rounded-xl transition-all shadow-none text-muted-foreground hover:text-foreground text-xs"
+                                onClick={handleSkip}
+                            >
+                                Omitir
+                            </Button>
+                            <Button
+                                className="font-bold px-6 h-9 rounded-xl transition-all shadow-none bg-primary hover:bg-primary/90 text-white text-xs"
+                                onClick={() => handleJoinSession(otpValue)}
+                                disabled={otpValue.length !== 6}
+                            >
+                                Comenzar
+                                <Play className="size-3.5 ml-1.5 fill-current" />
+                            </Button>
+                        </div>
+                    </div>
+                </>
             );
         }
     };
 
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
-                    <p className="text-muted-foreground">Cargando...</p>
-                </div>
-            </div>
-        );
-    }
+    // Main Render logic (No modification needed to steps, we stay in the same layout)
 
     return (
         <>
@@ -1325,30 +1641,47 @@ export default function PreCount() {
                         >
                             {renderSelection()}
                         </motion.div>
-                    ) : (step === 'config' || step === 'admin_config' || step === 'admin_summary' || step === 'admin_sync') ? (
+                    ) : (step === 'config' || step === 'admin_config' || step === 'admin_summary' || step === 'admin_sync' || step === 'qr_generator') ? (
                         <motion.div
                             key="config"
                             initial={{ opacity: 0, x: -20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: 20 }}
                             transition={{ duration: 0.3 }}
-                            className="p-4 md:p-6 max-w-7xl mx-auto"
+                            className="h-[calc(100vh-6rem)] p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-[1600px] mx-auto"
                         >
-                            <div className="flex justify-end mb-4 sm:hidden">
-                                {isOnline ? (
-                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-success/10 text-success rounded-full text-sm shadow-sm border border-success/10">
-                                        <Wifi className="w-4 h-4" />
-                                        <span className="font-medium">En línea</span>
-                                    </div>
-                                ) : (
-                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-warning/10 text-warning rounded-full text-sm shadow-sm border border-warning/10">
-                                        <WifiOff className="w-4 h-4" />
-                                        <span className="font-medium">Sin conexión</span>
-                                    </div>
-                                )}
+                            {/* Left Column: Config Steps */}
+                            <div className="lg:col-span-4 lg:col-start-1 flex flex-col gap-4 min-h-0">
+                                <Card className="flex flex-col flex-1 overflow-hidden bg-gradient-to-br from-secondary/5 to-secondary/10 border-muted/50 shadow-md">
+                                    <AnimatePresence mode="wait">
+                                        <motion.div
+                                            key={step}
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, y: -10 }}
+                                            transition={{ duration: 0.25 }}
+                                            className="flex flex-col flex-1 overflow-auto custom-scrollbar"
+                                        >
+                                            {renderConfig()}
+                                        </motion.div>
+                                    </AnimatePresence>
+                                </Card>
                             </div>
-                            {renderConfig()}
+
+                            {/* Right Column: Empty State during config */}
+                            <div className="hidden lg:flex lg:col-span-8 lg:col-start-5 flex-col min-h-0 bg-card border border-border/40 rounded-xl overflow-hidden shadow-sm items-center justify-center">
+                                <div className="flex flex-col items-center gap-6 text-center px-12 animate-in fade-in duration-700">
+                                    <Laptop className="w-24 h-24 text-muted-foreground/20 stroke-[1.5]" />
+                                    <div className="space-y-3">
+                                        <h3 className="text-xl font-black text-muted-foreground/40 tracking-tight">Configuración en progreso</h3>
+                                        <p className="text-xs text-muted-foreground/30 max-w-sm leading-relaxed mx-auto">
+                                            Una vez completados los pasos de configuración inicial en el panel izquierdo, este espacio mostrará la lista de productos y el control de inventario en tiempo real.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
                         </motion.div>
+
                     ) : (
                         <motion.div
                             key="counting"
@@ -1363,13 +1696,13 @@ export default function PreCount() {
                                 <Card className="flex flex-col flex-1 overflow-hidden bg-gradient-to-br from-secondary/5 to-secondary/10 border-muted/50 shadow-md">
                                     {/* 1. Info Header */}
                                     <div className="p-5 border-b border-border/40 bg-card/50">
-                                        <div className="flex items-center justify-between gap-4 w-full">
+                                        <div className="grid grid-cols-2 gap-4 w-full">
                                             <div className="flex flex-col">
                                                 <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap mb-1">Sector</span>
                                                 <span className="font-bold text-foreground text-lg leading-none truncate">{session?.sector}</span>
                                             </div>
                                             <div className="flex flex-col items-end text-right">
-                                                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap mb-1">PC</span>
+                                                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap mb-1">PC / Zebra</span>
                                                 <button 
                                                     onClick={() => {
                                                         const newName = prompt("Nombre de esta PC:", deviceName);
@@ -1385,6 +1718,29 @@ export default function PreCount() {
                                                     {deviceName || 'Sin nombre'}
                                                 </button>
                                             </div>
+
+                                            {/* Ubicación Actual (Visible solo si hay zona activa) */}
+                                            {activeLocation && (
+                                                <div className="col-span-2 mt-2 pt-2 border-t border-border/20 flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="p-1.5 bg-amber-500/10 rounded-lg">
+                                                            <MapPin className="size-4 text-amber-600" />
+                                                        </div>
+                                                        <div className="flex flex-col">
+                                                            <span className="text-[9px] text-muted-foreground uppercase font-black">Zona Activa</span>
+                                                            <span className="font-bold text-amber-700 text-sm">{activeLocation}</span>
+                                                        </div>
+                                                    </div>
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        size="sm" 
+                                                        className="h-7 text-[10px] font-bold text-amber-600 hover:text-amber-700 hover:bg-amber-100"
+                                                        onClick={() => handleLocationScan(activeLocation)}
+                                                    >
+                                                        Finalizar Zona
+                                                    </Button>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -1642,6 +1998,55 @@ export default function PreCount() {
                             </Button>
                         </DialogFooter>
                     </Form>
+                </DialogPopup>
+            </Dialog>
+
+            {/* Dialog de Resumen de Zona (Cierre) */}
+            <Dialog open={showLocationSummary} onOpenChange={setShowLocationSummary}>
+                <DialogPopup className="sm:max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <MapPin className="size-5 text-amber-600" />
+                            Finalizar Zona: {activeLocation}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Verifica el resumen antes de bloquear este espacio de conteo.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="px-6 py-8">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="p-4 bg-secondary/20 rounded-2xl text-center border border-secondary/20">
+                                <span className="text-[10px] text-muted-foreground uppercase font-bold block mb-1">Diferentes</span>
+                                <span className="text-2xl font-black text-foreground">{locationStats.products}</span>
+                                <span className="text-[9px] text-muted-foreground block mt-1">Productos</span>
+                            </div>
+                            <div className="p-4 bg-primary/10 rounded-2xl text-center border border-primary/20">
+                                <span className="text-[10px] text-muted-foreground uppercase font-bold block mb-1">Totales</span>
+                                <span className="text-2xl font-black text-primary">{locationStats.units}</span>
+                                <span className="text-[9px] text-muted-foreground block mt-1">Unidades</span>
+                            </div>
+                        </div>
+
+                        <div className="mt-6 p-3 bg-amber-50 border border-amber-100 rounded-xl flex gap-3 items-start">
+                            <AlertCircle className="size-5 text-amber-600 shrink-0 mt-0.5" />
+                            <p className="text-xs text-amber-800 leading-relaxed">
+                                <strong>¡Importante!</strong> Una vez cerrada, esta zona quedará bloqueada para nuevos escaneos en esta sesión.
+                            </p>
+                        </div>
+                    </div>
+
+                    <DialogFooter variant="bare">
+                        <DialogClose render={<Button variant="ghost" className="rounded-xl" />}>
+                            Seguir Contando
+                        </DialogClose>
+                        <Button 
+                            className="bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-lg border-b-2 border-amber-800 active:translate-y-0.5 transition-all"
+                            onClick={confirmCloseLocation}
+                        >
+                            Confirmar Cierre y Bloquear
+                        </Button>
+                    </DialogFooter>
                 </DialogPopup>
             </Dialog>
 

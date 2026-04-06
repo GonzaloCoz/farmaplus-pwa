@@ -218,20 +218,23 @@ export async function endSession(id: string): Promise<void> {
 
 // --- Items ---
 
-export async function addPreCountItem(item: { session_id: string, ean: string, product_name: string, quantity: number }): Promise<PreCountItem> {
-    // Wrapper for upsert to maintain interface compatibility
-    return upsertPreCountItem(item);
-}
-
-export async function upsertPreCountItem(item: { session_id: string, ean: string, product_name: string, quantity: number, id_producto?: string }): Promise<PreCountItem> {
+export async function upsertPreCountItem(item: { 
+    session_id: string, 
+    ean: string, 
+    product_name: string, 
+    quantity: number, 
+    id_producto?: string, 
+    location_tag?: string 
+}): Promise<PreCountItem> {
     const { data: userData } = await supabase.auth.getUser();
     const deviceId = getDeviceId();
     const deviceName = getDeviceName();
 
-    // Check if item exists locally FOR THIS DEVICE
+    // Check if item exists locally FOR THIS DEVICE AND LOCATION
     const existingItem = await db.items
         .where('[session_id+ean+device_id]')
         .equals([item.session_id, item.ean, deviceId])
+        .filter(i => i.location_tag === item.location_tag)
         .first();
 
     const now = new Date().toISOString();
@@ -245,14 +248,16 @@ export async function upsertPreCountItem(item: { session_id: string, ean: string
             scanned_at: now,
             synced: 1, // Optimistic: assume success
             id_producto: item.id_producto || existingItem.id_producto,
-            device_name: deviceName
+            device_name: deviceName,
+            location_tag: item.location_tag
         });
         resultItem = { 
             ...existingItem, 
             quantity: newQuantity, 
             scanned_at: now, 
             id_producto: item.id_producto || existingItem.id_producto,
-            device_name: deviceName
+            device_name: deviceName,
+            location_tag: item.location_tag
         };
     } else {
         // Create new
@@ -267,7 +272,8 @@ export async function upsertPreCountItem(item: { session_id: string, ean: string
             synced: 1, // Optimistic: assume success
             id_producto: item.id_producto,
             device_id: deviceId,
-            device_name: deviceName
+            device_name: deviceName,
+            location_tag: item.location_tag
         };
         await db.items.add(newItem);
         resultItem = newItem;
@@ -286,7 +292,8 @@ export async function upsertPreCountItem(item: { session_id: string, ean: string
             scanned_by: userData.user?.id,
             id_producto: item.id_producto || existingItem?.id_producto,
             device_id: deviceId,
-            device_name: deviceName
+            device_name: deviceName,
+            location_tag: item.location_tag
         }
     });
 
@@ -354,4 +361,69 @@ export async function getAllSessions(): Promise<PreCountSession[]> {
 export async function getSessionItems(sessionOrId: string | PreCountSession): Promise<PreCountItem[]> {
     const sessionId = typeof sessionOrId === 'string' ? sessionOrId : sessionOrId.id;
     return getPreCountItemsBySessionId(sessionId);
+}
+
+// --- Zonas / Ubicaciones ---
+
+export async function getLocationStatus(sessionId: string, locationTag: string) {
+    // 1. Local check
+    const local = await db.locations
+        .where('[session_id+location_tag]')
+        .equals([sessionId, locationTag])
+        .first();
+    
+    if (local) return local;
+
+    // 2. Remote check if online
+    if (navigator.onLine) {
+        const { data, error } = await supabase
+            .from('precount_location_status')
+            .select('*')
+            .eq('session_id', sessionId)
+            .eq('location_tag', locationTag)
+            .maybeSingle();
+        
+        if (data && !error) {
+            await db.locations.put({
+                session_id: sessionId,
+                location_tag: locationTag,
+                status: data.status,
+                closed_at: data.closed_at
+            });
+            return data;
+        }
+    }
+    return null;
+}
+
+export async function updateLocationStatus(sessionId: string, locationTag: string, status: 'open' | 'closed') {
+    const now = new Date().toISOString();
+    
+    // 1. Local
+    await db.locations.put({
+        session_id: sessionId,
+        location_tag: locationTag,
+        status,
+        closed_at: status === 'closed' ? now : undefined
+    });
+
+    // 2. Sync
+    if (navigator.onLine) {
+        await supabase.rpc('toggle_precount_location', {
+            p_session_id: sessionId,
+            p_location_tag: locationTag,
+            p_status: status
+        });
+    } else {
+        await syncManager.addToQueue({
+            type: 'update',
+            entity: 'session', // Reusing session sync for location tags or we could make a new one
+            data: { 
+                action: 'toggle_location',
+                session_id: sessionId, 
+                location_tag: locationTag, 
+                status 
+            }
+        });
+    }
 }

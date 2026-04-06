@@ -301,12 +301,43 @@ export const cyclicInventoryService = {
                 p_branch_name: normalizeString(branchName),
                 p_laboratory: normalizeString(labName)
             });
-            if (error) throw error;
-        } catch (error) {
-            console.error('Error recomputing lab progress:', error);
+            if (error) console.error('[Progress] Error in recompute_lab_progress:', error);
+        } catch (e) {
+            console.error('[Progress] Error calling recompute_lab_progress:', e);
         }
     },
 
+    /**
+     * Marks a laboratory as controlled in the branch_laboratories table.
+     * Used by PreCount to sync its status with the global dashboard progress.
+     */
+    markLabAsControlled: async (branchName: string, labName: string): Promise<void> => {
+        try {
+            const cleanBranch = normalizeString(branchName);
+            const cleanLab = normalizeString(labName);
+
+            console.log(`[Sync] Marking ${cleanLab} as Controlled for branch ${cleanBranch}`);
+
+            // 1. Update the status in branch_laboratories
+            // Note: We set progress to 100 on the basis that PreCount finished the sector.
+            const { error } = await supabase
+                .from('branch_laboratories')
+                .update({ 
+                    status: 'completed',
+                    progress_percentage: 100,
+                    last_controlled: new Date().toISOString()
+                })
+                .eq('branch_name', cleanBranch)
+                .eq('laboratory', cleanLab);
+
+            if (error) {
+                console.error('[Sync] Error marking lab as controlled:', error);
+                throw error;
+            }
+        } catch (error) {
+            console.error('[Sync] Failed to mark lab as controlled:', error);
+        }
+    },
 
     // Clear pending residues for specific categories
     clearPendingResidue: async (branchName: string, labName: string, categories: string[]) => {

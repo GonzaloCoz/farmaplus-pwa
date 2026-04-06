@@ -25,6 +25,14 @@ export interface LocalSession {
     master_catalog?: any[]; // Used for device validation & recon
 }
 
+export interface LocalLocationStatus {
+    id?: string;
+    session_id: string;
+    location_tag: string;
+    status: 'open' | 'closed';
+    closed_at?: string;
+}
+
 export interface LocalItem {
     id: string; // UUID
     session_id: string;
@@ -37,6 +45,7 @@ export interface LocalItem {
     id_producto?: string;
     device_id?: string;
     device_name?: string;
+    location_tag?: string;
 }
 
 export interface LocalProduct {
@@ -49,6 +58,7 @@ export interface LocalProduct {
 export class FarmaplusDB extends Dexie {
     sessions!: Table<LocalSession>;
     items!: Table<LocalItem>;
+    locations!: Table<LocalLocationStatus>;
     products!: Table<LocalProduct>;
     pendingActions!: Table<PendingAction>;
 
@@ -83,9 +93,10 @@ export class FarmaplusDB extends Dexie {
             pendingActions: '++id, status, timestamp, entity'
         });
 
-        this.version(6).stores({
+        this.version(8).stores({
             sessions: 'id, status, start_time, synced, user_id, branch_id',
-            items: 'id, session_id, ean, [session_id+ean], [session_id+ean+device_id], synced, id_producto, device_id, scanned_by',
+            items: 'id, session_id, ean, [session_id+ean], [session_id+ean+device_id], [session_id+location_tag], synced, id_producto, device_id, scanned_by, location_tag',
+            locations: '++id, [session_id+location_tag], status',
             products: 'codebar, name',
             pendingActions: '++id, status, timestamp, entity'
         });

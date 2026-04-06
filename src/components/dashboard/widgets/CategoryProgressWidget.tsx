@@ -1,14 +1,16 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AltArrowUp as ChevronUp, InfoCircle as Info, MenuDots as MoreHorizontal } from '@solar-icons/react';
+import { AltArrowUp as ChevronUp, InfoCircle as Info, MenuDots as MoreHorizontal, DownloadSquare } from '@solar-icons/react';
 import { WidgetSkeleton } from '../WidgetSkeleton';
-import { cn } from '@/lib/utils';
+import { cn, normalizeString } from '@/lib/utils';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { getLaboratoriesForBranch } from '@/services/preCountDB';
 import { useUser } from '@/contexts/UserContext';
 import { notify } from '@/lib/notifications';
 import { hasPermission } from '@/config/permissions';
 import { motion, AnimatePresence } from 'framer-motion';
+import * as htmlToImage from 'html-to-image';
+import { useDashboardMetrics } from '@/hooks/useDashboardMetrics';
 
 interface CategoryData {
     name: string;
@@ -20,6 +22,8 @@ interface CategoryData {
 
 export function CategoryProgressWidget() {
     const { user } = useUser();
+    const { assignedDays, cycleStartDate } = useDashboardMetrics();
+    const canvaRef = useRef<HTMLDivElement>(null);
     const [categories, setCategories] = useState<CategoryData[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -39,7 +43,7 @@ export function CategoryProgressWidget() {
 
                 // 2. Get Current Statuses
                 const inventories = await cyclicInventoryService.getAllCyclicInventories(branchName) || [];
-                const labStatusMap = new Map(inventories.map(i => [`${i.labName.trim().toUpperCase()}|${(i.category || '').trim().toUpperCase()}`, i.status]));
+                const labStatusMap = new Map(inventories.map(i => [`${normalizeString(i.labName)}|${normalizeString(i.category || '')}`, i.status]));
 
                 // 3. Get Configuration & Historical Closures
                 const config = await cyclicInventoryService.getBranchConfig(branchName);
@@ -96,8 +100,8 @@ export function CategoryProgressWidget() {
                     else if (labCat === 'PERFUMERIA') catKey = 'Perfumería';
                     else if (labCat === 'ACCESORIOS') catKey = 'Accesorios';
 
-                    const labName = (lab.name || '').trim().toUpperCase();
-                    const statusKey = `${labName}|${(lab.category || '').trim().toUpperCase()}`;
+                    const labName = normalizeString(lab.name || '');
+                    const statusKey = `${labName}|${normalizeString(lab.category || '')}`;
                     const status = labStatusMap.get(statusKey);
                     const isControlled = status === 'controlado';
 
@@ -107,8 +111,12 @@ export function CategoryProgressWidget() {
 
                 // Execute Auto-Closures if needed
                 // We check existing closures AGAIN after potentially saving to get the data for display
-                await checkAndRunAutoClosure(1, 30, cats);
-                await checkAndRunAutoClosure(2, 60, cats);
+                try {
+                    await checkAndRunAutoClosure(1, 30, cats);
+                    await checkAndRunAutoClosure(2, 60, cats);
+                } catch (closureErr) {
+                    console.warn('[ProgressWidget] Background closure check failed (likely a conflict), continuing...', closureErr);
+                }
 
                 // Reload closures for display (Period 1 is currently the base for the chart)
                 const closuresRaw = await cyclicInventoryService.getCycleClosures(branchName, 1);
@@ -161,17 +169,58 @@ export function CategoryProgressWidget() {
         };
     }, [categories, selectedCategory]);
 
+    const exportToCanva = async () => {
+        if (!canvaRef.current) return;
+        
+        try {
+            // Apply correct theme context for the cloned SVG rendering
+            const isDark = document.documentElement.classList.contains('dark');
+            if (isDark) {
+                canvaRef.current.classList.add('dark');
+            } else {
+                canvaRef.current.classList.remove('dark');
+            }
+
+            const dataUrl = await htmlToImage.toPng(canvaRef.current, {
+                pixelRatio: 2, // High DPI quality
+                skipFonts: true, // Prevents hanging on webfonts
+                style: { opacity: '1', transform: 'scale(1)' }
+            });
+            const link = document.createElement('a');
+            const dateStr = new Date().toLocaleDateString('es-AR').replace(/\//g, '-');
+            link.download = `Inventario_${user?.branchName || 'Sucursal'}_${dateStr}.png`;
+            link.href = dataUrl;
+            link.click();
+            notify.success('Exito', 'Imagen del reporte descargada exitosamente.');
+        } catch (error) {
+            console.error('Error exporting canva:', error);
+            notify.error('Error', 'Hubo un error al generar la imagen.');
+        }
+    };
+
     if (loading) {
         return <WidgetSkeleton variant="progress" />;
     }
 
     return (
-        <div className="h-full flex flex-col overflow-hidden">
+        <>
+            <div className="h-full flex flex-col overflow-hidden">
             <CardHeader className="pb-0 pt-4 px-5 flex flex-row items-center justify-between space-y-0 text-foreground">
                 <CardTitle className="text-xl font-medium tracking-tight">
                     {selectedCategory ? `Rubro: ${selectedCategory}` : 'Progreso de Inventario'}
                 </CardTitle>
                 <div className="flex items-center gap-1">
+                    <button
+                        onClick={exportToCanva}
+                        className={cn(
+                            "p-2 rounded-xl transition-all duration-300",
+                            "hover:bg-foreground/5 text-muted-foreground hover:text-foreground",
+                            "active:scale-95"
+                        )}
+                        title="Descargar reporte a canva PNG"
+                    >
+                        <DownloadSquare size={20} className="hover:animate-pulse" />
+                    </button>
                     <button
                         onClick={() => setSelectedCategory(null)}
                         className="h-8 w-8 rounded-full bg-muted/50 flex items-center justify-center hover:bg-muted transition-colors"
@@ -308,5 +357,52 @@ export function CategoryProgressWidget() {
                 </div>
             </CardContent>
         </div>
+
+        {/* Off-screen Canva Template */}
+        <div ref={canvaRef} className="fixed top-0 left-0 w-[800px] pointer-events-none" style={{ zIndex: -9999, opacity: 0 }}>
+            <div className="w-full h-full p-8 rounded-2xl flex flex-col gap-6 bg-[#f8f9fb] dark:bg-[#161618] text-[#262626] dark:text-[#f5f5f5]">
+                {/* Header info */}
+                <div className="flex justify-between items-center border-b pb-4 border-[#e5e5e5] dark:border-[#3f3f46]">
+                    <div>
+                        <h2 className="text-3xl font-bold tracking-tight uppercase text-[#737373] dark:text-[#a1a1aa]">SUCURSAL {user?.branchName || ''}</h2>
+                        <p className="text-lg text-[#737373] dark:text-[#a1a1aa]">Reporte de Avance - Inventario Cíclico</p>
+                    </div>
+                    <div className="flex items-center gap-6 text-sm">
+                        <div className="flex flex-col items-end">
+                            <span className="font-medium uppercase tracking-wider text-xs text-[#737373] dark:text-[#a1a1aa]">Fecha Inicio</span>
+                            <span className="font-semibold text-lg">{cycleStartDate ? new Date(cycleStartDate).toLocaleDateString('es-AR', {day: '2-digit', month: '2-digit', year: 'numeric'}) : '-'}</span>
+                        </div>
+                        <div className="flex flex-col items-end">
+                            <span className="font-medium uppercase tracking-wider text-xs text-[#737373] dark:text-[#a1a1aa]">Días Asignados</span>
+                            <span className="font-semibold text-lg">{assignedDays ? `${assignedDays}` : '-'}</span>
+                        </div>
+                        <div className="flex flex-col items-end">
+                            <span className="font-medium uppercase tracking-wider text-xs text-[#737373] dark:text-[#a1a1aa]">Vuelta</span>
+                            <span className="font-semibold text-lg">1ª</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Categories Table */}
+                <div className="grid grid-cols-5 rounded-xl font-medium text-center divide-x mt-4 shadow-sm bg-[#ffffff] dark:bg-[#27272a] border border-[#e5e5e5] dark:border-[#3f3f46] divide-[#e5e5e5] dark:divide-[#3f3f46]">
+                    {['Medicamentos', 'Perfumería', 'Accesorios', 'Varios'].map((catName) => {
+                        const catData = categories.find(c => c.name === catName);
+                        const pct = catData ? (catData.percentage || 0) : 0;
+                        return (
+                            <div key={catName} className="flex flex-col">
+                                <div className="p-4 text-sm uppercase tracking-wider border-b border-[#e5e5e5] dark:border-[#3f3f46] text-[#737373] dark:text-[#a1a1aa] font-bold">{catName}</div>
+                                <div className="p-8 text-4xl font-bold">{pct}%</div>
+                            </div>
+                        );
+                    })}
+                    <div className="flex flex-col rounded-r-xl">
+                        <div className="p-4 text-sm uppercase tracking-wider font-bold border-b border-[#e5e5e5] dark:border-[#3f3f46] text-[#737373] dark:text-[#a1a1aa]">Avance</div>
+                        <div className="p-8 text-4xl font-black text-[#3b82f6] dark:text-[#60a5fa]">{activeStats?.name === 'Avance Global' ? (activeStats.percentage || 0) : 0}%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {/* End Canva Template */}
+        </>
     );
-}
+} 

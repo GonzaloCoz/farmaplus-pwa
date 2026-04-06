@@ -6,7 +6,6 @@ import { playSound } from '@/utils/soundUtils';
 import {
     PreCountItem,
     PreCountSession,
-    addPreCountItem,
     updatePreCountItem,
     deletePreCountItem,
     getPreCountItemsBySessionId,
@@ -18,6 +17,7 @@ import {
 } from '@/services/preCountDB';
 import { notify } from '@/lib/notifications';
 import { useUser } from '@/contexts/UserContext';
+import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 
 export interface UIPreCountItem {
     id: string;
@@ -28,6 +28,7 @@ export interface UIPreCountItem {
     timestamp: number;
     synced?: number;
     id_producto?: string;
+    location_tag?: string;
     deviceId?: string;
     deviceName?: string;
 }
@@ -43,7 +44,7 @@ interface UsePreCountReturn {
     startSession: (sector: string, masterCatalog?: any[], syncPin?: string) => Promise<void>;
     resumeSession: (session: PreCountSession) => Promise<void>;
     deleteSession: (id: string) => Promise<void>;
-    addItem: (ean: string, productName: string, quantity: number, id_producto?: string) => Promise<void>;
+    addItem: (ean: string, productName: string, quantity: number, id_producto?: string, location_tag?: string) => Promise<void>;
     updateItem: (id: string, quantity: number) => Promise<void>;
     removeItem: (id: string) => Promise<void>;
     finishSession: () => Promise<void>;
@@ -134,7 +135,8 @@ export function usePreCount(): UsePreCountReturn {
                             synced: 1, 
                             id_producto: newItem.id_producto,
                             device_id: newItem.device_id,
-                            device_name: newItem.device_name
+                            device_name: newItem.device_name,
+                            location_tag: newItem.location_tag
                         });
                     })
                 .on('postgres_changes',
@@ -227,7 +229,7 @@ export function usePreCount(): UsePreCountReturn {
     };
 
     // Agregar item
-    const addItem = useCallback(async (ean: string, productName: string, quantity: number, id_producto?: string) => {
+    const addItem = useCallback(async (ean: string, productName: string, quantity: number, id_producto?: string, location_tag?: string) => {
         if (!session) return;
         try {
             const { upsertPreCountItem } = await import('@/services/preCountDB');
@@ -236,7 +238,8 @@ export function usePreCount(): UsePreCountReturn {
                 ean,
                 product_name: productName,
                 quantity,
-                id_producto
+                id_producto,
+                location_tag
             });
             playSound('success');
         } catch (error) {
@@ -273,6 +276,13 @@ export function usePreCount(): UsePreCountReturn {
         if (!confirm('¿Finalizar sesión de conteo?')) return;
         try {
             await endSession(session.id);
+            
+            // Bridge to Dashboard Progress
+            if (user?.branchName && session.sector) {
+                console.log(`[PreCount] Session ended. Updating progress for ${session.sector}...`);
+                await cyclicInventoryService.markLabAsControlled(user.branchName, session.sector);
+            }
+
             setSession(null);
             notify.success("Sesión finalizada", "La sesión se cerró y finalizó");
         } catch (error) {

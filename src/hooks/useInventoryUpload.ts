@@ -5,6 +5,7 @@ import { CyclicItem } from '@/services/cyclicInventoryService';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { normalizeString } from '@/lib/utils';
 import { useUser } from '@/contexts/UserContext';
+import ExcelWorker from '../workers/excelWorker?worker';
 
 // Definir categorías para evitar dependencias circulares o redefiniciones
 const CATEGORIES = ["Medicamentos", "Perfumería", "ACCESORIOS", "VARIOS"];
@@ -102,9 +103,7 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
             const fileContent = evt.target?.result;
 
             // Optimización Empresarial: Uso de Web Workers para rendimiento de UI a 60FPS
-            const workerUrl = new URL('../workers/excelWorker.ts', import.meta.url);
-
-            const worker = new Worker(workerUrl, { type: 'module' });
+            const worker = new ExcelWorker();
 
             worker.onmessage = async (e) => {
                 const { success, error, finalItems, addedCount, updatedCount, type, message } = e.data;

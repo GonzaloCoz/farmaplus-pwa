@@ -215,7 +215,7 @@ export default function CyclicInventoryDetail() {
             <input
                 id="inventory-upload-hidden"
                 type="file"
-                accept=".xlsx, .xls, .pdf"
+                accept=".xlsx, .xls"
                 className="hidden"
                 onChange={handleFileUpload}
                 disabled={isUploading || isSaving}
@@ -618,7 +618,7 @@ export default function CyclicInventoryDetail() {
                                                                     </Button>
                                                                     <Input
                                                                         type="file"
-                                                                        accept=".xlsx, .xls, .pdf"
+                                                                        accept=".xlsx, .xls"
                                                                         className="absolute inset-0 opacity-0 cursor-pointer"
                                                                         onChange={handleFileUpload}
                                                                         disabled={isUploading}
@@ -643,7 +643,7 @@ export default function CyclicInventoryDetail() {
                                                                     </Button>
                                                                     <Input
                                                                         type="file"
-                                                                        accept=".xlsx, .xls, .pdf"
+                                                                        accept=".xlsx, .xls"
                                                                         className="absolute inset-0 opacity-0 cursor-pointer"
                                                                         onChange={handleFileUpload}
                                                                         disabled={isUploading}

@@ -91,13 +91,18 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
 
         const isPdf = file.name.toLowerCase().endsWith('.pdf');
 
+        // PDF uploads are temporarily disabled due to worker compatibility issues
+        if (isPdf) {
+            notify.error("Formato no soportado", "La carga de archivos PDF está temporalmente deshabilitada. Por favor, utilizá un archivo Excel (.xlsx o .xls).");
+            setIsUploading(false);
+            return;
+        }
+
         reader.onload = (evt) => {
             const fileContent = evt.target?.result;
 
             // Optimización Empresarial: Uso de Web Workers para rendimiento de UI a 60FPS
-            const workerUrl = isPdf 
-                ? new URL('../workers/pdfWorker.ts', import.meta.url)
-                : new URL('../workers/excelWorker.ts', import.meta.url);
+            const workerUrl = new URL('../workers/excelWorker.ts', import.meta.url);
 
             const worker = new Worker(workerUrl, { type: 'module' });
 
@@ -155,11 +160,7 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
             });
         };
 
-        if (isPdf) {
-            reader.readAsArrayBuffer(file);
-        } else {
-            reader.readAsBinaryString(file);
-        }
+        reader.readAsBinaryString(file);
     };
 
     return {

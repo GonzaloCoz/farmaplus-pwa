@@ -563,18 +563,38 @@ export default function Settings() {
 
     setIsPublishingVersion(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user: authUser } } = await supabase.auth.getUser();
 
-      const { error } = await (supabase as any)
-        .from('app_versions')
-        .insert({
-          version: newVersionObj.version.trim(),
-          release_notes: newVersionObj.notes.trim() || 'Actualización menor de sistema y mejoras de estabilidad.',
-          is_active: true,
-          published_by: user?.id
-        });
+      // First, try using an RPC if available (bypasses RLS)
+      const { error: rpcError } = await (supabase as any).rpc('publish_app_version', {
+        p_version: newVersionObj.version.trim(),
+        p_release_notes: newVersionObj.notes.trim() || 'Actualización menor de sistema y mejoras de estabilidad.',
+        p_published_by: authUser?.id
+      });
 
-      if (error) throw error;
+      if (rpcError) {
+        // Fallback: Try direct insert (requires RLS policy)
+        const { error: insertError } = await (supabase as any)
+          .from('app_versions')
+          .insert({
+            version: newVersionObj.version.trim(),
+            release_notes: newVersionObj.notes.trim() || 'Actualización menor de sistema y mejoras de estabilidad.',
+            is_active: true,
+            published_by: authUser?.id
+          });
+
+        if (insertError) {
+          // If it's an RLS error, provide a clear message
+          if (insertError.message?.includes('row-level security') || insertError.code === '42501') {
+            throw new Error(
+              'Política de seguridad (RLS) bloqueó la inserción. ' +
+              'Ejecutá en Supabase SQL Editor:\n\n' +
+              'CREATE POLICY "Allow authenticated insert" ON app_versions FOR INSERT TO authenticated WITH CHECK (true);'
+            );
+          }
+          throw insertError;
+        }
+      }
 
       toast.success('Nueva versión publicada exitosamente', {
         description: 'Todos los clientes conectados recibirán el aviso de actualización al instante.'

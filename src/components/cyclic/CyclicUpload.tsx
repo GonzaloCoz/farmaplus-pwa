@@ -19,7 +19,7 @@ export function CyclicUpload({ onFileUpload, isLoading, labName }: CyclicUploadP
             <div>
                 <h3 className="text-xl font-bold">Comenzar Inventario</h3>
                 <p className="text-muted-foreground max-w-sm mx-auto mt-2 text-sm leading-relaxed">
-                    Sube el archivo Excel o PDF para cargar los productos del laboratorio <strong className="text-foreground">{labName}</strong>.
+                    Sube el archivo Excel para cargar los productos del laboratorio <strong className="text-foreground">{labName}</strong>.
                 </p>
             </div>
             <div className="relative group">
@@ -29,14 +29,14 @@ export function CyclicUpload({ onFileUpload, isLoading, labName }: CyclicUploadP
                 </Button>
                 <Input
                     type="file"
-                    accept=".xlsx, .xls, .pdf"
+                    accept=".xlsx, .xls"
                     className="absolute inset-0 opacity-0 cursor-pointer"
                     onChange={onFileUpload}
                     disabled={isLoading}
                 />
             </div>
             <p className="text-[10px] text-muted-foreground pt-4 border-t w-full max-w-xs uppercase tracking-wide">
-                Formatos soportados: .xlsx, .xls, .pdf
+                Formatos soportados: .xlsx, .xls
             </p>
         </Card>
     );

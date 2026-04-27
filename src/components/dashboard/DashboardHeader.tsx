@@ -38,7 +38,7 @@ export function DashboardHeader({
     };
 
     return (
-        <motion.div variants={itemVariants} className="space-y-1">
+        <motion.div variants={itemVariants} className="space-y-1 pt-4 lg:pt-0">
             {/* Date */}
             <div className="text-muted-foreground text-xs font-normal">
                 {new Date().toLocaleDateString('es-AR', { weekday: 'long', month: 'short', day: '2-digit', year: 'numeric' })}

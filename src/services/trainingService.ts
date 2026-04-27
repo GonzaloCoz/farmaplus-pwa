@@ -76,6 +76,23 @@ export const trainingService = {
     },
 
     /**
+     * Admin: Fetch all posts regardless of status
+     */
+    async getAdminPosts() {
+        const { data, error } = await (supabase as any)
+            .from('training_posts')
+            .select(`
+                *,
+                author:profiles(full_name, username),
+                category:training_categories(*)
+            `)
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        return data as unknown as TrainingPost[];
+    },
+
+    /**
      * Fetch a single post with detailed info
      */
     async getPostById(id: string) {
@@ -167,9 +184,6 @@ export const trainingService = {
         }
     },
 
-    /**
-     * Mark post as read
-     */
     async markAsRead(postId: string) {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
@@ -184,6 +198,19 @@ export const trainingService = {
         if (error && error.code !== '23505') { // Ignore unique violation if it happens
             console.error("Error marking as read:", error);
         }
+    },
+
+    /**
+     * Delete a post
+     */
+    async deletePost(id: string) {
+        const { error } = await (supabase as any)
+            .from('training_posts')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
+        return true;
     },
 
     /**
@@ -249,18 +276,5 @@ export const trainingService = {
 
         if (error) throw error;
         return data;
-    },
-
-    /**
-     * Admin: Delete Post
-     */
-    async deletePost(id: string) {
-        const { error } = await (supabase as any)
-            .from('training_posts')
-            .delete()
-            .eq('id', id);
-
-        if (error) throw error;
-        return true;
     }
 };

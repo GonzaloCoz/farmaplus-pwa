@@ -145,8 +145,8 @@ export function UpcomingInventoriesWidget({ onDateClick }: Props) {
             <div className="flex-1 bg-muted/30 p-4 space-y-3 rounded-t-3xl mt-1">
                 {isLoading ? (
                     <div className="space-y-3 pt-2">
-                        <div className="h-14 bg-muted animate-pulse rounded-2xl" />
-                        <div className="h-14 bg-muted animate-pulse rounded-2xl" />
+                        <div className="h-14 bg-muted animate-pulse rounded-lg" />
+                        <div className="h-14 bg-muted animate-pulse rounded-lg" />
                     </div>
                 ) : inventories.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
@@ -156,7 +156,7 @@ export function UpcomingInventoriesWidget({ onDateClick }: Props) {
                     inventories.map((inv) => (
                         <div
                             key={inv.id}
-                            className="flex items-center gap-3 p-3 bg-card rounded-2xl shadow-sm cursor-pointer hover:shadow-md transition-all group"
+                            className="flex items-center gap-3 p-3 bg-card rounded-lg shadow-sm cursor-pointer hover:shadow-md transition-all group"
                             onClick={() => onDateClick?.(inv.date)}
                         >
                             {/* Avatar / Icon Placeholder */}
@@ -185,3 +185,4 @@ export function UpcomingInventoriesWidget({ onDateClick }: Props) {
         </div>
     );
 }
+

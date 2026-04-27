@@ -67,7 +67,7 @@ export default function Login() {
                             className="h-20 w-auto object-contain"
                         />
                         <div className="flex flex-col">
-                            <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+                            <h1 className="text-3xl font-bold tracking-tight text-gray-900 font-heading">
                                 Bienvenido
                             </h1>
                             <p className="text-gray-600 text-sm leading-tight">
@@ -104,7 +104,7 @@ export default function Login() {
                                         id="password"
                                         type="password"
                                         placeholder="Tu contraseña"
-                                        className="w-full pl-10 h-12 bg-white/50 border-transparent focus:bg-white focus:ring-0 outline-none transition-all rounded-md px-4 text-sm text-black"
+                                        className="w-full pl-10 h-12 bg-white/50 border-transparent focus:bg-white focus:ring-0 outline-none transition-all rounded-lg px-4 text-sm text-black"
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         required
@@ -115,7 +115,7 @@ export default function Login() {
 
                         <Button
                             type="submit"
-                            className="w-full h-12 text-base font-semibold bg-black text-white hover:opacity-90 transition-all rounded-md shadow-sm"
+                            className="w-full h-12 text-base font-semibold bg-black text-white hover:opacity-90 transition-all rounded-lg shadow-sm"
                             disabled={isLoading}
                         >
                             {isLoading ? "Accediendo..." : "Ingresar"}

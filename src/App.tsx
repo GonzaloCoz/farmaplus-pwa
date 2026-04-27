@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes, Outlet, useLocation, Navigate } from "react-router-dom";
+import { HashRouter, Route, Routes, Outlet, useLocation, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, lazy, Suspense } from "react";
 import { AnimatePresence } from "framer-motion";
@@ -92,6 +92,7 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
 
 const AppRoutes = () => {
   const location = useLocation();
+  useAndroidBackButton();
 
   return (
     <Routes location={location} key={location.pathname}>
@@ -364,8 +365,10 @@ const AppRoutes = () => {
 
 
 import { WindowManagerProvider } from "./contexts/WindowManagerContext";
+import { useAndroidBackButton } from "./hooks/useAndroidBackButton";
 
 const App = () => {
+
   useEffect(() => {
     // Inicializar DB inmediatamente al cargar la app
     const initialize = async () => {
@@ -393,8 +396,7 @@ const App = () => {
                 <OfflineIndicator />
                 <InstallPrompt />
                 <ErrorBoundary>
-                  <BrowserRouter 
-                    basename={import.meta.env.VITE_BASE?.replace(/\/$/, '') || ''}
+                  <HashRouter 
                     future={{
                       v7_startTransition: true,
                       v7_relativeSplatPath: true,
@@ -403,7 +405,7 @@ const App = () => {
                     <WindowManagerProvider>
                       <AppRoutes />
                     </WindowManagerProvider>
-                  </BrowserRouter>
+                  </HashRouter>
                 </ErrorBoundary>
               </NotificationProvider>
             </UserProvider>

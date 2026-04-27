@@ -14,6 +14,22 @@ import { Frame, FramePanel } from "@/components/ui/frame";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { cn, normalizeString } from "@/lib/utils";
+import { ReportExporter } from "@/lib/reportExporter";
+import { 
+  Download, 
+  Document, 
+  Restart as RotateCcw, 
+  DangerCircle as AlertCircleIcon,
+  TrashBinMinimalistic as Trash
+} from "@solar-icons/react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   Menu,
   MenuPopup,
@@ -54,7 +70,13 @@ export default function CyclicInventory() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [laboratories, setLaboratories] = useState<CyclicInventoryStats[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isProcessingMassAction, setIsProcessingMassAction] = useState(false);
   const [lockStatus, setLockStatus] = useState<{ isLocked: boolean, reason: 'manual' | 'deadline' | null }>({ isLocked: false, reason: null });
+
+  // Mass Reset State
+  const [showMassResetDialog, setShowMassResetDialog] = useState(false);
+  const [massResetChallenge, setMassResetChallenge] = useState("");
+  const [massResetInput, setMassResetInput] = useState("");
 
   useEffect(() => {
     const loadLabs = async () => {
@@ -242,6 +264,67 @@ export default function CyclicInventory() {
     return result;
   }, [groupedLaboratories, searchTerm, sortBy, statusFilter]);
 
+  // --- Mass Actions ---
+
+  const handleMassSync = async () => {
+    if (!user?.branchSheet || filteredAndSortedLabs.length === 0) return;
+    
+    setIsProcessingMassAction(true);
+    notify.info("Sincronización Masiva", `Sincronizando ${filteredAndSortedLabs.length} laboratorios...`);
+    
+    try {
+      // Usamos Promise.all con un pequeño delay o secuencial para no saturar Supabase
+      // En este caso, como son RPCs, podemos dispararlos en batches
+      const labsToSync = filteredAndSortedLabs.filter(l => l.status !== 'pendiente');
+      
+      for (const lab of labsToSync) {
+        await cyclicInventoryService.recomputeLabProgress(user.branchSheet, lab.labName);
+      }
+      
+      notify.success("Sincronización Completada", "Todos los laboratorios han sido actualizados.");
+      // Recargar datos
+      window.location.reload(); 
+    } catch (error) {
+      console.error("Error in mass sync:", error);
+      notify.error("Error", "Ocurrió un error durante la sincronización masiva.");
+    } finally {
+      setIsProcessingMassAction(false);
+    }
+  };
+
+  const prepareMassReset = () => {
+    const challenge = "REINICIAR TODO";
+    setMassResetChallenge(challenge);
+    setMassResetInput("");
+    setShowMassResetDialog(true);
+  };
+
+  const handleMassReset = async () => {
+    if (massResetInput !== massResetChallenge) return;
+    if (!user?.branchSheet) return;
+
+    setIsProcessingMassAction(true);
+    setShowMassResetDialog(false);
+    notify.info("Reiniciando Sucursal", "Borrando todos los datos de inventario...");
+
+    try {
+      const labsToReset = filteredAndSortedLabs.filter(l => l.status !== 'pendiente');
+      
+      for (const lab of labsToReset) {
+        await cyclicInventoryService.deleteInventory(user.branchSheet, lab.labName);
+        await cyclicInventoryService.deleteAdjustmentHistory(user.branchSheet, lab.labName);
+      }
+
+      notify.success("Reinicio Completado", "Todos los laboratorios han sido puestos a cero.");
+      window.location.reload();
+    } catch (error) {
+      console.error("Error in mass reset:", error);
+      notify.error("Error", "Ocurrió un error durante el reinicio masivo.");
+    } finally {
+      setIsProcessingMassAction(false);
+    }
+  };
+
 
 
   if (isLoading) {
@@ -269,7 +352,7 @@ export default function CyclicInventory() {
 
       {/* Resumen del Panel */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="p-6 flex flex-col justify-between bg-card/40 dark:bg-card/20 backdrop-blur-sm border border-border/50 shadow-sm rounded-2xl overflow-hidden relative group transition-all duration-300">
+        <Card className="p-6 flex flex-col justify-between bg-card/40 dark:bg-card/20 backdrop-blur-sm border border-border/50 shadow-sm rounded-lg overflow-hidden relative group transition-all duration-300">
           <div className="flex items-center gap-3 text-primary mb-4 relative z-10">
             <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
               <BarChart3 className="w-5 h-5" />
@@ -298,7 +381,7 @@ export default function CyclicInventory() {
           </div>
         </Card>
 
-        <Card className="p-6 flex flex-col justify-between bg-card/40 dark:bg-card/20 backdrop-blur-sm border border-border/50 shadow-sm rounded-2xl overflow-hidden relative group transition-all duration-300">
+        <Card className="p-6 flex flex-col justify-between bg-card/40 dark:bg-card/20 backdrop-blur-sm border border-border/50 shadow-sm rounded-lg overflow-hidden relative group transition-all duration-300">
           <div className="flex items-center gap-3 text-success mb-4 relative z-10">
             <div className="p-2 rounded-xl bg-success/10 border border-success/20">
               <CheckCircle className="w-5 h-5" />
@@ -315,7 +398,7 @@ export default function CyclicInventory() {
           </div>
         </Card>
 
-        <Card className="p-6 flex flex-col justify-between bg-card/40 dark:bg-card/20 backdrop-blur-sm border border-border/50 shadow-sm rounded-2xl overflow-hidden relative group transition-all duration-300">
+        <Card className="p-6 flex flex-col justify-between bg-card/40 dark:bg-card/20 backdrop-blur-sm border border-border/50 shadow-sm rounded-lg overflow-hidden relative group transition-all duration-300">
           <div className="flex items-center gap-3 text-muted-foreground mb-4 relative z-10">
             <div className="p-2 rounded-xl bg-muted/50 border border-border/40">
               <AlertCircle className="w-5 h-5" />
@@ -475,9 +558,43 @@ export default function CyclicInventory() {
                   </MenuPopup>
               </Menu>
               <GroupSeparator />
-              <Button variant="outline" size="icon" className="group">
-                  <MoreVertical className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-              </Button>
+              <Menu>
+                  <MenuTrigger render={
+                      <Button variant="outline" size="icon" className="group" disabled={isProcessingMassAction}>
+                          <MoreVertical className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                      </Button>
+                  } />
+                  <MenuPopup align="end" className="w-64 p-2">
+                    <MenuGroup>
+                      <MenuGroupLabel>Reportes (Sucursal)</MenuGroupLabel>
+                      <MenuItem onClick={() => ReportExporter.exportSummaryToPDF(filteredAndSortedLabs, user?.branchSheet || "Sucursal")}>
+                        <Document className="w-4 h-4 text-muted-foreground" />
+                        <span>Descargar Reporte PDF</span>
+                      </MenuItem>
+                      <MenuItem onClick={() => ReportExporter.exportSummaryToExcel(filteredAndSortedLabs, user?.branchSheet || "Sucursal")}>
+                        <Download className="w-4 h-4 text-muted-foreground" />
+                        <span>Descargar Planilla Excel</span>
+                      </MenuItem>
+                    </MenuGroup>
+
+                    {user?.role === 'admin' && (
+                      <>
+                        <MenuSeparator className="my-2" />
+                        <MenuGroup>
+                          <MenuGroupLabel>Administración</MenuGroupLabel>
+                          <MenuItem onClick={handleMassSync} className="text-primary focus:text-primary">
+                            <RotateCcw className="w-4 h-4" />
+                            <span>Sincronizar todo (Forzar)</span>
+                          </MenuItem>
+                          <MenuItem onClick={prepareMassReset} variant="destructive" className="text-destructive focus:text-destructive">
+                            <Trash className="w-4 h-4" />
+                            <span>Reiniciar sucursal</span>
+                          </MenuItem>
+                        </MenuGroup>
+                      </>
+                    )}
+                  </MenuPopup>
+              </Menu>
           </Group>
 
           <Tabs 
@@ -606,6 +723,49 @@ export default function CyclicInventory() {
           </FramePanel>
         </Frame>
       )}
+
+      {/* Mass Reset Confirmation Dialog */}
+      <Dialog open={showMassResetDialog} onOpenChange={setShowMassResetDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertCircleIcon className="w-5 h-5" />
+              Confirmar Reinicio Masivo
+            </DialogTitle>
+            <DialogDescription className="pt-2">
+              Esta acción eliminará <strong>TODOS</strong> los datos de inventario, ajustes y productos controlados de <strong>TODOS</strong> los laboratorios mostrados actualmente. Esta acción no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4 space-y-4">
+            <div className="p-3 bg-muted/50 rounded-lg border border-border/50">
+              <p className="text-xs font-medium text-muted-foreground uppercase mb-1">Para confirmar, escribe:</p>
+              <p className="text-lg font-black tracking-widest text-center select-none">{massResetChallenge}</p>
+            </div>
+            
+            <Input
+              value={massResetInput}
+              onChange={(e) => setMassResetInput(e.target.value.toUpperCase())}
+              placeholder="Escribe el texto de confirmación..."
+              className="font-bold text-center"
+            />
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setShowMassResetDialog(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleMassReset}
+              disabled={massResetInput !== massResetChallenge}
+            >
+              Reiniciar Todo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+

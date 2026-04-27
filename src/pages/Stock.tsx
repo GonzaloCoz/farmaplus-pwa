@@ -78,7 +78,7 @@ export default function Stock() {
                             <div className="relative p-8 flex flex-col h-full">
                                 {/* Icono */}
                                 <div className="mb-6">
-                                    <div className="inline-flex p-4 bg-primary/10 rounded-2xl group-hover:bg-primary group-hover:text-primary-foreground transition-colors duration-300">
+                                    <div className="inline-flex p-4 bg-primary/10 rounded-lg group-hover:bg-primary group-hover:text-primary-foreground transition-colors duration-300">
                                         <option.icon className="w-8 h-8" />
                                     </div>
                                 </div>
@@ -123,3 +123,4 @@ export default function Stock() {
         </PageLayout>
     );
 }
+

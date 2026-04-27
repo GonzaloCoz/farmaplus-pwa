@@ -30,8 +30,11 @@ export function BottomNavBar() {
         });
     }, [user?.role]);
     return (
-        <nav className="fixed bottom-0 left-0 right-0 z-50 w-full border-t bg-background/95 backdrop-blur-sm sm:hidden pb-[env(safe-area-inset-bottom)]">
-            <div className="grid h-20 items-center justify-center text-xs" style={{ gridTemplateColumns: `repeat(${filteredNavItems.length}, 1fr)` }}>
+        <nav 
+            style={{ paddingBottom: 'var(--safe-bottom)' }}
+            className="relative z-50 w-full border-t bg-background backdrop-blur-sm sm:hidden bottom-nav"
+        >
+            <div className="grid items-center justify-center text-xs" style={{ height: 'var(--nav-height)', gridTemplateColumns: `repeat(${filteredNavItems.length}, 1fr)` }}>
                 {filteredNavItems.map(({ to, icon: Icon, label }) => (
                     <NavLink
                         key={to}

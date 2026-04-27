@@ -140,7 +140,7 @@ export function ExpirationEntryModal({
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent
-                className="max-w-md p-0 overflow-hidden gap-0 bg-background/95 backdrop-blur-xl border-white/10 shadow-2xl"
+                className="max-w-md p-0 overflow-hidden gap-0 bg-background  border-white/10 shadow-md"
             >
                 {/* Header */}
                 <div className="bg-primary px-6 py-5 relative overflow-hidden">
@@ -398,3 +398,4 @@ export function ExpirationEntryModal({
         </Dialog>
     );
 }
+

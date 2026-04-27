@@ -54,7 +54,7 @@ export function ProfileDropdown() {
             <PopoverContent
                 align="end"
                 sideOffset={8}
-                className="w-72 p-0 rounded-2xl border border-border/60 shadow-xl bg-popover"
+                className="w-72 p-0 rounded-lg border border-border/60 shadow-sm bg-popover"
             >
                 {/* Header - User Info */}
                 <div className="flex items-center gap-3 p-4 pb-3">
@@ -145,3 +145,4 @@ export function ProfileDropdown() {
         </Popover>
     );
 }
+

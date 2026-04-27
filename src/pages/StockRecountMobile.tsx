@@ -241,7 +241,7 @@ export default function StockRecountMobile() {
   return (
       <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col">
           {/* Header */}
-          <div className="sticky top-0 z-30 bg-[#0a0a0a]/80 backdrop-blur-xl border-b border-white/5">
+          <div className="sticky top-0 z-30 bg-[#0a0a0a]/80  border-b border-white/5">
               <div className="p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                      <div className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center">
@@ -356,3 +356,4 @@ export default function StockRecountMobile() {
       </div>
   );
 }
+

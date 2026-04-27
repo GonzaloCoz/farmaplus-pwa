@@ -70,9 +70,9 @@ const DialogPopup = React.forwardRef<HTMLDivElement, DialogPopupProps>(
       <BaseDialog.Popup
         ref={ref}
         className={cn(
-          "fixed left-[50%] top-[50%] z-50 flex w-full max-w-lg translate-x-[-50%] translate-y-[-50%] flex-col gap-0 border bg-background shadow-2xl transition-all duration-300",
+          "fixed left-[50%] top-[50%] z-50 flex w-full max-w-lg translate-x-[-50%] translate-y-[-50%] flex-col gap-0 border bg-background shadow-sm transition-all duration-300",
           "data-[open]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[open]:fade-in-0 data-[closed]:zoom-out-95 data-[open]:zoom-in-95 data-[closed]:slide-out-to-left-1/2 data-[closed]:slide-out-to-top-[48%] data-[open]:slide-in-from-left-1/2 data-[open]:slide-in-from-top-[48%]",
-          "rounded-3xl border-border/40 overflow-hidden",
+          "rounded-xl border-border/40 overflow-hidden",
           bottomStickOnMobile && "max-sm:top-auto max-sm:bottom-4 max-sm:translate-y-0 max-sm:max-w-[calc(100%-2rem)]",
           className
         )}
@@ -139,7 +139,7 @@ const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <BaseDialog.Description
     ref={ref}
-    className={cn("text-xs text-muted-foreground font-medium mt-0.5", className)}
+    className={cn("text-sm text-muted-foreground font-medium", className)}
     {...props}
   />
 ));
@@ -221,3 +221,4 @@ export {
   DialogCreateHandle,
   DialogViewport,
 };
+

@@ -134,21 +134,22 @@ export function ComboboxInput({
   );
 }
 
-export function ComboboxTrigger({
-  className,
-  children,
-  ...props
-}: ComboboxPrimitive.Trigger.Props): React.ReactElement {
+export const ComboboxTrigger = React.forwardRef<
+  HTMLButtonElement,
+  ComboboxPrimitive.Trigger.Props
+>(({ className, children, ...props }, ref) => {
   return (
     <ComboboxPrimitive.Trigger
       className={className}
       data-slot="combobox-trigger"
+      ref={ref}
       {...props}
     >
       {children}
     </ComboboxPrimitive.Trigger>
   );
-}
+});
+ComboboxTrigger.displayName = "ComboboxTrigger";
 
 export function ComboboxPopup({
   className,

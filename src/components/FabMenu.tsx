@@ -68,7 +68,15 @@ export function FabMenu({ actions, mainIcon = <Plus className="w-6 h-6" />, clas
     };
 
     return (
-        <div id={id} ref={menuRef} className={cn("fixed bottom-24 right-4 lg:bottom-6 lg:right-6 z-50 flex flex-col items-end gap-4 transition-all duration-300", className)}>
+        <div 
+            id={id} 
+            ref={menuRef} 
+            style={{ bottom: 'calc(6rem + var(--safe-area-bottom))' }}
+            className={cn(
+                "fixed right-4 lg:bottom-6 lg:right-6 lg:!bottom-6 z-50 flex flex-col items-end gap-4 transition-all duration-300", 
+                className
+            )}
+        >
             <AnimatePresence>
                 {isOpen && (
                     <motion.div
@@ -86,7 +94,7 @@ export function FabMenu({ actions, mainIcon = <Plus className="w-6 h-6" />, clas
                                 <Button
                                     variant={action.variant || "secondary"}
                                     className={cn(
-                                        "h-14 px-6 rounded-2xl shadow-lg transition-transform hover:scale-105 flex items-center gap-3 min-w-[140px] justify-start",
+                                        "h-14 px-6 rounded-lg shadow-lg transition-transform hover:scale-105 flex items-center gap-3 min-w-[140px] justify-start",
                                         action.color
                                     )}
                                     onClick={() => {
@@ -107,7 +115,7 @@ export function FabMenu({ actions, mainIcon = <Plus className="w-6 h-6" />, clas
             <Button
                 size="icon"
                 className={cn(
-                    "h-14 w-14 rounded-2xl shadow-xl transition-all duration-300",
+                    "h-14 w-14 rounded-lg shadow-sm transition-all duration-300",
                     isOpen ? "rotate-45 bg-muted-foreground" : "bg-primary"
                 )}
                 onClick={toggleMenu}
@@ -117,3 +125,4 @@ export function FabMenu({ actions, mainIcon = <Plus className="w-6 h-6" />, clas
         </div>
     );
 }
+

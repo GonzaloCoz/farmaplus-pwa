@@ -1,11 +1,12 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Pen as Pencil, TrashBinMinimalistic as Trash2, Widget as Package, Copy, CheckCircle as Check, Magnifer as SearchIcon } from '@solar-icons/react';
+import { Pen as Pencil, TrashBinMinimalistic as Trash2, Widget as Package, Copy, CheckCircle as Check, Magnifer as SearchIcon, AltArrowRight as ArrowRight } from '@solar-icons/react';
 import { cn } from '@/lib/utils';
 import { UIPreCountItem } from '@/hooks/usePreCount';
 import { ProductPreview } from '@/components/ProductPreview';
+import { SwipeableItem } from '@/components/SwipeableItem';
 import {
     Dialog,
     DialogContent,
@@ -48,37 +49,53 @@ import {
     flexRender,
     getCoreRowModel,
     getPaginationRowModel,
+    getSortedRowModel,
+    type SortingState,
     type PaginationState,
     useReactTable,
 } from "@tanstack/react-table";
+import { ChevronDown as ChevronDownIcon, ChevronUp as ChevronUpIcon, MapPin } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 import { MasterCatalogItem } from '@/services/preCountDB';
 
 interface PreCountListProps {
     items: UIPreCountItem[];
+    mode?: 'full' | 'restricted' | 'readonly';
     onUpdate: (id: string, quantity: number) => void;
     onDelete: (id: string) => void;
+    onEditRequest?: (item: UIPreCountItem) => void;
     masterCatalog?: MasterCatalogItem[];
 }
 
-export function PreCountList({ items, onUpdate, onDelete, masterCatalog }: PreCountListProps) {
+export function PreCountList({ items, mode = 'full', onUpdate, onDelete, onEditRequest, masterCatalog }: PreCountListProps) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editQuantity, setEditQuantity] = useState<number>(1);
     const [copiedId, setCopiedId] = useState<string | null>(null);
+    const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
     const [pagination, setPagination] = useState<PaginationState>({
         pageIndex: 0,
         pageSize: 20,
     });
+    
+    const [sorting, setSorting] = useState<SortingState>([]);
 
     const [searchTerm, setSearchTerm] = useState('');
+    const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 1024 : false);
 
-    // Reverse items so newest (last added) appear first, then filter by search
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth < 1024);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    // Sort items by timestamp descending by default, then filter by search
     const filteredItems = useMemo(() => {
-        const reversed = [...items].reverse();
-        if (!searchTerm.trim()) return reversed;
+        const sortedByTime = [...items].sort((a, b) => b.timestamp - a.timestamp);
+        if (!searchTerm.trim()) return sortedByTime;
         const term = searchTerm.toLowerCase().trim();
-        return reversed.filter(item =>
+        return sortedByTime.filter(item =>
             (item.ean?.toLowerCase() || '').includes(term) ||
             (item.productName?.toLowerCase() || '').includes(term)
         );
@@ -137,7 +154,7 @@ export function PreCountList({ items, onUpdate, onDelete, masterCatalog }: PreCo
                             productName={item.productName}
                         />
                         <div className="flex flex-col gap-1 min-w-0">
-                            <span className={cn("font-semibold text-[13px] leading-tight text-foreground/90 truncate", isUnknown && "text-destructive", isUnknownToMaster && "text-blue-500")}>
+                            <span className={cn("font-semibold text-[13px] leading-tight text-foreground/90 line-clamp-2", isUnknown && "text-destructive", isUnknownToMaster && "text-blue-500")}>
                                 {item.productName}
                             </span>
                             {isUnknown ? (
@@ -148,13 +165,9 @@ export function PreCountList({ items, onUpdate, onDelete, masterCatalog }: PreCo
                                <span className="text-[9px] text-blue-500 flex w-fit items-center gap-1.5 font-bold bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">
                                     <span className="w-1 h-1 rounded-full bg-blue-500" /> NUEVO
                                 </span>
-                            ) : item.synced === 0 ? (
+                            ) : item.synced === 0 && (
                                 <span className="text-[9px] text-warning flex w-fit items-center gap-1.5 font-bold bg-warning/10 px-2 py-0.5 rounded-full border border-warning/20">
                                     <span className="w-1 h-1 rounded-full bg-warning animate-pulse" /> SINCRONIZANDO
-                                </span>
-                            ) : (
-                                <span className="text-[11px] font-mono text-muted-foreground/60 tracking-wider">
-                                    {item.ean}
                                 </span>
                             )}
                         </div>
@@ -187,15 +200,34 @@ export function PreCountList({ items, onUpdate, onDelete, masterCatalog }: PreCo
             },
         },
         {
+            accessorKey: "location_tag",
+            header: "Sector",
+            size: 100,
+            cell: ({ row }) => {
+                const tag = row.original.location_tag;
+                if (!tag) return <span className="text-muted-foreground/50 text-xs">-</span>;
+                return (
+                    <Badge className="font-bold tabular-nums bg-amber-500/10 text-amber-600 border-amber-500/20 shadow-none hover:bg-amber-500/20" size="sm" variant="outline">
+                        <MapPin className="size-3 mr-1" />
+                        <span>{tag}</span>
+                    </Badge>
+                );
+            },
+        },
+        {
             accessorKey: "quantity",
-            header: () => <div className="text-right">Cant.</div>,
+            header: "Cant.",
             size: 80,
             cell: ({ row }) => {
                 const item = row.original;
                 return (
-                    <div className="flex justify-end pr-2">
+                    <div 
+                        className={cn("flex justify-end transition-transform", mode === 'full' && "cursor-pointer active:scale-95")}
+                        onClick={() => mode === 'full' && onEditRequest && onEditRequest(item)}
+                    >
                         <span className={cn(
-                            "text-lg font-black tracking-tighter",
+                            "text-base font-semibold tabular-nums px-2 py-1 rounded-md transition-colors",
+                            mode === 'full' && "hover:bg-muted/50",
                             item.quantity < 0 ? "text-destructive" : "text-foreground"
                         )}>
                             {item.quantity}
@@ -206,26 +238,30 @@ export function PreCountList({ items, onUpdate, onDelete, masterCatalog }: PreCo
         },
         {
             id: "actions",
-            header: () => <div className="text-right w-full pr-2">Acciones</div>,
+            header: () => <div className="text-right w-full">Acciones</div>,
+            enableSorting: false,
             size: 90,
             cell: ({ row }) => {
                 const item = row.original;
+                if (mode === 'readonly') return null;
                 return (
-                    <div className="flex justify-end gap-1.5 pr-2">
-                        <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            className="text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md transition-colors h-8 w-8"
-                            onClick={() => handleStartEdit(item)}
-                            title="Editar"
-                        >
-                            <Pencil className="w-4 h-4" />
-                        </Button>
+                    <div className="flex justify-end gap-1.5">
+                        {mode === 'full' && (
+                            <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                className="text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md transition-colors h-8 w-8"
+                                onClick={() => handleStartEdit(item)}
+                                title="Editar"
+                            >
+                                <Pencil className="w-4 h-4" />
+                            </Button>
+                        )}
                         <Button
                             size="icon-sm"
                             variant="ghost"
                             className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors h-8 w-8"
-                            onClick={() => onDelete(item.id)}
+                            onClick={() => mode === 'restricted' ? setDeleteConfirmId(item.id) : onDelete(item.id)}
                             title="Eliminar"
                         >
                             <Trash2 className="w-4 h-4" />
@@ -234,16 +270,19 @@ export function PreCountList({ items, onUpdate, onDelete, masterCatalog }: PreCo
                 );
             },
         },
-    ], [copiedId, onDelete]);
+    ], [copiedId, onDelete, mode]);
 
     const table = useReactTable({
         data: filteredItems,
         columns,
         getCoreRowModel: getCoreRowModel(),
         getPaginationRowModel: getPaginationRowModel(),
+        getSortedRowModel: getSortedRowModel(),
         onPaginationChange: setPagination,
+        onSortingChange: setSorting,
         state: {
             pagination,
+            sorting,
         },
     });
 
@@ -260,50 +299,127 @@ export function PreCountList({ items, onUpdate, onDelete, masterCatalog }: PreCo
     return (
         <Frame className="w-full h-full flex flex-col border-none shadow-none rounded-none bg-transparent">
             <FramePanel className="p-0 overflow-y-auto border-none flex-1">
-                <Table className="table-fixed border-separate border-spacing-0 w-full min-w-[600px]">
-                    <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-sm shadow-sm">
-                        {table.getHeaderGroups().map((headerGroup) => (
-                            <TableRow className="hover:bg-transparent border-none" key={headerGroup.id}>
-                                {headerGroup.headers.map((header) => {
-                                    const columnSize = header.column.getSize();
-                                    return (
-                                        <TableHead
-                                            key={header.id}
-                                            style={columnSize ? { width: `${columnSize}px` } : undefined}
-                                            className="h-10 border-b border-border/50 bg-transparent text-[11px] font-bold tracking-wider uppercase text-muted-foreground"
+                    {isMobile ? (
+                        <div className="flex flex-col w-full divide-y divide-border/40">
+                            <AnimatePresence initial={false}>
+                                {items.slice(pagination.pageIndex * pagination.pageSize, (pagination.pageIndex + 1) * pagination.pageSize).map((item) => (
+                                    <SwipeableItem 
+                                        key={item.id} 
+                                        onDelete={mode !== 'readonly' ? () => {
+                                            if (mode === 'restricted') {
+                                                setDeleteConfirmId(item.id);
+                                            } else {
+                                                onDelete(item.id);
+                                            }
+                                        } : () => {}}
+                                    >
+                                        <div 
+                                            className={cn(
+                                                "w-full flex items-center justify-between p-4 bg-background transition-colors",
+                                                mode === 'full' && "active:bg-muted/30"
+                                            )}
+                                            onClick={() => {
+                                                if (mode === 'full' && onEditRequest) {
+                                                    onEditRequest(item);
+                                                }
+                                            }}
                                         >
-                                            {header.isPlaceholder
-                                                ? null
-                                                : flexRender(
-                                                      header.column.columnDef.header,
-                                                      header.getContext()
-                                                  )}
-                                        </TableHead>
-                                    );
-                                })}
-                            </TableRow>
-                        ))}
-                    </TableHeader>
-                    <TableBody>
-                        <AnimatePresence>
-                            {table.getRowModel().rows.map((row) => (
-                                <TableRow
-                                    key={row.id}
-                                    className="transition-colors hover:bg-muted/30 border-b border-border/40 group relative"
-                                >
-                                    {row.getVisibleCells().map((cell) => (
-                                        <TableCell key={cell.id} className="py-2.5 align-middle">
-                                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                        </TableCell>
+                                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                <ProductPreview
+                                                    ean={item.ean}
+                                                    productName={item.productName}
+                                                />
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className="font-semibold text-xs text-foreground truncate">{item.productName}</span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-[10px] text-muted-foreground font-mono truncate">{item.ean}</span>
+                                                        {item.location_tag && (
+                                                            <span className="text-[8px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1 py-0.5 rounded border border-amber-500/20 shrink-0">
+                                                                {item.location_tag}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-4 ml-4">
+                                                <span className="text-xl font-black text-foreground">{item.quantity}</span>
+                                                <ArrowRight className="size-4 text-muted-foreground/30" />
+                                            </div>
+                                        </div>
+                                    </SwipeableItem>
+                                ))}
+                            </AnimatePresence>
+                        </div>
+                    ) : (
+                        <Table className="lg:table-fixed border-separate border-spacing-0 w-full lg:min-w-[600px]">
+                            <TableHeader className="sticky top-0 z-10 bg-card/95 backdrop-blur-sm shadow-sm">
+                                {table.getHeaderGroups().map((headerGroup) => (
+                                    <TableRow className="hover:bg-transparent border-none" key={headerGroup.id}>
+                                        {headerGroup.headers.map((header) => {
+                                            const columnSize = header.column.getSize();
+                                            return (
+                                                <TableHead
+                                                    key={header.id}
+                                                    style={columnSize ? { width: `${columnSize}px` } : undefined}
+                                                    className={cn(
+                                                        "bg-transparent",
+                                                        (header.id === 'ean' || header.id === 'actions') && "hidden lg:table-cell"
+                                                    )}
+                                                >
+                                                    {header.isPlaceholder ? null : header.column.getCanSort() ? (
+                                                        <div
+                                                            className={cn("flex h-full cursor-pointer select-none items-center gap-2", header.id === 'quantity' ? 'justify-end' : 'justify-start')}
+                                                            onClick={header.column.getToggleSortingHandler()}
+                                                            role="button"
+                                                            tabIndex={0}
+                                                        >
+                                                            {flexRender(
+                                                                header.column.columnDef.header,
+                                                                header.getContext()
+                                                            )}
+                                                            {{
+                                                                asc: <ChevronUpIcon className="size-4 shrink-0 opacity-80" />,
+                                                                desc: <ChevronDownIcon className="size-4 shrink-0 opacity-80" />,
+                                                            }[header.column.getIsSorted() as string] ?? null}
+                                                        </div>
+                                                    ) : (
+                                                        flexRender(
+                                                            header.column.columnDef.header,
+                                                            header.getContext()
+                                                        )
+                                                    )}
+                                                </TableHead>
+                                            );
+                                        })}
+                                    </TableRow>
+                                ))}
+                            </TableHeader>
+                            <TableBody>
+                                <AnimatePresence initial={false}>
+                                    {table.getRowModel().rows.map((row) => (
+                                        <TableRow
+                                            key={row.id}
+                                            className="transition-colors hover:bg-muted/30 border-b border-border/40 group relative"
+                                        >
+                                            {row.getVisibleCells().map((cell) => (
+                                                <TableCell 
+                                                    key={cell.id} 
+                                                    className={cn(
+                                                        (cell.column.id === 'ean' || cell.column.id === 'actions') && "hidden lg:table-cell"
+                                                    )}
+                                                >
+                                                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                                </TableCell>
+                                            ))}
+                                        </TableRow>
                                     ))}
-                                </TableRow>
-                            ))}
-                        </AnimatePresence>
-                    </TableBody>
-                </Table>
+                                </AnimatePresence>
+                            </TableBody>
+                        </Table>
+                    )}
             </FramePanel>
             
-            <FrameFooter className="p-2 border-t border-border/20 bg-card/80 backdrop-blur shrink-0 min-h-[50px] flex items-center">
+            <FrameFooter className="hidden lg:flex p-2 border-t border-border/20 bg-card/80 backdrop-blur shrink-0 min-h-[50px] items-center">
                 <div className="flex items-center justify-between gap-2 w-full">
                     {/* Search filter */}
                     <InputGroup className="h-8 w-40 lg:w-52 bg-popover border-input shadow-xs shrink-0">
@@ -431,6 +547,7 @@ export function PreCountList({ items, onUpdate, onDelete, masterCatalog }: PreCo
                                     <NumberFieldInput
                                         className="h-11 text-base font-semibold"
                                         autoFocus
+                                        inputMode="none"
                                         onKeyDown={(e: React.KeyboardEvent) => {
                                             if (e.key === 'Enter') handleSaveEdit();
                                         }}
@@ -446,6 +563,44 @@ export function PreCountList({ items, onUpdate, onDelete, masterCatalog }: PreCo
                         </Button>
                         <Button onClick={handleSaveEdit} disabled={editQuantity === 0}>
                             Guardar
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Dialog de confirmación de eliminación (modo restricted) */}
+            <Dialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Confirmar Eliminación</DialogTitle>
+                    </DialogHeader>
+                    <div className="px-6 py-4">
+                        <p className="text-sm text-muted-foreground">
+                            ¿Estás seguro de que deseas eliminar{' '}
+                            <span className="font-bold text-foreground">
+                                {items.find(i => i.id === deleteConfirmId)?.productName}
+                            </span>
+                            {' '}({items.find(i => i.id === deleteConfirmId)?.ean})?
+                        </p>
+                        <p className="text-xs text-muted-foreground/70 mt-2">
+                            Para modificar la cantidad, abrí nuevamente el sector correspondiente.
+                        </p>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>
+                            Cancelar
+                        </Button>
+                        <Button 
+                            variant="destructive"
+                            onClick={() => {
+                                if (deleteConfirmId) {
+                                    onDelete(deleteConfirmId);
+                                    setDeleteConfirmId(null);
+                                }
+                            }}
+                        >
+                            <Trash2 className="w-4 h-4" />
+                            Eliminar
                         </Button>
                     </DialogFooter>
                 </DialogContent>

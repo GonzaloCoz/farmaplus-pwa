@@ -67,7 +67,7 @@ export function LaboratoryCard({
 
     return (
         <Card
-            className={`group hover:shadow-md transition-all duration-300 border border-border/50 cursor-pointer overflow-hidden relative rounded-2xl bg-card/40 dark:bg-card/20 backdrop-blur-sm active:scale-[0.98]`}
+            className={`group hover:shadow-md transition-all duration-300 border border-border/50 cursor-pointer overflow-hidden relative rounded-lg bg-card/40 dark:bg-card/20 backdrop-blur-sm active:scale-[0.98]`}
             onClick={onClick}
             onMouseEnter={onMouseEnter}
         >
@@ -75,7 +75,7 @@ export function LaboratoryCard({
             <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-6">
                     <div className="flex items-center gap-3.5 min-w-0">
-                        <div className={`p-2.5 rounded-2xl ${config.bgColor} border ${config.borderColor} transition-transform group-hover:scale-105 duration-300`}>
+                        <div className={`p-2.5 rounded-lg ${config.bgColor} border ${config.borderColor} transition-transform group-hover:scale-105 duration-300`}>
                             <Icon className={`w-5 h-5 ${config.color}`} />
                         </div>
                         <div className="flex flex-col min-w-0">
@@ -132,3 +132,4 @@ export function LaboratoryCard({
         </Card>
     );
 }
+

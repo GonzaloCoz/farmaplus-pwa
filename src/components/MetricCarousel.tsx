@@ -142,7 +142,7 @@ export function MetricCarousel({ items, className }: MetricCarouselProps) {
     const Icon = currentItem.icon;
 
     return (
-        <div className={`relative overflow-hidden group ${className} h-full min-h-[180px] flex flex-col rounded-[2rem] bg-card border-none shadow-sm`}>
+        <Card className={`relative overflow-hidden group ${className || ''} h-full min-h-[180px] flex flex-col bg-card/40 dark:bg-card/20 backdrop-blur-sm border border-border/50 shadow-sm rounded-lg transition-all duration-300`}>
             {/* Info Overlay */}
             <AnimatePresence>
                 {showInfo && (
@@ -221,7 +221,7 @@ export function MetricCarousel({ items, className }: MetricCarouselProps) {
                             key={`icon-bg-${currentIndex}`}
                             initial={{ scale: 0.8, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
-                            className={`w-12 h-12 rounded-full flex items-center justify-center relative z-10 shadow-lg ${activeTheme.shadow} bg-gradient-to-br ${activeTheme.glassBg} backdrop-blur-md border border-white/20`}
+                            className={`w-12 h-12 rounded-full flex items-center justify-center relative z-10 shadow-lg ${activeTheme.shadow} bg-gradient-to-br ${activeTheme.glassBg}  border border-white/20`}
                         >
                             {Icon && (
                                 <motion.div
@@ -281,7 +281,7 @@ export function MetricCarousel({ items, className }: MetricCarouselProps) {
                 <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 rounded-full bg-background/20 backdrop-blur-md hover:bg-background/40"
+                    className="h-8 w-8 rounded-full bg-background/20  hover:bg-background/40"
                     onClick={(e) => {
                         e.stopPropagation();
                         prevSlide();
@@ -294,7 +294,7 @@ export function MetricCarousel({ items, className }: MetricCarouselProps) {
                 <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 rounded-full bg-background/20 backdrop-blur-md hover:bg-background/40"
+                    className="h-8 w-8 rounded-full bg-background/20  hover:bg-background/40"
                     onClick={(e) => {
                         e.stopPropagation();
                         nextSlide();
@@ -303,6 +303,7 @@ export function MetricCarousel({ items, className }: MetricCarouselProps) {
                     <ChevronRight className="h-4 w-4" />
                 </Button>
             </div>
-        </div>
+        </Card>
     );
 }
+

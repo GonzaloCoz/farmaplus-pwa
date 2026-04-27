@@ -11,7 +11,7 @@ export function Frame({
   return (
     <div
       className={cn(
-        "relative flex flex-col rounded-2xl bg-muted/20 p-1 dark:ring-1 dark:ring-inset dark:ring-border/10",
+        "relative flex flex-col rounded-lg bg-muted/20 p-1 dark:ring-1 dark:ring-inset dark:ring-border/10",
         "*:[[data-slot=frame-panel]+[data-slot=frame-panel]]:mt-1",
         className,
       )}
@@ -105,3 +105,4 @@ export function FrameFooter({
     />
   );
 }
+

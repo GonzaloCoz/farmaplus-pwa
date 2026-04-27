@@ -36,7 +36,7 @@ const AutocompleteContent = React.forwardRef<
     >
       <BaseAutocomplete.Popup
         className={cn(
-          "relative max-h-96 min-w-[var(--base-autocomplete-trigger-width)] overflow-hidden rounded-2xl border border-border/40 bg-background/95 backdrop-blur-xl text-popover-foreground shadow-2xl p-1 animate-in fade-in zoom-in-95 duration-200"
+          "relative max-h-96 min-w-[var(--base-autocomplete-trigger-width)] overflow-hidden rounded-lg border border-border/40 bg-background  text-popover-foreground shadow-md p-1 animate-in fade-in zoom-in-95 duration-200"
         )}
       >
         <div className="overflow-y-auto w-full">{children}</div>
@@ -81,3 +81,4 @@ export {
   AutocompleteGroup,
   AutocompleteLabel,
 };
+

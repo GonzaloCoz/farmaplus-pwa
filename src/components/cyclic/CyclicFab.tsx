@@ -62,7 +62,7 @@ export function CyclicFab({ onScan, onManualSearch, onExport, onFinalize }: Cycl
                 whileTap={{ scale: 0.9 }}
                 onClick={toggleOpen}
                 className={cn(
-                    "h-14 w-14 rounded-2xl shadow-xl flex items-center justify-center transition-colors duration-300",
+                    "h-14 w-14 rounded-lg shadow-sm flex items-center justify-center transition-colors duration-300",
                     isOpen ? "bg-muted text-foreground rotate-45" : "bg-primary text-primary-foreground"
                 )}
             >
@@ -71,3 +71,4 @@ export function CyclicFab({ onScan, onManualSearch, onExport, onFinalize }: Cycl
         </div>
     );
 }
+

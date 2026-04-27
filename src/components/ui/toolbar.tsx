@@ -10,7 +10,7 @@ const Toolbar = React.forwardRef<
   <BaseToolbar.Root
     ref={ref}
     className={cn(
-      "flex h-10 items-center gap-1 rounded-xl border border-border/40 bg-background/50 backdrop-blur-md px-1 py-1 shadow-sm",
+      "flex h-10 items-center gap-1 rounded-xl border border-border/40 bg-background/50  px-1 py-1 shadow-sm",
       className
     )}
     {...props}
@@ -45,4 +45,17 @@ const ToolbarSeparator = React.forwardRef<
 ));
 ToolbarSeparator.displayName = "ToolbarSeparator";
 
-export { Toolbar, ToolbarButton, ToolbarSeparator };
+const ToolbarGroup = React.forwardRef<
+  HTMLDivElement,
+  React.ComponentPropsWithoutRef<"div">
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn("flex items-center gap-1", className)}
+    {...props}
+  />
+));
+ToolbarGroup.displayName = "ToolbarGroup";
+
+export { Toolbar, ToolbarButton, ToolbarSeparator, ToolbarGroup };
+

@@ -65,7 +65,7 @@ export function EditFab({
                             >
                                 {/* Label */}
                                 <motion.div
-                                    className="bg-background/95 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-lg border border-border"
+                                    className="bg-background backdrop-blur-sm px-3 py-1.5 rounded-full shadow-lg border border-border"
                                     whileHover={{ scale: 1.05 }}
                                 >
                                     <span className="text-xs font-medium text-foreground whitespace-nowrap">
@@ -97,7 +97,7 @@ export function EditFab({
             <motion.button
                 onClick={onToggleEdit}
                 className={cn(
-                    'w-14 h-14 rounded-full shadow-xl flex items-center justify-center text-white transition-all relative overflow-hidden',
+                    'w-14 h-14 rounded-full shadow-sm flex items-center justify-center text-white transition-all relative overflow-hidden',
                     isEditMode
                         ? 'bg-green-500 hover:bg-green-600'
                         : 'bg-primary hover:bg-primary/90'
@@ -144,3 +144,4 @@ export function EditFab({
         </div>
     );
 }
+

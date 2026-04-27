@@ -40,7 +40,10 @@ export function InstallPrompt() {
     if (!showPrompt || !installPrompt) return null;
 
     return (
-        <div className="fixed bottom-[calc(var(--bottom-nav-height)+1rem)] sm:bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 z-[100] bg-card/95 backdrop-blur-md border border-primary/20 rounded-2xl shadow-2xl p-4 animate-in slide-in-from-bottom-5">
+        <div 
+            style={{ bottom: 'calc(var(--bottom-nav-height) + var(--safe-area-bottom) + 1rem)' }}
+            className="fixed sm:bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 z-[100] bg-card/95  border border-primary/20 rounded-lg shadow-md p-4 animate-in slide-in-from-bottom-5"
+        >
             <button
                 onClick={handleDismiss}
                 className="absolute top-3 right-3 p-1 rounded-full hover:bg-muted/50 transition-colors"
@@ -50,7 +53,7 @@ export function InstallPrompt() {
             </button>
 
             <div className="flex items-start gap-4">
-                <div className="flex-shrink-0 w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center shadow-inner">
+                <div className="flex-shrink-0 w-14 h-14 rounded-lg bg-primary/10 flex items-center justify-center shadow-inner">
                     <Download className="w-7 h-7 text-primary" />
                 </div>
 
@@ -73,3 +76,4 @@ export function InstallPrompt() {
         </div>
     );
 }
+

@@ -399,7 +399,7 @@ export const StockRecountServer: React.FC<StockRecountServerProps> = ({ file, on
 
   return (
     <div className="max-w-6xl mx-auto py-8 px-4">
-      <Card className="p-6 sm:p-8 relative overflow-hidden bg-background border-none shadow-xl ring-1 ring-muted">
+      <Card className="p-6 sm:p-8 relative overflow-hidden bg-background border-none shadow-sm ring-1 ring-muted">
         
         <div className="absolute top-0 right-0 p-32 bg-primary/5 rounded-full blur-3xl -z-10 translate-x-1/2 -translate-y-1/2"></div>
 
@@ -431,7 +431,7 @@ export const StockRecountServer: React.FC<StockRecountServerProps> = ({ file, on
              animate={{ opacity: 1, y: 0 }}
              className="flex flex-col items-center"
            >
-              <div className="bg-muted/30 border border-muted px-8 py-6 rounded-3xl mb-8 shadow-inner text-center">
+              <div className="bg-muted/30 border border-muted px-8 py-6 rounded-xl mb-8 shadow-inner text-center">
                  <p className="uppercase text-xs font-bold text-muted-foreground tracking-widest mb-3">PIN de Acceso</p>
                  <p className="text-6xl font-black text-foreground tracking-[0.2em] font-mono leading-none">
                     {accessCode}
@@ -475,7 +475,7 @@ export const StockRecountServer: React.FC<StockRecountServerProps> = ({ file, on
                  </div>
               </div>
 
-              <div className="w-full max-w-md bg-muted/20 border border-muted/50 rounded-2xl p-5 mb-8">
+              <div className="w-full max-w-md bg-muted/20 border border-muted/50 rounded-lg p-5 mb-8">
                 <div className="flex items-center gap-2 mb-4 text-sm font-semibold text-foreground border-b border-border/50 pb-3">
                    <DocumentText className="w-5 h-5 text-muted-foreground" />
                    Detalles del Recuento
@@ -521,7 +521,7 @@ export const StockRecountServer: React.FC<StockRecountServerProps> = ({ file, on
              animate={{ opacity: 1 }}
              className="space-y-6"
            >
-              <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-muted/20 p-4 rounded-2xl border border-muted/50">
+              <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-muted/20 p-4 rounded-lg border border-muted/50">
                 <Tabs value={filterTab} onValueChange={(v: any) => setFilterTab(v)} className="w-full md:w-auto">
                   <TabsList className="bg-background/50 p-1 h-11 ring-1 ring-border/50">
                     <TabsTrigger value="all" className="px-5 rounded-lg data-[selected]:bg-primary data-[selected]:text-white">
@@ -555,7 +555,7 @@ export const StockRecountServer: React.FC<StockRecountServerProps> = ({ file, on
                 <div className="col-span-2 text-right pr-4">Total ($)</div>
               </div>
 
-              <div className="h-[500px] bg-background rounded-3xl border border-border/40 overflow-hidden shadow-inner relative">
+              <div className="h-[500px] bg-background rounded-xl border border-border/40 overflow-hidden shadow-inner relative">
                 <AutoSizer>
                   {({ height, width }) => (
                     <List
@@ -576,7 +576,7 @@ export const StockRecountServer: React.FC<StockRecountServerProps> = ({ file, on
                 )}
               </div>
 
-              <div className="flex justify-between items-center p-4 bg-muted/10 rounded-2xl border border-muted/30">
+              <div className="flex justify-between items-center p-4 bg-muted/10 rounded-lg border border-muted/30">
                  <div className="flex gap-8">
                     <div>
                        <p className="text-[10px] font-bold text-muted-foreground uppercase">Controlados</p>
@@ -606,3 +606,4 @@ export const StockRecountServer: React.FC<StockRecountServerProps> = ({ file, on
     </div>
   );
 };
+

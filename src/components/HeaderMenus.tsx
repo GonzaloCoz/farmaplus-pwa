@@ -195,7 +195,7 @@ export function NotificationsMenu() {
         {/* ── Content ── */}
         <DialogPanel className="p-0 scroll-smooth">
           {/* ── Tabs ── */}
-          <div className="flex items-center gap-1 px-5 py-3 bg-background/50 sticky top-0 z-20 backdrop-blur-md border-b border-border/10">
+          <div className="flex items-center gap-1 px-5 py-3 bg-background/50 sticky top-0 z-20  border-b border-border/10">
             {tabs.map(tab => {
               const isActive = activeTab === tab.key;
               const count = counts[tab.key];
@@ -321,7 +321,7 @@ export function NotificationsMenu() {
             </div>
           ) : (
             <div className="py-16 px-5 text-center">
-              <div className="size-12 rounded-2xl bg-muted/20 flex items-center justify-center mx-auto mb-4">
+              <div className="size-12 rounded-lg bg-muted/20 flex items-center justify-center mx-auto mb-4">
                 <Bell className="w-6 h-6 text-muted-foreground/30" />
               </div>
               <p className="text-sm font-bold text-foreground">No hay notificaciones</p>
@@ -518,7 +518,7 @@ export function UserMenu() {
         </DialogHeader>
         <DialogPanel>
           <div className="flex items-center gap-3 mb-6">
-            <div className="rounded-2xl bg-primary/10 w-12 h-12 flex items-center justify-center font-black text-primary border border-primary/20">
+            <div className="rounded-lg bg-primary/10 w-12 h-12 flex items-center justify-center font-black text-primary border border-primary/20">
               {initials}
             </div>
             <div>
@@ -552,3 +552,4 @@ export function UserMenu() {
     </Dialog>
   );
 }
+

@@ -195,7 +195,7 @@ export function UserManagement() {
     };
 
     return (
-        <Card className="border-none shadow-2xl bg-white dark:bg-zinc-950 overflow-hidden rounded-[2rem]">
+        <Card className="border-none shadow-md bg-white dark:bg-zinc-950 overflow-hidden rounded-[2rem]">
             <CardHeader className="px-8 pt-8 pb-6 bg-gradient-to-b from-muted/20 to-transparent">
                 <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div className="flex items-center gap-4">
@@ -234,7 +234,7 @@ export function UserManagement() {
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground/50" />
                         <Input
                             placeholder="Buscar por nombre, usuario o correo..."
-                            className="pl-12 h-14 bg-muted/30 border-none rounded-2xl focus-visible:ring-primary/20 text-md font-medium"
+                            className="pl-12 h-14 bg-muted/30 border-none rounded-lg focus-visible:ring-primary/20 text-md font-medium"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
@@ -274,7 +274,7 @@ export function UserManagement() {
                                                 </td>
                                                 <td className="px-4 py-5">
                                                     <div className="flex items-center gap-4">
-                                                        <div className="h-12 w-12 rounded-2xl overflow-hidden bg-muted flex items-center justify-center border-2 border-white shadow-sm">
+                                                        <div className="h-12 w-12 rounded-lg overflow-hidden bg-muted flex items-center justify-center border-2 border-white shadow-sm">
                                                             {profile.full_name ? (
                                                                 <div className="h-full w-full bg-primary/10 flex items-center justify-center font-black text-primary text-xl uppercase">
                                                                     {profile.full_name.charAt(0)}
@@ -374,7 +374,7 @@ export function UserManagement() {
                                                                             <h4 className="text-[11px] font-black text-muted-foreground/60 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
                                                                                 <Shield className="w-4 h-4" /> Gestión de Rol
                                                                             </h4>
-                                                                            <div className="bg-muted/30 p-1.5 rounded-2xl inline-flex gap-1">
+                                                                            <div className="bg-muted/30 p-1.5 rounded-lg inline-flex gap-1">
                                                                                 {['admin', 'mod', 'branch'].map((r) => (
                                                                                     <Button
                                                                                         key={r}
@@ -403,7 +403,7 @@ export function UserManagement() {
                                                                             {allPermissions.map((perm) => {
                                                                                 const isEnabled = (profile.permissions || []).includes(perm.code);
                                                                                 return (
-                                                                                    <div key={perm.code} className="flex items-center justify-between p-4 rounded-2xl bg-muted/20 border border-transparent hover:border-primary/10 transition-colors">
+                                                                                    <div key={perm.code} className="flex items-center justify-between p-4 rounded-lg bg-muted/20 border border-transparent hover:border-primary/10 transition-colors">
                                                                                         <div className="space-y-1">
                                                                                             <span className="font-bold text-sm block">{perm.description}</span>
                                                                                             <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{perm.category}</span>
@@ -445,3 +445,4 @@ export function UserManagement() {
         </Card>
     );
 }
+

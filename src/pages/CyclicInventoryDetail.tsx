@@ -23,7 +23,11 @@ import {
     Filter,
     MenuDots as MoreVertical,
     DangerCircle as DiffIcon,
-    Danger as AlertTriangle
+    Danger as AlertTriangle,
+    Document,
+    Download,
+    Pen,
+    Refresh
 } from "@solar-icons/react";
 import {
     InputGroup,
@@ -35,6 +39,9 @@ import {
     MenuPopup,
     MenuItem,
     MenuTrigger,
+    MenuGroup,
+    MenuGroupLabel,
+    MenuSeparator,
 } from "@/components/ui/menu";
 import { CyclicInventoryList } from '@/components/CyclicInventoryList';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
@@ -55,8 +62,11 @@ import { Onboarding } from '@/components/Onboarding';
 import { cn } from '@/lib/utils';
 import { FabMenu } from '@/components/FabMenu';
 import { DeleteConfirmationDialog } from '@/components/cyclic/DeleteConfirmationDialog';
+import { HistoryDialog } from '@/components/cyclic/HistoryDialog';
+import { ReportExporter } from '@/lib/reportExporter';
 import { PageLayout } from "@/components/layout/PageLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { FramePanel } from '@/components/ui/frame';
 
 // Hooks & Components
 import { useCyclicInventoryController } from '@/hooks/useCyclicInventoryController';
@@ -82,6 +92,7 @@ export default function CyclicInventoryDetail() {
     const [showAdminPurgeModal, setShowAdminPurgeModal] = useState(false);
     const [adminPassword, setAdminPassword] = useState("");
     const [isAdminPurging, setIsAdminPurging] = useState(false);
+    const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
 
     // Update window tab title with lab name
     useEffect(() => {
@@ -147,6 +158,7 @@ export default function CyclicInventoryDetail() {
         handleSaveInventory,
         handleResetData,
         handleConfirmDelete,
+        handleForceRefreshProgress,
 
         // Special State
         shouldHidePendings,
@@ -203,7 +215,7 @@ export default function CyclicInventoryDetail() {
             <input
                 id="inventory-upload-hidden"
                 type="file"
-                accept=".xlsx, .xls"
+                accept=".xlsx, .xls, .pdf"
                 className="hidden"
                 onChange={handleFileUpload}
                 disabled={isUploading || isSaving}
@@ -231,7 +243,7 @@ export default function CyclicInventoryDetail() {
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                             {/* Stats Cards */}
                             {/* 1. Enhanced Status Bar - Full Width Single Row */}
-                            <Card className="lg:col-span-3 min-h-[110px] mb-4 flex flex-col justify-center px-6 sm:px-8 bg-muted/20 border-muted/40 shadow-sm overflow-hidden">
+                            <FramePanel className="lg:col-span-3 min-h-[100px] mb-4 flex flex-col justify-center px-6 sm:px-8 bg-popover border-input shadow-xs/5 dark:bg-input/20 overflow-hidden">
                                 <div className="flex items-center justify-between gap-4 w-full">
                                     {/* Left: Navigation + Lab Label + Name */}
                                     <div className="flex items-center gap-4 min-w-0">
@@ -245,10 +257,10 @@ export default function CyclicInventoryDetail() {
                                         </Button>
                                         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-6 flex-1 min-w-0">
                                                 <div className="flex items-center gap-3">
-                                                    <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap opacity-60">Lab</span>
+                                                    <span className="text-[10px] sm:text-xs text-muted-foreground/60 uppercase tracking-widest font-cal font-bold whitespace-nowrap">Lab</span>
                                                     <div className="flex items-center gap-2">
-                                                        <span className="font-bold text-foreground text-lg sm:text-xl truncate">{labName}</span>
-                                                        <Badge variant="outline" className="ml-2 bg-primary/5 text-primary text-[10px] font-bold border-primary/20">
+                                                        <span className="font-bold text-foreground text-lg sm:text-xl truncate font-cal">{labName}</span>
+                                                        <Badge variant="outline" className="ml-2 bg-muted/20 text-muted-foreground text-[10px] font-bold border-input/40">
                                                             {branchName}
                                                         </Badge>
 
@@ -284,41 +296,41 @@ export default function CyclicInventoryDetail() {
                                     {/* Center: Counters - Horizontal Layout */}
                                     <div className="flex items-center gap-6 sm:gap-12 flex-1 justify-center">
                                         <div className="flex items-center gap-2 sm:gap-4">
-                                            <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap opacity-60">Pendientes</span>
+                                            <span className="text-[10px] sm:text-xs text-muted-foreground/60 uppercase tracking-widest font-cal font-bold whitespace-nowrap">Pendientes</span>
                                             <div className="flex items-center">
-                                                <div className="text-2xl sm:text-3xl font-bold text-warning leading-none flex items-center">
+                                                <div className="text-2xl sm:text-3xl font-bold text-warning leading-none flex items-center tabular-nums">
                                                     <AnimatedCounter value={globalPending} digits={4} />
                                                 </div>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2 sm:gap-4">
-                                            <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap opacity-60">Controlados</span>
+                                            <span className="text-[10px] sm:text-xs text-muted-foreground/60 uppercase tracking-widest font-cal font-bold whitespace-nowrap">Controlados</span>
                                             <div className="flex items-center">
-                                                <div className="text-2xl sm:text-3xl font-bold text-success leading-none flex items-center">
+                                                <div className="text-2xl sm:text-3xl font-bold text-success leading-none flex items-center tabular-nums">
                                                     <AnimatedCounter value={globalControlled} digits={4} />
                                                 </div>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2 sm:gap-4">
-                                            <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap opacity-60">Ajustados</span>
+                                            <span className="text-[10px] sm:text-xs text-muted-foreground/60 uppercase tracking-widest font-cal font-bold whitespace-nowrap">Ajustados</span>
                                             <div className="flex items-center">
-                                                <div className="text-2xl sm:text-3xl font-bold text-blue-500 leading-none flex items-center">
+                                                <div className="text-2xl sm:text-3xl font-bold text-blue-500 leading-none flex items-center tabular-nums">
                                                     <AnimatedCounter value={globalAdjusted} digits={4} />
                                                 </div>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2 sm:gap-4">
-                                            <span className="text-[10px] sm:text-xs text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap opacity-60">Avance</span>
+                                            <span className="text-[10px] sm:text-xs text-muted-foreground/60 uppercase tracking-widest font-cal font-bold whitespace-nowrap">Avance</span>
                                             <div className="flex items-center gap-1">
-                                                <div className="text-2xl sm:text-3xl font-bold text-foreground leading-none flex items-center">
+                                                <div className="text-2xl sm:text-3xl font-bold text-foreground leading-none flex items-center tabular-nums">
                                                     <AnimatedCounter value={progressPercentage} digits={3} />
                                                 </div>
-                                                <span className="text-xl font-bold opacity-40 leading-none">%</span>
+                                                <span className="text-xl font-bold opacity-30 leading-none">%</span>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                            </Card>
+                            </FramePanel>
 
                             {/* Main Content */}
                             <div className="lg:col-span-3">
@@ -413,9 +425,58 @@ export default function CyclicInventoryDetail() {
 
                                             <GroupSeparator />
 
-                                            <Button variant="outline" size="icon" className="group">
-                                                <MoreVertical className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-                                            </Button>
+                                            <Menu>
+                                                <MenuTrigger render={
+                                                    <Button variant="outline" size="icon" className="group">
+                                                        <MoreVertical className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                                                    </Button>
+                                                } />
+                                                <MenuPopup align="end" className="w-56 rounded-xl p-1">
+                                                    <MenuGroup>
+                                                        <MenuGroupLabel>Carga de Datos</MenuGroupLabel>
+                                                        <MenuItem onClick={() => document.getElementById('inventory-upload-hidden')?.click()} className="rounded-lg text-sm font-medium cursor-pointer">
+                                                            <Document className="w-4 h-4 text-muted-foreground" />
+                                                            Cargar archivo Excel
+                                                        </MenuItem>
+                                                    </MenuGroup>
+                                                    
+                                                    <MenuSeparator />
+                                                    
+                                                    <MenuGroup>
+                                                        <MenuGroupLabel>Reportes</MenuGroupLabel>
+                                                        <MenuItem onClick={() => ReportExporter.exportToPDF(items, labName, branchName)} className="rounded-lg text-sm font-medium cursor-pointer">
+                                                            <Download className="w-4 h-4 text-muted-foreground" />
+                                                            Descargar reporte PDF
+                                                        </MenuItem>
+                                                        <MenuItem onClick={() => ReportExporter.exportToExcel(items, labName, branchName)} className="rounded-lg text-sm font-medium cursor-pointer">
+                                                            <Download className="w-4 h-4 text-muted-foreground" />
+                                                            Descargar reporte EXCEL
+                                                        </MenuItem>
+                                                    </MenuGroup>
+                                                    
+                                                    <MenuSeparator />
+                                                    
+                                                    <MenuGroup>
+                                                        <MenuGroupLabel>Avanzado</MenuGroupLabel>
+                                                        <MenuItem onClick={() => setIsHistoryDialogOpen(true)} className="rounded-lg text-sm font-medium cursor-pointer">
+                                                            <Pen className="w-4 h-4 text-muted-foreground" />
+                                                            Ver historial completo
+                                                        </MenuItem>
+
+                                                        {user?.role === 'admin' && (
+                                                            <MenuItem onClick={handleForceRefreshProgress} className="rounded-lg text-sm font-medium cursor-pointer">
+                                                                <Refresh className="w-4 h-4 text-muted-foreground" />
+                                                                Sincronizar avance (Forzar)
+                                                            </MenuItem>
+                                                        )}
+
+                                                        <MenuItem variant="destructive" onClick={handleResetData} className="rounded-lg text-sm font-medium cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10">
+                                                            <RotateCcw className="w-4 h-4 opacity-80" />
+                                                            Reiniciar laboratorio
+                                                        </MenuItem>
+                                                    </MenuGroup>
+                                                </MenuPopup>
+                                            </Menu>
                                         </Group>
                                     </div>
                                 </div>
@@ -505,7 +566,7 @@ export default function CyclicInventoryDetail() {
                                                     onClick={() => document.getElementById('inventory-upload-hidden')?.click()}
                                                     disabled={isUploading || isSaving}
                                                     className="group"
-                                                    title="Cargar Excel"
+                                                    title="Cargar Archivo"
                                                 >
                                                     <Upload className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
                                                 </Button>
@@ -537,7 +598,7 @@ export default function CyclicInventoryDetail() {
                                         <ScrollAreaViewport className="pb-8">
                                             <TabsContent value="pending" className="space-y-4 pt-4">
                                                 {pendingItems.length === 0 && controlledItems.length === 0 && (
-                                                    <Card className="p-12 border-dashed border-2 flex flex-col items-center justify-center text-center space-y-4 bg-muted/10 my-4 animate-in fade-in zoom-in duration-500 rounded-3xl">
+                                                    <Card className="p-12 border-dashed border-2 flex flex-col items-center justify-center text-center space-y-4 bg-muted/10 my-4 animate-in fade-in zoom-in duration-500 rounded-xl">
                                                         <div className="p-4 bg-primary/10 rounded-full">
                                                             <Upload className="w-8 h-8 text-primary" />
                                                         </div>
@@ -548,7 +609,7 @@ export default function CyclicInventoryDetail() {
                                                                 <div>
                                                                     <h3 className="text-lg font-semibold">Cargar Archivo de Inventario</h3>
                                                                     <p className="text-muted-foreground max-w-sm mx-auto mt-1">
-                                                                        Sube el archivo Excel (.xlsx) descargado del sistema para comenzar el control de {labName}.
+                                                                        Sube el archivo Excel (.xlsx) o PDF descargado del sistema para comenzar el control de {labName}.
                                                                     </p>
                                                                 </div>
                                                                 <div className="relative">
@@ -557,7 +618,7 @@ export default function CyclicInventoryDetail() {
                                                                     </Button>
                                                                     <Input
                                                                         type="file"
-                                                                        accept=".xlsx, .xls"
+                                                                        accept=".xlsx, .xls, .pdf"
                                                                         className="absolute inset-0 opacity-0 cursor-pointer"
                                                                         onChange={handleFileUpload}
                                                                         disabled={isUploading}
@@ -573,16 +634,16 @@ export default function CyclicInventoryDetail() {
                                                                 <div>
                                                                     <h3 className="text-lg font-semibold">Cargar Nuevo Ciclo</h3>
                                                                     <p className="text-muted-foreground max-w-sm mx-auto mt-1">
-                                                                        No hay ítems para contar en este laboratorio. Cargá un nuevo Excel para iniciar el siguiente ciclo.
+                                                                        No hay ítems para contar en este laboratorio. Cargá un nuevo archivo para iniciar el siguiente ciclo.
                                                                     </p>
                                                                 </div>
                                                                 <div className="relative">
                                                                     <Button disabled={isUploading} className="rounded-full px-8">
-                                                                        {isUploading ? 'Procesando...' : 'Cargar Excel de Sistema'}
+                                                                        {isUploading ? 'Procesando...' : 'Cargar Archivo de Sistema'}
                                                                     </Button>
                                                                     <Input
                                                                         type="file"
-                                                                        accept=".xlsx, .xls"
+                                                                        accept=".xlsx, .xls, .pdf"
                                                                         className="absolute inset-0 opacity-0 cursor-pointer"
                                                                         onChange={handleFileUpload}
                                                                         disabled={isUploading}
@@ -594,7 +655,7 @@ export default function CyclicInventoryDetail() {
                                                 )}
 
                                                 {pendingItems.length > 0 && (
-                                                    <Alert className="bg-muted/10 border-muted/20 mb-4 rounded-2xl py-3 shadow-none">
+                                                    <Alert className="bg-muted/10 border-muted/20 mb-4 rounded-lg py-3 shadow-none">
                                                         <Info className="h-4 w-4 text-primary" />
                                                         <AlertDescription className="text-sm font-medium text-muted-foreground ml-2">
                                                             Desliza a la derecha para confirmar (verde) o a la izquierda para reportar diferencia (naranja).
@@ -603,7 +664,7 @@ export default function CyclicInventoryDetail() {
                                                 )}
                                                 
                                                 {shouldHidePendings && (
-                                                    <Alert className="bg-primary/10 border-primary/20 mb-4 rounded-2xl py-3 shadow-none">
+                                                    <Alert className="bg-primary/10 border-primary/20 mb-4 rounded-lg py-3 shadow-none">
                                                         <Info className="h-4 w-4 text-primary" />
                                                         <AlertDescription className="text-sm font-medium text-primary/80 ml-2">
                                                             <strong>Vista de Cierre:</strong> Los productos pendientes están ocultos para mantener el laboratorio limpio. Se volverán a activar automáticamente cuando cargues un nuevo Excel.
@@ -612,7 +673,7 @@ export default function CyclicInventoryDetail() {
                                                 )}
 
                                                 {!isExcelUploaded && adjustedItems.length > 0 && (
-                                                    <Alert className="bg-warning/10 border-warning/20 mb-4 rounded-2xl py-3 shadow-none">
+                                                    <Alert className="bg-warning/10 border-warning/20 mb-4 rounded-lg py-3 shadow-none">
                                                         <AlertTriangle className="h-4 w-4 text-warning" />
                                                         <AlertDescription className="text-sm font-medium text-warning/80 ml-2">
                                                             <strong>Regla de Re-ajuste:</strong> Para modificar productos ya finalizados, debes cargar el Excel de sistema más reciente.
@@ -661,7 +722,7 @@ export default function CyclicInventoryDetail() {
                                                 ) : (
                                                     <div className="space-y-4">
                                                         {history.map((h: any) => (
-                                                            <Card key={h.id} className="p-4 flex flex-col gap-2 border shadow-xs/5 rounded-2xl">
+                                                            <Card key={h.id} className="p-4 flex flex-col gap-2 border shadow-xs/5 rounded-lg">
                                                                 <div className="flex justify-between items-start">
                                                                     <div>
                                                                         <p className="text-sm font-bold text-primary">
@@ -726,7 +787,7 @@ export default function CyclicInventoryDetail() {
                     >
                         <div className="px-6 py-4 flex flex-col gap-6">
                             {/* Shortages Section */}
-                            <div className="space-y-3 p-4 bg-destructive/5 rounded-2xl border border-destructive/10">
+                            <div className="space-y-3 p-4 bg-destructive/5 rounded-lg border border-destructive/10">
                                 <div className="flex justify-between items-center">
                                     <Label className="text-destructive font-bold">Faltantes (Negativos)</Label>
                                     <span className="font-mono font-bold text-destructive">
@@ -743,7 +804,7 @@ export default function CyclicInventoryDetail() {
                             </div>
 
                             {/* Surpluses Section */}
-                            <div className="space-y-3 p-4 bg-success/5 rounded-2xl border border-success/10">
+                            <div className="space-y-3 p-4 bg-success/5 rounded-lg border border-success/10">
                                 <div className="flex justify-between items-center">
                                     <Label className="text-success font-bold">Sobrantes (Positivos)</Label>
                                     <span className="font-mono font-bold text-success">
@@ -773,6 +834,13 @@ export default function CyclicInventoryDetail() {
                 </DialogPopup>
             </Dialog>
 
+            {/* History Dialog */}
+            <HistoryDialog 
+                open={isHistoryDialogOpen}
+                onOpenChange={setIsHistoryDialogOpen}
+                history={history}
+            />
+
             {/* Security Delete Dialog */}
             <DeleteConfirmationDialog
                 open={showDeleteDialog}
@@ -798,7 +866,7 @@ export default function CyclicInventoryDetail() {
 
             {/* Minimalist Admin Purge Modal */}
             <Dialog open={showAdminPurgeModal} onOpenChange={setShowAdminPurgeModal}>
-                <DialogContent className="max-w-md p-0 gap-0 overflow-hidden border border-border/60 shadow-2xl rounded-2xl bg-background">
+                <DialogContent className="max-w-md p-0 gap-0 overflow-hidden border border-border/60 shadow-md rounded-lg bg-background">
                     {/* Header: Exact copy of NotificationsMenu style */}
                     <div className="flex items-center justify-between px-5 pt-5 pb-3">
                         <DialogTitle className="text-base font-semibold tracking-tight flex items-center gap-2">
@@ -869,3 +937,4 @@ export default function CyclicInventoryDetail() {
         </PageLayout>
     );
 }
+

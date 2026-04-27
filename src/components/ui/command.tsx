@@ -53,7 +53,7 @@ const CommandDialogPopup = React.forwardRef<
   <DialogPopup
     ref={ref}
     className={cn(
-      "!rounded-2xl max-h-[85vh] overflow-hidden p-0 shadow-[0_24px_48px_-12px_rgba(0,0,0,0.18)] sm:max-w-[650px] border border-zinc-200 dark:border-zinc-800", 
+      "!rounded-lg max-h-[85vh] overflow-hidden p-0 shadow-[0_24px_48px_-12px_rgba(0,0,0,0.18)] sm:max-w-[650px] border border-zinc-200 dark:border-zinc-800", 
       className
     )}
     showCloseButton={false}
@@ -245,3 +245,4 @@ export {
   CommandFooter,
   CommandCollection
 };
+

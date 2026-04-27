@@ -539,7 +539,7 @@ export default function Reports() {
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-10">
                       {expReports.map(report => (
-                        <Card key={report.id} className="p-6 flex flex-col gap-4 hover:shadow-lg transition-all border-border/50 bg-card/50 backdrop-blur-sm rounded-2xl group/card overflow-hidden relative">
+                        <Card key={report.id} className="p-6 flex flex-col gap-4 hover:shadow-lg transition-all border-border/50 bg-card/50 backdrop-blur-sm rounded-lg group/card overflow-hidden relative">
                           <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -mr-12 -mt-12 transition-transform group-hover/card:scale-150" />
                           <div className="flex justify-between items-start relative z-10">
                             <div>
@@ -649,7 +649,7 @@ export default function Reports() {
                     <div className="space-y-4 pb-10">
                       {filteredReports.map((report) => (
                         <Link to={`/reports/${report.id}`} key={report.id} className="block group">
-                          <Card className="p-5 cursor-pointer hover:shadow-md transition-all border-l-4 border-l-transparent hover:border-l-primary bg-card/50 backdrop-blur-sm rounded-2xl border border-border/50 overflow-hidden relative">
+                          <Card className="p-5 cursor-pointer hover:shadow-md transition-all border-l-4 border-l-transparent hover:border-l-primary bg-card/50 backdrop-blur-sm rounded-lg border border-border/50 overflow-hidden relative">
                             <div className="flex items-start justify-between relative z-10">
                               <div className="flex-1">
                                 <h3 className="font-bold text-lg text-foreground/90 group-hover:text-primary transition-colors">{report.name}</h3>
@@ -725,7 +725,7 @@ export default function Reports() {
 
       {/* Dialogo de Detalles (Colector) */}
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col rounded-3xl overflow-hidden border-none shadow-2xl p-0">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col rounded-xl overflow-hidden border-none shadow-md p-0">
           <div className="bg-muted/10 p-6 pb-4 border-b">
             <DialogHeader>
               <DialogTitle className="text-2xl font-bold tracking-tight">Detalle del Colector</DialogTitle>
@@ -795,7 +795,7 @@ export default function Reports() {
 
       {/* Dialogo Detalles Vencimientos */}
       <Dialog open={expDetailsOpen} onOpenChange={setExpDetailsOpen}>
-        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col rounded-3xl overflow-hidden border-none shadow-2xl p-0">
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col rounded-xl overflow-hidden border-none shadow-md p-0">
           <div className="bg-muted/10 p-6 pb-4 border-b">
             <DialogHeader>
               <DialogTitle className="flex justify-between items-center mr-8">

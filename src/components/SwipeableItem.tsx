@@ -1,118 +1,83 @@
-import { motion, useMotionValue, useTransform, PanInfo } from "framer-motion";
-import { ReactNode, useState } from "react";
-import { TrashBinMinimalistic as Trash2, Pen as Pencil, CheckCircle, Danger as AlertTriangle } from "@solar-icons/react";
-import { cn } from "@/lib/utils";
-import { useHaptic } from "@/hooks/useHaptic";
-
-export interface SwipeAction {
-    label: string;
-    icon: ReactNode;
-    color: string; // Tailwind text color class (e.g., "text-green-500")
-    bgColor: string; // CSS color for background interpolation (e.g., "rgba(34, 197, 94, 0.2)")
-    onAction: () => void;
-}
+import { motion, PanInfo, useAnimation } from 'framer-motion';
+import { TrashBinMinimalistic as Trash2 } from '@solar-icons/react';
+import { ReactNode, useState, useRef, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 interface SwipeableItemProps {
-    children: ReactNode;
-    leftAction?: SwipeAction; // Action when swiping RIGHT (e.g., Confirm)
-    rightAction?: SwipeAction; // Action when swiping LEFT (e.g., Delete/Edit)
-    className?: string;
-    threshold?: number;
-    disabled?: boolean;
+  children: ReactNode;
+  onDelete: () => void;
 }
 
-export function SwipeableItem({
-    children,
-    leftAction,
-    rightAction,
-    className,
-    threshold = 60,
-    disabled = false
-}: SwipeableItemProps) {
-    const x = useMotionValue(0);
-    const [isDragging, setIsDragging] = useState(false);
+export function SwipeableItem({ children, onDelete }: SwipeableItemProps) {
+  const controls = useAnimation();
+  const [isRevealed, setIsRevealed] = useState(false);
+  const dragThreshold = 50;
+  const revealWidth = 70;
+  
+  // Ref to track if we are currently dragging to prevent click triggers
+  const isDragging = useRef(false);
 
-    // Transform x value to background colors/opacity
-    const leftOpacity = useTransform(x, [0, threshold], [0, 1]); // Visible when swiping right
-    const rightOpacity = useTransform(x, [-threshold, 0], [1, 0]); // Visible when swiping left
+  const handleDragEnd = (_: any, info: PanInfo) => {
+    isDragging.current = false;
+    const offset = info.offset.x;
 
-    // Background color interpolation
-    const backgroundColor = useTransform(
-        x,
-        [-threshold, 0, threshold],
-        [
-            rightAction?.bgColor || "rgba(0,0,0,0)",
-            "rgba(0,0,0,0)",
-            leftAction?.bgColor || "rgba(0,0,0,0)"
-        ]
-    );
+    if (offset < -dragThreshold) {
+      // Swipe left to reveal delete on the right
+      setIsRevealed(true);
+      controls.start({ x: -revealWidth });
+    } else if (offset > dragThreshold) {
+      // Swipe right to close
+      setIsRevealed(false);
+      controls.start({ x: 0 });
+    } else {
+      // Snap to current state
+      controls.start({ x: isRevealed ? -revealWidth : 0 });
+    }
+  };
 
-    const { trigger } = useHaptic();
-    const [hasTriggered, setHasTriggered] = useState(false);
+  const handleDragStart = () => {
+    isDragging.current = true;
+  };
 
-    const handleDragEnd = (_: any, info: PanInfo) => {
-        setIsDragging(false);
-        setHasTriggered(false);
+  return (
+    <div className="relative overflow-hidden w-full group">
+      {/* Background Action - Reveal on the right */}
+      <div 
+        className={cn(
+          "absolute inset-y-0 right-0 w-[70px] flex items-center justify-center transition-opacity duration-200",
+          isRevealed ? "opacity-100" : "opacity-0"
+        )}
+      >
+        <Button
+          variant="destructive"
+          className="h-full w-full rounded-none flex flex-col items-center justify-center gap-1 active:scale-95 transition-transform"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+        >
+          {/* Animated Delete Icon inspired by p-button-39 logic but for Trash */}
+          <div className="relative size-6 flex items-center justify-center">
+             <Trash2 className={cn("size-5 transition-all duration-300", isRevealed ? "scale-110 rotate-12" : "scale-100")} />
+          </div>
+          <span className="text-[9px] font-bold uppercase tracking-wider">Borrar</span>
+        </Button>
+      </div>
 
-        if (disabled) return;
-
-        if (info.offset.x < -threshold && rightAction) {
-            rightAction.onAction();
-        } else if (info.offset.x > threshold && leftAction) {
-            leftAction.onAction();
-        }
-    };
-
-    const handleDrag = (_: any, info: PanInfo) => {
-        if (disabled) return;
-
-        const offset = info.offset.x;
-        if (!hasTriggered) {
-            if ((offset < -threshold && rightAction) || (offset > threshold && leftAction)) {
-                trigger('selection');
-                setHasTriggered(true);
-            }
-        } else {
-            if (offset > -threshold && offset < threshold) {
-                setHasTriggered(false);
-            }
-        }
-    };
-
-    return (
-        <div className={cn("relative h-full", className)}>
-            {/* Background Actions Layer */}
-            <motion.div
-                className="absolute inset-0 flex items-center justify-between px-4 pointer-events-none"
-                style={{ backgroundColor }}
-            >
-                {/* Left Action (Visible when swiping RIGHT) */}
-                <motion.div style={{ opacity: leftOpacity }} className={cn("flex items-center", leftAction?.color)}>
-                    {leftAction?.icon}
-                    <span className="font-medium ml-2">{leftAction?.label}</span>
-                </motion.div>
-
-                {/* Right Action (Visible when swiping LEFT) */}
-                <motion.div style={{ opacity: rightOpacity }} className={cn("flex items-center", rightAction?.color)}>
-                    <span className="font-medium mr-2">{rightAction?.label}</span>
-                    {rightAction?.icon}
-                </motion.div>
-            </motion.div>
-
-            {/* Foreground Content Layer */}
-            <motion.div
-                drag={disabled ? false : "x"}
-                dragConstraints={{ left: 0, right: 0 }}
-                dragElastic={0.7}
-                onDragStart={() => setIsDragging(true)}
-                onDrag={handleDrag}
-                onDragEnd={handleDragEnd}
-                style={{ x, touchAction: "none" }}
-                className="relative bg-card z-10 h-full"
-                whileTap={{ cursor: disabled ? "default" : "grabbing" }}
-            >
-                {children}
-            </motion.div>
-        </div>
-    );
+      {/* Main Content */}
+      <motion.div
+        drag="x"
+        dragConstraints={{ left: -revealWidth, right: 0 }}
+        dragElastic={0.1}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        animate={controls}
+        initial={{ x: 0 }}
+        className="relative z-10 bg-background w-full cursor-grab active:cursor-grabbing border-b border-border/40"
+      >
+        {children}
+      </motion.div>
+    </div>
+  );
 }

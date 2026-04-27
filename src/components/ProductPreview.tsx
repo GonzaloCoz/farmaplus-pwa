@@ -75,7 +75,7 @@ export function ProductPreview({ ean, productName, className }: ProductPreviewPr
                 }
             />
             <PopoverContent
-                className="w-72 p-0 overflow-hidden rounded-2xl border border-border/40 bg-background/95 backdrop-blur-xl shadow-2xl"
+                className="w-72 p-0 overflow-hidden rounded-lg border border-border/40 bg-background  shadow-md"
                 align="start"
                 sideOffset={8}
             >
@@ -131,3 +131,4 @@ export function ProductPreview({ ean, productName, className }: ProductPreviewPr
         </Popover>
     );
 }
+

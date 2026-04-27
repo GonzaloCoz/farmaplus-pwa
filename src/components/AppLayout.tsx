@@ -20,32 +20,37 @@ export function AppLayout() {
     <div className="isolate relative flex h-screen w-full bg-[var(--body-bg)] overflow-hidden transition-all duration-500">
       <div className="flex-1 h-full relative p-0 lg:p-2">
         {/* Outer container - Flat on mobile, framed on desktop */}
-        <div className="relative h-full w-full bg-[var(--layout-tray)] rounded-none lg:rounded-[1.5rem] lg:shadow-xl lg:border border-border/40 overflow-hidden flex flex-col">
+        <div className="relative h-full w-full bg-[var(--layout-tray)] rounded-none lg:rounded-lg lg:shadow-sm lg:border border-border/40 overflow-hidden flex flex-col">
           {/* Header inside outer container */}
           <div className="hidden lg:block px-2 pt-1">
             <DesktopHeader />
           </div>
 
           {/* The Wrapper Box (Behind Sidebar and Content) */}
-          <div className="flex-1 bg-[var(--layout-wrapper)] lg:m-2 lg:mt-0 lg:rounded-[1.25rem] lg:shadow-sm border border-border/5 overflow-hidden flex p-0 gap-0">
+          <div className="flex-1 bg-[var(--layout-wrapper)] lg:m-2 lg:mt-0 lg:rounded-xl lg:shadow-sm border border-border/5 overflow-hidden flex p-0 gap-0">
             <div className="hidden lg:block">
               <AppSidebar />
             </div>
 
-            {/* Main-content - Top-most Floating Dashboard Box */}
-            <div className="flex-1 bg-[var(--layout-content)] lg:m-2.5 lg:rounded-[1.5rem] lg:shadow-md lg:border border-black/[0.03] dark:border-white/[0.03] overflow-hidden flex flex-col z-10 transition-all duration-300">
+            {/* Main-content - Top-most Floating Dashboard Box (Framed on Desktop, Full on Mobile) */}
+            <div className="flex-1 bg-[var(--layout-content)] lg:m-2.5 lg:rounded-xl lg:border border-black/[0.03] dark:border-white/[0.03] lg:shadow-md overflow-hidden flex flex-col z-10 transition-all duration-300">
               <ScrollArea id="main-content" className="flex-1 w-full relative h-full">
-                <ScrollAreaViewport className="w-full relative px-4 lg:px-0">
-                  <div className="lg:hidden h-16" /> {/* Spacer for mobile TopAppBar */}
-                  
+                <ScrollAreaViewport 
+                  className="w-full relative lg:px-0 no-scrollbar" 
+                >
                   {/* Render windows as isolated instances */}
                   {windows.map((win) => (
                     <div
                       key={win.id}
                       className={cn(
-                        "absolute inset-0 w-full h-full transition-opacity duration-300",
+                        "absolute inset-0 w-full h-full transition-opacity duration-300 overflow-y-auto custom-scrollbar md:no-scrollbar",
                         activeWindowId === win.id ? "opacity-100 z-10" : "opacity-0 pointer-events-none z-0"
                       )}
+                      style={{ 
+                        paddingTop: 'calc(var(--total-header-height) * var(--is-mobile, 1))',
+                        paddingLeft: 'var(--safe-left)',
+                        paddingRight: 'var(--safe-right)' 
+                      }}
                     >
                       <WindowRouter
                         initialPath={win.path}
@@ -58,7 +63,7 @@ export function AppLayout() {
                   {/* Fallback for cases where no windows exist yet */}
                   {windows.length === 0 && <div className="p-4"><Outlet /></div>}
                 </ScrollAreaViewport>
-                <ScrollAreaScrollbar />
+                <ScrollAreaScrollbar className="hidden lg:flex" />
               </ScrollArea>
             </div>
           </div>
@@ -74,3 +79,4 @@ export function AppLayout() {
     </div>
   );
 }
+

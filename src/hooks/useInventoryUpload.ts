@@ -89,14 +89,25 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
 
         const reader = new FileReader();
 
+        const isPdf = file.name.toLowerCase().endsWith('.pdf');
+
         reader.onload = (evt) => {
-            const bstr = evt.target?.result;
+            const fileContent = evt.target?.result;
 
             // Optimización Empresarial: Uso de Web Workers para rendimiento de UI a 60FPS
-            const worker = new Worker(new URL('../workers/excelWorker.ts', import.meta.url), { type: 'module' });
+            const workerUrl = isPdf 
+                ? new URL('../workers/pdfWorker.ts', import.meta.url)
+                : new URL('../workers/excelWorker.ts', import.meta.url);
+
+            const worker = new Worker(workerUrl, { type: 'module' });
 
             worker.onmessage = async (e) => {
-                const { success, error, finalItems, addedCount, updatedCount } = e.data;
+                const { success, error, finalItems, addedCount, updatedCount, type, message } = e.data;
+
+                if (type === 'debug') {
+                    console.log('[Worker Debug]', message);
+                    return;
+                }
 
                 if (error) {
                     notify.error("Error de archivo", error);
@@ -137,14 +148,18 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
 
             // Pasar la lista pre-mergeada (capturada por closure) al worker
             worker.postMessage({
-                fileData: bstr,
+                fileData: fileContent,
                 labName,
                 branchName,
                 currentItems: mergedCurrentItems
             });
         };
 
-        reader.readAsBinaryString(file);
+        if (isPdf) {
+            reader.readAsArrayBuffer(file);
+        } else {
+            reader.readAsBinaryString(file);
+        }
     };
 
     return {

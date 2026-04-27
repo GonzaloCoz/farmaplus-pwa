@@ -151,7 +151,7 @@ export function LaboratoryGridEditor({ branchName, onSave, isSaving }: Laborator
     };
 
     return (
-        <Frame className="w-full border-muted/40 shadow-xl overflow-hidden bg-card/30 backdrop-blur-md">
+        <Frame className="w-full border-muted/40 shadow-sm overflow-hidden bg-card/30 ">
             <FrameHeader className="border-b border-muted/20 bg-muted/5">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div>
@@ -255,3 +255,4 @@ export function LaboratoryGridEditor({ branchName, onSave, isSaving }: Laborator
         </Frame>
     );
 }
+

@@ -38,7 +38,7 @@ export function ProductImageHover({ ean, name, children }: ProductImageHoverProp
                 </div>
             } />
             <HoverCardContent
-                className="w-64 p-0 overflow-hidden bg-white border-none shadow-xl"
+                className="w-64 p-0 overflow-hidden bg-white border-none shadow-sm"
                 side="right"
                 align="center"
                 sideOffset={10}
@@ -84,3 +84,4 @@ export function ProductImageHover({ ean, name, children }: ProductImageHoverProp
         </HoverCard>
     );
 }
+

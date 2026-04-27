@@ -38,14 +38,10 @@ export function CategoryProgressWidget() {
             const branchName = user.branchSheet.trim(); // Normalización de entrada
 
             try {
-                // 1. Get Master List of Labs
-                const allLabs = await getLaboratoriesForBranch(branchName);
-
-                // 2. Get Current Statuses
+                // 1. Get Current Statuses (Master List + Progress)
                 const inventories = await cyclicInventoryService.getAllCyclicInventories(branchName) || [];
-                const labStatusMap = new Map(inventories.map(i => [`${normalizeString(i.labName)}|${normalizeString(i.category || '')}`, i.status]));
 
-                // 3. Get Configuration & Historical Closures
+                // 2. Get Configuration & Historical Closures
                 const config = await cyclicInventoryService.getBranchConfig(branchName);
 
                 // Calculate Days Elapsed
@@ -58,17 +54,13 @@ export function CategoryProgressWidget() {
                 }
 
                 // Check & Auto-Execute Closures (Every 30 days)
-                // We check Period 1 (Day 30), Period 2 (Day 60), etc.
                 const checkAndRunAutoClosure = async (period: number, dayThreshold: number, currentCats: Record<string, { total: number, controlled: number }>) => {
-                    // Check if we passed the threshold
                     if (daysElapsed >= dayThreshold) {
-                        // Check if closure already exists
-                        const existingClosure = await cyclicInventoryService.getCycleClosures(user.branchSheet!, period);
+                        const existingClosure = await cyclicInventoryService.getCycleClosures(branchName, period);
                         const hasClosure = Object.keys(existingClosure).length > 0;
 
                         if (!hasClosure) {
                             console.log(`Auto-closing Period ${period} (Day ${dayThreshold} reached)`);
-                            // Prepare Data
                             const dataToSave = Object.entries(currentCats).map(([name, stats]) => ({
                                 name,
                                 percentage: stats.total > 0 ? Math.round((stats.controlled / stats.total) * 100) : 0
@@ -76,7 +68,7 @@ export function CategoryProgressWidget() {
 
                             await cyclicInventoryService.saveCycleClosure(branchName, period, dataToSave);
                             notify.success(`Cierre automático del Periodo ${period} completado.`);
-                            return true; // We performed a save
+                            return true;
                         }
                     }
                     return false;
@@ -91,22 +83,21 @@ export function CategoryProgressWidget() {
                 };
 
                 // Aggregate Data
-                allLabs.forEach(lab => {
+                inventories.forEach(inv => {
+                    // Include all laboratories regardless of item count to reflect true denominator
                     let catKey = 'Varios';
-                    const labCat = (lab.category || '').trim().toUpperCase()
-                        .normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // Remove accents for comparison
+                    const labCat = (inv.category || '').trim().toUpperCase()
+                        .normalize("NFD").replace(/[\u0300-\u036f]/g, ""); 
 
                     if (labCat === 'MEDICAMENTOS') catKey = 'Medicamentos';
                     else if (labCat === 'PERFUMERIA') catKey = 'Perfumería';
                     else if (labCat === 'ACCESORIOS') catKey = 'Accesorios';
 
-                    const labName = normalizeString(lab.name || '');
-                    const statusKey = `${labName}|${normalizeString(lab.category || '')}`;
-                    const status = labStatusMap.get(statusKey);
-                    const isControlled = status === 'controlado';
+                    // Numerator: Count labs that are either finished (controlado) OR in progress (por_controlar)
+                    const isTouched = inv.status === 'controlado' || inv.status === 'por_controlar';
 
                     cats[catKey].total += 1;
-                    if (isControlled) cats[catKey].controlled += 1;
+                    if (isTouched) cats[catKey].controlled += 1;
                 });
 
                 // Execute Auto-Closures if needed
@@ -282,7 +273,7 @@ export function CategoryProgressWidget() {
                                     {/* Bar Container (Height = Volume relative to largest category) */}
                                     <motion.div
                                         className={cn(
-                                            "w-full rounded-2xl overflow-hidden flex flex-col justify-end relative transition-all duration-300 bg-secondary dark:bg-muted/20",
+                                            "w-full rounded-lg overflow-hidden flex flex-col justify-end relative transition-all duration-300 bg-secondary dark:bg-muted/20",
                                             isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "hover:bg-secondary/80 dark:hover:bg-muted/30"
                                         )}
                                         initial={{ height: 0 }}
@@ -360,7 +351,7 @@ export function CategoryProgressWidget() {
 
         {/* Off-screen Canva Template */}
         <div ref={canvaRef} className="fixed top-0 left-0 w-[800px] pointer-events-none" style={{ zIndex: -9999, opacity: 0 }}>
-            <div className="w-full h-full p-8 rounded-2xl flex flex-col gap-6 bg-[#f8f9fb] dark:bg-[#161618] text-[#262626] dark:text-[#f5f5f5]">
+            <div className="w-full h-full p-8 rounded-lg flex flex-col gap-6 bg-[#f8f9fb] dark:bg-[#161618] text-[#262626] dark:text-[#f5f5f5]">
                 {/* Header info */}
                 <div className="flex justify-between items-center border-b pb-4 border-[#e5e5e5] dark:border-[#3f3f46]">
                     <div>
@@ -406,3 +397,4 @@ export function CategoryProgressWidget() {
         </>
     );
 } 
+

@@ -41,6 +41,7 @@ interface UsePreCountReturn {
     errorCount: number;
     isLoading: boolean;
     availableSessions: PreCountSession[];
+    connectedDevices: ConnectedDevice[];
     startSession: (sector: string, masterCatalog?: any[], syncPin?: string) => Promise<void>;
     resumeSession: (session: PreCountSession) => Promise<void>;
     deleteSession: (id: string) => Promise<void>;
@@ -50,12 +51,21 @@ interface UsePreCountReturn {
     finishSession: () => Promise<void>;
     refreshItems: () => Promise<void>;
     registerError: () => void;
+    announcePresence: (explicitSessionId?: string) => Promise<void>;
 }
+
+export interface ConnectedDevice {
+    deviceId: string;
+    deviceName: string;
+    joinedAt: number;
+}
+
 
 export function usePreCount(): UsePreCountReturn {
     const [session, setSession] = useState<PreCountSession | null>(null);
     const [errorCount, setErrorCount] = useState(0);
     const [availableSessions, setAvailableSessions] = useState<PreCountSession[]>([]);
+    const [connectedDevices, setConnectedDevices] = useState<ConnectedDevice[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const { user } = useUser();
 
@@ -117,7 +127,23 @@ export function usePreCount(): UsePreCountReturn {
             .subscribe();
 
         let itemsChannel: any = null;
+        let presenceChannel: any = null;
+
         if (session) {
+            // Presence tracking
+            presenceChannel = supabase
+                .channel(`precount_presence:${session.id}`)
+                .on('broadcast', { event: 'device_joined' }, ({ payload }) => {
+                    setConnectedDevices(prev => {
+                        const exists = prev.find(d => d.deviceId === payload.deviceId);
+                        if (exists) {
+                            return prev.map(d => d.deviceId === payload.deviceId ? payload : d);
+                        }
+                        return [...prev, payload];
+                    });
+                })
+                .subscribe();
+
             itemsChannel = supabase
                 .channel(`public:precount_items:${session.id}`)
                 .on('postgres_changes',
@@ -138,6 +164,18 @@ export function usePreCount(): UsePreCountReturn {
                             device_name: newItem.device_name,
                             location_tag: newItem.location_tag
                         });
+                        
+                        // Auto-add device to presence if it scans something
+                        if (newItem.device_id) {
+                            setConnectedDevices(prev => {
+                                if (prev.find(d => d.deviceId === newItem.device_id)) return prev;
+                                return [...prev, { 
+                                    deviceId: newItem.device_id, 
+                                    deviceName: newItem.device_name || 'Zebra', 
+                                    joinedAt: Date.now() 
+                                }];
+                            });
+                        }
                     })
                 .on('postgres_changes',
                     { event: 'UPDATE', schema: 'public', table: 'precount_items', filter: `session_id=eq.${session.id}` },
@@ -161,8 +199,10 @@ export function usePreCount(): UsePreCountReturn {
             if (debounceTimer) clearTimeout(debounceTimer);
             supabase.removeChannel(sessionsChannel);
             if (itemsChannel) supabase.removeChannel(itemsChannel);
+            if (presenceChannel) supabase.removeChannel(presenceChannel);
         };
     }, [session?.id, user?.branchId, user?.role]);
+
 
     // Helper to map DB item to UI item
     const mapInternalItemToUI = (dbItem: any): UIPreCountItem => ({
@@ -175,7 +215,8 @@ export function usePreCount(): UsePreCountReturn {
         synced: dbItem.synced ?? 1,
         id_producto: dbItem.id_producto,
         deviceId: dbItem.device_id,
-        deviceName: dbItem.device_name
+        deviceName: dbItem.device_name,
+        location_tag: dbItem.location_tag
     });
 
     // Calcular totales
@@ -189,6 +230,7 @@ export function usePreCount(): UsePreCountReturn {
         try {
             const newSession = await createSession(sector, user.branchId, masterCatalog, syncPin);
             setSession(newSession);
+            localStorage.setItem('last_precount_session_id', newSession.id);
             // Refresh sessions list
             const sessions = await getActiveSessions({ branchId: user.branchId, role: user.role });
             setAvailableSessions(sessions);
@@ -201,10 +243,37 @@ export function usePreCount(): UsePreCountReturn {
         }
     };
 
+    // Announce device presence (for Zebras joining)
+    const announcePresence = async (explicitSessionId?: string) => {
+        const idToUse = explicitSessionId || session?.id;
+        if (!idToUse) return;
+        
+        const deviceId = localStorage.getItem('precount_device_id') || `dev-${Math.random().toString(36).substring(7)}`;
+        const deviceName = localStorage.getItem('precount_device_name') || 'Zebra';
+        
+        try {
+            const channel = supabase.channel(`precount_presence:${idToUse}`);
+            await channel.subscribe(async (status) => {
+                if (status === 'SUBSCRIBED') {
+                    await channel.send({
+                        type: 'broadcast',
+                        event: 'device_joined',
+                        payload: { deviceId, deviceName, joinedAt: Date.now() }
+                    });
+                }
+            });
+        } catch (err) {
+            console.error('Error announcing presence:', err);
+        }
+    };
+
+
+
     // Resume session
     const resumeSession = async (sessionToResume: PreCountSession) => {
         try {
             setSession(sessionToResume);
+            localStorage.setItem('last_precount_session_id', sessionToResume.id);
             setErrorCount(sessionToResume.errorCount || 0);
             notify.success("Sesión retomada", `Sucursal: ${sessionToResume.sector}`);
         } catch (error) {
@@ -284,6 +353,7 @@ export function usePreCount(): UsePreCountReturn {
             }
 
             setSession(null);
+            localStorage.removeItem('last_precount_session_id');
             notify.success("Sesión finalizada", "La sesión se cerró y finalizó");
         } catch (error) {
             console.error('Error finishing session:', error);
@@ -309,6 +379,7 @@ export function usePreCount(): UsePreCountReturn {
         errorCount,
         isLoading,
         availableSessions,
+        connectedDevices,
         startSession,
         resumeSession,
         deleteSession,
@@ -317,6 +388,7 @@ export function usePreCount(): UsePreCountReturn {
         removeItem,
         finishSession,
         refreshItems,
-        registerError
+        registerError,
+        announcePresence
     };
 }

@@ -80,7 +80,7 @@ export function AppUpdater() {
             <DialogPopup className="max-w-[500px]" showCloseButton={false}>
                 <DialogHeader>
                     <div className="flex items-center gap-4">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-foreground text-background">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-foreground text-background">
                             <ArrowDown className="w-5 h-5" />
                         </div>
                         <div>
@@ -101,7 +101,7 @@ export function AppUpdater() {
 
                     {/* Release Notes */}
                     {latestVersion.release_notes && (
-                        <div className="rounded-2xl border border-border/40 bg-muted/10 overflow-hidden">
+                        <div className="rounded-lg border border-border/40 bg-muted/10 overflow-hidden">
                             <div className="px-4 py-2.5 border-b border-border/40 bg-muted/20">
                                 <span className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/50">
                                     Log de cambios
@@ -141,3 +141,4 @@ export function AppUpdater() {
         </Dialog>
     );
 }
+

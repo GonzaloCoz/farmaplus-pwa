@@ -17,72 +17,62 @@ export function PostCard({ post, onClick }: PostCardProps) {
     return (
         <div 
             onClick={onClick}
-            className="group relative flex flex-col bg-white dark:bg-zinc-900 border border-border/40 rounded-[2rem] overflow-hidden hover:border-primary/40 hover:shadow-2xl hover:shadow-primary/10 transition-all duration-500 cursor-pointer h-full"
+            className="group relative flex flex-col bg-background border border-border/60 rounded-lg overflow-hidden hover:border-border hover:shadow-md transition-all duration-300 cursor-pointer h-full"
         >
-            {/* Image placeholder or actual image */}
-            <div className="aspect-video w-full bg-zinc-100 dark:bg-zinc-800 relative overflow-hidden">
-                {post.image_url ? (
-                    <img 
-                        src={post.image_url} 
-                        alt={post.title} 
-                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                    />
-                ) : (
-                    <div className="w-full h-full flex items-center justify-center opacity-20">
-                        <div className="p-4 rounded-full bg-zinc-200 dark:bg-zinc-700">
-                             <Tag size={40} weight="Bold" />
+            {/* Image Section with outer padding */}
+            <div className="p-2 pb-0">
+                <div className="aspect-[16/10] w-full bg-muted relative overflow-hidden rounded-xl">
+                    {post.image_url ? (
+                        <img 
+                            src={post.image_url} 
+                            alt={post.title} 
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center opacity-20">
+                            <Tag size={40} className="text-muted-foreground" />
                         </div>
-                    </div>
-                )}
-                
-                {/* Status or Category Badge */}
-                <div className="absolute top-4 left-4">
-                    <span 
-                        className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest backdrop-blur-md bg-white/80 dark:bg-zinc-900/80 text-foreground"
-                    >
-                        {post.category?.name || "General"}
-                    </span>
+                    )}
                 </div>
             </div>
 
-            <div className="p-6 flex flex-col flex-1">
-                {/* Meta info */}
-                <div className="flex items-center gap-4 text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-4">
-                    <div className="flex items-center gap-1.5">
-                        <Calendar size={14} weight="Bold" />
-                        {formattedDate}
-                    </div>
-                </div>
+            <div className="p-5 flex flex-col flex-1">
+                {/* Date */}
+                <span className="text-[13px] font-medium text-muted-foreground mb-3">
+                    {formattedDate}
+                </span>
 
-                <h3 className="text-xl font-black text-foreground mb-3 leading-tight group-hover:text-primary transition-colors line-clamp-2">
+                {/* Title */}
+                <h3 className="text-[20px] font-semibold text-foreground mb-2 leading-tight tracking-tight group-hover:underline decoration-foreground/20 underline-offset-4">
                     {post.title}
                 </h3>
 
-                <p className="text-sm text-muted-foreground/80 font-medium leading-relaxed mb-6 line-clamp-3">
+                {/* Snippet */}
+                <p className="text-[14px] text-muted-foreground leading-relaxed mb-6 line-clamp-3">
                     {post.snippet || "Haz clic para ver el contenido completo de esta publicación de capacitación."}
                 </p>
 
-                {/* Footer with stats and author */}
-                <div className="mt-auto pt-6 border-t border-border/40 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                            {post.author?.full_name?.charAt(0) || "U"}
+                {/* Footer with author and category */}
+                <div className="mt-auto flex items-center gap-2 text-[13px]">
+                    <span className="text-muted-foreground">Por</span>
+                    
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-foreground font-semibold text-[10px] overflow-hidden">
+                            {post.author?.full_name?.charAt(0) || post.author?.username?.charAt(0) || "U"}
                         </div>
-                        <span className="text-xs font-bold text-foreground">
-                            {post.author?.full_name?.split(' ')[0] || "Usuario"}
+                        <span className="font-semibold text-foreground">
+                            {post.author?.full_name?.split(' ')[0] || post.author?.username || "Usuario"}
                         </span>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                        {post.tags?.length > 0 && (
-                            <div className="flex items-center gap-1 text-muted-foreground">
-                                <Tag size={14} weight="Bold" />
-                                <span className="text-[10px] font-bold capitalize">{post.tags[0]}</span>
-                            </div>
-                        )}
-                    </div>
+                    <span className="text-muted-foreground px-1">•</span>
+                    
+                    <span className="text-muted-foreground font-medium">
+                        #{post.category?.name?.replace(/\s+/g, '') || "General"}
+                    </span>
                 </div>
             </div>
         </div>
     );
 }
+

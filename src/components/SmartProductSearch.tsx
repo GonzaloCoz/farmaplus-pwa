@@ -194,7 +194,7 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Escanear EAN o buscar producto..."
-                    className="pl-10 h-12 text-lg font-medium bg-card border-border/60 shadow-sm focus-visible:ring-primary/20 transition-all font-mono placeholder:font-sans"
+                    className="pl-10 h-12 text-xs font-medium bg-card border-border/60 shadow-sm focus-visible:ring-primary/20 transition-all font-mono placeholder:text-xs placeholder:font-sans"
                     autoComplete="off"
                 />
 
@@ -220,7 +220,7 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
-                        className="absolute top-full left-0 right-0 z-[100] mt-1 bg-popover text-popover-foreground rounded-lg border shadow-xl overflow-hidden max-h-[300px] overflow-y-auto ring-1 ring-border/50"
+                        className="absolute top-full left-0 right-0 z-[100] mt-1 bg-popover text-popover-foreground rounded-lg border shadow-sm overflow-hidden max-h-[300px] overflow-y-auto ring-1 ring-border/50"
                     >
                         <div className="p-1.5 space-y-0.5" ref={listRef}>
                             {results.map((product, index) => (
@@ -228,7 +228,7 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
                                     key={product.ean}
                                     onClick={() => handleSelect(product)}
                                     className={cn(
-                                        "w-full text-left px-3 py-2.5 text-sm rounded-md flex items-center justify-between group transition-all duration-200 border border-transparent",
+                                        "w-full text-left px-3 py-2 text-xs rounded-md flex items-center justify-between group transition-all duration-200 border border-transparent",
                                         index === selectedIndex
                                             ? "bg-primary/15 text-primary-foreground/90 border-primary/20 shadow-sm"
                                             : "hover:bg-muted text-foreground"
@@ -253,3 +253,4 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
         </div>
     );
 }
+

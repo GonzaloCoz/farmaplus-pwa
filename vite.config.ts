@@ -7,7 +7,7 @@ import path from "path"
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const base = env.VITE_BASE || '/';
+  const base = mode === 'development' ? '/' : (env.VITE_BASE || './');
 
   return {
     base,
@@ -153,7 +153,7 @@ export default defineConfig(({ mode }) => {
       esbuildOptions: {
         target: 'es2020',
         supported: {
-          'top-level-await': true
+          'top-level-await': false
         }
       }
     }

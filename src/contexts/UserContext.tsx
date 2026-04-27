@@ -19,7 +19,7 @@ export interface User {
 interface UserContextType {
     user: User | null;
     login: (username: string, password?: string) => Promise<boolean>;
-    selectBranch: (branchName: string) => void;
+    selectBranch: (branchName: string) => Promise<void>;
     clearBranchSelection: () => void;
     logout: () => void;
     isLoading: boolean;
@@ -215,6 +215,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         });
 
         if (branchMatch) {
+            // Fetch branch UUID if available even for legacy
+            const { data: bData } = await supabase.from('branches').select('id').eq('name', branchMatch).maybeSingle();
+
             const newUser: User = {
                 id: `branch_${normalizedInput}`,
                 username: normalizedInput,
@@ -222,6 +225,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                 role: 'branch',
                 branchName: branchMatch,
                 branchSheet: branchMatch,
+                branchId: bData?.id,
                 permissions: []
             };
             console.timeEnd("[Login] Total");
@@ -240,11 +244,33 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false); // <--- Reset global loading state once user is ready
     };
 
-    const selectBranch = (branchName: string) => {
+    const selectBranch = async (branchName: string) => {
         if (!user) return;
-        const updatedUser = { ...user, branchName: branchName, branchSheet: branchName };
-        persistUser(updatedUser);
-        notify.success("Sucursal Seleccionada", `Ahora estás visualizando los datos de: ${branchName}`);
+
+        // Try to fetch the UUID for the branch to ensure consistency (needed for PreCount sessions)
+        try {
+            const { data, error } = await supabase
+                .from('branches')
+                .select('id')
+                .eq('name', branchName)
+                .maybeSingle();
+
+            const branchId = data?.id;
+
+            const updatedUser = { 
+                ...user, 
+                branchName: branchName, 
+                branchSheet: branchName,
+                branchId: branchId || user.branchId 
+            };
+            persistUser(updatedUser);
+            notify.success("Sucursal Seleccionada", `Ahora estás visualizando los datos de: ${branchName}`);
+        } catch (error) {
+            console.error('Error selecting branch:', error);
+            // Fallback to name-only update if fetch fails
+            const updatedUser = { ...user, branchName: branchName, branchSheet: branchName };
+            persistUser(updatedUser);
+        }
     };
 
     const clearBranchSelection = () => {

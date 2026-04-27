@@ -142,6 +142,13 @@ export class SyncManager {
                 const { id, ...updates } = sessionData;
                 const { error } = await supabase.from('precount_sessions').update(updates).eq('id', id);
                 if (error) throw error;
+            } else if (type === 'delete') {
+                // First delete all items belonging to this session to avoid FK issues
+                await supabase.from('precount_items').delete().eq('session_id', data.id);
+                
+                // Then delete the session
+                const { error } = await supabase.from('precount_sessions').delete().eq('id', data.id);
+                if (error) throw error;
             }
         } else if (entity === 'item') {
             if (type === 'create' || type === 'update') {

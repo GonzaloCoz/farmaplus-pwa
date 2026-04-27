@@ -1,27 +1,15 @@
 import { useState, memo, useCallback, CSSProperties } from 'react';
 import { ProductImageHover } from '@/components/ProductImageHover';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
-    ClockCircle as Clock,
     CheckCircle,
     Box as Package,
-    Buildings as Building2,
-    AltArrowRight as ChevronRight,
     Magnifer as Search,
     Calculator as CalculatorIcon,
-    TrashBinMinimalistic as Trash2,
     Danger as AlertTriangle,
-    Pen as Pencil,
-    GraphDown as TrendingDown,
-    GraphUp as TrendingUp,
-    Hashtag as Hash,
-    Copy,
-    ArrowRightUp as ArrowUpRight,
-    ArrowRightDown as ArrowDownRight,
     JarOfPills,
     Perfume,
     Stethoscope,
@@ -30,7 +18,6 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { notify } from '@/lib/notifications';
-import { SwipeableItem } from './SwipeableItem';
 import { Calculator } from './Calculator';
 import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
@@ -44,6 +31,23 @@ import {
     DialogFooter,
     DialogClose,
 } from '@/components/ui/dialog';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
+import {
+    Frame,
+    FrameHeader,
+    FrameTitle,
+    FrameDescription,
+    FramePanel,
+    FrameFooter,
+} from '@/components/ui/frame';
+
 
 export interface CyclicItem {
     id: string;
@@ -122,9 +126,9 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
         }
     }, [onBulkCheck, selectedIds]);
 
-    // Grid layout constants for consistency
-    const GRID_TEMPLATE_PENDING = '48px 65px minmax(200px, 3fr) minmax(130px, 1.2fr) minmax(90px, 0.8fr) minmax(100px, 1fr)';
-    const GRID_TEMPLATE_CONTROLLED = '48px 65px minmax(200px, 2.5fr) minmax(130px, 1.2fr) minmax(90px, 0.8fr) minmax(100px, 0.8fr) minmax(80px, 0.6fr) minmax(85px, 0.8fr) minmax(100px, 1fr)';
+    // Grid layout constants for consistency (Matching Monitor de Sucursales feel)
+    const GRID_TEMPLATE_PENDING = '56px 80px minmax(200px, 3fr) minmax(130px, 1.2fr) minmax(90px, 0.8fr) minmax(100px, 1fr)';
+    const GRID_TEMPLATE_CONTROLLED = '56px 80px minmax(200px, 2.5fr) minmax(130px, 1.2fr) minmax(90px, 0.8fr) minmax(100px, 0.8fr) minmax(80px, 0.6fr) minmax(100px, 0.8fr) minmax(100px, 1fr)';
 
     const handleStartEdit = (item: any) => {
         // REGLA DE NEGOCIO: Bloqueo de Re-ajuste si no hay Excel nuevo
@@ -182,226 +186,138 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
         const item = items[index];
         const diff = item.countedQuantity - item.systemQuantity;
         const hasDiff = diff !== 0;
-        const isControlled = item.status === 'controlled';
         const isSelected = selectedIds.has(item.id);
 
         const diffValue = diff * item.cost;
 
         return (
-            <div style={style} className="px-4">
-                <SwipeableItem
-                    disabled={readOnly}
-                    {...(!isControlled ? {
-                        leftAction: {
-                            label: "Confirmar",
-                            icon: <CheckCircle className="w-5 h-5" />,
-                            color: "text-green-600",
-                            bgColor: "rgba(22, 163, 74, 0.2)",
-                            onAction: () => onCheck(item.id)
-                        },
-                        rightAction: {
-                            label: "Diferencia",
-                            icon: <AlertTriangle className="w-5 h-5" />,
-                            color: "text-orange-500",
-                            bgColor: "rgba(249, 115, 22, 0.2)",
-                            onAction: () => handleStartEdit(item)
+            <div style={style} className="px-0">
+                <div
+                    className={cn(
+                        "h-full items-center border-t border-border/15 hover:bg-muted/30 transition-colors group cursor-pointer",
+                        isSelected && "bg-primary/5 hover:bg-primary/10",
+                        index === 0 && "border-t-0"
+                    )}
+                    style={{
+                        display: 'grid',
+                        gridTemplateColumns: isPending ? GRID_TEMPLATE_PENDING : GRID_TEMPLATE_CONTROLLED,
+                        gap: '0'
+                    }}
+                    onClick={() => {
+                        if (selectedIds.size > 0 && isSelected) {
+                            setShowBulkConfirm(true);
+                        } else {
+                            handleStartEdit(item);
                         }
-                    } : {
-                        leftAction: {
-                            label: "Editar",
-                            icon: <Pencil className="w-5 h-5" />,
-                            color: "text-blue-500",
-                            bgColor: "rgba(59, 130, 246, 0.2)",
-                            onAction: () => handleStartEdit(item)
-                        },
-                        rightAction: onRevert ? {
-                            label: "Revertir",
-                            icon: <Trash2 className="w-5 h-5" />,
-                            color: "text-red-500",
-                            bgColor: "rgba(239, 68, 68, 0.2)",
-                            onAction: () => onRevert(item.id)
-                        } : undefined
-                    })}
+                    }}
                 >
-                    <div
-                        className={cn(
-                            "h-full items-center border-b border-border/40 hover:bg-muted/10 transition-colors group cursor-pointer px-4",
-                            isSelected && "bg-primary/5 hover:bg-primary/10"
-                        )}
-                        style={{
-                            display: 'grid',
-                            gridTemplateColumns: isPending ? GRID_TEMPLATE_PENDING : GRID_TEMPLATE_CONTROLLED,
-                            gap: '0 16px'
-                        }}
-                        onClick={() => {
-                            if (selectedIds.size > 0 && isSelected) {
-                                setShowBulkConfirm(true);
-                            } else {
-                                handleStartEdit(item);
-                            }
-                        }}
+                    {/* CHECKBOX - TableCell style */}
+                    <div 
+                        className="flex items-center justify-center pl-5 pr-4 py-3 h-full"
+                        onClick={(e) => e.stopPropagation()}
                     >
-                        {/* CHECKBOX */}
-                        <div className="flex items-center justify-center self-center" onClick={(e) => e.stopPropagation()}>
-                            <Checkbox
-                                checked={isSelected}
-                                onCheckedChange={() => toggleSelect(item.id)}
-                                aria-label={`Seleccionar ${item.name}`}
-                                className="h-5 w-5 border-2"
-                            />
-                        </div>
-                        {/* FECHA */}
-                        <div className="flex flex-col justify-center py-1 overflow-hidden">
-                            <span className="text-xs font-bold text-foreground/80 leading-tight">
-                                {item.updatedAt ? new Date(item.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground font-medium leading-none">
-                                {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString([], { day: '2-digit', month: '2-digit' }) : '--/--'}
-                            </span>
-                        </div>
-
-                        {/* PRODUCTO */}
-                        <div className="flex items-center gap-2 min-w-0 pr-2">
-                            <div className={cn(
-                                "p-1.5 rounded-lg shrink-0",
-                                diff < 0 ? 'bg-destructive/10 text-destructive dark:bg-red-500/15 dark:text-red-400'
-                                    : diff > 0 ? 'bg-success/10 text-success dark:bg-green-500/15 dark:text-green-400'
-                                    : 'bg-muted/40 text-muted-foreground'
-                            )}>
-                                {(() => {
-                                    const iconClass = "w-4 h-4";
-                                    const weight = diff !== 0 ? "BoldDuotone" : "LineDuotone";
-                                    const rawCategory = typeof item.category === 'string' ? item.category.trim() : 'Varios';
-                                    const catNormal = rawCategory.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-                                    switch (catNormal) {
-                                        case 'perfumeria': return <Perfume className={iconClass} weight={weight as any} />;
-                                        case 'accesorios': return <Stethoscope className={iconClass} weight={weight as any} />;
-                                        case 'varios': return <Pills3 className={iconClass} weight={weight as any} />;
-                                        case 'medicamentos':
-                                        default: return <JarOfPills className={iconClass} weight={weight as any} />;
-                                    }
-                                })()}
-                            </div>
-                            <div className="flex flex-col gap-0.5 min-w-0">
-                                <ProductImageHover ean={item.ean} name={item.name}>
-                                    <p className="font-semibold text-sm text-foreground line-clamp-2 leading-tight" title={item.name}>
-                                        {item.name}
-                                    </p>
-                                </ProductImageHover>
-                                {item.wasReadjusted && (
-                                    <Badge variant="outline" className="text-[10px] h-5 w-fit bg-primary/10 text-primary border-primary/20 font-semibold">
-                                        Modif.
-                                    </Badge>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* EAN with Copy functionality */}
-                        <div 
-                            className="flex items-center gap-2 self-center cursor-pointer group/ean"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                copyToClipboard(item.ean, item.id);
-                            }}
-                            title="Copiar EAN"
-                        >
-                            <span className="text-sm font-mono text-muted-foreground group-hover/ean:text-foreground transition-colors">
-                                {item.ean}
-                            </span>
-                            <div className="w-4 h-4 flex items-center justify-center">
-                                {copiedId === item.id ? (
-                                    <CheckCircle className="w-3.5 h-3.5 text-success animate-bounce-in shrink-0" />
-                                ) : (
-                                    <Copy 
-                                        className="w-3.5 h-3.5 text-primary opacity-0 group-hover/ean:opacity-100 transition-opacity shrink-0"
-                                    />
-                                )}
-                            </div>
-                        </div>
-
-                        {/* PRECIO */}
-                        <div className="self-center">
-                            <p className="text-sm font-medium">${item.cost.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                        </div>
-
-                        {/* FÍSICO / SISTEMA */}
-                        <div className="self-center">
-                            <div className="flex items-center justify-start gap-1.5 text-sm">
-                                {isPending ? (
-                                    <div className="w-10 h-8 rounded-md bg-muted/20 border border-dashed border-muted-foreground/30 flex items-center justify-center text-muted-foreground/40 text-xs shadow-inner">
-                                        -
-                                    </div>
-                                ) : (
-                                    <span className={cn(
-                                        "font-bold",
-                                        hasDiff ? "text-warning" : "text-success"
-                                    )}>{item.countedQuantity}</span>
-                                )}
-                                <span className="text-muted-foreground/60">/</span>
-                                <span className="text-muted-foreground font-medium">{item.systemQuantity}</span>
-                            </div>
-                        </div>
-
-                        {/* ID (Badge style) - Only in non-pending */}
-                        {!isPending && (
-                            <div className="flex flex-col justify-center gap-0.5 self-center">
-                                {item.status === 'adjusted' && (item.shortageId || item.surplusId) ? (
-                                    <div className="flex flex-col gap-1">
-                                        {item.shortageId && item.shortageId.split(',').map((id, idx) => (
-                                            <Badge
-                                                key={`shortage-${idx}`}
-                                                variant="outline"
-                                                className="text-[10px] h-5 font-mono gap-1 font-semibold bg-destructive/10 text-destructive border-destructive/30 w-fit"
-                                            >
-                                                <Hash className="w-2.5 h-2.5" />
-                                                {id.trim()}
-                                            </Badge>
-                                        ))}
-                                        {item.surplusId && item.surplusId.split(',').map((id, idx) => (
-                                            <Badge
-                                                key={`surplus-${idx}`}
-                                                variant="outline"
-                                                className="text-[10px] h-5 font-mono gap-1 font-semibold bg-success/10 text-success border-success/30 w-fit"
-                                            >
-                                                <Hash className="w-2.5 h-2.5" />
-                                                {id.trim()}
-                                            </Badge>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <span className="text-[10px] text-muted-foreground/30">—</span>
-                                )}
-                            </div>
-                        )}
-
-                        {/* DIFERENCIA (Pill) */}
-                        {!isPending && (
-                            <div className="flex justify-start self-center">
-                                <div className={cn(
-                                    "flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold justify-center whitespace-nowrap",
-                                    diff < 0 ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success',
-                                    diff === 0 && 'bg-muted text-muted-foreground'
-                                )}>
-                                    {diff > 0 ? <ArrowUpRight className="w-3.5 h-3.5" /> : (diff < 0 ? <ArrowDownRight className="w-3.5 h-3.5" /> : null)}
-                                    {diff > 0 ? '+' : ''}{diff}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* TOTAL ($) */}
-                        {!isPending && (
-                            <div className="self-center">
-                                <p className={cn(
-                                    "text-sm font-bold",
-                                    diffValue < 0 ? 'text-destructive' : 'text-success'
-                                )}>
-                                    {diffValue > 0 ? '+' : (diffValue < 0 ? '-' : '')}${Math.abs(diffValue).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </p>
-                            </div>
-                        )}
+                        <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleSelect(item.id)}
+                            aria-label={`Seleccionar ${item.name}`}
+                            className="size-4"
+                        />
                     </div>
-                </SwipeableItem>
+
+                    {/* FECHA */}
+                    <div className="flex flex-col justify-center px-4 py-3 min-w-0 font-cal">
+                        <span className="text-[13px] font-medium font-mono text-muted-foreground whitespace-nowrap">
+                            {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() : '--/--'}
+                        </span>
+                    </div>
+
+                    {/* PRODUCTO */}
+                    <div className="flex items-center px-4 py-3 min-w-0">
+                        <div className="flex flex-col gap-0.5 min-w-0">
+                            <ProductImageHover ean={item.ean} name={item.name}>
+                                <div className="font-medium text-[14px]">
+                                    {item.name}
+                                </div>
+                            </ProductImageHover>
+                            {item.wasReadjusted && (
+                                <span className="text-[10px] text-muted-foreground/60 font-medium whitespace-nowrap">
+                                    Ajuste Anterior
+                                </span>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* EAN */}
+                    <div className="px-4 py-3 flex flex-col justify-center font-mono tabular-nums">
+                        <span className="text-[13px] text-muted-foreground/80 leading-tight">
+                            {item.ean}
+                        </span>
+                    </div>
+
+                    {/* PRECIO */}
+                    <div className="px-4 py-3 flex flex-col justify-center tabular-nums">
+                        <span className="text-[13px] font-medium text-foreground leading-tight">
+                            ${item.cost.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                    </div>
+
+                    {/* FÍSICO / SISTEMA */}
+                    <div className="flex items-center px-4 py-3 self-center font-cal">
+                        <div className="flex items-center justify-start gap-1.5 text-[14px] tabular-nums">
+                            {isPending ? (
+                                <span className="text-muted-foreground/10">—</span>
+                            ) : (
+                                <span className={cn("font-medium", hasDiff && "text-destructive-foreground")}>
+                                    {item.countedQuantity}
+                                </span>
+                            )}
+                            <span className="text-muted-foreground/30 px-0.5">/</span>
+                            <span className="text-muted-foreground/30 font-medium">{item.systemQuantity}</span>
+                        </div>
+                    </div>
+
+                    {/* ID */}
+                    {!isPending && (
+                        <div className="px-4 py-3 flex items-center">
+                            {item.status === 'adjusted' && (item.shortageId || item.surplusId) ? (
+                                <Badge variant="outline" className="font-mono">
+                                    {(item.shortageId || item.surplusId)?.split(',')[0]}
+                                </Badge>
+                            ) : (
+                                <span className="text-muted-foreground/10">—</span>
+                            )}
+                        </div>
+                    )}
+
+                    {/* DIFERENCIA */}
+                    {!isPending && (
+                        <div className="flex justify-start px-4 py-3 self-center">
+                            {diff === 0 ? (
+                                <span className="text-muted-foreground/30 text-[13px] pl-4 font-cal">–</span>
+                            ) : (
+                                <Badge variant="outline">
+                                    <span
+                                        aria-hidden="true"
+                                        className={cn("size-1.5 rounded-full", diff > 0 ? "bg-emerald-500" : "bg-red-500")}
+                                    />
+                                    {diff > 0 ? '+' : ''}{diff}
+                                </Badge>
+                            )}
+                        </div>
+                    )}
+
+                    {/* TOTAL ($) */}
+                    {!isPending && (
+                        <div className="flex items-center pl-4 pr-5 py-3 self-center first:pl-5 last:pr-5">
+                            <p className={cn(
+                                "text-[14px] font-medium tabular-nums font-cal",
+                                diffValue === 0 ? "text-muted-foreground" : diffValue > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+                            )}>
+                                {diffValue < 0 && '-'}${Math.abs(diffValue).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                            </p>
+                        </div>
+                    )}
+                </div>
             </div>
         );
     };
@@ -416,50 +332,48 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
     }
 
     return (
-        <Card className="border-muted/40 shadow-sm overflow-hidden bg-card">
-            <div className="overflow-x-auto no-scrollbar pb-1">
-                <div className={cn(
-                    "min-w-fit w-full",
-                    isPending ? "min-w-[700px]" : "min-w-[950px]"
-                )}>
-                    {/* Table Header */}
+        <Frame className="w-full flex-1 relative font-cal">
+            {/* Floating selection bar - Now inside Frame */}
+            <div className="px-0 pb-1">
+                <FramePanel className="p-0 overflow-hidden border-input bg-popover shadow-xs/5 dark:bg-input/20 flex flex-col h-[650px] w-full">
+                    {/* Header Browser-native Perfect Alignment */}
                     <div
-                        className="px-4 py-3 border-b bg-muted/30 text-[10px] md:text-xs font-semibold text-muted-foreground uppercase tracking-wider items-center"
+                        className="h-11 border-b border-input/30 bg-transparent text-[13px] font-semibold text-foreground items-center sticky top-0 z-10"
                         style={{
                             display: 'grid',
                             gridTemplateColumns: isPending ? GRID_TEMPLATE_PENDING : GRID_TEMPLATE_CONTROLLED,
-                            gap: '0 16px'
+                            gap: '0'
                         }}
                     >
-                        <div className="flex items-center justify-center">
+                        <div className="flex items-center justify-center pl-5 pr-4 h-full">
                             <Checkbox
                                 checked={selectedIds.size === 0 ? false : (selectedIds.size === items.length ? true : 'indeterminate')}
                                 onCheckedChange={toggleSelectAll}
                                 aria-label="Seleccionar todos"
-                                className="h-5 w-5 border-2 border-muted-foreground/40"
+                                className="size-4 translate-y-[2px]"
                             />
                         </div>
-                        <div>Fecha</div>
-                        <div>Producto</div>
-                        <div>EAN</div>
-                        <div>Precio</div>
-                        <div>Físico / Sistema</div>
+                        <div className="px-4">Fecha</div>
+                        <div className="px-4">Producto</div>
+                        <div className="px-4">Ean</div>
+                        <div className="px-4 text-left">Precio</div>
+                        <div className="px-4 text-left">Físico / Sistema</div>
                         {!isPending && (
                             <>
-                                <div className="text-left">ID</div>
-                                <div className="text-left">Diferencia</div>
-                                <div>Total ($)</div>
+                                <div className="px-4">Id</div>
+                                <div className="px-4">Diferencia</div>
+                                <div className="px-4 pr-5 text-left">Total ($)</div>
                             </>
                         )}
                     </div>
 
-                    <div className="h-[600px] w-full bg-card">
+                    <div className="flex-1 w-full bg-transparent">
                         <AutoSizer>
                             {({ height, width }) => (
                                 <List
                                     height={height}
                                     itemCount={items.length}
-                                    itemSize={90}
+                                    itemSize={82}
                                     width={width}
                                     className="no-scrollbar"
                                 >
@@ -467,51 +381,45 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                                 </List>
                             )}
                         </AutoSizer>
-                </div>
-            </div>
-        </div>
+                    </div>
 
-        {/* Floating selection bar */}
-            <AnimatePresence>
-                {selectedIds.size > 0 && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden"
-                    >
-                        <div className="px-4 py-2.5 bg-primary/10 border-b border-primary/20 flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <CheckCircle className="w-4 h-4 text-primary" />
-                                <span className="text-sm font-semibold text-primary">
-                                    {selectedIds.size} producto{selectedIds.size > 1 ? 's' : ''} seleccionado{selectedIds.size > 1 ? 's' : ''}
-                                </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 text-xs text-muted-foreground"
-                                    onClick={() => setSelectedIds(new Set())}
-                                >
-                                    Deseleccionar
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    className="h-8 text-xs gap-1.5 bg-success hover:bg-success/90 text-white"
-                                    onClick={() => setShowBulkConfirm(true)}
-                                >
-                                    <CheckCircle className="w-3.5 h-3.5" />
-                                    Confirmar sin diferencia
-                                </Button>
-                            </div>
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
-            <div className="p-4 border-t bg-muted/20 flex justify-between items-center text-xs text-muted-foreground">
-                <span>Mostrando {items.length} registros</span>
+                    <AnimatePresence>
+                        {selectedIds.size > 0 && (
+                            <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="overflow-hidden border-t border-input/40 bg-muted/5 font-cal"
+                            >
+                                <FrameFooter className="flex items-center justify-between px-6 py-3 h-14">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-medium text-muted-foreground">
+                                            {selectedIds.size} {selectedIds.size === 1 ? 'producto seleccionado' : 'productos seleccionados'}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => setSelectedIds(new Set())}
+                                            className="text-xs font-medium hover:bg-muted/50"
+                                        >
+                                            Deseleccionar
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            onClick={() => setShowBulkConfirm(true)}
+                                            className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold gap-2 px-4 shadow-sm"
+                                        >
+                                            <CheckCircle className="size-3.5" />
+                                            Confirmar sin diferencia
+                                        </Button>
+                                    </div>
+                                </FrameFooter>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </FramePanel>
             </div>
 
             <Dialog open={editingId !== null} onOpenChange={(open) => !open && handleCancelEdit()}>
@@ -648,6 +556,6 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                     </DialogFooter>
                 </DialogPopup>
             </Dialog>
-        </Card>
+        </Frame>
     );
 });

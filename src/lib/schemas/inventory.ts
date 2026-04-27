@@ -47,6 +47,8 @@ export const BranchSummaryLiteSchema = z.object({
     weightedProgressSum: z.number().default(0),
     assignedDays: z.number().default(0),
     remainingDays: z.number().default(0),
+    positiveDiffUnits: z.number().default(0),
+    negativeDiffUnits: z.number().default(0),
     updatedAt: z.string().optional().nullable(),
 });
 

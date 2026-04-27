@@ -30,7 +30,7 @@ export function DatePicker({
           <Button
             variant={"outline"}
             className={cn(
-              "w-full justify-start text-left font-normal h-10 rounded-xl border-border/40 bg-background/50 backdrop-blur-md",
+              "w-full justify-start text-left font-normal h-10 rounded-xl border-border/40 bg-background/50 ",
               !date && "text-muted-foreground",
               className
             )}
@@ -40,7 +40,7 @@ export function DatePicker({
           </Button>
         }
       />
-      <PopoverContent className="w-auto p-0 rounded-2xl border-border/40 shadow-2xl" align="start">
+      <PopoverContent className="w-auto p-0 rounded-lg border-border/40 shadow-md" align="start">
         <Calendar
           mode="single"
           selected={date}
@@ -52,3 +52,4 @@ export function DatePicker({
     </Popover>
   );
 }
+

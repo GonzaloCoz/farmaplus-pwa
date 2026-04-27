@@ -11,7 +11,10 @@ import { register } from "./registerServiceWorker.ts";
 import { InstallPWAProvider } from "./contexts/InstallPWAContext.tsx";
 import React from "react";
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+import { Capacitor } from "@capacitor/core";
+
+const root = ReactDOM.createRoot(document.getElementById("root")!);
+root.render(
   <React.StrictMode>
     <InstallPWAProvider>
       <App />
@@ -19,4 +22,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   </React.StrictMode>
 );
 
-register();
+// Solo registrar el Service Worker si NO estamos en una plataforma nativa (iOS/Android Capacitor)
+// Esto evita conflictos con el esquema interno de Capacitor y mejora la compatibilidad
+if (!Capacitor.isNativePlatform()) {
+  register();
+}

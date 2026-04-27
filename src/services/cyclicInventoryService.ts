@@ -149,7 +149,8 @@ export const cyclicInventoryService = {
         items: CyclicItem[],
         userId: string,
         shortageId: string | null,
-        surplusId: string | null
+        surplusId: string | null,
+        branchId?: string
     ) => {
         try {
             // "El Snap": Finalización atómica en base de datos.
@@ -172,6 +173,21 @@ export const cyclicInventoryService = {
 
             // Ya no es necesario re-computar aquí en el frontend porque el RPC `finalize_cyclic_inventory`
             // hace el PERFORM `recompute_lab_progress` internamente en la DB.
+
+            // Cerrar/Eliminar sesiones de precount (Colector de Datos) abiertas para este sector
+            if (branchId) {
+                const { error: sessionError } = await (supabase as any)
+                    .from('precount_sessions')
+                    .delete()
+                    .eq('branch_id', branchId)
+                    .eq('sector', labName);
+                
+                if (sessionError) {
+                    console.error('Error deleting precount sessions after finalize:', sessionError);
+                } else {
+                    console.log(`[CyclicService] Deleted open precount sessions for ${labName} at branch ${branchId}`);
+                }
+            }
 
         } catch (e) {
             console.error("Error saving inventory (finalize):", e);
@@ -664,7 +680,8 @@ export const cyclicInventoryService = {
                 console.error("[Monitor] Error fetching branch_summaries:", sumError);
                 throw sumError;
             }
-            console.log(`[Monitor] Retrieved ${summaries?.length || 0} summaries from DB.`);
+
+
 
             /* 
             // 2. Fetch Goals (REMOVED - Use total_labs_count from master list)
@@ -724,6 +741,8 @@ export const cyclicInventoryService = {
                         totalControlledItems: rawSummary.total_controlled_items,
                         totalItemsSum: rawSummary.total_items_sum,
                         weightedProgressSum: rawSummary.weighted_progress_sum,
+                        positiveDiffUnits: rawSummary.positive_diff_units || 0,
+                        negativeDiffUnits: rawSummary.negative_diff_units || 0,
                         updatedAt: rawSummary.updated_at
                     });
                     if (result.success) {
@@ -774,12 +793,7 @@ export const cyclicInventoryService = {
                 const startDateIso = config.startDate;
                 const assignedDays = config.days;
                 const deploymentDate = startDateIso
-                    ? new Date(startDateIso).toLocaleDateString('es-AR', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                        timeZone: 'UTC'
-                    })
+                    ? startDateIso.split('T')[0].split('-').reverse().slice(0, 2).join('/')
                     : 'sin fecha asignada';
 
                 let elapsedDays = 0;
@@ -807,6 +821,8 @@ export const cyclicInventoryService = {
                     progress: progress,
                     inventoryUnits: summary?.inventoryUnits || 0,
                     differenceUnits: summary?.differenceUnits || 0,
+                    positiveDiffUnits: Number(rawSummary?.positive_diff_units || 0),
+                    negativeDiffUnits: Number(rawSummary?.negative_diff_units || 0),
                     adjustmentsValue: Math.round((summary?.adjustmentsValue || 0) * 100) / 100,
                     status: status,
                     lastUpdated: summary?.updatedAt
@@ -1136,6 +1152,15 @@ export const cyclicInventoryService = {
                 status: 'pending' as const
             }));
 
+            // Upsert dummy products to satisfy foreign key constraint (inventories -> products)
+            const dummyProducts = categories.map(cat => ({
+                ean: `CLOSURE_${period}_${cat.name.toUpperCase()}`,
+                name: `[SYSTEM] Closure P${period} - ${cat.name}`,
+                laboratory: '_CONFIG_',
+                cost: 0
+            }));
+            await supabase.from('products').upsert(dummyProducts, { onConflict: 'ean' });
+
             // Delete previous closures for this period and branch to avoid duplicates
             await supabase.from('inventories')
                 .delete()
@@ -1254,6 +1279,8 @@ export const cyclicInventoryService = {
                 .select('*')
                 .ilike('branch_name', branchName.trim())
                 .single();
+
+
 
             if (error) return null;
             return data;

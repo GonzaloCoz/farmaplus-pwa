@@ -20,7 +20,7 @@ export function CyclicHeader({ labName, totalItems, controlledCount, adjustedCou
     const progress = totalItems > 0 ? Math.round(((controlledCount + adjustedCount) / totalItems) * 100) : 0;
 
     return (
-        <div className="bg-background/80 backdrop-blur-md sticky top-0 z-40 border-b pb-4 pt-2 px-4 -mx-4 md:mx-auto md:px-0 md:pt-0 mb-6 space-y-4">
+        <div className="bg-background/80  sticky top-0 z-40 border-b pb-4 pt-2 px-4 -mx-4 md:mx-auto md:px-0 md:pt-0 mb-6 space-y-4">
             {/* Top Bar */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -71,3 +71,4 @@ export function CyclicHeader({ labName, totalItems, controlledCount, adjustedCou
         </div>
     );
 }
+

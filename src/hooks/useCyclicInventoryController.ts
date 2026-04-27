@@ -332,7 +332,8 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
                 updatedItems,
                 user?.id || '',
                 shortageId,
-                surplusId
+                surplusId,
+                user?.branchId
             );
 
             // 2. Limpieza local de pendientes: tras la finalización, la app solo debe mostrar lo ajustado
@@ -434,6 +435,24 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         }
     };
 
+    const handleForceRefreshProgress = async () => {
+        try {
+            notify.info("Actualizando", "Sincronizando el avance del laboratorio...");
+            await cyclicInventoryService.recomputeLabProgress(branchName, labName);
+            await fetchPersistentStats();
+            
+            // Invalidar Caché de React Query para forzar recarga en el dashboard también
+            queryClient.invalidateQueries({
+                queryKey: INVENTORY_KEYS.lab(branchName, labName)
+            });
+            
+            notify.success("Sincronizado", "El avance se ha recalculado correctamente.");
+        } catch (error) {
+            console.error("Error refreshing progress:", error);
+            notify.error("Error", "No se pudo sincronizar el avance.");
+        }
+    };
+
     return {
         // State
         items,
@@ -485,6 +504,7 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         handleSaveInventory,
         handleResetData,
         handleConfirmDelete,
+        handleForceRefreshProgress,
 
         // Special State
         shouldHidePendings

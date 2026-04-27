@@ -628,7 +628,7 @@ export default function StockImport() {
                   <div className="flex items-center justify-center w-full">
                     <label
                       htmlFor="dropzone-file-recount"
-                      className="flex flex-col items-center justify-center w-full h-64 border-2 border-border border-dashed rounded-2xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-colors"
+                      className="flex flex-col items-center justify-center w-full h-64 border-2 border-border border-dashed rounded-lg cursor-pointer bg-muted/30 hover:bg-muted/50 transition-colors"
                     >
                       <div className="flex flex-col items-center justify-center pt-5 pb-6">
                         <Upload className="w-12 h-12 mb-4 text-muted-foreground" />
@@ -650,7 +650,7 @@ export default function StockImport() {
                 <div className="flex items-center justify-center w-full">
                   <label
                     htmlFor="dropzone-file"
-                    className="flex flex-col items-center justify-center w-full h-64 border-2 border-border border-dashed rounded-2xl cursor-pointer bg-muted/30 hover:bg-muted/50 transition-colors"
+                    className="flex flex-col items-center justify-center w-full h-64 border-2 border-border border-dashed rounded-lg cursor-pointer bg-muted/30 hover:bg-muted/50 transition-colors"
                   >
                     <div className="flex flex-col items-center justify-center pt-5 pb-6">
                       <Upload className="w-12 h-12 mb-4 text-muted-foreground" />
@@ -826,7 +826,7 @@ export default function StockImport() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 md:gap-6">
-                  <div className="bg-white/10 rounded-2xl p-4 backdrop-blur-md border border-white/10">
+                  <div className="bg-white/10 rounded-lg p-4  border border-white/10">
                     <div className="flex items-center gap-3 mb-2">
                       <Target className="w-8 h-8 opacity-80" />
                       <span className="text-2xl font-bold">{results.totalProducts}</span>
@@ -834,7 +834,7 @@ export default function StockImport() {
                     <p className="text-xs font-medium opacity-70 uppercase tracking-wider">Total Productos</p>
                   </div>
 
-                  <div className="bg-white/10 rounded-2xl p-4 backdrop-blur-md border border-white/10">
+                  <div className="bg-white/10 rounded-lg p-4  border border-white/10">
                     <div className="flex items-center gap-3 mb-2">
                       <ListFilter className="w-8 h-8 opacity-80" />
                       <span className="text-2xl font-bold">{results.totalScannedUnits}</span>
@@ -843,7 +843,7 @@ export default function StockImport() {
                   </div>
 
                   {/* New Row of Boxes */}
-                  <div className="bg-white/10 rounded-2xl p-4 backdrop-blur-md border border-white/10">
+                  <div className="bg-white/10 rounded-lg p-4  border border-white/10">
                     <div className="flex items-center gap-3 mb-2">
                       <Calculator className="w-8 h-8 opacity-80" />
                       <div className="flex items-baseline gap-1">
@@ -853,7 +853,7 @@ export default function StockImport() {
                     <p className="text-xs font-medium opacity-70 uppercase tracking-wider">Unidades Netas (Ajuste)</p>
                   </div>
 
-                  <div className="bg-white/10 rounded-2xl p-4 backdrop-blur-md border border-white/10">
+                  <div className="bg-white/10 rounded-lg p-4  border border-white/10">
                     <div className="flex items-center gap-3 mb-2">
                       <CheckCircle className="w-8 h-8 opacity-80" />
                       <span className="text-2xl font-bold">{results.totalProductsNoDifference}</span>
@@ -866,7 +866,7 @@ export default function StockImport() {
           </div>
 
           {/* 2. Middle Section - Controls & Tabs */}
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4 py-4 sticky top-0 z-20 bg-background/80 backdrop-blur-md border-b">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4 py-4 sticky top-0 z-20 bg-background/80  border-b">
             <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-xl w-full md:w-auto overflow-x-auto">
               <Button
                 variant={activeTab === 'all' ? 'default' : 'ghost'}
@@ -1084,3 +1084,4 @@ export default function StockImport() {
     </motion.div >
   );
 }
+

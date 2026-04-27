@@ -48,22 +48,22 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
 
             {/* Search Button */}
             <Button
-                variant="ghost"
-                className="h-10 gap-2 px-4 rounded-xl bg-background hover:bg-muted/80 text-muted-foreground hover:text-foreground shrink-0 border border-input shadow-sm shadow-black/5 dark:shadow-white/5 transition-all font-medium"
+                variant="secondary"
+                className="!h-10 px-4 gap-2 shrink-0 rounded-xl font-light text-[14px] transition-colors"
                 onClick={onSearchClick}
             >
                 <Search className="w-[18px] h-[18px]" />
-                <span className="text-[15px]">Buscar</span>
+                <span>Buscar</span>
             </Button>
 
             {/* Create Job Button */}
             <Button
-                variant="ghost"
-                className="h-10 gap-2 px-4 rounded-xl bg-background hover:bg-muted/80 text-muted-foreground hover:text-foreground shrink-0 border border-input shadow-sm shadow-black/5 dark:shadow-white/5 transition-all font-medium"
+                variant="secondary"
+                className="!h-10 px-4 gap-2 shrink-0 rounded-xl font-light text-[14px] transition-colors"
                 onClick={handleCreateJob}
             >
                 <Plus className="w-[18px] h-[18px]" />
-                <span className="text-[15px] whitespace-nowrap">Nueva</span>
+                <span>Nueva</span>
             </Button>
 
             {/* Separator */}
@@ -79,12 +79,12 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
                         <div
                             key={win.id}
                             className={cn(
-                                "group relative flex items-center h-10 px-4 gap-3 rounded-xl border transition-all cursor-pointer shrink-0 select-none",
+                                "group relative flex items-center h-10 px-4 gap-3 rounded-xl transition-all cursor-pointer shrink-0 select-none",
                                 isSpecialGreen 
-                                    ? "bg-[#0e5e4d] border-[#0e5e4d] text-white shadow-sm hover:bg-[#0c5041] hover:border-[#0c5041]"
+                                    ? "bg-[#0e5e4d] text-white hover:bg-[#0c5041]"
                                     : isActive
-                                        ? "bg-background dark:bg-white/10 border-border/5 shadow-sm text-foreground dark:text-white ring-1 ring-black/[0.02] animate-in fade-in zoom-in-95 duration-200 backdrop-blur-md"
-                                        : "bg-[var(--layout-content)] border-border/5 shadow-sm text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors"
+                                        ? "bg-secondary text-secondary-foreground"
+                                        : "bg-transparent text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
                             )}
                             onClick={() => handleTabClick(win.id, win.path)}
                         >
@@ -95,7 +95,7 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
                                 {win.icon || <FileText className="w-4 h-4" />}
                             </span>
                             <span className={cn(
-                                "text-[14px] font-semibold truncate max-w-[150px] transition-colors",
+                                "text-[14px] font-light truncate max-w-[150px] transition-colors",
                                 isSpecialGreen ? "text-white" : isActive ? "text-foreground" : "text-muted-foreground/80 group-hover:text-foreground"
                             )}>
                                 {win.title}

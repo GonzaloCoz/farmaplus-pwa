@@ -3,7 +3,7 @@
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
-import type * as React from "react";
+import * as React from "react";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
@@ -24,28 +24,28 @@ export const groupVariants = cva(
   },
 );
 
-export function Group({
-  className,
-  orientation,
-  children,
-  ...props
-}: {
-  className?: string;
-  orientation?: VariantProps<typeof groupVariants>["orientation"];
-  children: React.ReactNode;
-} & React.ComponentProps<"div">): React.ReactElement {
+export const Group = React.forwardRef<
+  HTMLDivElement,
+  {
+    className?: string;
+    orientation?: VariantProps<typeof groupVariants>["orientation"];
+    children: React.ReactNode;
+  } & React.ComponentProps<"div">
+>(({ className, orientation, children, ...props }, ref) => {
   return (
     <div
       className={cn(groupVariants({ orientation }), className)}
       data-orientation={orientation}
       data-slot="group"
       role="group"
+      ref={ref}
       {...props}
     >
       {children}
     </div>
   );
-}
+});
+Group.displayName = "Group";
 
 export function GroupText({
   className,

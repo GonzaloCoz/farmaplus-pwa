@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import {
@@ -31,6 +32,8 @@ import {
     Smartphone,
     Danger,
     InfoCircle,
+    Infinity,
+    Keyboard,
 } from '@solar-icons/react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -39,7 +42,16 @@ import { SmartProductSearch } from '@/components/SmartProductSearch';
 import { PreCountList } from '@/components/PreCountList';
 import { usePreCount } from '@/hooks/usePreCount';
 import { MapPin } from 'lucide-react';
-import { MasterCatalogItem } from '@/services/preCountDB';
+import { NumericKeyboard } from '@/components/NumericKeyboard';
+import { LocationClosingDrawer } from '@/components/LocationClosingDrawer';
+import {
+    Drawer,
+    DrawerContent,
+    DrawerHeader,
+    DrawerTitle,
+    DrawerDescription,
+} from '@/components/ui/drawer';
+import { MasterCatalogItem, getSessionByPin } from '@/services/preCountDB';
 import { Product, getProductByEAN, addProducts } from '@/services/productService';
 import { notify } from '@/lib/notifications';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
@@ -49,6 +61,7 @@ import JsBarcode from 'jsbarcode';
 import { enhancedProductCache } from '@/services/enhancedProductCache';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useHaptic } from '@/hooks/useHaptic';
+import { useAndroidBackButton } from '@/hooks/useAndroidBackButton';
 import { playSound } from '@/utils/soundUtils';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -97,23 +110,63 @@ import {
     InputOTPSeparator,
     InputOTPSlot,
 } from "@/components/ui/input-otp";
+import { ConnectedDevicesList } from '@/components/inventory/ConnectedDevicesList';
+
 import { QRPrintLayout } from '@/components/qr/QRPrintLayout';
-import { Printer, XCircle, Download } from 'lucide-react';
+import { Printer, XCircle, Download, Check, Maximize, Settings, Minimize } from 'lucide-react';
 import QRCode from 'qrcode';
+import { db } from '@/services/db';
+import {
+    SelectItem,
+    SelectPopup,
+    SelectTrigger,
+    SelectButton,
+} from "@/components/ui/select";
+import { 
+    Group, 
+    GroupSeparator, 
+    GroupText 
+} from "@/components/ui/group";
+import { 
+    Combobox, 
+    ComboboxEmpty, 
+    ComboboxInput, 
+    ComboboxItem, 
+    ComboboxList, 
+    ComboboxPopup, 
+    ComboboxTrigger,
+} from "@/components/ui/combobox";
+import { Filter, AddCircle as PlusIcon, CloseCircle as XIcon, MapPoint as MapPinIcon, AltArrowDown as ChevronDownIcon } from '@solar-icons/react';
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 
 type Step = 'config' | 'admin_config' | 'admin_summary' | 'admin_sync' | 'qr_generator' | 'counting';
 
 export default function PreCount() {
     const navigate = useNavigate();
     const [step, setStep] = useState<Step>('config');
+    const [isZenMode, setIsZenMode] = useState(false);
+    const [isManualMode, setIsManualMode] = useState(false);
+    const [comboboxAnchor, setComboboxAnchor] = useState<HTMLElement | null>(null);
+    const comboboxAnchorRef = useRef<HTMLButtonElement>(null);
+
+    // Toggle Zen Mode (Fullscreen-like) by adding a data attribute to the body
+    useEffect(() => {
+        if (isZenMode) {
+            document.body.setAttribute('data-zen', 'true');
+        } else {
+            document.body.removeAttribute('data-zen');
+        }
+        return () => document.body.removeAttribute('data-zen');
+    }, [isZenMode]);
     const [sector, setSector] = useState('');
     const [scannerOpen, setScannerOpen] = useState(false);
     const [manualEAN, setManualEAN] = useState('');
-    const [quantity, setQuantity] = useState(1);
+    const [quantity, setQuantity] = useState(0);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const lastScanTimeRef = useRef<number>(0);
-    const [highSpeedMode, setHighSpeedMode] = useState(false);
-    const [isNegativeMode, setIsNegativeMode] = useState(false);
+    const [highSpeedMode, setHighSpeedMode] = useState(true);
+    const [showQtyDrawer, setShowQtyDrawer] = useState(false);
     const [deviceName, setDeviceName] = useState(() => localStorage.getItem('precount_device_name') || '');
     const [accessMode, setAccessMode] = useState<'admin' | 'zebra' | 'salon' | null>(null);
     const [showAdmin, setShowAdmin] = useState(false);
@@ -130,6 +183,8 @@ export default function PreCount() {
     const [loadStatus, setLoadStatus] = useState<'success' | 'warning' | 'error' | null>(null);
     const [otpValue, setOtpValue] = useState('');
     const [searchResetKey, setSearchResetKey] = useState(0);
+    const [editingItemId, setEditingItemId] = useState<string | null>(null);
+    const [sessionToResume, setSessionToResume] = useState<PreCountSession | null>(null);
     const [qrQuantities, setQrQuantities] = useState<Record<string, number>>({
         'GO': 5,
         'CA': 10,
@@ -138,20 +193,26 @@ export default function PreCount() {
         'ES': 5
     });
     const [showQRPrintView, setShowQRPrintView] = useState(false);
+    const [showNoZoneDialog, setShowNoZoneDialog] = useState(false);
 
-    // Listener para Ctrl + B
+    // Listener para Alt + A (Admin Mode)
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.ctrlKey && e.key.toLowerCase() === 'b') {
+            // ALT + A
+            if (e.altKey && (e.key.toLowerCase() === 'a' || e.code === 'KeyA')) {
                 e.preventDefault();
-                setShowAdmin(prev => !prev);
-                notify.info("Modo Admin", showAdmin ? "Panel de administración desactivado" : "Panel de administración activado");
+                e.stopPropagation();
+                setShowAdmin(prev => {
+                    const next = !prev;
+                    notify.info("Modo Admin", next ? "Panel de administración activado" : "Panel de administración desactivado");
+                    return next;
+                });
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [showAdmin]);
+    }, []);
 
     const {
         items,
@@ -169,34 +230,158 @@ export default function PreCount() {
         resumeSession,
         errorCount,
         registerError,
+        connectedDevices,
+        announcePresence
     } = usePreCount();
+
+    // Auto-Resume Session
+    useEffect(() => {
+        const lastSessionId = localStorage.getItem('last_precount_session_id');
+        if (step === 'config' && lastSessionId && availableSessions.length > 0 && accessMode === null) {
+            const sessionToResume = availableSessions.find(s => s.id === lastSessionId);
+            if (sessionToResume) {
+                resumeSession(sessionToResume);
+                setAccessMode('zebra');
+                setStep('counting');
+                notify.info("Sesión retomada", "Has vuelto a tu sesión activa automáticamente.");
+            }
+        }
+    }, [availableSessions.length, step, accessMode, resumeSession]);
+
+    // Exit Warning
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (step === 'counting') {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [step]);
+
 
     const [activeLocation, setActiveLocation] = useState<string | null>(null);
     const [showLocationSummary, setShowLocationSummary] = useState(false);
     const [locationStats, setLocationStats] = useState({ products: 0, units: 0 });
 
+    const sessionLocations = useLiveQuery(
+        () => session ? db.locations.where('session_id').equals(session.id).toArray() : [],
+        [session]
+    );
+
+    // Handle Android hardware back button
+    useAndroidBackButton({
+        onBack: () => {
+            // Priority: Close active overlays first
+            if (showQtyDrawer) {
+                setShowQtyDrawer(false);
+                return true;
+            }
+            if (showLocationSummary) {
+                setShowLocationSummary(false);
+                return true;
+            }
+            if (scannerOpen) {
+                setScannerOpen(false);
+                return true;
+            }
+            if (showAdmin) {
+                setShowAdmin(false);
+                return true;
+            }
+            if (showNoZoneDialog) {
+                setShowNoZoneDialog(false);
+                return true;
+            }
+
+            // If in counting step, go back to config
+            if (step === 'counting') {
+                setStep('config');
+                return true;
+            }
+
+            // Return false to let globalApp back handling take over (navigate -1)
+            return false;
+        },
+        isEnabled: step !== 'config' || showAdmin // Only override when not on first step or admin open
+    });
+
+    const isActiveLocationClosed = sessionLocations?.find(l => l.location_tag === activeLocation)?.status === 'closed';
+
+    // Auto-select last open (non-closed) sector when entering counting step
+    useEffect(() => {
+        if (step === 'counting' && sessionLocations && sessionLocations.length > 0 && !activeLocation) {
+            const openLocations = sessionLocations.filter(l => l.status !== 'closed');
+            if (openLocations.length > 0) {
+                const lastOpen = openLocations[openLocations.length - 1];
+                setActiveLocation(lastOpen.location_tag);
+                notify.info("Zona Restaurada", `Se seleccionó automáticamente: ${lastOpen.location_tag}`);
+            }
+        }
+    }, [step, sessionLocations, activeLocation]);
+
+    // Build complete sector list from locations table + unique location_tags from items
+    const allSectors = useMemo(() => {
+        const sectorMap = new Map<string, string>();
+        sessionLocations?.forEach(l => {
+            sectorMap.set(l.location_tag, l.status || 'open');
+        });
+        items.forEach(item => {
+            if (item.location_tag && !sectorMap.has(item.location_tag)) {
+                sectorMap.set(item.location_tag, 'open');
+            }
+        });
+        return Array.from(sectorMap.entries())
+            .map(([tag, status]) => ({ tag, status }))
+            .sort((a, b) => a.tag.localeCompare(b.tag));
+    }, [sessionLocations, items]);
+
+    // Determine list interaction mode
+    // full: open sector, can edit + delete
+    // restricted: no sector selected (general view), can delete with confirmation, no edit
+    // readonly: closed sector selected, view only
+    const listMode: 'full' | 'restricted' | 'readonly' = useMemo(() => {
+        if (!activeLocation) return 'restricted';
+        if (isActiveLocationClosed) return 'readonly';
+        return 'full';
+    }, [activeLocation, isActiveLocationClosed]);
+
     const isOnline = true; // Always online for cloud version
 
     // Handle Admin File Upload Parsing
-    const handleJoinSession = (pin: string) => {
+    const handleJoinSession = async (pin: string) => {
         // Normalización del PIN para evitar espacios
         const normalizedPin = pin.trim();
         if (normalizedPin.length !== 6) return;
 
-        // 1. Intentamos buscar por el campo dedicado sync_pin
-        // 2. Fallback: Buscamos si el PIN está contenido en el nombre del sector (formato antiguo)
+        // 1. Intentamos buscar por el campo dedicado sync_pin en la lista local
         const matchingSession = availableSessions.find(s => 
             s.sync_pin === normalizedPin || 
             (s.sector && s.sector.includes(normalizedPin))
         );
 
-        if (matchingSession || normalizedPin === "123456") {
-            const sessionToJoin = matchingSession || availableSessions[0];
-            resumeSession(sessionToJoin);
+        let sessionToJoin = matchingSession;
+
+        // 2. Si no se encontró localmente (ej: el Admin acaba de crearla), buscamos directo en Supabase
+        if (!sessionToJoin && normalizedPin !== "123456") {
+            const remoteSession = await getSessionByPin(normalizedPin);
+            if (remoteSession) {
+                sessionToJoin = remoteSession;
+            }
+        }
+
+        if (sessionToJoin || normalizedPin === "123456") {
+            const finalSession = sessionToJoin || availableSessions[0];
+            resumeSession(finalSession);
+            // Announce presence to the group (Admin)
+            announcePresence(finalSession.id);
             setStep('counting');
-            notify.success("Conectado", `Unido a: ${sessionToJoin.sector}`);
+
+            notify.success("Conectado", `Unido a: ${finalSession.sector}`);
         } else {
-            notify.error("Error", "Código de sincronización inválido.");
+            notify.error("Error", "Código de sincronización inválido o sesión no encontrada.");
             setOtpValue('');
         }
     };
@@ -277,6 +462,27 @@ export default function PreCount() {
     const handleBarcodeScan = async (code: string) => {
         try {
             console.log('Barcode scanned (Hardware):', code);
+
+            if (!activeLocation) {
+                setShowNoZoneDialog(true);
+                trigger('error');
+                playSound('error');
+                return;
+            }
+
+            // Visual feedback: brief flash
+            const mainContainer = document.getElementById('counting-main-container');
+            if (mainContainer) {
+                mainContainer.classList.add('scan-flash-success');
+                setTimeout(() => mainContainer.classList.remove('scan-flash-success'), 300);
+            }
+
+            if (isActiveLocationClosed) {
+                notify.error("Operación Denegada", `La zona ${activeLocation} está finalizada. No puedes registrar más productos.`);
+                trigger('error');
+                return;
+            }
+
             lastScanTimeRef.current = Date.now();
 
             let productToUse: any = null;
@@ -324,25 +530,38 @@ export default function PreCount() {
                 setManualEAN(code);
 
                 if (highSpeedMode) {
-                    // Fast flow: Add immediately with 1 (or -1 in negative mode)
-                    const qtyToAdd = isNegativeMode ? -1 : 1;
-                    await addItem(code, productToUse.name, qtyToAdd, productToUse.id_producto);
+                    // Fast flow: Add immediately with 1
+                    const qtyToAdd = 1;
+                    await addItem(code, productToUse.name, qtyToAdd, productToUse.id_producto, activeLocation || undefined);
+                    
+                    toast.success(`${productToUse.name} agregado (+1)`, {
+                        description: `EAN: ${code} | Zona: ${activeLocation}`,
+                        duration: 1500,
+                        position: 'top-center',
+                        icon: <CheckCircle className="size-4 text-emerald-500" />
+                    });
+
                     setManualEAN('');
                     setSelectedProduct(null);
                     setSearchResetKey(prev => prev + 1);
                     trigger('success');
                     playSound('success');
                 } else {
-                    notify.success("Operación exitosa", `Producto encontrado: ${productToUse.name}`);
+                    // notify.success("Operación exitosa", `Producto encontrado: ${productToUse.name}`);
                     trigger('success');
-                    // Focus quantity input for manual adjustment
-                    setTimeout(() => {
-                        const qtyInput = document.getElementById('quantity-input') as HTMLInputElement;
-                        if (qtyInput) {
-                            qtyInput.focus();
-                            qtyInput.select();
-                        }
-                    }, 100);
+                    // En móvil (modo Cantidad): abrir teclado virtual
+                    // En desktop: enfocar el input de cantidad
+                    if (accessMode === 'zebra') {
+                        setTimeout(() => setShowQtyDrawer(true), 120);
+                    } else {
+                        setTimeout(() => {
+                            const qtyInput = document.getElementById('quantity-input') as HTMLInputElement;
+                            if (qtyInput) {
+                                qtyInput.focus();
+                                qtyInput.select();
+                            }
+                        }, 100);
+                    }
                 }
             } else {
                 setManualEAN(code);
@@ -363,8 +582,8 @@ export default function PreCount() {
     const handleLocationScan = async (code: string) => {
         if (!session) return;
 
-        // Reglas de negocio: ESP-, CA-, DEP-, EST-
-        const isZoneCode = /^(ESP|CA|DEP|EST)-/i.test(code);
+        // Reglas de negocio: ESP-, CA-, DEP-, EST-, GO-
+        const isZoneCode = /^(ESP|CA|DEP|EST|GO)-/i.test(code);
         if (!isZoneCode) return false;
 
         const normalizedCode = code.toUpperCase();
@@ -386,27 +605,25 @@ export default function PreCount() {
             return true;
         }
 
-        // 2. Si estamos en OTRA zona -> Forzar cierre de la anterior
-        if (activeLocation && activeLocation !== normalizedCode) {
-            notify.warning("Zona ocupada", `Debes cerrar ${activeLocation} antes de abrir una nueva zona.`);
+        // 2. Si estamos en OTRA zona (y está abierta) -> Forzar cierre de la anterior
+        if (activeLocation && activeLocation !== normalizedCode && !isActiveLocationClosed) {
+            notify.warning("Zona ocupada", `Debes cerrar ${activeLocation} antes de cambiar de zona.`);
             trigger('error');
             return true;
         }
 
-        // 3. Abrir nueva zona
+        // 3. Abrir o Visualizar zona
         try {
             const { getLocationStatus } = await import('@/services/preCountDB') as any;
             const statusResult = await getLocationStatus(session.id, normalizedCode);
             
             if (statusResult?.status === 'closed') {
-                notify.error("Zona Bloqueada", `La zona ${normalizedCode} ya fue cerrada y no puede reabrirse.`);
-                trigger('error');
-                playSound('error');
-                return true;
+                notify.info("Modo Lectura", `La zona ${normalizedCode} está finalizada. Solo lectura.`);
+            } else {
+                notify.success("Zona Abierta", `📍 Contando en: ${normalizedCode}`);
             }
 
             setActiveLocation(normalizedCode);
-            notify.success("Zona Abierta", `📍 Contando en: ${normalizedCode}`);
             trigger('success');
             playSound('success');
             return true;
@@ -423,7 +640,7 @@ export default function PreCount() {
             const { updateLocationStatus } = await import('@/services/preCountDB');
             await updateLocationStatus(session.id, activeLocation, 'closed');
             
-            notify.success("Zona Cerrada", `Se ha bloqueado la zona ${activeLocation}`);
+            // notify.success("Zona Cerrada", `Se ha bloqueado la zona ${activeLocation}`);
             setActiveLocation(null);
             setShowLocationSummary(false);
             trigger('success');
@@ -477,9 +694,9 @@ export default function PreCount() {
                 // Dibujar Celda (Borde punteado simulado)
                 doc.setDrawColor(200);
                 doc.setLineWidth(0.1);
-                doc.setLineDashPattern([2, 2], 0);
+                (doc as any).setLineDashPattern([2, 2], 0);
                 doc.roundedRect(x, y, cellWidth, cellHeight, 3, 3, 'S');
-                doc.setLineDashPattern([], 0);
+                (doc as any).setLineDashPattern([], 0);
 
                 // Generar QR
                 const qrSize = cellWidth * 0.6;
@@ -535,6 +752,9 @@ export default function PreCount() {
                 if (!handledAsLocation) {
                     handleBarcodeScan(code);
                 }
+            } else if (step === 'config') {
+                // Permitir unirse a sesión escaneando el código de sincronización
+                handleJoinSession(code);
             }
         },
         minChars: 4 // Permitir códigos de zona cortos
@@ -547,6 +767,18 @@ export default function PreCount() {
 
     // Agregar producto al colector
     const handleAddProduct = async () => {
+        if (!activeLocation) {
+            notify.error("Operación Denegada", "Debes escanear o inicializar una Zona antes de contar productos.");
+            trigger('error');
+            return;
+        }
+
+        if (isActiveLocationClosed) {
+            notify.error("Operación Denegada", `La zona ${activeLocation} está finalizada. No puedes registrar más productos.`);
+            trigger('error');
+            return;
+        }
+
         if (!manualEAN.trim()) {
             notify.error("Error", 'Por favor, ingresa o escanea un código EAN');
             return;
@@ -558,8 +790,7 @@ export default function PreCount() {
             return;
         }
 
-        // Apply negative mode if active
-        const qty = isNegativeMode ? -Math.abs(baseQty) : baseQty;
+        const qty = baseQty;
 
         let productName = selectedProduct?.name;
 
@@ -593,9 +824,12 @@ export default function PreCount() {
 
         await addItem(manualEAN, productName || 'Producto Desconocido', qty, idProducto, activeLocation || undefined);
 
+        // Reset editing state if any
+        setEditingItemId(null);
+        
         // Limpiar formulario y devolver foco al buscador
         setManualEAN('');
-        setQuantity(1);
+        setQuantity(0);
         setSelectedProduct(null);
         setSearchResetKey(prev => prev + 1);
 
@@ -915,10 +1149,10 @@ export default function PreCount() {
 
     // Vista de Selección de Modo (Triple recuadro - Coss UI Redesign)
     const renderSelection = () => (
-        <div className="max-w-2xl mx-auto py-12 md:py-20 flex flex-col items-center justify-center min-h-[60vh] gap-6">
+        <div className="max-w-2xl mx-auto py-6 md:py-12 flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
             
             {/* Sesiones Abiertas */}
-            <Frame className="w-full shadow-sm border-border/40">
+            <Frame className="w-full shadow-sm border-border/30 rounded-lg overflow-hidden">
                 <Collapsible defaultOpen className="w-full">
                     <FrameHeader className="flex-row items-center justify-between px-4 py-3 border-b border-border/10 bg-muted/5">
                         <CollapsibleTrigger
@@ -959,20 +1193,31 @@ export default function PreCount() {
                                                     variant="ghost"
                                                     size="icon-xs"
                                                     className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                                    onClick={() => deleteSession(s.id)}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        deleteSession(s.id);
+                                                    }}
                                                 >
                                                     <Trash2 className="size-3.5" />
                                                 </Button>
                                                 <Button
-                                                    variant="outline"
+                                                    variant={sessionToResume?.id === s.id ? "default" : "outline"}
                                                     size="sm"
-                                                    className="gap-1.5 font-bold h-8 text-[11px] rounded-lg shadow-none"
+                                                    className={cn(
+                                                        "gap-1.5 font-bold h-8 text-[11px] rounded-lg shadow-none transition-all",
+                                                        sessionToResume?.id === s.id && "bg-primary text-primary-foreground border-primary"
+                                                    )}
                                                     onClick={() => {
-                                                        resumeSession(s);
-                                                        setStep('counting');
+                                                        setSessionToResume(s);
+                                                        // Scroll to profile selection
+                                                        const profileSection = document.getElementById('profile-selection-section');
+                                                        if (profileSection) {
+                                                            profileSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                        }
+                                                        notify.info("Sesión seleccionada", `Has seleccionado retomar: ${s.sector}. Ahora elige tu perfil.`);
                                                     }}
                                                 >
-                                                    Retomar
+                                                    {sessionToResume?.id === s.id ? 'Seleccionada' : 'Retomar'}
                                                     <ArrowRight className="size-3" />
                                                 </Button>
                                             </div>
@@ -997,18 +1242,19 @@ export default function PreCount() {
                 </Collapsible>
             </Frame>
 
-            <Frame className="w-full shadow-sm border-border/40">
+            <Frame className="w-full shadow-sm border-border/30 rounded-lg overflow-hidden">
                 <Collapsible defaultOpen className="w-full">
-                    <FrameHeader className="flex-row items-center justify-between px-4 py-3 border-b border-border/10 bg-muted/5">
+                        <FrameHeader className="flex-row items-center justify-between px-4 py-3 border-b border-border/10 bg-muted/5">
                         <CollapsibleTrigger
                             className="flex items-center gap-2.5 font-bold text-sm tracking-tight text-foreground transition-all group data-panel-open:[&_svg]:rotate-180"
                         >
                             <ChevronDown className="size-4 text-muted-foreground transition-transform duration-300" />
                             Configuración de Acceso
+                            {showAdmin && <div className="size-1.5 rounded-full bg-emerald-500 ml-1 animate-pulse" title="Admin Mode Active" />}
                         </CollapsibleTrigger>
                     </FrameHeader>
                     <CollapsibleContent>
-                        <FramePanel className="p-6 space-y-6">
+                        <FramePanel id="profile-selection-section" className="p-4 sm:p-6 space-y-6">
                             <div className="space-y-1.5">
                                 <FrameTitle className="text-base font-bold tracking-tight">Seleccionar Perfil</FrameTitle>
                                 <FrameDescription className="text-xs text-muted-foreground">
@@ -1017,25 +1263,23 @@ export default function PreCount() {
                             </div>
 
                             <div className="space-y-3">
-                                {showAdmin && (
-                                    <Label 
-                                        className={cn(
-                                            "flex items-start gap-4 rounded-xl border p-4 hover:bg-accent/30 cursor-pointer transition-all border-border/40",
-                                            selectedProfile === 'admin' && "border-primary/40 bg-primary/5 ring-1 ring-primary/20"
-                                        )}
-                                    >
-                                        <Checkbox 
-                                            checked={selectedProfile === 'admin'} 
-                                            onCheckedChange={() => setSelectedProfile('admin')} 
-                                        />
-                                        <div className="flex flex-col gap-1 select-none">
-                                            <p className="font-bold text-[13px] text-foreground">PC Administrador</p>
-                                            <p className="text-muted-foreground text-[11px] leading-relaxed">
-                                                Control central, conciliación de stock e importación maestra.
-                                            </p>
-                                        </div>
-                                    </Label>
-                                )}
+                                <Label 
+                                    className={cn(
+                                        "flex items-start gap-4 rounded-xl border p-4 hover:bg-accent/30 cursor-pointer transition-all border-border/40",
+                                        selectedProfile === 'admin' && "border-primary/40 bg-primary/5 ring-1 ring-primary/20"
+                                    )}
+                                >
+                                    <Checkbox 
+                                        checked={selectedProfile === 'admin'} 
+                                        onCheckedChange={() => setSelectedProfile('admin')} 
+                                    />
+                                    <div className="flex flex-col gap-1 select-none">
+                                        <p className="font-bold text-[13px] text-foreground">PC Administrador</p>
+                                        <p className="text-muted-foreground text-[11px] leading-relaxed">
+                                            Control central, conciliación de stock e importación maestra.
+                                        </p>
+                                    </div>
+                                </Label>
 
                                 <Label 
                                     className={cn(
@@ -1079,44 +1323,44 @@ export default function PreCount() {
             </Frame>
 
             {/* Pagination Controls */}
-            <Pagination className="mt-2 w-full max-w-2xl">
-                <PaginationContent className="w-full justify-between gap-4">
-                    <PaginationItem>
-                        <Button 
-                            variant="outline"
-                            className="font-bold px-5 h-9 rounded-xl shadow-none"
-                            onClick={() => navigate('/stock')}
-                        >
-                            <ArrowLeft className="size-4 mr-2" />
-                            Retroceder
-                        </Button>
-                    </PaginationItem>
-                    <PaginationItem>
-                        <Button
-                            variant={selectedProfile ? "default" : "outline"}
-                            className={cn(
-                                "font-bold px-8 h-9 rounded-xl transition-all shadow-none",
-                                !selectedProfile && "opacity-50 grayscale"
-                            )}
-                            disabled={!selectedProfile}
-                            onClick={() => {
-                                if (selectedProfile) {
-                                    setAccessMode(selectedProfile);
-                                    if (selectedProfile === 'admin') {
-                                        setStep('admin_config');
-                                    } else {
-                                        setStep('config');
-                                    }
-                                    trigger('success');
+            <div className="mt-4 px-1">
+                <div className="flex items-center justify-between gap-4">
+                    <Button 
+                        variant="outline"
+                        className="flex-1 font-bold h-11 rounded-xl shadow-none border-border/40"
+                        onClick={() => navigate('/stock')}
+                    >
+                        <ArrowLeft className="size-4 mr-2" />
+                        Retroceder
+                    </Button>
+                    <Button
+                        variant={selectedProfile ? "default" : "outline"}
+                        className={cn(
+                            "flex-[1.5] font-bold h-11 rounded-xl transition-all shadow-none",
+                            selectedProfile ? "bg-primary text-primary-foreground" : "opacity-40 grayscale"
+                        )}
+                        disabled={!selectedProfile}
+                        onClick={() => {
+                            if (selectedProfile) {
+                                setAccessMode(selectedProfile);
+                                if (sessionToResume) {
+                                    resumeSession(sessionToResume);
+                                    setStep('counting');
+                                    setSessionToResume(null); // Clear after use
+                                } else if (selectedProfile === 'admin') {
+                                    setStep('admin_config');
+                                } else {
+                                    setStep('config');
                                 }
-                            }}
-                        >
-                            Continuar
-                            <ArrowRight className="size-4 ml-2" />
-                        </Button>
-                    </PaginationItem>
-                </PaginationContent>
-            </Pagination>
+                                trigger('success');
+                            }
+                        }}
+                    >
+                        {sessionToResume ? 'Retomar Sesión' : 'Continuar'}
+                        <ArrowRight className="size-4 ml-2" />
+                    </Button>
+                </div>
+            </div>
         </div>
     );
 
@@ -1170,26 +1414,26 @@ export default function PreCount() {
             <div className="p-3 border-t border-border/40 bg-card/50 flex items-center justify-between">
                 <Button 
                     variant="outline"
-                    className="font-bold px-5 h-9 rounded-xl shadow-none"
+                    className="group font-bold px-5 h-9 rounded-xl shadow-none"
                     onClick={() => {
                         setAccessMode(null);
                         setStep('config');
                     }}
                 >
-                    <ArrowLeft className="size-4 mr-2" />
+                    <ArrowLeft className="size-4 mr-2 transition-transform group-hover:-translate-x-1" />
                     Retroceder
                 </Button>
                 <Button
                     variant={inventoryName.trim() && uploadedFiles.length > 0 ? "default" : "outline"}
                     className={cn(
-                        "font-bold px-8 h-9 rounded-xl transition-all shadow-none",
+                        "group font-bold px-8 h-9 rounded-xl shadow-none",
                         !(inventoryName.trim() && uploadedFiles.length > 0) && "opacity-50 grayscale"
                     )}
                     disabled={!(inventoryName.trim() && uploadedFiles.length > 0)}
                     onClick={() => setStep('admin_summary')}
                 >
                     Continuar
-                    <ArrowRight className="size-4 ml-2" />
+                    <ArrowRight className="size-4 ml-2 transition-transform group-hover:translate-x-1" />
                 </Button>
             </div>
         </>
@@ -1265,23 +1509,26 @@ export default function PreCount() {
             <div className="p-3 border-t border-border/40 bg-card/50 flex items-center justify-between">
                 <Button 
                     variant="outline"
-                    className="font-bold px-5 h-9 rounded-xl shadow-none"
+                    className="group font-bold px-5 h-9 rounded-xl shadow-none"
                     onClick={() => setStep('admin_config')}
                 >
-                    <ArrowLeft className="size-4 mr-2" />
+                    <ArrowLeft className="size-4 mr-2 transition-transform group-hover:-translate-x-1" />
                     Retroceder
                 </Button>
                 <Button
-                    className="font-bold px-10 h-9 rounded-xl transition-all shadow-none bg-emerald-600 hover:bg-emerald-700 text-white"
-                    onClick={() => {
+                    className="group font-bold px-10 h-9 rounded-xl shadow-none bg-primary hover:bg-primary/90 text-primary-foreground"
+                    onClick={async () => {
                         const pin = Math.floor(100000 + Math.random() * 900000).toString();
                         setSyncPin(pin);
+                        // Save session to Supabase immediately so devices can find it by PIN
+                        await startSession(inventoryName, masterCatalog || undefined, pin);
                         setStep('admin_sync');
                         trigger('success');
                     }}
+
                 >
                     Continuar
-                    <ArrowRight className="size-4 ml-2" />
+                    <ArrowRight className="size-4 ml-2 transition-transform group-hover:translate-x-1" />
                 </Button>
             </div>
         </>
@@ -1310,17 +1557,17 @@ export default function PreCount() {
 
                         <InputOTP maxLength={6} value={syncPin} readOnly>
                             <InputOTPGroup className="gap-2">
-                                <InputOTPSlot index={0} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
-                                <InputOTPSlot index={1} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
-                                <InputOTPSlot index={2} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
+                                <InputOTPSlot index={0} className="!h-12 !w-10 !rounded-lg !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
+                                <InputOTPSlot index={1} className="!h-12 !w-10 !rounded-lg !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
+                                <InputOTPSlot index={2} className="!h-12 !w-10 !rounded-lg !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
                             </InputOTPGroup>
                             
                             <div className="mx-2 text-muted-foreground/20 font-bold text-xl">-</div>
                             
                             <InputOTPGroup className="gap-2">
-                                <InputOTPSlot index={3} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
-                                <InputOTPSlot index={4} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
-                                <InputOTPSlot index={5} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
+                                <InputOTPSlot index={3} className="!h-12 !w-10 !rounded-lg !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
+                                <InputOTPSlot index={4} className="!h-12 !w-10 !rounded-lg !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
+                                <InputOTPSlot index={5} className="!h-12 !w-10 !rounded-lg !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
                             </InputOTPGroup>
                         </InputOTP>
 
@@ -1330,6 +1577,11 @@ export default function PreCount() {
                             </p>
                         </div>
                     </div>
+
+                    {/* Connected Devices Section */}
+                    <div className="w-full mt-4 border-t border-border/10 pt-6">
+                        <ConnectedDevicesList devices={connectedDevices} className="max-h-[300px] rounded-xl border border-border/20 bg-muted/5 shadow-inner" />
+                    </div>
                 </FramePanel>
             </Frame>
 
@@ -1338,21 +1590,21 @@ export default function PreCount() {
             <div className="p-3 border-t border-border/40 bg-card/50 flex items-center justify-between">
                 <Button 
                     variant="outline"
-                    className="font-bold px-5 h-9 rounded-xl shadow-none"
+                    className="group font-bold px-5 h-9 rounded-xl shadow-none"
                     onClick={() => setStep('admin_summary')}
                 >
-                    <ArrowLeft className="size-4 mr-2" />
+                    <ArrowLeft className="size-4 mr-2 transition-transform group-hover:-translate-x-1" />
                     Retroceder
                 </Button>
                 <Button
-                    className="font-bold px-8 h-9 rounded-xl transition-all shadow-none bg-primary hover:bg-primary/90 text-white"
+                    className="group font-bold px-8 h-9 rounded-xl shadow-none bg-primary hover:bg-primary/90 text-primary-foreground"
                     onClick={() => {
                         setStep('qr_generator');
                         trigger('success');
                     }}
                 >
                     Siguiente Paso
-                    <ArrowRight className="size-4 ml-2" />
+                    <ArrowRight className="size-4 ml-2 transition-transform group-hover:translate-x-1" />
                 </Button>
             </div>
         </>
@@ -1419,14 +1671,14 @@ export default function PreCount() {
                             {Object.entries(qrQuantities).map(([prefix, count]) => (
                                 <div key={prefix} className="flex items-center gap-3 p-3 rounded-xl border border-border/40 bg-muted/20">
                                     <div className="flex flex-col flex-1 min-w-0">
-                                        <span className="text-[11px] font-black uppercase tracking-widest text-primary/60">
+                                        <span className="text-sm font-semibold tracking-tight text-foreground">
                                             {prefix === 'GO' ? 'Góndolas' : 
                                              prefix === 'CA' ? 'Cajones' : 
                                              prefix === 'HE' ? 'Heladeras' : 
                                              prefix === 'DE' ? 'Depósito' : 
                                              prefix === 'ES' ? 'Estantería' : prefix}
                                         </span>
-                                        <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[9px] font-bold border border-primary/20 w-fit mt-1">
+                                        <span className="px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground text-[10px] font-medium border border-border/50 w-fit mt-1">
                                             {prefix}-XX
                                         </span>
                                     </div>
@@ -1434,32 +1686,19 @@ export default function PreCount() {
                                         value={count} 
                                         onValueChange={(val) => setQrQuantities(prev => ({ ...prev, [prefix]: val || 0 }))}
                                         min={0}
-                                        className="w-28 shrink-0"
+                                        className="relative w-32 shrink-0 group"
                                     >
-                                        <div className="flex items-center gap-1">
-                                            <NumberFieldDecrement className="shrink-0 h-8 w-8 rounded-lg border border-border/40 bg-background hover:bg-accent transition-colors" />
-                                            <NumberFieldInput className="h-8 w-full text-center font-bold text-sm bg-background border border-border/40 rounded-lg focus:ring-1 focus:ring-primary/20" />
-                                            <NumberFieldIncrement className="shrink-0 h-8 w-8 rounded-lg border border-border/40 bg-background hover:bg-accent transition-colors" />
-                                        </div>
+                                        <NumberFieldDecrement />
+                                        <NumberFieldInput />
+                                        <NumberFieldIncrement />
                                     </NumberField>
                                 </div>
                             ))}
                         </div>
 
-                        <div className="flex flex-col gap-2">
+                        <div className="flex flex-col gap-2 mt-2">
                             <Button 
-                                variant="outline" 
-                                className="w-full border-primary/40 text-primary hover:bg-primary/5 font-bold rounded-xl h-9 shadow-none"
-                                onClick={() => {
-                                    setShowQRPrintView(true);
-                                    trigger('success');
-                                }}
-                            >
-                                <Search className="size-4 mr-2" />
-                                Vista Previa
-                            </Button>
-                            <Button 
-                                className="w-full bg-primary text-white font-bold rounded-xl h-9"
+                                className="w-full bg-primary text-primary-foreground font-bold rounded-xl h-9"
                                 onClick={generateLocationQRPDF}
                             >
                                 <Download className="size-4 mr-2" />
@@ -1476,10 +1715,10 @@ export default function PreCount() {
                 <div className="p-3 border-t border-border/40 bg-card/50 flex items-center justify-between">
                     <Button 
                         variant="outline"
-                        className="font-bold px-5 h-9 rounded-xl shadow-none"
+                        className="group font-bold px-5 h-9 rounded-xl shadow-none"
                         onClick={() => setStep('admin_sync')}
                     >
-                        <ArrowLeft className="size-4 mr-2" />
+                        <ArrowLeft className="size-4 mr-2 transition-transform group-hover:-translate-x-1" />
                         Retroceder
                     </Button>
                     <div className="flex gap-2">
@@ -1491,11 +1730,11 @@ export default function PreCount() {
                             Omitir
                         </Button>
                         <Button
-                            className="font-bold px-6 h-9 rounded-xl transition-all shadow-none bg-primary hover:bg-primary/90 text-white text-xs"
+                            className="group font-bold px-6 h-9 rounded-xl shadow-none bg-primary hover:bg-primary/90 text-primary-foreground text-xs"
                             onClick={handleStartSession}
                         >
                             Comenzar
-                            <Play className="size-3.5 ml-1.5 fill-current" />
+                            <ArrowRight className="size-4 ml-2 transition-transform group-hover:translate-x-1" />
                         </Button>
                     </div>
                 </div>
@@ -1519,7 +1758,11 @@ export default function PreCount() {
     };
 
     const renderConfig = () => {
-        if (!accessMode) return renderSelection();
+        if (!accessMode) return (
+            <div className="space-y-4 px-4 py-4">
+                {renderSelection()}
+            </div>
+        );
         
         if (accessMode === 'admin') {
             if (step === 'admin_config') return renderAdminConfig();
@@ -1527,12 +1770,11 @@ export default function PreCount() {
             if (step === 'admin_sync') return renderAdminSync();
             if (step === 'qr_generator') return renderQRGenerator();
         }
-
         if (accessMode === 'zebra' || accessMode === 'salon') {
             const isZebra = accessMode === 'zebra';
             return (
-                <>
-                    <Frame className="w-full shadow-sm border-border/40">
+                <div className="flex-1 flex flex-col min-h-full space-y-4 px-4 pb-4">
+                    <Frame className="w-full shadow-sm border-border/30 rounded-lg overflow-hidden">
                         <FrameHeader className="flex-row items-center justify-between px-4 py-3 border-b border-border/10 bg-muted/5">
                             <div className="flex items-center gap-2.5 font-bold text-sm tracking-tight text-foreground">
                                 {isZebra ? <Barcode className="size-4 text-primary" /> : <Monitor className="size-4 text-primary" />}
@@ -1544,13 +1786,16 @@ export default function PreCount() {
                                 </span>
                             </div>
                         </FrameHeader>
-                        <FramePanel className="p-6 pb-10 flex flex-col items-center justify-center space-y-6 animate-in fade-in zoom-in-95 duration-500">
-                            <div className="flex flex-col items-center gap-6 w-full">
-                                <div className="text-center space-y-1.5 mb-2">
-                                    <h2 className="text-lg font-semibold text-foreground tracking-tight">Código de verificación</h2>
-                                    <p className="text-xs text-muted-foreground/60">Ingrese el código de 6 dígitos del panel central</p>
-                                </div>
+                        
+                        <FramePanel className="p-4 sm:p-6 space-y-6">
+                            <div className="space-y-1.5">
+                                <FrameTitle className="text-base font-bold tracking-tight">Código de verificación</FrameTitle>
+                                <FrameDescription className="text-xs text-muted-foreground">
+                                    Ingrese el código de 6 dígitos del panel central para sincronizar el dispositivo.
+                                </FrameDescription>
+                            </div>
 
+                            <div className="flex flex-col items-center justify-center py-4">
                                 <InputOTP 
                                     maxLength={6} 
                                     value={otpValue} 
@@ -1562,60 +1807,63 @@ export default function PreCount() {
                                     }}
                                     autoFocus
                                 >
-                                    <InputOTPGroup className="gap-2">
-                                        <InputOTPSlot index={0} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
-                                        <InputOTPSlot index={1} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
-                                        <InputOTPSlot index={2} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
-                                    </InputOTPGroup>
-                                    
-                                    <div className="mx-2 text-muted-foreground/20 font-bold text-xl">-</div>
-                                    
-                                    <InputOTPGroup className="gap-2">
-                                        <InputOTPSlot index={3} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
-                                        <InputOTPSlot index={4} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
-                                        <InputOTPSlot index={5} className="!h-12 !w-10 !rounded-2xl !border border-border/30 bg-background shadow-xs text-xl font-black ring-offset-background" />
-                                    </InputOTPGroup>
+                                    <div className="flex items-center gap-2">
+                                        <InputOTPGroup className="gap-2">
+                                            <InputOTPSlot index={0} className="!h-12 !w-10 !rounded-lg !border border-border/30 bg-background shadow-xs text-xl font-black" />
+                                            <InputOTPSlot index={1} className="!h-12 !w-10 !rounded-lg !border border-border/30 bg-background shadow-xs text-xl font-black" />
+                                            <InputOTPSlot index={2} className="!h-12 !w-10 !rounded-lg !border border-border/30 bg-background shadow-xs text-xl font-black" />
+                                        </InputOTPGroup>
+                                        
+                                        <div className="mx-2 text-muted-foreground/20 font-bold text-xl">-</div>
+                                        
+                                        <InputOTPGroup className="gap-2">
+                                            <InputOTPSlot index={3} className="!h-12 !w-10 !rounded-lg !border border-border/30 bg-background shadow-xs text-xl font-black" />
+                                            <InputOTPSlot index={4} className="!h-12 !w-10 !rounded-lg !border border-border/30 bg-background shadow-xs text-xl font-black" />
+                                            <InputOTPSlot index={5} className="!h-12 !w-10 !rounded-lg !border border-border/30 bg-background shadow-xs text-xl font-black" />
+                                        </InputOTPGroup>
+                                    </div>
                                 </InputOTP>
+                            </div>
 
-                                <div className="pt-2 text-center">
-                                    <p className="text-[11px] text-muted-foreground/50 leading-relaxed px-4">
-                                        Serás conectado automáticamente a la sesión al completar el código de 6 dígitos.
-                                    </p>
-                                </div>
+                            <div className="bg-muted/5 p-3 rounded-xl border border-border/5">
+                                <p className="text-[11px] text-muted-foreground/60 leading-relaxed text-center">
+                                    Serás conectado automáticamente a la sesión al completar el código de 6 dígitos.
+                                </p>
                             </div>
                         </FramePanel>
                     </Frame>
-                    
-                    <div className="flex-1" />
 
-                    <div className="p-3 border-t border-border/40 bg-card/50 flex items-center justify-between">
-                        <Button 
-                            variant="outline"
-                            className="font-bold px-5 h-9 rounded-xl shadow-none"
-                            onClick={() => setAccessMode(null)}
+                    <div className="flex-1" />
+                    
+                    <div className="mb-6 flex flex-col gap-3">
+                        <Button
+                            variant="ghost"
+                            className="w-full font-bold h-12 rounded-xl text-muted-foreground hover:text-foreground"
+                            onClick={handleSkip}
                         >
-                            <ArrowLeft className="size-4 mr-2" />
-                            Retroceder
+                            Omitir conexión
                         </Button>
-                        <div className="flex gap-2">
-                            <Button
-                                variant="ghost"
-                                className="font-bold px-4 h-9 rounded-xl transition-all shadow-none text-muted-foreground hover:text-foreground text-xs"
-                                onClick={handleSkip}
+                        
+                        <div className="flex items-center gap-2">
+                            <Button 
+                                variant="outline"
+                                className="flex-1 font-bold h-10 rounded-xl shadow-none"
+                                onClick={() => setAccessMode(null)}
                             >
-                                Omitir
+                                <ArrowLeft className="size-4 mr-2" />
+                                Retroceder
                             </Button>
                             <Button
-                                className="font-bold px-6 h-9 rounded-xl transition-all shadow-none bg-primary hover:bg-primary/90 text-white text-xs"
+                                className="flex-1 group font-bold h-10 rounded-xl shadow-none bg-primary hover:bg-primary/90 text-primary-foreground text-xs"
                                 onClick={() => handleJoinSession(otpValue)}
                                 disabled={otpValue.length !== 6}
                             >
                                 Comenzar
-                                <Play className="size-3.5 ml-1.5 fill-current" />
+                                <ArrowRight className="size-3 ml-2 transition-transform group-hover:translate-x-1" />
                             </Button>
                         </div>
                     </div>
-                </>
+                </div>
             );
         }
     };
@@ -1625,7 +1873,7 @@ export default function PreCount() {
     return (
         <>
             <motion.div
-                className="space-y-6"
+                className="h-full flex flex-col space-y-0"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4 }}
@@ -1648,11 +1896,11 @@ export default function PreCount() {
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: 20 }}
                             transition={{ duration: 0.3 }}
-                            className="h-[calc(100vh-6rem)] p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-[1600px] mx-auto"
+                            className="flex-1 flex flex-col p-0 md:p-6 lg:grid lg:grid-cols-12 gap-0 lg:gap-6 max-w-[1600px] mx-auto w-full h-full"
                         >
                             {/* Left Column: Config Steps */}
-                            <div className="lg:col-span-4 lg:col-start-1 flex flex-col gap-4 min-h-0">
-                                <Card className="flex flex-col flex-1 overflow-hidden bg-gradient-to-br from-secondary/5 to-secondary/10 border-muted/50 shadow-md">
+                            <div className="lg:col-span-4 lg:col-start-1 flex-1 flex flex-col min-h-0 h-full">
+                                <Card className="flex flex-col flex-1 overflow-hidden bg-transparent lg:bg-gradient-to-br from-secondary/5 to-secondary/10 border-0 lg:border-muted/50 shadow-none lg:shadow-md h-full">
                                     <AnimatePresence mode="wait">
                                         <motion.div
                                             key={step}
@@ -1668,98 +1916,205 @@ export default function PreCount() {
                                 </Card>
                             </div>
 
-                            {/* Right Column: Empty State during config */}
-                            <div className="hidden lg:flex lg:col-span-8 lg:col-start-5 flex-col min-h-0 bg-card border border-border/40 rounded-xl overflow-hidden shadow-sm items-center justify-center">
-                                <div className="flex flex-col items-center gap-6 text-center px-12 animate-in fade-in duration-700">
-                                    <Laptop className="w-24 h-24 text-muted-foreground/20 stroke-[1.5]" />
-                                    <div className="space-y-3">
-                                        <h3 className="text-xl font-black text-muted-foreground/40 tracking-tight">Configuración en progreso</h3>
-                                        <p className="text-xs text-muted-foreground/30 max-w-sm leading-relaxed mx-auto">
-                                            Una vez completados los pasos de configuración inicial en el panel izquierdo, este espacio mostrará la lista de productos y el control de inventario en tiempo real.
-                                        </p>
+                            {/* Right Column: Empty State or Connected Devices during config */}
+                            <div className="hidden lg:flex lg:col-span-8 lg:col-start-5 flex-col min-h-0 bg-card border border-border/40 rounded-xl overflow-hidden shadow-sm">
+                                {step === 'admin_sync' ? (
+                                    <ConnectedDevicesList devices={connectedDevices} />
+                                ) : (
+                                    <div className="h-full flex flex-col items-center justify-center gap-6 text-center px-12 animate-in fade-in duration-700">
+                                        <div className="flex flex-col items-center gap-6">
+                                            <Laptop className="w-24 h-24 text-muted-foreground/20 stroke-[1.5]" />
+                                            <div className="space-y-3">
+                                                <h3 className="text-xl font-black text-muted-foreground/40 tracking-tight">Configuración en progreso</h3>
+                                                <p className="text-xs text-muted-foreground/30 max-w-sm leading-relaxed mx-auto">
+                                                    Una vez completados los pasos de configuración inicial en el panel izquierdo, este espacio mostrará la lista de productos y el control de inventario en tiempo real.
+                                                </p>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
+
                         </motion.div>
 
                     ) : (
                         <motion.div
                             key="counting"
+                            id="counting-main-container"
                             initial={{ opacity: 0, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
                             transition={{ duration: 0.3 }}
-                            className="h-[calc(100vh-6rem)] p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-[1600px] mx-auto"
+                            className="flex-1 p-1 md:p-6 grid grid-cols-1 grid-rows-[auto_1fr] lg:grid-rows-none lg:grid-cols-12 gap-2 lg:gap-6 max-w-[1600px] mx-auto w-full h-full overflow-hidden"
                         >
                             {/* Left Column: Escaneo */}
                             <div className="lg:col-span-4 lg:col-start-1 flex flex-col gap-4 min-h-0">
-                                <Card className="flex flex-col flex-1 overflow-hidden bg-gradient-to-br from-secondary/5 to-secondary/10 border-muted/50 shadow-md">
-                                    {/* 1. Info Header */}
-                                    <div className="p-5 border-b border-border/40 bg-card/50">
-                                        <div className="grid grid-cols-2 gap-4 w-full">
-                                            <div className="flex flex-col">
-                                                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap mb-1">Sector</span>
-                                                <span className="font-bold text-foreground text-lg leading-none truncate">{session?.sector}</span>
-                                            </div>
-                                            <div className="flex flex-col items-end text-right">
-                                                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold whitespace-nowrap mb-1">PC / Zebra</span>
-                                                <button 
-                                                    onClick={() => {
-                                                        const newName = prompt("Nombre de esta PC:", deviceName);
-                                                        if (newName !== null) {
-                                                            const trimmed = newName.trim();
-                                                            setDeviceName(trimmed);
-                                                            localStorage.setItem('precount_device_name', trimmed);
-                                                            notify.success("PC Actualizada", `Identificada como: ${trimmed}`);
-                                                        }
-                                                    }}
-                                                    className="font-bold text-primary text-sm truncate hover:underline"
-                                                >
-                                                    {deviceName || 'Sin nombre'}
-                                                </button>
-                                            </div>
-
-                                            {/* Ubicación Actual (Visible solo si hay zona activa) */}
-                                            {activeLocation && (
-                                                <div className="col-span-2 mt-2 pt-2 border-t border-border/20 flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="p-1.5 bg-amber-500/10 rounded-lg">
-                                                            <MapPin className="size-4 text-amber-600" />
+                                <Card className="flex flex-col lg:flex-1 overflow-visible bg-card border-muted/50 shadow-md">
+                                        {/* 1. Info Header & Location Widget */}
+                                        <div className={`p-3 sm:p-5 border-b border-border/40 transition-colors duration-500 bg-transparent`}>
+                                            <div className="flex flex-col gap-3">
+                                                <div className="flex items-center justify-between px-1 opacity-70">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="flex items-center gap-1">
+                                                            <Smartphone className="size-3 text-muted-foreground" />
+                                                            <span className="text-[10px] uppercase font-bold tracking-tight text-muted-foreground/60">Dispositivo:</span>
+                                                            <span className="text-xs font-bold text-foreground">{deviceName || 'Zebra'}</span>
                                                         </div>
-                                                        <div className="flex flex-col">
-                                                            <span className="text-[9px] text-muted-foreground uppercase font-black">Zona Activa</span>
-                                                            <span className="font-bold text-amber-700 text-sm">{activeLocation}</span>
+                                                        <div className="flex items-center gap-1 border-l border-border/20 pl-4">
+                                                            <span className="text-[10px] uppercase font-bold tracking-tight text-muted-foreground/60">Session:</span>
+                                                            <span className="text-xs font-bold text-foreground">#{session?.id?.toString().slice(-4)}</span>
                                                         </div>
                                                     </div>
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        size="sm" 
-                                                        className="h-7 text-[10px] font-bold text-amber-600 hover:text-amber-700 hover:bg-amber-100"
-                                                        onClick={() => handleLocationScan(activeLocation)}
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Button 
+                                                            variant="outline" 
+                                                            size="icon" 
+                                                            className={cn("text-muted-foreground hover:bg-primary/5 hover:text-primary", isZenMode && "bg-primary/10 text-primary border-primary/20")}
+                                                            onClick={() => setIsZenMode(!isZenMode)}
+                                                        >
+                                                            {isZenMode ? <Minimize /> : <Maximize />}
+                                                        </Button>
+                                                        <Button variant="outline" size="icon" className="text-muted-foreground hover:bg-primary/5 hover:text-primary">
+                                                            <Settings />
+                                                        </Button>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-1.5">
+                                                    {/* Selector: Pin + Combobox */}
+                                                    <div ref={setComboboxAnchor} className="flex-1 flex min-w-0">
+                                                        <Group className="flex-1 shadow-xs">
+                                                            <GroupText
+                                                                className="pointer-events-none px-2.5 border-input bg-transparent text-muted-foreground/80 shrink-0"
+                                                            >
+                                                                <MapPin className="size-4" />
+                                                            </GroupText>
+                                                            <GroupSeparator />
+                                                            <Combobox
+                                                                items={allSectors.map(s => s.tag)}
+                                                                value={activeLocation || undefined}
+                                                                onValueChange={(val) => {
+                                                                    if (typeof val === 'string') {
+                                                                        setActiveLocation(val);
+                                                                    }
+                                                                }}
+                                                            >
+                                                                <ComboboxTrigger
+                                                                    ref={comboboxAnchorRef}
+                                                                    render={
+                                                                        <SelectButton 
+                                                                            variant="outline" 
+                                                                            className="flex-1 bg-transparent hover:bg-muted/30 transition-colors font-bold text-sm shadow-none"
+                                                                        />
+                                                                    }
+                                                                >
+                                                                    <div className="flex items-center gap-2 truncate">
+                                                                        <span className="truncate">
+                                                                            {activeLocation || "Todos"}
+                                                                        </span>
+                                                                        {activeLocation && isActiveLocationClosed && (
+                                                                            <Badge variant="secondary" className="text-[8px] h-3.5 uppercase px-1 leading-none font-bold ml-1 opacity-70">Cerrado</Badge>
+                                                                        )}
+                                                                    </div>
+                                                                </ComboboxTrigger>
+                                                                <ComboboxPopup 
+                                                                    anchor={comboboxAnchor} 
+                                                                    align="start"
+                                                                    className="w-[calc(var(--anchor-width)+2px)] z-[100] -ml-[1px]"
+                                                                >
+                                                                    <div className="border-b p-2">
+                                                                        <ComboboxInput
+                                                                            placeholder="Buscar sector..."
+                                                                            startAddon={<Search className="size-4" />}
+                                                                            className="h-8 ps-9"
+                                                                        />
+                                                                    </div>
+                                                                    <ComboboxEmpty>No se encontraron sectores.</ComboboxEmpty>
+                                                                    <ComboboxList className="max-h-64">
+                                                                        {allSectors.map((sector) => {
+                                                                            const sectorItemCount = items.filter(i => i.location_tag === sector.tag).length;
+                                                                            const sectorUnitCount = items.filter(i => i.location_tag === sector.tag).reduce((sum, i) => sum + i.quantity, 0);
+                                                                            return (
+                                                                                <ComboboxItem key={sector.tag} value={sector.tag}>
+                                                                                    <div className="flex items-center gap-2 w-full">
+                                                                                        <MapPin className={cn("size-3.5 mt-0.5", sector.status === 'closed' ? "text-muted-foreground" : "text-amber-500")} />
+                                                                                        <span className={cn("font-bold flex-1", sector.status === 'closed' && "text-muted-foreground line-through opacity-60")}>
+                                                                                            {sector.tag}
+                                                                                        </span>
+                                                                                        <span className="text-[9px] text-muted-foreground font-medium tabular-nums">
+                                                                                            {sectorItemCount}P · {sectorUnitCount}U
+                                                                                        </span>
+                                                                                        {sector.status === 'closed' && (
+                                                                                            <CheckCircle2 className="size-3 text-emerald-500" />
+                                                                                        )}
+                                                                                    </div>
+                                                                                </ComboboxItem>
+                                                                            );
+                                                                        })}
+                                                                    </ComboboxList>
+                                                                </ComboboxPopup>
+                                                            </Combobox>
+                                                        </Group>
+                                                    </div>
+
+                                                    {/* Action Buttons: Independent for proper responsive sizing */}
+                                                    {activeLocation && (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="icon"
+                                                            className="shrink-0 text-muted-foreground hover:bg-destructive/5 hover:text-destructive"
+                                                            onClick={() => setActiveLocation(null)}
+                                                            title="Volver al listado general"
+                                                        >
+                                                            <XIcon />
+                                                        </Button>
+                                                    )}
+                                                    <Button
+                                                        variant="outline"
+                                                        size="icon"
+                                                        disabled={activeLocation !== null && !isActiveLocationClosed}
+                                                        className={cn(
+                                                            "shrink-0 text-muted-foreground hover:bg-primary/5 hover:text-primary",
+                                                            (activeLocation !== null && !isActiveLocationClosed) && "opacity-30 grayscale"
+                                                        )}
+                                                        onClick={() => {
+                                                            const manualCode = prompt("Ingresa el código de la nueva zona (Ej: GO-01, CA-02):");
+                                                            if (manualCode) handleLocationScan(manualCode);
+                                                        }}
                                                     >
-                                                        Finalizar Zona
+                                                        <Plus />
+                                                    </Button>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="icon"
+                                                        className="shrink-0 text-muted-foreground hover:bg-emerald-500/5 hover:text-emerald-500"
+                                                        disabled={!activeLocation}
+                                                        onClick={() => {
+                                                            if (activeLocation) handleLocationScan(activeLocation);
+                                                        }}
+                                                    >
+                                                        <CheckCircle2 />
                                                     </Button>
                                                 </div>
-                                            )}
+                                            </div>
                                         </div>
-                                    </div>
 
-                                    {/* 2. Counters Grid */}
+                                {/* 2. Counters Grid */}
                                     <div className="grid grid-cols-3 divide-x divide-border/40 border-b border-border/40 bg-card/30">
                                         <div className="p-4 flex flex-col items-center justify-center text-center">
-                                            <span className="text-[10px] sm:text-[11px] text-muted-foreground uppercase tracking-wider font-bold mb-2">Productos</span>
+                                            <span className="text-xs font-semibold text-muted-foreground mb-2">Productos</span>
                                             <div className="text-2xl font-black text-primary">
                                                 <AnimatedCounter value={totalProducts} digits={4} />
                                             </div>
                                         </div>
                                         <div className="p-4 flex flex-col items-center justify-center text-center">
-                                            <span className="text-[10px] sm:text-[11px] text-muted-foreground uppercase tracking-wider font-bold mb-2">Unidades</span>
+                                            <span className="text-xs font-semibold text-muted-foreground mb-2">Unidades</span>
                                             <div className="text-2xl font-bold text-foreground">
                                                 <AnimatedCounter value={totalUnits} digits={4} />
                                             </div>
                                         </div>
                                         <div className="p-4 flex flex-col items-center justify-center text-center">
-                                            <span className="text-[10px] sm:text-[11px] text-muted-foreground uppercase tracking-wider font-bold mb-2">Desconocid.</span>
+                                            <span className="text-xs font-semibold text-muted-foreground mb-2">Desconocid.</span>
                                             <div className="text-2xl font-bold text-amber-500">
                                                 <AnimatedCounter value={errorCount} digits={3} />
                                             </div>
@@ -1767,47 +2122,77 @@ export default function PreCount() {
                                     </div>
 
                                     {/* 3. Actions / Modes */}
-                                    <div className="p-4 border-b border-border/40 flex items-center justify-between bg-card/50">
+                                    <div className={cn("p-4 border-b border-border/40 flex items-center justify-between transition-all", (activeLocation && !isActiveLocationClosed) ? "bg-card/50" : "bg-card/20 opacity-40 pointer-events-none grayscale")}>
                                         <span className="text-xs font-semibold text-muted-foreground">Configuración de Escaneo</span>
-                                        <div className="flex items-center gap-3">
-                                            <div 
-                                                className="flex flex-col items-center gap-1 group cursor-pointer" 
-                                                onClick={() => {
-                                                    setIsNegativeMode(!isNegativeMode);
-                                                    if (!isNegativeMode) {
-                                                        notify.info("Modo Devolución", "La carga ahora será en negativo");
-                                                    }
-                                                }}
-                                                title="Modo Retiro/Devolución"
-                                            >
-                                                <div className={`p-2 rounded-full transition-all ${isNegativeMode ? 'bg-destructive/15 text-destructive shadow-[0_0_15px_rgba(239,68,68,0.3)]' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>
-                                                    <RotateCcw className={cn("w-4 h-4", isNegativeMode && "animate-spin-slow")} />
-                                                </div>
-                                            </div>
-
-                                            <div 
-                                                className="flex flex-col items-center gap-1 group cursor-pointer" 
-                                                onClick={() => setHighSpeedMode(!highSpeedMode)}
-                                                title="Modo Alta Velocidad (Zebra)"
-                                            >
-                                                <div className={`p-2 rounded-full transition-all ${highSpeedMode ? 'bg-primary/20 text-primary shadow-glow' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}>
-                                                    {highSpeedMode ? <Zap className="w-4 h-4" /> : <ZapOff className="w-4 h-4" />}
-                                                </div>
-                                            </div>
-
-                                            <div className={`p-2 rounded-full bg-success/10 text-success`} title="En línea (Cloud Sync)">
-                                                <Wifi className="w-4 h-4" />
-                                            </div>
+                                        <div className="flex items-center gap-4">
+                                                    <Group aria-label="Configuración de Escaneo">
+                                                        <Button 
+                                                            variant={highSpeedMode && !isManualMode ? "secondary" : "outline"}
+                                                            size="sm"
+                                                            className={cn(
+                                                                "h-9 px-5 font-bold text-xs transition-all",
+                                                                highSpeedMode && !isManualMode ? "opacity-100" : "opacity-80 hover:opacity-100"
+                                                            )}
+                                                            onClick={(e) => {
+                                                                setHighSpeedMode(true);
+                                                                setIsManualMode(false);
+                                                                (e.currentTarget as HTMLElement).blur();
+                                                            }}
+                                                        >
+                                                            +1
+                                                        </Button>
+                                                        <GroupSeparator />
+                                                        <Button 
+                                                            variant={!highSpeedMode && !isManualMode ? "secondary" : "outline"}
+                                                            size="sm"
+                                                            className={cn(
+                                                                "h-9 px-5 font-bold text-xs transition-all flex items-center gap-2",
+                                                                !highSpeedMode && !isManualMode ? "opacity-100" : "opacity-80 hover:opacity-100"
+                                                            )}
+                                                            onClick={(e) => {
+                                                                setHighSpeedMode(false);
+                                                                setIsManualMode(false);
+                                                                (e.currentTarget as HTMLElement).blur();
+                                                                // Abrir teclado virtual solo en Zebra si hay un producto seleccionado
+                                                                if ((selectedProduct || manualEAN) && accessMode === 'zebra') {
+                                                                    setShowQtyDrawer(true);
+                                                                } else if (selectedProduct || manualEAN) {
+                                                                    document.getElementById('quantity-input')?.focus();
+                                                                    (document.getElementById('quantity-input') as HTMLInputElement)?.select();
+                                                                }
+                                                            }}
+                                                        >
+                                                            <Infinity className="size-4" />
+                                                            Cantidad
+                                                        </Button>
+                                                        <GroupSeparator />
+                                                        <Button 
+                                                            variant={isManualMode ? "secondary" : "outline"}
+                                                            size="icon-sm"
+                                                            className={cn(
+                                                                "h-9 w-9 font-bold transition-all flex items-center justify-center",
+                                                                isManualMode ? "opacity-100" : "opacity-80 hover:opacity-100"
+                                                            )}
+                                                            onClick={(e) => {
+                                                                setIsManualMode(!isManualMode);
+                                                                (e.currentTarget as HTMLElement).blur();
+                                                            }}
+                                                        >
+                                                            <Keyboard className="size-4" />
+                                                        </Button>
+                                                    </Group>
                                         </div>
                                     </div>
 
-                                    {/* 4. Search & Quantity Input (right below scan config) */}
-                                    <div className="p-4 space-y-3 border-b border-border/40 bg-card/50">
+                                     {/* 4. Search & Quantity Input - Visible en PC o Manual Mode en móvil */}
+                                    <div className={cn("px-4 py-2 space-y-3 border-b border-border/40 transition-all relative z-40", (activeLocation && !isActiveLocationClosed) ? "bg-card/50" : "bg-card/20 opacity-40 pointer-events-none grayscale", (!isManualMode && "hidden lg:block"))}>
                                         {/* Search bar */}
-                                        <div className="relative z-20 w-full">
+                                        <div className="relative z-50 w-full">
                                             <SmartProductSearch
                                                 key={searchResetKey}
                                                 onSelect={(p) => {
+                                                    if (!activeLocation) return;
+                                                    
                                                     const timeSinceScan = Date.now() - lastScanTimeRef.current;
                                                     if (timeSinceScan < 500) return;
 
@@ -1817,24 +2202,30 @@ export default function PreCount() {
                                                         });
                                                         registerError();
                                                     } else {
-                                                        notify.success("Operación exitosa", `Producto encontrado: ${p.name}`);
+                                                        // notify.success("Operación exitosa", `Producto encontrado: ${p.name}`);
                                                     }
 
                                                     setManualEAN(p.ean);
                                                     setSelectedProduct({ ...p, stock: 0, salePrice: 0, cost: 0, id_producto: p.id_producto });
+                                                    setEditingItemId(null); // Clear editing when selecting a new product
 
-                                                    setTimeout(() => {
-                                                        document.getElementById('quantity-input')?.focus();
-                                                        (document.getElementById('quantity-input') as HTMLInputElement)?.select();
-                                                    }, 50);
+                                                    // En modo Cantidad (no highSpeed), abrir el teclado virtual solo en Zebra
+                                                    if (!highSpeedMode && accessMode === 'zebra') {
+                                                        setTimeout(() => setShowQtyDrawer(true), 80);
+                                                    } else {
+                                                        setTimeout(() => {
+                                                            document.getElementById('quantity-input')?.focus();
+                                                            (document.getElementById('quantity-input') as HTMLInputElement)?.select();
+                                                        }, 50);
+                                                    }
                                                 }}
                                                 autoFocus={true}
                                                 className="w-full"
                                             />
                                         </div>
 
-                                        {/* Quantity + Add */}
-                                        <div className="flex gap-2 items-center">
+                                        {/* Quantity + Add - Hidden on Mobile unless logic demands it, but requested to hide always on mobile */}
+                                        <div className="hidden lg:flex gap-2 items-center">
                                             <NumberField
                                                 key={searchResetKey}
                                                 value={quantity}
@@ -1847,8 +2238,11 @@ export default function PreCount() {
                                                     <NumberFieldInput
                                                         id="quantity-input"
                                                         className="h-11 text-base font-semibold"
+                                                        inputMode="none"
                                                         onKeyDown={(e: React.KeyboardEvent) => {
-                                                            if (e.key === 'Enter') handleAddProduct();
+                                                            if (e.key === 'Enter') {
+                                                                handleAddProduct();
+                                                            }
                                                         }}
                                                     />
                                                     <NumberFieldIncrement />
@@ -1861,96 +2255,131 @@ export default function PreCount() {
                                                 className="h-11 px-6 shadow-sm font-bold tracking-wide flex-shrink-0"
                                                 disabled={!manualEAN.trim()}
                                             >
-                                                <Plus className="w-5 h-5" />
+                                                 <Plus className="w-5 h-5" />
                                             </Button>
                                         </div>
-                                    </div>
 
-                                    {/* Product Feedback / Selection - Ultra Compact */}
-                                    <AnimatePresence>
-                                        {selectedProduct && (
-                                            <motion.div
-                                                initial={{ opacity: 0, height: 0, scale: 0.95 }}
-                                                animate={{ opacity: 1, height: 'auto', scale: 1 }}
-                                                exit={{ opacity: 0, height: 0 }}
-                                                className="bg-primary/5 mx-4 mt-3 rounded border border-primary/10 flex items-center justify-between p-2 overflow-hidden"
-                                            >
-                                                <div className="flex items-center gap-2 min-w-0">
-                                                    <CheckCircle className="w-4 h-4 text-primary shrink-0" />
-                                                    <div className="min-w-0 flex flex-col sm:flex-row sm:items-baseline gap-1">
-                                                        <span className="font-semibold text-foreground text-sm truncate">{selectedProduct.name}</span>
-                                                        <span className="text-[10px] text-muted-foreground font-mono truncate">{selectedProduct.ean}</span>
-                                                    </div>
-                                                </div>
-                                                <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    className="h-6 text-[10px] px-2 text-muted-foreground hover:text-destructive"
+                                        <AnimatePresence>
+                                            {selectedProduct && (
+                                                <motion.button
+                                                    initial={{ opacity: 0, height: 0, scale: 0.95 }}
+                                                    animate={{ opacity: 1, height: 'auto', scale: 1 }}
+                                                    exit={{ opacity: 0, height: 0 }}
+                                                    className="w-full bg-primary/5 rounded border border-primary/10 flex items-center justify-between p-2 overflow-hidden mt-1.5 cursor-pointer active:scale-[0.98] transition-all text-left"
                                                     onClick={() => {
-                                                        setSelectedProduct(null);
-                                                        setManualEAN('');
+                                                        if (accessMode === 'zebra') {
+                                                            setShowQtyDrawer(true);
+                                                        } else {
+                                                            document.getElementById('quantity-input')?.focus();
+                                                            (document.getElementById('quantity-input') as HTMLInputElement)?.select();
+                                                        }
                                                     }}
                                                 >
-                                                    Limpiar
-                                                </Button>
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <CheckCircle className="w-4 h-4 text-primary shrink-0" />
+                                                        <div className="min-w-0 flex flex-col sm:flex-row sm:items-baseline gap-1">
+                                                            <span className="font-semibold text-foreground text-sm truncate">{selectedProduct.name}</span>
+                                                            <span className="text-xs text-muted-foreground font-mono truncate">{selectedProduct.ean}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[9px] font-bold uppercase text-primary/40 tracking-wider">Editar</span>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            className="h-6 text-[10px] px-2 text-muted-foreground hover:text-destructive"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setSelectedProduct(null);
+                                                                setManualEAN('');
+                                                            }}
+                                                        >
+                                                            Limpiar
+                                                        </Button>
+                                                    </div>
+                                                </motion.button>
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
 
-                                    {/* Spacer to push action buttons to bottom */}
-                                    <div className="flex-1" />
+                                    {/* Spacer to push action buttons to bottom - Oculto en móvil */}
+                                    <div className="hidden lg:block flex-1" />
 
-                                    {/* Action Buttons Footer */}
+                                    {/* Action Buttons Footer - Oculto en móvil */}
                                     {items.length > 0 && (
-                                        <div className="p-3 border-t border-border/40 bg-card/50 flex items-center gap-2">
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="flex-1 h-8 text-xs font-medium gap-1.5"
-                                                onClick={handleExportPDF}
-                                            >
-                                                <FileText className="w-3.5 h-3.5" />
-                                                PDF
-                                            </Button>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="flex-1 h-8 text-xs font-medium gap-1.5"
-                                                onClick={handleExportTXT}
-                                            >
-                                                <Upload className="w-3.5 h-3.5" />
-                                                TXT
-                                            </Button>
-                                            {session?.master_catalog && (
+                                        <div className="hidden lg:block p-3 border-t border-border/40 bg-card/50">
+                                            <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
-                                                    className="flex-[1.5] h-8 text-xs font-bold gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10"
-                                                    onClick={handleExportExcel}
+                                                    className="h-9 text-xs font-bold gap-1.5 rounded-xl border-border/40"
+                                                    onClick={handleExportPDF}
                                                 >
-                                                    <FileSpreadsheet className="w-3.5 h-3.5" />
-                                                    Conciliar Excel
+                                                    <FileText className="w-3.5 h-3.5" />
+                                                    PDF
                                                 </Button>
-                                            )}
-                                            <Button
-                                                size="sm"
-                                                className="flex-[2] h-8 text-xs font-bold gap-1.5"
-                                                onClick={handleFinishClick}
-                                            >
-                                                <CheckCircle className="w-3.5 h-3.5" />
-                                                Finalizar
-                                            </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-9 text-xs font-bold gap-1.5 rounded-xl border-border/40"
+                                                    onClick={handleExportTXT}
+                                                >
+                                                    <Upload className="w-3.5 h-3.5" />
+                                                    TXT
+                                                </Button>
+                                                {session?.master_catalog && (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="col-span-2 sm:flex-[1.5] h-9 text-xs font-bold gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 rounded-xl"
+                                                        onClick={handleExportExcel}
+                                                    >
+                                                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                                                        Conciliar Excel
+                                                    </Button>
+                                                )}
+                                                <Button
+                                                    size="sm"
+                                                    className="col-span-2 sm:flex-[2] h-10 text-sm font-bold gap-1.5 rounded-xl bg-primary shadow-sm"
+                                                    onClick={handleFinishClick}
+                                                >
+                                                    <CheckCircle className="w-4 h-4" />
+                                                    Finalizar Sesión
+                                                </Button>
+                                            </div>
                                         </div>
                                     )}
                                 </Card>
                             </div>
 
                             {/* Right Column: Dense List / Table */}
-                            <div className="lg:col-span-8 lg:col-start-5 flex flex-col min-h-0 min-h-[500px] lg:h-full bg-card border border-border/40 rounded-xl overflow-hidden shadow-sm">
+                            <div className="lg:col-span-8 lg:col-start-5 flex flex-col h-full min-h-0 bg-card border border-border/40 rounded-xl overflow-hidden shadow-sm">
                                 <PreCountList
-                                    items={items}
+                                    items={activeLocation ? items.filter(item => item.location_tag === activeLocation) : items}
+                                    mode={listMode}
                                     onUpdate={updateItem}
                                     onDelete={removeItem}
+                                    onEditRequest={(item) => {
+                                        setSelectedProduct({
+                                            ean: item.ean,
+                                            name: item.productName || 'Producto',
+                                            stock: 0,
+                                            salePrice: 0,
+                                            cost: 0,
+                                            id_producto: item.id_producto
+                                        });
+                                        setManualEAN(item.ean);
+                                        setQuantity(item.quantity);
+                                        setEditingItemId(item.id);
+                                        if (accessMode === 'zebra') {
+                                            setShowQtyDrawer(true);
+                                        } else {
+                                            setTimeout(() => {
+                                                document.getElementById('quantity-input')?.focus();
+                                                (document.getElementById('quantity-input') as HTMLInputElement)?.select();
+                                            }, 50);
+                                        }
+                                    }}
                                     masterCatalog={session?.master_catalog}
                                 />
                             </div>
@@ -2001,54 +2430,111 @@ export default function PreCount() {
                 </DialogPopup>
             </Dialog>
 
-            {/* Dialog de Resumen de Zona (Cierre) */}
-            <Dialog open={showLocationSummary} onOpenChange={setShowLocationSummary}>
-                <DialogPopup className="sm:max-w-sm">
+            {/* Diálogo de advertencia: No hay Zona seleccionada */}
+            <Dialog open={showNoZoneDialog} onOpenChange={setShowNoZoneDialog}>
+                <DialogPopup className="max-w-[90vw] rounded-lg sm:max-w-[425px]">
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <MapPin className="size-5 text-amber-600" />
-                            Finalizar Zona: {activeLocation}
-                        </DialogTitle>
-                        <DialogDescription>
-                            Verifica el resumen antes de bloquear este espacio de conteo.
+                        <div className="mx-auto w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mb-2">
+                            <MapPinIcon className="size-6 text-amber-600" />
+                        </div>
+                        <DialogTitle className="text-center text-xl">Zona no seleccionada</DialogTitle>
+                        <DialogDescription className="text-center">
+                            Debes seleccionar o escanear una <span className="font-bold text-foreground">Zona</span> antes de empezar a contar productos.
                         </DialogDescription>
                     </DialogHeader>
-
-                    <div className="px-6 py-8">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="p-4 bg-secondary/20 rounded-2xl text-center border border-secondary/20">
-                                <span className="text-[10px] text-muted-foreground uppercase font-bold block mb-1">Diferentes</span>
-                                <span className="text-2xl font-black text-foreground">{locationStats.products}</span>
-                                <span className="text-[9px] text-muted-foreground block mt-1">Productos</span>
-                            </div>
-                            <div className="p-4 bg-primary/10 rounded-2xl text-center border border-primary/20">
-                                <span className="text-[10px] text-muted-foreground uppercase font-bold block mb-1">Totales</span>
-                                <span className="text-2xl font-black text-primary">{locationStats.units}</span>
-                                <span className="text-[9px] text-muted-foreground block mt-1">Unidades</span>
-                            </div>
+                    
+                    <div className="py-4 space-y-4">
+                        <div className="p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground leading-relaxed">
+                            <p className="font-semibold text-foreground mb-1">¿Por qué es necesario?</p>
+                            Para mantener el inventario ordenado, cada producto leído debe asignarse a un sector físico (Ej: GO-01, CA-05).
                         </div>
-
-                        <div className="mt-6 p-3 bg-amber-50 border border-amber-100 rounded-xl flex gap-3 items-start">
-                            <AlertCircle className="size-5 text-amber-600 shrink-0 mt-0.5" />
-                            <p className="text-xs text-amber-800 leading-relaxed">
-                                <strong>¡Importante!</strong> Una vez cerrada, esta zona quedará bloqueada para nuevos escaneos en esta sesión.
-                            </p>
+                        
+                        <div className="flex flex-col gap-2">
+                            <p className="text-xs font-medium px-1">Acciones rápidas:</p>
+                            <Button 
+                                variant="outline" 
+                                className="justify-start h-11 px-4 rounded-xl"
+                                onClick={() => {
+                                    setShowNoZoneDialog(false);
+                                    document.getElementById('sector-selector-trigger')?.click();
+                                }}
+                            >
+                                <Filter className="size-4 mr-3 text-primary" />
+                                Seleccionar Zona de la lista
+                            </Button>
+                            <Button 
+                                variant="outline" 
+                                className="justify-start h-11 px-4 rounded-xl"
+                                onClick={() => {
+                                    setShowNoZoneDialog(false);
+                                    setScannerOpen(true);
+                                }}
+                            >
+                                <Camera className="size-4 mr-3 text-primary" />
+                                Escanear código QR de Zona
+                            </Button>
                         </div>
                     </div>
 
-                    <DialogFooter variant="bare">
-                        <DialogClose render={<Button variant="ghost" className="rounded-xl" />}>
-                            Seguir Contando
-                        </DialogClose>
+                    <DialogFooter>
                         <Button 
-                            className="bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-lg border-b-2 border-amber-800 active:translate-y-0.5 transition-all"
-                            onClick={confirmCloseLocation}
+                            className="w-full h-11 rounded-xl bg-primary text-primary-foreground font-bold"
+                            onClick={() => setShowNoZoneDialog(false)}
                         >
-                            Confirmar Cierre y Bloquear
+                            Entendido
                         </Button>
                     </DialogFooter>
                 </DialogPopup>
             </Dialog>
+
+            {/* Nuevo Flow de Cierre de Zona (Nested Drawers) */}
+            <LocationClosingDrawer 
+                isOpen={showLocationSummary}
+                onOpenChange={setShowLocationSummary}
+                locationName={activeLocation || ''}
+                stats={locationStats}
+                onConfirm={confirmCloseLocation}
+            />
+
+            {/* Teclado Numérico Virtual (Bottom Drawer) */}
+            <Drawer
+                open={showQtyDrawer}
+                onOpenChange={(open) => {
+                    setShowQtyDrawer(open);
+                    // Al cerrar sin confirmar, resetear cantidad a 1
+                    if (!open) setQuantity(0);
+                }}
+                shouldScaleBackground={false}
+            >
+                <DrawerContent className="outline-none max-h-[92dvh]">
+                    {/* Sin drag bar — igual al p-drawer-2 del diseño */}
+                    <DrawerHeader className="sr-only">
+                        <DrawerTitle>Ingresar Cantidad</DrawerTitle>
+                        <DrawerDescription>
+                            Usá el teclado numérico para ingresar la cantidad del producto.
+                        </DrawerDescription>
+                    </DrawerHeader>
+                    <NumericKeyboard
+                        value={quantity}
+                        onChange={setQuantity}
+                        productName={selectedProduct?.name}
+                        productEAN={selectedProduct?.ean || manualEAN}
+                        onConfirm={async () => {
+                            setShowQtyDrawer(false);
+                            if (editingItemId) {
+                                await updateItem(editingItemId, quantity);
+                                setEditingItemId(null);
+                                setManualEAN('');
+                                setSelectedProduct(null);
+                                // notify.success("Actualizado", "Cantidad actualizada correctamente");
+                            } else {
+                                await handleAddProduct();
+                            }
+                        }}
+                        onClose={() => setShowQtyDrawer(false)}
+                    />
+                </DrawerContent>
+            </Drawer>
 
             {/* Scanner Modal */}
             <BarcodeScanner
@@ -2060,3 +2546,4 @@ export default function PreCount() {
         </>
     );
 }
+

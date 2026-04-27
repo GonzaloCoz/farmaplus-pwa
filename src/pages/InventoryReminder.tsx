@@ -48,7 +48,7 @@ export default function InventoryReminder() {
     if (loading) {
         return (
             <div className="h-full flex flex-col items-center justify-center p-8 animate-pulse grayscale">
-                <div className="h-12 w-12 rounded-2xl bg-muted mb-4" />
+                <div className="h-12 w-12 rounded-lg bg-muted mb-4" />
                 <div className="h-4 w-48 bg-muted rounded-full mb-2" />
                 <div className="h-3 w-32 bg-muted rounded-full" />
             </div>
@@ -58,7 +58,7 @@ export default function InventoryReminder() {
     if (!event) {
         return (
             <div className="h-full flex flex-col items-center justify-center p-8 text-center grayscale">
-                <div className="h-16 w-16 rounded-3xl bg-muted/30 flex items-center justify-center mb-6">
+                <div className="h-16 w-16 rounded-xl bg-muted/30 flex items-center justify-center mb-6">
                     <CalendarIcon className="w-8 h-8 text-muted-foreground/40" />
                 </div>
                 <h3 className="text-lg font-semibold text-foreground/60 mb-2">No hay inventarios asignados</h3>
@@ -80,7 +80,7 @@ export default function InventoryReminder() {
                     {/* Header Section */}
                     <div className="flex flex-col md:flex-row items-center md:items-start gap-8">
                         <div className="relative shrink-0">
-                            <div className="h-24 w-24 rounded-[2rem] bg-black dark:bg-white text-white dark:text-black flex items-center justify-center relative z-10 shadow-2xl">
+                            <div className="h-24 w-24 rounded-[2rem] bg-black dark:bg-white text-white dark:text-black flex items-center justify-center relative z-10 shadow-md">
                                 <CalendarIcon className="w-12 h-12" weight="BoldDuotone" />
                             </div>
                         </div>
@@ -106,7 +106,7 @@ export default function InventoryReminder() {
                     {/* Quick Info Bar - Minimalist */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="flex items-center gap-5 p-6 rounded-[2rem] border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 group hover:border-black dark:hover:border-white transition-colors duration-500">
-                            <div className="h-12 w-12 rounded-2xl bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shrink-0 shadow-lg">
+                            <div className="h-12 w-12 rounded-lg bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shrink-0 shadow-lg">
                                 <CalendarIcon className="w-6 h-6" weight="BoldDuotone" />
                             </div>
                             <div className="space-y-1">
@@ -118,7 +118,7 @@ export default function InventoryReminder() {
                         </div>
 
                         <div className="flex items-center gap-5 p-6 rounded-[2rem] border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 group hover:border-black dark:hover:border-white transition-colors duration-500">
-                            <div className="h-12 w-12 rounded-2xl bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shrink-0 shadow-lg">
+                            <div className="h-12 w-12 rounded-lg bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shrink-0 shadow-lg">
                                 {event.sector?.toLowerCase().includes('perfumeria') ? (
                                     <PerfumeryIcon className="w-6 h-6" weight="BoldDuotone" />
                                 ) : (
@@ -134,7 +134,7 @@ export default function InventoryReminder() {
                         </div>
 
                         <div className="flex items-center gap-5 p-6 rounded-[2rem] border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 group hover:border-black dark:hover:border-white transition-colors duration-500">
-                            <div className="h-12 w-12 rounded-2xl bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shrink-0 shadow-lg">
+                            <div className="h-12 w-12 rounded-lg bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shrink-0 shadow-lg">
                                 <Buildings className="w-6 h-6" weight="BoldDuotone" />
                             </div>
                             <div className="space-y-1">
@@ -164,7 +164,7 @@ export default function InventoryReminder() {
                                     "Tener a mano productos próximos a vencer en stock.",
                                     "No realizar ingresos ni movimientos durante el conteo."
                                 ].map((item, i) => (
-                                    <div key={i} className="flex gap-4 items-start p-5 rounded-3xl border border-zinc-100 dark:border-zinc-900 bg-zinc-50/30 dark:bg-zinc-900/30">
+                                    <div key={i} className="flex gap-4 items-start p-5 rounded-xl border border-zinc-100 dark:border-zinc-900 bg-zinc-50/30 dark:bg-zinc-900/30">
                                         <span className="text-black dark:text-white font-black text-lg leading-none mt-0.5">•</span>
                                         <p className="text-sm font-semibold text-zinc-600 dark:text-zinc-400 leading-relaxed">{item}</p>
                                     </div>
@@ -230,7 +230,7 @@ export default function InventoryReminder() {
                                 <h2 className="text-xs font-black uppercase tracking-[0.25em] text-zinc-400">Acciones Pendientes</h2>
                             </div>
                             <div className="p-8 rounded-[2.5rem] border-2 border-dashed border-zinc-100 dark:border-zinc-900 flex flex-col md:flex-row items-center gap-8">
-                                <div className="h-16 w-16 rounded-3xl bg-black dark:bg-white flex items-center justify-center shrink-0">
+                                <div className="h-16 w-16 rounded-xl bg-black dark:bg-white flex items-center justify-center shrink-0">
                                     <Clock className="w-8 h-8 text-white dark:text-black" weight="BoldDuotone" />
                                 </div>
                                 <div className="text-center md:text-left">
@@ -247,3 +247,4 @@ export default function InventoryReminder() {
         </div>
     );
 }
+

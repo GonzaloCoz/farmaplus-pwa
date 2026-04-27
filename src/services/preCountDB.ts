@@ -94,9 +94,9 @@ export async function getActiveSessions(options?: { branchId?: string, role?: st
         .reverse()
         .sortBy('start_time') as PreCountSession[];
 
-    // 1.1 Filter local by branch if provided
+    // 1.1 Filter local by branch if provided, but allow global sessions (branch_id null)
     if (options?.branchId && options.role === 'branch') {
-        localSessions = localSessions.filter(s => s.branch_id === options.branchId);
+        localSessions = localSessions.filter(s => s.branch_id === options.branchId || !s.branch_id);
     }
 
     // 2. If online, try to fetch/sync from Supabase to get latest counts
@@ -117,9 +117,9 @@ export async function getActiveSessions(options?: { branchId?: string, role?: st
                 `)
                 .eq('status', 'active');
             
-            // Filter by branch on server if branch user
+            // Filter by branch on server if branch user, but allow global sessions (branch_id null)
             if (options?.branchId && options.role === 'branch') {
-                query = query.eq('branch_id', options.branchId);
+                query = query.or(`branch_id.eq.${options.branchId},branch_id.is.null`);
             }
 
             const { data: remoteSessions, error: sError } = await query;
@@ -427,3 +427,54 @@ export async function updateLocationStatus(sessionId: string, locationTag: strin
         });
     }
 }
+
+/**
+ * Direct lookup for a session by its sync PIN.
+ * Used when a device tries to join but doesn't have the session in its local list yet.
+ */
+export async function getSessionByPin(pin: string): Promise<PreCountSession | null> {
+    if (!navigator.onLine) return null;
+
+    try {
+        const { data, error } = await supabase
+            .from('precount_sessions')
+            .select(`
+                *,
+                items:precount_items(quantity)
+            `)
+            .eq('sync_pin', pin)
+            .eq('status', 'active')
+            .single();
+
+        if (error || !data) return null;
+
+        const sessionData = data as any;
+        
+        // Calculate totals from items
+        const remoteTotalProducts = sessionData.items?.length || 0;
+        const remoteTotalUnits = sessionData.items?.reduce((sum: number, it: any) => sum + (it.quantity || 0), 0) || 0;
+
+        const session: PreCountSession = {
+            id: sessionData.id,
+            sector: sessionData.sector,
+            start_time: sessionData.start_time,
+            status: sessionData.status,
+            user_id: sessionData.user_id,
+            branch_id: sessionData.branch_id,
+            sync_pin: sessionData.sync_pin,
+            master_catalog: sessionData.master_catalog || [],
+            synced: 1,
+            totalProducts: remoteTotalProducts,
+            totalUnits: remoteTotalUnits
+        };
+
+        // Save to local DB so it's available for the app
+        await db.sessions.put(session as any);
+
+        return session;
+    } catch (err) {
+        console.error('Error fetching session by PIN:', err);
+        return null;
+    }
+}
+

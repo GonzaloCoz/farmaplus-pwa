@@ -56,6 +56,8 @@ interface BranchSummary {
     progress: number;
     inventoryUnits: number;
     differenceUnits: number;
+    positiveDiffUnits: number;
+    negativeDiffUnits: number;
     adjustmentsValue: number;
     status: 'controlado' | 'por_controlar' | 'pendiente';
 }
@@ -130,11 +132,15 @@ const columns: ColumnDef<BranchSummary>[] = [
         accessorKey: 'deploymentDate',
         header: 'Fecha Inicio',
         size: 120,
-        cell: ({ row }) => (
-            <div className="font-medium font-mono text-muted-foreground whitespace-nowrap">
-                {row.getValue('deploymentDate')}
-            </div>
-        ),
+        cell: ({ row }) => {
+            const date = row.getValue('deploymentDate') as string;
+            const shortDate = date && date.includes('/') ? date.split('/').slice(0, 2).join('/') : date;
+            return (
+                <div className="font-light text-muted-foreground tabular-nums whitespace-nowrap">
+                    {shortDate}
+                </div>
+            );
+        },
     },
     {
         accessorKey: 'remainingDays',
@@ -158,7 +164,7 @@ const columns: ColumnDef<BranchSummary>[] = [
         header: 'Vuelta',
         size: 60,
         cell: ({ row }) => (
-            <div className="text-muted-foreground tabular-nums">
+            <div className="text-muted-foreground/70 font-light tabular-nums">
                 {row.getValue('cyclicRound')}ª
             </div>
         ),
@@ -181,25 +187,55 @@ const columns: ColumnDef<BranchSummary>[] = [
         header: 'Unidades',
         size: 90,
         cell: ({ row }) => (
-            <div className="text-muted-foreground tabular-nums">
+            <div className="text-muted-foreground/80 font-light tabular-nums">
                 {(row.getValue('inventoryUnits') as number).toLocaleString('es-AR')}
             </div>
         ),
     },
     {
+        accessorKey: 'positiveDiffUnits',
+        header: 'Sobrantes',
+        size: 90,
+        cell: ({ row }) => {
+            const pos = Number(row.original.positiveDiffUnits || 0);
+            if (pos === 0) return <span className="text-muted-foreground/40 font-light ml-4">–</span>;
+            return (
+                <Badge variant="outline" className="font-normal bg-background/50 border-border/40 px-1.5 h-5 gap-1.5 ml-1">
+                    <span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-500" />
+                    <span className="tabular-nums">+{pos.toLocaleString('es-AR')}</span>
+                </Badge>
+            );
+        },
+    },
+    {
+        accessorKey: 'negativeDiffUnits',
+        header: 'Faltantes',
+        size: 90,
+        cell: ({ row }) => {
+            const neg = Number(row.original.negativeDiffUnits || 0);
+            if (neg === 0) return <span className="text-muted-foreground/40 font-light ml-4">–</span>;
+            return (
+                <Badge variant="outline" className="font-normal bg-background/50 border-border/40 px-1.5 h-5 gap-1.5 ml-1">
+                    <span aria-hidden="true" className="size-1.5 rounded-full bg-red-500" />
+                    <span className="tabular-nums">{neg.toLocaleString('es-AR')}</span>
+                </Badge>
+            );
+        },
+    },
+    {
         accessorKey: 'differenceUnits',
-        header: 'Diferencia',
-        size: 100,
+        header: 'Diferencia Neta',
+        size: 110,
         cell: ({ row }) => {
             const diff = row.getValue('differenceUnits') as number;
-            if (diff === 0) return <span className="text-muted-foreground">–</span>;
+            if (diff === 0) return <span className="text-muted-foreground/45 font-light ml-4">–</span>;
             return (
-                <Badge variant="outline">
+                <Badge variant="outline" className="font-normal bg-background/50 border-border/40 px-1.5 h-5 gap-1.5">
                     <span
                         aria-hidden="true"
                         className={cn("size-1.5 rounded-full", diff > 0 ? "bg-emerald-500" : "bg-red-500")}
                     />
-                    {diff > 0 ? '+' : ''}{diff}
+                    <span className="tabular-nums">{diff > 0 ? '+' : ''}{diff.toLocaleString('es-AR')}</span>
                 </Badge>
             );
         },
@@ -222,12 +258,12 @@ const columns: ColumnDef<BranchSummary>[] = [
     },
     {
         accessorKey: 'status',
-        header: 'Status',
-        size: 120,
+        header: 'Estado',
+        size: 110,
         cell: ({ row }) => {
             const status = row.getValue('status') as BranchSummary['status'];
             return (
-                <Badge variant="outline">
+                <Badge variant="outline" className="font-normal bg-background/50 border-border/40 px-1.5 h-5 gap-1.5 py-0">
                     <span
                         aria-hidden="true"
                         className={cn("size-1.5 rounded-full", getStatusColor(status))}
@@ -373,7 +409,7 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                                             <TableHead
                                                 key={header.id}
                                                 style={columnSize ? { width: `${columnSize}px` } : undefined}
-                                                className="h-11 border-none bg-transparent"
+                                                className="h-10 border-none bg-transparent text-muted-foreground font-medium text-[13px]"
                                             >
                                                 {header.isPlaceholder ? null : header.column.getCanSort() ? (
                                                     <div

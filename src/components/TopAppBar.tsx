@@ -9,27 +9,32 @@ export function TopAppBar() {
     const [isScrolled, setIsScrolled] = useState(false);
 
     useEffect(() => {
-        const mainContent = document.getElementById("main-content");
-        if (!mainContent) return;
-
-        const handleScroll = () => {
-            setIsScrolled(mainContent.scrollTop > 10);
+        const handleScroll = (e: Event) => {
+            const target = e.target as HTMLElement;
+            // Detect scroll in any child of main-content (individual windows)
+            if (target && (target.id === "main-content" || target.closest("#main-content"))) {
+                setIsScrolled(target.scrollTop > 10);
+            }
         };
 
-        mainContent.addEventListener("scroll", handleScroll);
-        return () => mainContent.removeEventListener("scroll", handleScroll);
+        window.addEventListener("scroll", handleScroll, true);
+        return () => window.removeEventListener("scroll", handleScroll, true);
     }, []);
 
     return (
         <header
+            style={{ 
+                height: 'var(--total-header-height)',
+                paddingTop: 'var(--safe-top)'
+            }}
             className={cn(
-                "absolute top-0 left-0 right-0 z-40 w-full transition-all duration-300 lg:hidden",
+                "fixed top-0 left-0 right-0 z-40 w-full transition-all duration-300 lg:hidden top-app-bar",
                 isScrolled
-                    ? "bg-background/80 backdrop-blur-md shadow-sm border-b supports-[backdrop-filter]:bg-background/60"
+                    ? "bg-background/80  shadow-sm border-b supports-[backdrop-filter]:bg-background/60"
                     : "bg-transparent border-b-0"
             )}
         >
-            <div className="flex h-16 items-center justify-between px-4">
+            <div className="flex items-center justify-between px-4" style={{ height: 'var(--header-height)' }}>
                 {/* Logo Left */}
                 <div className="flex items-center">
                     <img src={Logo} alt="Farmaplus" className="h-7 w-auto" />
@@ -45,3 +50,4 @@ export function TopAppBar() {
         </header>
     );
 }
+

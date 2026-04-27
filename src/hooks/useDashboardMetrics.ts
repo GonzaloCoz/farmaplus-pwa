@@ -172,9 +172,11 @@ export function useDashboardMetrics() {
     }, [inventories, activeProductCount]);
 
     const globalProgress = useMemo(() => {
+        // Include all laboratories regardless of item count to match the new Coverage logic
         if (!inventories.length) return 0;
-        const controlled = inventories.filter((i: any) => i.status === 'controlado').length;
-        return Math.round((controlled / inventories.length) * 100);
+        
+        const touched = inventories.filter((i: any) => i.status === 'controlado' || i.status === 'por_controlar').length;
+        return Math.round((touched / inventories.length) * 100);
     }, [inventories]);
 
     return {

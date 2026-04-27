@@ -55,7 +55,7 @@ export default function CustomCalendar({
   const handlePrev = () => setCurrentMonth(prev => subMonths(prev, 1));
   const handleNext = () => setCurrentMonth(prev => addMonths(prev, 1));
 
-  const dayButtonSize = "h-10 w-10"; // similar to sidebar icon sizes
+  const dayButtonSize = "h-9 w-9"; // refined size for origin ui look
 
   return (
     <div className={`w-full ${className || ''}`}>
@@ -63,7 +63,7 @@ export default function CustomCalendar({
         <button onClick={handlePrev} className="p-1 rounded hover:bg-muted/50">
           <ChevronLeft className="h-5 w-5 text-muted-foreground" />
         </button>
-        <div className="text-sm font-semibold">{format(monthStart, "LLLL yyyy", { locale: es })}</div>
+        <div className="text-[13px] font-medium tracking-tight px-1 lowercase">{format(monthStart, "LLLL yyyy", { locale: es })}</div>
         <button onClick={handleNext} className="p-1 rounded hover:bg-muted/50">
           <ChevronRight className="h-5 w-5 text-muted-foreground" />
         </button>
@@ -72,7 +72,7 @@ export default function CustomCalendar({
       <div className="grid grid-cols-7 gap-1 px-1 text-xs text-muted-foreground mb-1">
         {['LU', 'MA', 'MI', 'JU', 'VI', 'SA', 'DO'].map((lab, i) => (
           <div key={i} className="flex items-center justify-center">
-            <div className="h-10 w-10 flex items-center justify-center font-medium uppercase">{lab}</div>
+            <div className="h-9 w-9 flex items-center justify-center font-medium">{lab}</div>
           </div>
         ))}
       </div>
@@ -94,10 +94,10 @@ export default function CustomCalendar({
               });
 
               const outerClasses = selectedDay
-                ? 'bg-primary text-primary-foreground'
+                ? 'bg-foreground text-background font-semibold hover:bg-foreground/90'
                 : isNear
-                  ? 'hover:bg-primary/10 ring-2 ring-accent'
-                  : 'hover:bg-primary/10';
+                  ? 'hover:bg-muted ring-1 ring-border shadow-sm'
+                  : 'hover:bg-muted';
 
               const dayButton = (
                 <button

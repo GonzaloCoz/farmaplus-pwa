@@ -21,7 +21,7 @@ export function GlobalSearchInput({ onClick, className }: GlobalSearchInputProps
       )}
       onClick={onClick}
     >
-      <InputGroup className="h-12 rounded-2xl border-input bg-background/50 backdrop-blur-sm shadow-sm shadow-black/5 dark:shadow-white/5 group-hover:bg-background transition-all duration-300">
+      <InputGroup className="h-12 rounded-lg border-input bg-background/50 backdrop-blur-sm shadow-sm shadow-black/5 dark:shadow-white/5 group-hover:bg-background transition-all duration-300">
         <InputGroupAddon>
           <Search className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors duration-300" strokeWidth={1.5} />
         </InputGroupAddon>
@@ -53,3 +53,4 @@ export function GlobalSearchInput({ onClick, className }: GlobalSearchInputProps
     </div>
   );
 }
+

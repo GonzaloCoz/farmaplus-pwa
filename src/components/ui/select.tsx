@@ -9,7 +9,7 @@ import {
   ChevronsUpDownIcon,
   ChevronUpIcon,
 } from "lucide-react";
-import type * as React from "react";
+import * as React from "react";
 import { cn } from "@/lib/utils";
 
 export const Select: typeof SelectPrimitive.Root = SelectPrimitive.Root;
@@ -34,38 +34,37 @@ export const selectTriggerIconClassName = "-me-1 size-4.5 opacity-80 sm:size-4";
 
 export interface SelectButtonProps extends useRender.ComponentProps<"button"> {
   size?: VariantProps<typeof selectTriggerVariants>["size"];
+  variant?: string;
 }
 
-export function SelectButton({
-  className,
-  size,
-  render,
-  children,
-  ...props
-}: SelectButtonProps): React.ReactElement {
-  const typeValue: React.ButtonHTMLAttributes<HTMLButtonElement>["type"] =
-    render ? undefined : "button";
+export const SelectButton = React.forwardRef<HTMLButtonElement, SelectButtonProps>(
+  ({ className, size, render, children, ...props }, ref): React.ReactElement => {
+    const typeValue: React.ButtonHTMLAttributes<HTMLButtonElement>["type"] =
+      render ? undefined : "button";
 
-  const defaultProps = {
-    children: (
-      <>
-        <span className="flex-1 truncate in-data-placeholder:text-muted-foreground/72">
-          {children}
-        </span>
-        <ChevronsUpDownIcon className={selectTriggerIconClassName} />
-      </>
-    ),
-    className: cn(selectTriggerVariants({ size }), "min-w-0", className),
-    "data-slot": "select-button",
-    type: typeValue,
-  };
+    const defaultProps = {
+      children: (
+        <>
+          <span className="flex-1 truncate in-data-placeholder:text-muted-foreground/72">
+            {children}
+          </span>
+          <ChevronsUpDownIcon className={selectTriggerIconClassName} />
+        </>
+      ),
+      className: cn(selectTriggerVariants({ size }), "min-w-0", className),
+      "data-slot": "select-button",
+      type: typeValue,
+      ref,
+    };
 
-  return useRender({
-    defaultTagName: "button",
-    props: mergeProps<"button">(defaultProps, props),
-    render,
-  });
-}
+    return useRender({
+      defaultTagName: "button",
+      props: mergeProps<"button">(defaultProps, props),
+      render,
+    });
+  },
+);
+SelectButton.displayName = "SelectButton";
 
 export function SelectTrigger({
   className,

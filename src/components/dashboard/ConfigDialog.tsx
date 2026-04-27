@@ -93,7 +93,7 @@ export function ConfigDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-md md:max-w-lg lg:max-w-xl max-h-[85vh] overflow-y-auto scrollbar-hide flex flex-col p-0 border-primary/20 bg-background/95 backdrop-blur-xl shadow-2xl">
+            <DialogContent className="max-w-md md:max-w-lg lg:max-w-xl max-h-[85vh] overflow-y-auto scrollbar-hide flex flex-col p-0 border-primary/20 bg-background  shadow-md">
                 <div className="p-6 pb-0">
                     <DialogHeader>
                         <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-primary to-primary-light bg-clip-text text-transparent">Configurar Plazo de Inventario</DialogTitle>
@@ -136,7 +136,7 @@ export function ConfigDialog({
                         </div>
 
                         {/* Branch List with Card styling */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 border rounded-2xl bg-muted/10 h-[220px] overflow-y-auto p-3 hover:border-primary/20 transition-all shadow-inner custom-scrollbar">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 border rounded-lg bg-muted/10 h-[220px] overflow-y-auto p-3 hover:border-primary/20 transition-all shadow-inner custom-scrollbar">
                             {filteredBranches.map(branch => (
                                 <div
                                     key={branch}
@@ -245,7 +245,7 @@ export function ConfigDialog({
                 {/* Footer with Floating Action Button style */}
                 <div className="p-6 pt-2 bg-gradient-to-t from-background to-transparent sticky bottom-0 z-20">
                     <Button
-                        className="w-full h-14 text-lg font-bold shadow-2xl shadow-primary/30 rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98]"
+                        className="w-full h-14 text-lg font-bold shadow-md shadow-primary/30 rounded-lg transition-all hover:scale-[1.02] active:scale-[0.98]"
                         onClick={handleSave}
                         disabled={isSaving}
                     >
@@ -263,3 +263,4 @@ export function ConfigDialog({
         </Dialog>
     );
 }
+

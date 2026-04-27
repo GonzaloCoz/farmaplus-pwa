@@ -5,7 +5,7 @@ export function SplashScreen() {
             <div className="relative">
                 {/* Logo Container with Pulse Effect */}
                 <div className="w-20 h-20 bg-primary/20 rounded-full animate-ping absolute inset-0" />
-                <div className="w-20 h-20 bg-background rounded-full relative flex items-center justify-center border-2 border-primary shadow-xl z-10">
+                <div className="w-20 h-20 bg-background rounded-full relative flex items-center justify-center border-2 border-primary shadow-sm z-10">
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
                         viewBox="0 0 24 24"
@@ -39,3 +39,4 @@ export function SplashScreen() {
         </div>
     );
 }
+

@@ -376,7 +376,7 @@ export async function getLocationStatus(sessionId: string, locationTag: string) 
 
     // 2. Remote check if online
     if (navigator.onLine) {
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
             .from('precount_location_status')
             .select('*')
             .eq('session_id', sessionId)
@@ -384,13 +384,14 @@ export async function getLocationStatus(sessionId: string, locationTag: string) 
             .maybeSingle();
         
         if (data && !error) {
+            const statusData = data as any;
             await db.locations.put({
                 session_id: sessionId,
                 location_tag: locationTag,
-                status: data.status,
-                closed_at: data.closed_at
+                status: statusData.status,
+                closed_at: statusData.closed_at
             });
-            return data;
+            return statusData;
         }
     }
     return null;
@@ -409,7 +410,7 @@ export async function updateLocationStatus(sessionId: string, locationTag: strin
 
     // 2. Sync
     if (navigator.onLine) {
-        await supabase.rpc('toggle_precount_location', {
+        await (supabase as any).rpc('toggle_precount_location', {
             p_session_id: sessionId,
             p_location_tag: locationTag,
             p_status: status
@@ -436,7 +437,7 @@ export async function getSessionByPin(pin: string): Promise<PreCountSession | nu
     if (!navigator.onLine) return null;
 
     try {
-        const { data, error } = await supabase
+        const { data, error } = await (supabase as any)
             .from('precount_sessions')
             .select(`
                 *,

@@ -10,7 +10,7 @@ import {
     useReactTable,
 } from '@tanstack/react-table';
 import { CardHeader } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -44,6 +44,27 @@ import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { useUser } from '@/contexts/UserContext';
 import { useUserBranches } from '@/hooks/useUserBranches';
 import { useQuery } from '@tanstack/react-query';
+import { ZONALES, getBranchesByZonales, type Zonal } from '@/config/zonales';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+    Combobox,
+    ComboboxEmpty,
+    ComboboxInput,
+    ComboboxItem,
+    ComboboxList,
+    ComboboxPopup,
+    ComboboxTrigger,
+} from '@/components/ui/combobox';
+import { Group, GroupSeparator, GroupText } from '@/components/ui/group';
+import { 
+    Search as SearchIcon, 
+    Filter as FilterIcon, 
+    X as XIcon, 
+    ChevronDown as ChevronDownIcon,
+    ChevronsUpDown as ChevronsUpDownIcon,
+    Download as DownloadIcon,
+    TrendingUp as TrendingUpIcon
+} from 'lucide-react';
 
 interface BranchSummary {
     branchName: string;
@@ -88,6 +109,35 @@ const getStatusLabel = (status: BranchSummary['status']) => {
             return status;
     }
 };
+
+function getInitials(name: string): string {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) {
+        return parts[0]?.charAt(0).toUpperCase() ?? "";
+    }
+    const first = parts[0]?.charAt(0) ?? "";
+    const last = parts[parts.length - 1]?.charAt(0) ?? "";
+    return (first + last).toUpperCase();
+}
+
+function MemberAvatar({
+    name,
+    avatarUrl,
+    className,
+}: {
+    name: string;
+    avatarUrl?: string;
+    className?: string;
+}) {
+    return (
+        <Avatar className={cn("size-5", className)}>
+            {avatarUrl ? <AvatarImage alt={name} src={avatarUrl} /> : null}
+            <AvatarFallback className="text-[0.5rem] font-bold">
+                {getInitials(name)}
+            </AvatarFallback>
+        </Avatar>
+    );
+}
 
 // Column definitions (matching p-table-4 structure exactly)
 const columns: ColumnDef<BranchSummary>[] = [
@@ -283,6 +333,7 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
     const { selectBranch, clearBranchSelection, user } = useUser();
     const { availableBranches } = useUserBranches();
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedZonales, setSelectedZonales] = useState<Zonal[]>([]);
     const pageSize = 10;
 
     const [pagination, setPagination] = useState<PaginationState>({
@@ -309,11 +360,48 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
     });
 
     const filteredData = useMemo(() => {
-        if (!searchTerm) return branchSummaries;
-        return branchSummaries.filter(
-            (branch) => branch.branchName.toLowerCase().includes(searchTerm.toLowerCase())
+        let data = branchSummaries;
+
+        // Filter by Zonales
+        if (selectedZonales.length > 0) {
+            const allowedBranches = getBranchesByZonales(selectedZonales.map(z => z.id));
+            const normalizedAllowed = allowedBranches.map(b => normalizeString(b));
+            data = data.filter(branch => 
+                normalizedAllowed.includes(normalizeString(branch.branchName))
+            );
+        }
+
+        // Filter by search term
+        if (searchTerm) {
+            const searchLower = searchTerm.toLowerCase();
+            data = data.filter(
+                (branch) => branch.branchName.toLowerCase().includes(searchLower)
+            );
+        }
+
+        return data;
+    }, [branchSummaries, searchTerm, selectedZonales]);
+
+    const renderZonalesTrigger = () => {
+        if (selectedZonales.length === 0) return "Todos";
+        const firstMember = selectedZonales[0];
+        const remainingCount = selectedZonales.length - 1;
+
+        return (
+            <div className="flex items-center gap-2">
+                <MemberAvatar
+                    avatarUrl={firstMember?.avatar}
+                    name={firstMember?.label ?? ""}
+                />
+                <span className="truncate max-w-[100px]">{firstMember?.label}</span>
+                {remainingCount > 0 && (
+                    <Badge className="tabular-nums h-4 px-1 text-[10px]" variant="secondary">
+                        +{remainingCount}
+                    </Badge>
+                )}
+            </div>
         );
-    }, [branchSummaries, searchTerm]);
+    };
 
     const table = useReactTable({
         columns,
@@ -371,16 +459,16 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 w-full">
                     <div className="flex flex-col gap-0.5">
                         <FrameTitle className="text-2xl flex items-center gap-2">
-                            <TrendingUp className="size-6 text-primary" />
+                            <TrendingUpIcon className="size-6 text-primary" />
                             Monitor de Sucursales
                         </FrameTitle>
                         <FrameDescription>
                             Estado en tiempo real de inventarios cíclicos.
                         </FrameDescription>
                     </div>
-                    <div className="flex items-center gap-3 w-full md:w-auto">
-                        <div className="relative flex-1 md:w-64">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                    <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                        <div className="relative flex-1 min-w-[200px] md:w-48 lg:w-64">
+                            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                             <Input
                                 placeholder="Buscar sucursal..."
                                 value={searchTerm}
@@ -388,8 +476,83 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                                 className="pl-10 h-9 bg-background/40 border-border/30 rounded-xl"
                             />
                         </div>
-                        <Button onClick={exportToExcel} variant="outline" size="sm" className="h-9 gap-2 shadow-xs ring-offset-background">
-                            <Download className="size-4 opacity-50" aria-hidden="true" />
+
+                        <Group className="items-center">
+                            <GroupText
+                                className={cn(
+                                    buttonVariants({ size: "sm", variant: "outline" }),
+                                    "pointer-events-none h-9 px-3 gap-2 border-border/40"
+                                )}
+                            >
+                                <FilterIcon className="size-3.5 opacity-60" />
+                                <span className="text-[13px] font-medium">Zonal</span>
+                            </GroupText>
+                            <GroupSeparator className="bg-border/40" />
+                            <Combobox
+                                autoHighlight
+                                items={ZONALES}
+                                multiple
+                                onValueChange={(value) => {
+                                    if (Array.isArray(value)) {
+                                        setSelectedZonales(value);
+                                    }
+                                }}
+                                value={selectedZonales}
+                            >
+                                <ComboboxTrigger
+                                    render={
+                                        <Button
+                                            className={cn(
+                                                "h-9 min-w-[100px] lg:min-w-[120px] transition-all border-border/40 shadow-none",
+                                                selectedZonales.length === 0 ? "justify-between" : undefined
+                                            )}
+                                            size="sm"
+                                            variant="outline"
+                                        />
+                                    }
+                                >
+                                    {renderZonalesTrigger()}
+                                    {selectedZonales.length === 0 && (
+                                        <ChevronsUpDownIcon className="size-3.5 opacity-50 ml-1" />
+                                    )}
+                                </ComboboxTrigger>
+                                <ComboboxPopup aria-label="Select zonal" className="rounded-xl shadow-2xl border-border/40">
+                                    <div className="border-b border-border/40 p-2">
+                                        <ComboboxInput
+                                            className="rounded-lg ps-9"
+                                            placeholder="Buscar zonal..."
+                                            showTrigger={false}
+                                            startAddon={<SearchIcon className="size-4 opacity-50" />}
+                                        />
+                                    </div>
+                                    <ComboboxEmpty>No se encontraron zonales.</ComboboxEmpty>
+                                    <ComboboxList>
+                                        {(option: Zonal) => (
+                                            <ComboboxItem key={option.id} value={option}>
+                                                <div className="flex items-center gap-2">
+                                                    <MemberAvatar avatarUrl={option.avatar} name={option.label} />
+                                                    <span>{option.label}</span>
+                                                </div>
+                                            </ComboboxItem>
+                                        )}
+                                    </ComboboxList>
+                                </ComboboxPopup>
+                            </Combobox>
+                            <GroupSeparator className="bg-border/40" />
+                            <Button
+                                aria-label="Remove filter"
+                                onClick={() => setSelectedZonales([])}
+                                size="icon-sm"
+                                variant="outline"
+                                className="h-9 w-9 border-border/40 shadow-none"
+                                disabled={selectedZonales.length === 0}
+                            >
+                                <XIcon className="size-3.5 opacity-50" />
+                            </Button>
+                        </Group>
+
+                        <Button onClick={exportToExcel} variant="outline" size="sm" className="h-9 gap-2 shadow-sm border-border/40">
+                            <DownloadIcon className="size-4 opacity-60" aria-hidden="true" />
                             <span className="hidden sm:inline">Exportar</span>
                         </Button>
                     </div>

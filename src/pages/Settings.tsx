@@ -1040,11 +1040,13 @@ export default function Settings() {
                   </Alert>
 
                   <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="destructive" disabled={isPurging} className="w-full sm:w-auto">
-                        {isPurging ? 'Limpiando...' : 'Limpiar Todo el Sistema (Pre-Lanzamiento)'}
-                      </Button>
-                    </AlertDialogTrigger>
+                    <AlertDialogTrigger
+                      render={
+                        <Button variant="destructive" disabled={isPurging} className="w-full sm:w-auto">
+                          {isPurging ? 'Limpiando...' : 'Limpiar Todo el Sistema (Pre-Lanzamiento)'}
+                        </Button>
+                      }
+                    />
                     <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle>¿Estás absolutamente seguro?</AlertDialogTitle>

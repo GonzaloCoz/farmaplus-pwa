@@ -51,7 +51,7 @@ import {
     DrawerTitle,
     DrawerDescription,
 } from '@/components/ui/drawer';
-import { MasterCatalogItem, getSessionByPin } from '@/services/preCountDB';
+import { MasterCatalogItem, getSessionByPin, PreCountSession } from '@/services/preCountDB';
 import { Product, getProductByEAN, addProducts } from '@/services/productService';
 import { notify } from '@/lib/notifications';
 import { AnimatedCounter } from '@/components/AnimatedCounter';

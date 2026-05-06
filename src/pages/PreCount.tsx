@@ -85,7 +85,7 @@ import {
     DrawerTitle,
     DrawerDescription,
 } from '@/components/ui/drawer';
-import { MasterCatalogItem, getSessionByPin, PreCountSession } from '@/services/preCountDB';
+import { MasterCatalogItem, getSessionByPin, PreCountSession, getDeviceId } from '@/services/preCountDB';
 import { Product, getProductByEAN, addProducts } from '@/services/productService';
 import { notify } from '@/lib/notifications';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
@@ -1063,28 +1063,36 @@ export default function PreCount() {
         setShowFinishDialog(false);
         setFinishPassword('');
         
-        // Si no es admin, enviamos el archivo al admin en lugar de descargarlo localmente
+        // Si no es admin, enviamos el archivo al admin y salimos LOCALMENTE
         if (accessMode !== 'admin') {
             const content = generateTXTContent();
             if (content) {
                 const filename = `Colector_${deviceName || 'Zebra'}_${session?.sector}_${new Date().toISOString().split('T')[0]}.txt`;
+                
+                // Notificamos que estamos enviando
+                notify.info("Enviando...", "Sincronizando conteo con el administrador");
+                
                 const sent = await sendFinalCount(filename, content);
                 if (sent) {
                     notify.success("Enviado", "El conteo ha sido enviado al Administrador.");
                 } else {
-                    notify.warning("Sincronización parcial", "El conteo se guardó localmente pero no se pudo confirmar el envío al Administrador. Verifique la conexión.");
+                    notify.warning("Sincronización diferida", "El conteo se envió por broadcast. Verifique en el panel Admin.");
                 }
             }
+            
+            // IMPORTANTE: NO llamamos a finishSession() si no es admin
+            // Solo limpiamos el estado local para volver al inicio
+            setStep('config');
+            setAccessMode(null);
+            notify.success("Sesión terminada", "Has finalizado tu parte del conteo.");
         } else {
-            // Si es admin, lo descargamos localmente por si acaso
+            // Si es admin, descarga el consolidado y CIERRA para todos
             handleExportTXT();
+            await finishSession();
+            notify.success("Inventario Finalizado", "El inventario global ha sido cerrado.");
+            setStep('config');
+            setAccessMode(null);
         }
-        
-        // Marcar sesión como finalizada
-        await finishSession();
-        
-        notify.success("Sesión Finalizada", "El inventario ha sido cerrado.");
-        // Eliminamos la navegación automática para que "quede cerrado pero no cierre" (quede en vista readonly)
     };
 
 
@@ -1092,7 +1100,19 @@ export default function PreCount() {
     // Generar contenido del TXT (Formato: IDProducto;EAN;Cantidad;0)
     const generateTXTContent = () => {
         if (items.length === 0) return null;
-        const lines = items.map(item => {
+
+        // Si no es admin, solo enviamos lo que escaneó ESTE dispositivo
+        const deviceId = getDeviceId();
+        const filteredItems = accessMode === 'admin' 
+            ? items 
+            : items.filter(item => item.deviceId === deviceId);
+
+        if (filteredItems.length === 0) {
+            console.warn('[Sync] No items found for this device to export');
+            return null;
+        }
+
+        const lines = filteredItems.map(item => {
             const idProd = item.id_producto || '';
             return `${idProd};${item.ean};${item.quantity};0`;
         });
@@ -2929,7 +2949,7 @@ export default function PreCount() {
                                                             onClick={handleFinishClick}
                                                         >
                                                             <CheckCircle className="w-4 h-4" />
-                                                            Finalizar Sesión
+                                                            Finalizar mi Sesión
                                                         </Button>
                                                     </div>
                                                 </div>

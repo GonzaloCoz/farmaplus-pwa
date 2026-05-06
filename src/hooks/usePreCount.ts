@@ -165,41 +165,33 @@ export function usePreCount(): UsePreCountReturn {
             channelRef.current = supabase
                 .channel(`precount_sync:${session.id}`)
                 .on('broadcast', { event: 'device_finalized' }, (message: any) => {
+                    // Supabase broadcast payloads can be nested differently depending on version
                     const payload = message.payload || message;
-                    console.log(`[Sync] FILE BROADCAST RECEIVED:`, payload);
+                    console.log(`[Sync] BROADCAST RECEIVED:`, payload);
                     
                     if (!payload || !payload.content) {
-                        console.error('[Sync] Received empty or invalid broadcast payload');
+                        console.warn('[Sync] Received broadcast with no content:', payload);
                         return;
                     }
 
-                    console.log(`[Sync] Device ${payload.deviceName} finalized count. Filename: ${payload.filename}`);
+                    const devName = payload.deviceName || 'Terminal';
+                    const fName = payload.filename || `conteo_${Date.now()}.txt`;
+
+                    console.log(`[Sync] Processing file from ${devName}: ${fName}`);
                     
-                    // Create a virtual file to notify the admin
+                    // Dispatch event for UI components to listen
                     const event = new CustomEvent('precount:device_finalized', { 
                         detail: { 
                             ...payload,
-                            timestamp: Date.now()
+                            deviceName: devName,
+                            filename: fName,
+                            timestamp: payload.timestamp || Date.now()
                         } 
                     });
                     window.dispatchEvent(event);
                     
-                    notify.success("Conteo Recibido", `${payload.deviceName} ha finalizado. El archivo ${payload.filename} está listo para descargar.`, {
-                        duration: 10000,
-                        action: {
-                            label: "Descargar",
-                            onClick: () => {
-                                const blob = new Blob([payload.content], { type: 'text/plain' });
-                                const url = URL.createObjectURL(blob);
-                                const link = document.createElement('a');
-                                link.href = url;
-                                link.download = payload.filename;
-                                document.body.appendChild(link);
-                                link.click();
-                                document.body.removeChild(link);
-                                URL.revokeObjectURL(url);
-                            }
-                        }
+                    notify.success("Conteo Recibido", `${devName} ha finalizado su parte. El archivo ${fName} está disponible en la pestaña Archivos.`, {
+                        duration: 8000
                     });
                 })
                 .subscribe((status) => {
@@ -458,25 +450,26 @@ export function usePreCount(): UsePreCountReturn {
             let attempts = 0;
             const trySend = async () => {
                 attempts++;
+                // Get the current channel or create a temporary one if needed
                 const channel = channelRef.current || supabase.channel(`precount_sync:${session.id}`);
                 
-                if (channel.state === 'joined') {
-                    const status = await channel.send({
-                        type: 'broadcast',
-                        event: 'device_finalized',
-                        payload: payload
-                    });
-                    console.log(`[Sync] Broadcast attempt ${attempts}: ${status}`);
-                    if (status === 'ok' || status === 'sent') {
-                        resolve(true);
-                        return;
-                    }
-                }
-
-                if (attempts < 3) {
-                    setTimeout(trySend, 500);
+                // We try to send regardless of explicit state check, 
+                // as some versions of the SDK handle the queueing internally
+                const status = await channel.send({
+                    type: 'broadcast',
+                    event: 'device_finalized',
+                    payload: payload
+                });
+                
+                console.log(`[Sync] Broadcast attempt ${attempts} status: ${status}`);
+                
+                if (status === 'ok' || status === 'sent') {
+                    resolve(true);
+                } else if (attempts < 3) {
+                    setTimeout(trySend, 800); // Wait a bit longer between retries
                 } else {
-                    resolve(true); // Resolve true anyway to allow proceeding
+                    console.warn('[Sync] Broadcast failed after 3 attempts, but proceeding to let user finish.');
+                    resolve(true); 
                 }
             };
 

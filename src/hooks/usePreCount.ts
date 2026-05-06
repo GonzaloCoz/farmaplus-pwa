@@ -42,6 +42,7 @@ interface UsePreCountReturn {
     isLoading: boolean;
     availableSessions: PreCountSession[];
     connectedDevices: ConnectedDevice[];
+    receivedFiles: ReceivedFile[];
     startSession: (sector: string, masterCatalog?: any[], syncPin?: string) => Promise<void>;
     resumeSession: (session: PreCountSession) => Promise<void>;
     deleteSession: (id: string) => Promise<void>;
@@ -61,12 +62,23 @@ export interface ConnectedDevice {
     joinedAt: number;
 }
 
+export interface ReceivedFile {
+    id: string;
+    filename: string;
+    content: string;
+    deviceName: string;
+    deviceId: string;
+    timestamp: number;
+    size: number;
+}
+
 
 export function usePreCount(): UsePreCountReturn {
     const [session, setSession] = useState<PreCountSession | null>(null);
     const [errorCount, setErrorCount] = useState(0);
     const [availableSessions, setAvailableSessions] = useState<PreCountSession[]>([]);
     const [connectedDevices, setConnectedDevices] = useState<ConnectedDevice[]>([]);
+    const [receivedFiles, setReceivedFiles] = useState<ReceivedFile[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const { user } = useUser();
 
@@ -146,7 +158,36 @@ export function usePreCount(): UsePreCountReturn {
         let presenceChannel: any = null;
         let filesChannel: any = null;
 
+        const fetchExistingFiles = async (sid: string) => {
+            try {
+                console.log(`[Sync] Fetching existing files for session ${sid}...`);
+                const { data, error } = await (supabase as any)
+                    .from('precount_device_files')
+                    .select('*')
+                    .eq('session_id', sid)
+                    .order('created_at', { ascending: false });
+
+                if (error) throw error;
+                if (data) {
+                    const mapped = data.map((f: any) => ({
+                        id: f.id,
+                        filename: f.filename,
+                        content: f.content,
+                        deviceName: f.device_name || 'Terminal',
+                        deviceId: f.device_id,
+                        timestamp: new Date(f.created_at).getTime(),
+                        size: f.content?.length || 0
+                    }));
+                    setReceivedFiles(mapped);
+                    console.log(`[Sync] Loaded ${mapped.length} existing files`);
+                }
+            } catch (err) {
+                console.error('[Sync] Error fetching existing files:', err);
+            }
+        };
+
         if (session) {
+            fetchExistingFiles(session.id);
             // Presence tracking
             presenceChannel = supabase
                 .channel(`precount_presence:${session.id}`)
@@ -215,6 +256,22 @@ export function usePreCount(): UsePreCountReturn {
                             `${newFile.device_name || 'Terminal'} envió ${newFile.filename}. Disponible en la pestaña Archivos.`,
                             { duration: 8000 }
                         );
+
+                        // Update local state
+                        const mappedFile: ReceivedFile = {
+                            id: newFile.id,
+                            filename: newFile.filename,
+                            content: newFile.content,
+                            deviceName: newFile.device_name || 'Terminal',
+                            deviceId: newFile.device_id,
+                            timestamp: new Date(newFile.created_at).getTime(),
+                            size: newFile.content?.length || 0
+                        };
+
+                        setReceivedFiles(prev => {
+                            if (prev.find(f => f.id === mappedFile.id)) return prev;
+                            return [mappedFile, ...prev];
+                        });
                     })
                 .subscribe((status) => {
                     console.log(`[Sync] Device files channel status: ${status}`);
@@ -269,6 +326,9 @@ export function usePreCount(): UsePreCountReturn {
                         await db.items.delete(payload.old.id);
                     })
                 .subscribe();
+        } else {
+            setReceivedFiles([]);
+            setConnectedDevices([]);
         }
 
         return () => {
@@ -529,6 +589,7 @@ export function usePreCount(): UsePreCountReturn {
         isLoading,
         availableSessions,
         connectedDevices,
+        receivedFiles,
         startSession,
         resumeSession,
         deleteSession,

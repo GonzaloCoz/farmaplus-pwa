@@ -266,81 +266,12 @@ export default function PreCount() {
         errorCount,
         registerError,
         connectedDevices,
+        receivedFiles,
         announcePresence,
         sendFinalCount
     } = usePreCount();
 
     // Listener for incoming files from devices (Admin Side)
-    useEffect(() => {
-        if (accessMode !== 'admin') return;
-
-        const handleIncomingFile = (e: any) => {
-            const data = e.detail;
-            console.log('[Sync] Received file event. Data:', { 
-                deviceName: data?.deviceName, 
-                filename: data?.filename, 
-                contentSize: data?.content?.length,
-                isReceived: data?.isReceived
-            });
-
-            if (!data || !data.filename || !data.content) {
-                console.warn('[Sync] Ignored incomplete file data:', data);
-                return;
-            }
-            
-            const { deviceName, filename, content, timestamp } = data;
-            
-            // Switch to files tab automatically for the admin
-            setAdminTab('archivos');
-            
-            // Add to uploaded files list
-            const newFile = {
-                id: `received-${timestamp || Date.now()}`,
-                name: filename,
-                size: content.length,
-                content: content,
-                isReceived: true,
-                from: deviceName || 'Terminal',
-                lastModified: timestamp || Date.now()
-            };
-            
-            setUploadedFiles(prev => {
-                // Evitar duplicados si llegan varios eventos
-                if (prev.find(f => f.id === newFile.id)) return prev;
-                return [newFile, ...prev];
-            });
-            
-            console.log(`[Admin] Received file ${filename} from ${deviceName}`);
-        };
-
-        window.addEventListener('precount:device_finalized', handleIncomingFile);
-        
-        // LocalStorage fallback (Very useful for localhost/same-device testing)
-        const handleStorageChange = (e: StorageEvent) => {
-            if (e.key === 'precount:sync_file' && e.newValue) {
-                try {
-                    const data = JSON.parse(e.newValue);
-                    console.log('[Sync] Received file via LocalStorage fallback. Filename:', data.filename);
-                    handleIncomingFile({ detail: data });
-                    // Clean up after 1s to allow same file to be sent again if needed
-                    setTimeout(() => {
-                        if (localStorage.getItem('precount:sync_file') === e.newValue) {
-                            localStorage.removeItem('precount:sync_file');
-                        }
-                    }, 1000);
-                } catch (err) {
-                    console.error('[Sync] Error parsing fallback file:', err);
-                }
-            }
-        };
-        window.addEventListener('storage', handleStorageChange);
-
-        return () => {
-            window.removeEventListener('precount:device_finalized', handleIncomingFile);
-            window.removeEventListener('storage', handleStorageChange);
-        };
-    }, [accessMode]);
-
     const [elapsedTime, setElapsedTime] = useState('00:00');
 
     // Timer effect for real-time counter
@@ -2334,147 +2265,159 @@ export default function PreCount() {
                                                 </CardFrame>
                                             </TabsPanel>
 
-                                            <TabsPanel value="archivos" className="flex-1 overflow-auto p-4 bg-muted/5 space-y-4">
-                                                <CardFrame className="w-full">
-                                                    <CardFrameHeader className="flex-row items-center justify-between py-3">
-                                                        <div className="flex items-center gap-2">
-                                                            <FileText className="size-4 text-primary" />
-                                                            <CardFrameTitle>Gestión de archivos de inventario</CardFrameTitle>
-                                                        </div>
-                                                        <CardFrameAction className="col-start-auto flex items-center gap-2">
-                                                            <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 font-bold text-[10px]">
-                                                                {uploadedFiles.length} archivos
-                                                            </Badge>
-                                                        </CardFrameAction>
-                                                    </CardFrameHeader>
-                                                    <Card>
-                                                        <CardPanel className="p-4 space-y-4">
-                                                            {/* Drop area style comp-549 */}
-                                                            <div
-                                                                className={cn(
-                                                                    "flex min-h-[160px] flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 transition-all cursor-pointer group",
-                                                                    "border-border/40 hover:border-primary/40 hover:bg-primary/5",
-                                                                    uploadedFiles.length > 0 && "min-h-[120px]"
-                                                                )}
-                                                                onClick={() => {
-                                                                    const input = document.getElementById('admin-file-upload-active');
-                                                                    if (input) input.click();
-                                                                }}
-                                                            >
-                                                                <input
-                                                                    id="admin-file-upload-active"
-                                                                    type="file"
-                                                                    className="sr-only"
-                                                                    multiple
-                                                                    accept=".txt,.csv"
-                                                                    onChange={(e) => {
-                                                                        if (e.target.files) {
-                                                                            const newFiles = Array.from(e.target.files).map(f => ({
-                                                                                id: Math.random().toString(36).substr(2, 9),
-                                                                                name: f.name,
-                                                                                size: f.size,
-                                                                                lastModified: f.lastModified
-                                                                            }));
-                                                                            setUploadedFiles(prev => [...prev, ...newFiles]);
-                                                                        }
-                                                                    }}
-                                                                />
+                                            {(() => {
+                                                const combinedFiles = useMemo(() => {
+                                                    const hookFiles = (receivedFiles || []).map(f => ({
+                                                        id: f.id,
+                                                        name: f.filename,
+                                                        size: f.size,
+                                                        content: f.content,
+                                                        isReceived: true,
+                                                        from: f.deviceName,
+                                                        lastModified: f.timestamp
+                                                    }));
+                                                    
+                                                    const hookFileNames = new Set(hookFiles.map(f => f.name));
+                                                    const manualFiles = uploadedFiles.filter(f => !hookFileNames.has(f.name));
+                                                    
+                                                    return [...hookFiles, ...manualFiles].sort((a, b) => (b.lastModified || 0) - (a.lastModified || 0));
+                                                }, [uploadedFiles, receivedFiles]);
 
-                                                                <div className="flex flex-col items-center justify-center text-center">
-                                                                    <div className="mb-3 flex size-12 shrink-0 items-center justify-center rounded-full border border-border/40 bg-background shadow-sm group-hover:scale-110 transition-transform">
-                                                                        <Upload className="size-5 text-muted-foreground/60 group-hover:text-primary transition-colors" />
-                                                                    </div>
-                                                                    <p className="mb-1 font-bold text-sm text-foreground">Subir archivos de conteo</p>
-                                                                    <p className="mb-3 text-muted-foreground text-[11px]">
-                                                                        Arrastre y suelte sus archivos .txt o haga clic para buscar
-                                                                    </p>
-                                                                    <div className="flex flex-wrap justify-center gap-1.5 text-muted-foreground/50 text-[10px] font-medium">
-                                                                        <span>Solo txt / csv</span>
-                                                                        <span>•</span>
-                                                                        <span>Máx 10 MB</span>
-                                                                    </div>
+                                                return (
+                                                    <TabsPanel value="archivos" className="flex-1 overflow-auto p-4 bg-muted/5 space-y-4">
+                                                        <CardFrame className="w-full">
+                                                            <CardFrameHeader className="flex-row items-center justify-between py-3">
+                                                                <div className="flex items-center gap-2">
+                                                                    <FileText className="size-4 text-primary" />
+                                                                    <CardFrameTitle>Gestión de archivos de inventario</CardFrameTitle>
                                                                 </div>
-                                                            </div>
+                                                                <CardFrameAction className="col-start-auto flex items-center gap-2">
+                                                                    <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 font-bold text-[10px]">
+                                                                        {combinedFiles.length} archivos
+                                                                    </Badge>
+                                                                </CardFrameAction>
+                                                            </CardFrameHeader>
+                                                            <Card>
+                                                                <CardPanel className="p-4 space-y-4">
+                                                                    <div
+                                                                        className={cn(
+                                                                            "flex min-h-[160px] flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 transition-all cursor-pointer group",
+                                                                            "border-border/40 hover:border-primary/40 hover:bg-primary/5",
+                                                                            combinedFiles.length > 0 && "min-h-[120px]"
+                                                                        )}
+                                                                        onClick={() => {
+                                                                            const input = document.getElementById('admin-file-upload-active');
+                                                                            if (input) input.click();
+                                                                        }}
+                                                                    >
+                                                                        <input
+                                                                            id="admin-file-upload-active"
+                                                                            type="file"
+                                                                            className="sr-only"
+                                                                            multiple
+                                                                            accept=".txt,.csv"
+                                                                            onChange={(e) => {
+                                                                                if (e.target.files) {
+                                                                                    const newFiles = Array.from(e.target.files).map(f => ({
+                                                                                        id: Math.random().toString(36).substr(2, 9),
+                                                                                        name: f.name,
+                                                                                        size: f.size,
+                                                                                        lastModified: f.lastModified
+                                                                                    }));
+                                                                                    setUploadedFiles(prev => [...prev, ...newFiles]);
+                                                                                }
+                                                                            }}
+                                                                        />
 
-                                                            {/* File list style comp-549 */}
-                                                            {uploadedFiles.length > 0 && (
-                                                                <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                                                                    <div className="flex items-center justify-between px-1">
-                                                                        <span className="text-sm font-bold text-foreground">Listado de archivos para procesar</span>
-                                                                        <Button 
-                                                                            variant="ghost" 
-                                                                            size="sm" 
-                                                                            className="h-6 text-[10px] font-bold text-destructive hover:bg-destructive/10"
-                                                                            onClick={() => setUploadedFiles([])}
-                                                                        >
-                                                                            Limpiar lista
-                                                                        </Button>
-                                                                    </div>
-                                                                    
-                                                                    <div className="grid gap-2">
-                                                                        {uploadedFiles.map((file) => (
-                                                                            <div
-                                                                                key={file.id}
-                                                                                className="flex items-center justify-between gap-3 rounded-xl border border-border/40 bg-muted/5 p-3 hover:bg-accent/30 transition-colors group/item"
-                                                                            >
-                                                                                <div className="flex items-center gap-3 overflow-hidden">
-                                                                                    <div className="flex aspect-square size-9 shrink-0 items-center justify-center rounded-lg border border-border/40 bg-background shadow-sm">
-                                                                                        <FileText className="size-4 text-primary/70" />
-                                                                                    </div>
-                                                                                    <div className="flex min-w-0 flex-col gap-0.5">
-                                                                                        <p className="truncate font-bold text-[12px] text-foreground">
-                                                                                            {file.name || 'Archivo sin nombre'}
-                                                                                        </p>
-                                                                                        <p className="text-muted-foreground text-[10px] font-medium">
-                                                                                            {file.isReceived ? `Recibido de ${file.from || 'Terminal'}` : `${formatBytes(Number(file.size || 0))} • Listo para procesar`}
-                                                                                        </p>
-                                                                                    </div>
-                                                                                </div>
-
-                                                                                <div className="flex items-center gap-1">
-                                                                                    {file.content && (
-                                                                                        <Button
-                                                                                            variant="ghost"
-                                                                                            size="icon"
-                                                                                            className="size-7 text-primary hover:bg-primary/10 rounded-lg opacity-0 group-hover/item:opacity-100 transition-opacity"
-                                                                                            onClick={() => {
-                                                                                                const blob = new Blob([file.content], { type: 'text/plain' });
-                                                                                                const url = URL.createObjectURL(blob);
-                                                                                                const link = document.createElement('a');
-                                                                                                link.href = url;
-                                                                                                link.download = file.name;
-                                                                                                document.body.appendChild(link);
-                                                                                                link.click();
-                                                                                                document.body.removeChild(link);
-                                                                                                URL.revokeObjectURL(url);
-                                                                                            }}
-                                                                                        >
-                                                                                            <Download className="size-4" />
-                                                                                        </Button>
-                                                                                    )}
-                                                                                    <Button
-                                                                                        variant="ghost"
-                                                                                        size="icon"
-                                                                                        className="size-7 text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 rounded-lg opacity-0 group-hover/item:opacity-100 transition-opacity"
-                                                                                        onClick={() => setUploadedFiles(prev => prev.filter(f => f.id !== file.id))}
-                                                                                    >
-                                                                                        <X aria-hidden="true" className="size-4" />
-                                                                                    </Button>
-                                                                                </div>
+                                                                        <div className="flex flex-col items-center justify-center text-center">
+                                                                            <div className="mb-3 flex size-12 shrink-0 items-center justify-center rounded-full border border-border/40 bg-background shadow-sm group-hover:scale-110 transition-transform">
+                                                                                <Upload className="size-5 text-muted-foreground/60 group-hover:text-primary transition-colors" />
                                                                             </div>
-                                                                        ))}
+                                                                            <p className="mb-1 font-bold text-sm text-foreground">Subir archivos de conteo</p>
+                                                                            <p className="mb-3 text-muted-foreground text-[11px]">
+                                                                                Arrastre y suelte sus archivos .txt o haga clic para buscar
+                                                                            </p>
+                                                                            <div className="flex flex-wrap justify-center gap-1.5 text-muted-foreground/50 text-[10px] font-medium">
+                                                                                <span>Solo txt / csv</span>
+                                                                                <span>•</span>
+                                                                                <span>Máx 10 MB</span>
+                                                                            </div>
+                                                                        </div>
                                                                     </div>
 
-                                                                    <Button className="w-full mt-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold h-10 rounded-xl shadow-none group">
-                                                                        <Zap className="size-4 mr-2 group-hover:animate-pulse" />
-                                                                        Procesar conteo general
-                                                                    </Button>
-                                                                </div>
-                                                            )}
-                                                        </CardPanel>
-                                                    </Card>
-                                                </CardFrame>
-                                            </TabsPanel>
+                                                                    {combinedFiles.length > 0 && (
+                                                                        <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                                                            <div className="flex items-center justify-between px-1">
+                                                                                <span className="text-sm font-bold text-foreground">Listado de archivos para procesar</span>
+                                                                                <Button variant="ghost" size="sm" className="h-6 text-[10px] font-bold text-destructive hover:bg-destructive/10" onClick={() => setUploadedFiles([])}>
+                                                                                    Limpiar lista
+                                                                                </Button>
+                                                                            </div>
+                                                                            
+                                                                            <div className="grid gap-2">
+                                                                                {combinedFiles.map((file) => (
+                                                                                    <div
+                                                                                        key={file.id}
+                                                                                        className={cn(
+                                                                                            "flex items-center justify-between gap-3 rounded-xl border border-border/40 p-3 hover:bg-accent/30 transition-colors group/item",
+                                                                                            file.isReceived ? "bg-primary/5 border-primary/20" : "bg-muted/5"
+                                                                                        )}
+                                                                                    >
+                                                                                        <div className="flex items-center gap-3 overflow-hidden">
+                                                                                            <div className="flex aspect-square size-9 shrink-0 items-center justify-center rounded-lg border border-border/40 bg-background shadow-sm">
+                                                                                                {file.isReceived ? <Smartphone className="size-4 text-primary" /> : <FileText className="size-4 text-muted-foreground/60" />}
+                                                                                            </div>
+                                                                                            <div className="flex min-w-0 flex-col gap-0.5">
+                                                                                                <p className="truncate font-bold text-[12px] text-foreground">{file.name}</p>
+                                                                                                <p className="text-muted-foreground text-[10px] font-medium">
+                                                                                                    {file.isReceived ? (
+                                                                                                        <span className="flex items-center gap-1">
+                                                                                                            <Badge variant="outline" className="h-3.5 px-1 text-[8px] font-black uppercase bg-primary/10 text-primary border-primary/10">RECIBIDO</Badge>
+                                                                                                            De {file.from} • {formatBytes(Number(file.size || 0))}
+                                                                                                        </span>
+                                                                                                    ) : (
+                                                                                                        `${formatBytes(Number(file.size || 0))} • Listo para procesar`
+                                                                                                    )}
+                                                                                                </p>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div className="flex items-center gap-1">
+                                                                                            {file.content && (
+                                                                                                <Button variant="ghost" size="icon" className="size-7 text-primary hover:bg-primary/10 rounded-lg opacity-0 group-hover/item:opacity-100 transition-opacity" onClick={() => {
+                                                                                                    const blob = new Blob([file.content], { type: 'text/plain' });
+                                                                                                    const url = URL.createObjectURL(blob);
+                                                                                                    const link = document.createElement('a');
+                                                                                                    link.href = url;
+                                                                                                    link.download = file.name;
+                                                                                                    document.body.appendChild(link);
+                                                                                                    link.click();
+                                                                                                    document.body.removeChild(link);
+                                                                                                    URL.revokeObjectURL(url);
+                                                                                                }}>
+                                                                                                    <Download className="size-4" />
+                                                                                                </Button>
+                                                                                            )}
+                                                                                            {!file.isReceived && (
+                                                                                                <Button variant="ghost" size="icon" className="size-7 text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 rounded-lg opacity-0 group-hover/item:opacity-100 transition-opacity" onClick={() => setUploadedFiles(prev => prev.filter(f => f.id !== file.id))}>
+                                                                                                    <X aria-hidden="true" className="size-4" />
+                                                                                                </Button>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                            <Button className="w-full mt-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold h-10 rounded-xl shadow-none group">
+                                                                                <Zap className="size-4 mr-2 group-hover:animate-pulse" />
+                                                                                Procesar conteo general
+                                                                            </Button>
+                                                                        </div>
+                                                                    )}
+                                                                </CardPanel>
+                                                            </Card>
+                                                        </CardFrame>
+                                                    </TabsPanel>
+                                                );
+                                            })()}
 
                                             <TabsPanel value="conexiones" className="flex-1 flex flex-col gap-0 overflow-y-auto custom-scrollbar">
                                                 <div className="p-4">

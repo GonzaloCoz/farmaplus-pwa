@@ -144,6 +144,7 @@ export function usePreCount(): UsePreCountReturn {
 
         let itemsChannel: any = null;
         let presenceChannel: any = null;
+        let filesChannel: any = null;
 
         if (session) {
             // Presence tracking
@@ -161,41 +162,62 @@ export function usePreCount(): UsePreCountReturn {
                 })
                 .subscribe();
 
-            // File Transfer Channel (Isolated)
+            // File Transfer Channel — broadcast is just a notification ping
             channelRef.current = supabase
                 .channel(`precount_sync:${session.id}`)
                 .on('broadcast', { event: 'device_finalized' }, (message: any) => {
-                    // Supabase broadcast payloads can be nested differently depending on version
                     const payload = message.payload || message;
-                    console.log(`[Sync] BROADCAST RECEIVED:`, payload);
+                    console.log(`[Sync] Broadcast ping received:`, payload);
                     
-                    if (!payload || !payload.content) {
-                        console.warn('[Sync] Received broadcast with no content:', payload);
-                        return;
-                    }
-
                     const devName = payload.deviceName || 'Terminal';
-                    const fName = payload.filename || `conteo_${Date.now()}.txt`;
+                    const fName = payload.filename || 'conteo.txt';
 
-                    console.log(`[Sync] Processing file from ${devName}: ${fName}`);
-                    
-                    // Dispatch event for UI components to listen
-                    const event = new CustomEvent('precount:device_finalized', { 
-                        detail: { 
-                            ...payload,
-                            deviceName: devName,
-                            filename: fName,
-                            timestamp: payload.timestamp || Date.now()
-                        } 
-                    });
-                    window.dispatchEvent(event);
-                    
-                    notify.success("Conteo Recibido", `${devName} ha finalizado su parte. El archivo ${fName} está disponible en la pestaña Archivos.`, {
-                        duration: 8000
-                    });
+                    // If the file was persisted to DB, the postgres_changes listener
+                    // will handle delivering the actual content. This is just a toast.
+                    if (payload.persistedToDb) {
+                        notify.info("Archivo entrante", `${devName} envió ${fName}. Cargando...`, { duration: 3000 });
+                    }
                 })
                 .subscribe((status) => {
-                    console.log(`[Sync] Channel status for ${session.id}: ${status}`);
+                    console.log(`[Sync] Broadcast channel status for ${session.id}: ${status}`);
+                });
+
+            // DATABASE LISTENER for device files (RELIABLE delivery)
+            filesChannel = supabase
+                .channel(`public:precount_device_files:${session.id}`)
+                .on('postgres_changes',
+                    { event: 'INSERT', schema: 'public', table: 'precount_device_files', filter: `session_id=eq.${session.id}` },
+                    (payload) => {
+                        const newFile = payload.new as any;
+                        console.log(`[Sync] DB file received:`, { 
+                            id: newFile.id, 
+                            filename: newFile.filename, 
+                            device: newFile.device_name,
+                            contentSize: newFile.content?.length 
+                        });
+
+                        // Dispatch event for PreCount.tsx UI to pick up
+                        const event = new CustomEvent('precount:device_finalized', {
+                            detail: {
+                                dbFileId: newFile.id,
+                                deviceId: newFile.device_id,
+                                deviceName: newFile.device_name || 'Terminal',
+                                filename: newFile.filename,
+                                content: newFile.content,
+                                timestamp: new Date(newFile.created_at).getTime(),
+                                isReceived: true
+                            }
+                        });
+                        window.dispatchEvent(event);
+
+                        notify.success(
+                            "Conteo recibido",
+                            `${newFile.device_name || 'Terminal'} envió ${newFile.filename}. Disponible en la pestaña Archivos.`,
+                            { duration: 8000 }
+                        );
+                    })
+                .subscribe((status) => {
+                    console.log(`[Sync] Device files channel status: ${status}`);
                 });
 
             itemsChannel = supabase
@@ -259,6 +281,9 @@ export function usePreCount(): UsePreCountReturn {
             }
             if (presenceChannel) {
                 supabase.removeChannel(presenceChannel);
+            }
+            if (filesChannel) {
+                supabase.removeChannel(filesChannel);
             }
         };
     }, [activeSessionId, user?.branchId, user?.role]);
@@ -431,50 +456,68 @@ export function usePreCount(): UsePreCountReturn {
     }, []);
 
     // Send final count to Admin (awaitable)
+    // Strategy: Persist to DB first (guaranteed), then broadcast a notification ping
     const sendFinalCount = async (filename: string, content: string): Promise<boolean> => {
         if (!session) return false;
         const deviceName = localStorage.getItem('precount_device_name') || 'Zebra';
-        const deviceId = localStorage.getItem('precount_device_id');
+        const deviceId = localStorage.getItem('precount_device_id') || 'unknown';
 
-        return new Promise(async (resolve) => {
-            const payload = { deviceId, deviceName, filename, content, timestamp: Date.now() };
-            console.log(`[Sync] Sending final count: ${filename}...`);
-            
-            // 1. Direct Local Fallback (Instant for same browser)
-            try {
-                localStorage.setItem('precount:sync_file', JSON.stringify(payload));
-                window.dispatchEvent(new CustomEvent('precount:device_finalized', { detail: payload }));
-            } catch (e) { console.warn('[Sync] Local fallback failed:', e); }
+        console.log(`[Sync] Sending final count: ${filename} (${content.length} chars)...`);
 
-            // 2. Broadcast with retry
-            let attempts = 0;
-            const trySend = async () => {
-                attempts++;
-                // Get the current channel or create a temporary one if needed
-                const channel = channelRef.current || supabase.channel(`precount_sync:${session.id}`);
-                
-                // We try to send regardless of explicit state check, 
-                // as some versions of the SDK handle the queueing internally
-                const status = await channel.send({
+        // 1. PERSIST to Supabase DB (this is the reliable delivery mechanism)
+        let dbInsertOk = false;
+        try {
+            const { error } = await (supabase as any)
+                .from('precount_device_files')
+                .insert({
+                    session_id: session.id,
+                    device_id: deviceId,
+                    device_name: deviceName,
+                    filename: filename,
+                    content: content
+                });
+
+            if (error) {
+                console.error('[Sync] DB insert failed:', error);
+            } else {
+                dbInsertOk = true;
+                console.log('[Sync] File persisted to DB successfully');
+            }
+        } catch (err) {
+            console.error('[Sync] DB insert exception:', err);
+        }
+
+        // 2. BROADCAST a lightweight notification (just a ping, no file content)
+        try {
+            const channel = channelRef.current;
+            if (channel) {
+                await channel.send({
                     type: 'broadcast',
                     event: 'device_finalized',
-                    payload: payload
+                    payload: { 
+                        deviceId, 
+                        deviceName, 
+                        filename, 
+                        timestamp: Date.now(),
+                        // Signal that the file is in the DB, not in this payload
+                        persistedToDb: true
+                    }
                 });
-                
-                console.log(`[Sync] Broadcast attempt ${attempts} status: ${status}`);
-                
-                if (status === 'ok' || status === 'sent') {
-                    resolve(true);
-                } else if (attempts < 3) {
-                    setTimeout(trySend, 800); // Wait a bit longer between retries
-                } else {
-                    console.warn('[Sync] Broadcast failed after 3 attempts, but proceeding to let user finish.');
-                    resolve(true); 
-                }
-            };
+                console.log('[Sync] Broadcast notification sent');
+            } else {
+                console.warn('[Sync] No active channel for broadcast notification');
+            }
+        } catch (e) { 
+            console.warn('[Sync] Broadcast notification failed (non-critical):', e); 
+        }
 
-            trySend();
-        });
+        // 3. Local fallback for same-device testing
+        try {
+            const localPayload = { deviceId, deviceName, filename, content, timestamp: Date.now() };
+            localStorage.setItem('precount:sync_file', JSON.stringify(localPayload));
+        } catch (e) { /* localStorage might be full for large files */ }
+
+        return dbInsertOk;
     };
 
     return {

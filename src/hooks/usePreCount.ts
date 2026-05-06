@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/services/db';
 import { supabase } from '@/integrations/supabase/client';
@@ -52,6 +52,7 @@ interface UsePreCountReturn {
     refreshItems: () => Promise<void>;
     registerError: () => void;
     announcePresence: (explicitSessionId?: string) => Promise<void>;
+    sendFinalCount: (filename: string, content: string) => Promise<boolean>;
 }
 
 export interface ConnectedDevice {
@@ -106,6 +107,21 @@ export function usePreCount(): UsePreCountReturn {
     }, [user]);
 
     // REALTIME SUBSCRIPTIONS
+    // Live query for the session to track 'synced' status and metadata changes
+    const activeSessionId = session?.id;
+    const channelRef = useRef<any>(null);
+
+    const liveSession = useLiveQuery(
+        async () => {
+            if (!activeSessionId) return null;
+            return await db.sessions.get(activeSessionId) as PreCountSession;
+        },
+        [activeSessionId]
+    );
+
+    // Sync state: Use liveSession if available, otherwise fallback to initial state
+    const currentSession = liveSession || session;
+
     useEffect(() => {
         let debounceTimer: NodeJS.Timeout | null = null;
         const DEBOUNCE_MS = 300;
@@ -133,7 +149,8 @@ export function usePreCount(): UsePreCountReturn {
             // Presence tracking
             presenceChannel = supabase
                 .channel(`precount_presence:${session.id}`)
-                .on('broadcast', { event: 'device_joined' }, ({ payload }) => {
+                .on('broadcast', { event: 'device_joined' }, ({ payload }: any) => {
+                    console.log(`[Sync] Device joined:`, payload);
                     setConnectedDevices(prev => {
                         const exists = prev.find(d => d.deviceId === payload.deviceId);
                         if (exists) {
@@ -143,6 +160,51 @@ export function usePreCount(): UsePreCountReturn {
                     });
                 })
                 .subscribe();
+
+            // File Transfer Channel (Isolated)
+            channelRef.current = supabase
+                .channel(`precount_sync:${session.id}`)
+                .on('broadcast', { event: 'device_finalized' }, (message: any) => {
+                    const payload = message.payload || message;
+                    console.log(`[Sync] FILE BROADCAST RECEIVED:`, payload);
+                    
+                    if (!payload || !payload.content) {
+                        console.error('[Sync] Received empty or invalid broadcast payload');
+                        return;
+                    }
+
+                    console.log(`[Sync] Device ${payload.deviceName} finalized count. Filename: ${payload.filename}`);
+                    
+                    // Create a virtual file to notify the admin
+                    const event = new CustomEvent('precount:device_finalized', { 
+                        detail: { 
+                            ...payload,
+                            timestamp: Date.now()
+                        } 
+                    });
+                    window.dispatchEvent(event);
+                    
+                    notify.success("Conteo Recibido", `${payload.deviceName} ha finalizado. El archivo ${payload.filename} está listo para descargar.`, {
+                        duration: 10000,
+                        action: {
+                            label: "Descargar",
+                            onClick: () => {
+                                const blob = new Blob([payload.content], { type: 'text/plain' });
+                                const url = URL.createObjectURL(blob);
+                                const link = document.createElement('a');
+                                link.href = url;
+                                link.download = payload.filename;
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                                URL.revokeObjectURL(url);
+                            }
+                        }
+                    });
+                })
+                .subscribe((status) => {
+                    console.log(`[Sync] Channel status for ${session.id}: ${status}`);
+                });
 
             itemsChannel = supabase
                 .channel(`public:precount_items:${session.id}`)
@@ -199,9 +261,15 @@ export function usePreCount(): UsePreCountReturn {
             if (debounceTimer) clearTimeout(debounceTimer);
             supabase.removeChannel(sessionsChannel);
             if (itemsChannel) supabase.removeChannel(itemsChannel);
-            if (presenceChannel) supabase.removeChannel(presenceChannel);
+            if (channelRef.current) {
+                supabase.removeChannel(channelRef.current);
+                channelRef.current = null;
+            }
+            if (presenceChannel) {
+                supabase.removeChannel(presenceChannel);
+            }
         };
-    }, [session?.id, user?.branchId, user?.role]);
+    }, [activeSessionId, user?.branchId, user?.role]);
 
 
     // Helper to map DB item to UI item
@@ -342,7 +410,6 @@ export function usePreCount(): UsePreCountReturn {
     // Finalizar sesión
     const finishSession = async () => {
         if (!session) return;
-        if (!confirm('¿Finalizar sesión de conteo?')) return;
         try {
             await endSession(session.id);
             
@@ -371,9 +438,55 @@ export function usePreCount(): UsePreCountReturn {
         setErrorCount(prev => prev + 1);
     }, []);
 
+    // Send final count to Admin (awaitable)
+    const sendFinalCount = async (filename: string, content: string): Promise<boolean> => {
+        if (!session) return false;
+        const deviceName = localStorage.getItem('precount_device_name') || 'Zebra';
+        const deviceId = localStorage.getItem('precount_device_id');
+
+        return new Promise(async (resolve) => {
+            const payload = { deviceId, deviceName, filename, content, timestamp: Date.now() };
+            console.log(`[Sync] Sending final count: ${filename}...`);
+            
+            // 1. Direct Local Fallback (Instant for same browser)
+            try {
+                localStorage.setItem('precount:sync_file', JSON.stringify(payload));
+                window.dispatchEvent(new CustomEvent('precount:device_finalized', { detail: payload }));
+            } catch (e) { console.warn('[Sync] Local fallback failed:', e); }
+
+            // 2. Broadcast with retry
+            let attempts = 0;
+            const trySend = async () => {
+                attempts++;
+                const channel = channelRef.current || supabase.channel(`precount_sync:${session.id}`);
+                
+                if (channel.state === 'joined') {
+                    const status = await channel.send({
+                        type: 'broadcast',
+                        event: 'device_finalized',
+                        payload: payload
+                    });
+                    console.log(`[Sync] Broadcast attempt ${attempts}: ${status}`);
+                    if (status === 'ok' || status === 'sent') {
+                        resolve(true);
+                        return;
+                    }
+                }
+
+                if (attempts < 3) {
+                    setTimeout(trySend, 500);
+                } else {
+                    resolve(true); // Resolve true anyway to allow proceeding
+                }
+            };
+
+            trySend();
+        });
+    };
+
     return {
         items,
-        session,
+        session: currentSession,
         totalProducts,
         totalUnits,
         errorCount,
@@ -389,6 +502,7 @@ export function usePreCount(): UsePreCountReturn {
         finishSession,
         refreshItems,
         registerError,
-        announcePresence
+        announcePresence,
+        sendFinalCount
     };
 }

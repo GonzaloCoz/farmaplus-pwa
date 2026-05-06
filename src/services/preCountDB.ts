@@ -36,6 +36,8 @@ export {
 
 export interface MasterCatalogItem {
     ean: string;
+    eans?: string[];
+    id_producto: string;
     name: string;
     systemStock: number;
     cost: number;
@@ -445,9 +447,17 @@ export async function getSessionByPin(pin: string): Promise<PreCountSession | nu
             `)
             .eq('sync_pin', pin)
             .eq('status', 'active')
-            .single();
+            .maybeSingle();
 
-        if (error || !data) return null;
+        if (error) {
+            console.error('Supabase error in getSessionByPin:', error);
+            return null;
+        }
+        
+        if (!data) {
+            console.warn(`No session found for PIN: ${pin}`);
+            return null;
+        }
 
         const sessionData = data as any;
         

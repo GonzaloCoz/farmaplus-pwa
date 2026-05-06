@@ -1,6 +1,6 @@
 import * as React from "react";
 import { NumberField as BaseNumberField } from "@base-ui-components/react/number-field";
-import { AddCircle as Plus, MinusCircle as Minus } from "@solar-icons/react";
+import { Minus, Plus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 

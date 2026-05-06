@@ -1,8 +1,7 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Restart as Loader2, Magnifer as Search, CloseCircle as X, Scanner as Barcode } from '@solar-icons/react';
+import { Loader2, Search, XCircle as X, ScanBarcode as Barcode } from 'lucide-react';
 import { searchProducts, Product } from '@/services/preCountDB';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
@@ -186,7 +185,7 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
     return (
         <div className={cn("relative w-full", className)} ref={containerRef}>
             <div className="relative group">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground/50 group-focus-within:text-primary transition-colors" />
                 <Input
                     ref={inputRef}
                     id="smart-search-input"
@@ -194,20 +193,20 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Escanear EAN o buscar producto..."
-                    className="pl-10 h-12 text-xs font-medium bg-card border-border/60 shadow-sm focus-visible:ring-primary/20 transition-all font-mono placeholder:text-xs placeholder:font-sans"
+                    className="pl-10 h-11 text-xs font-semibold bg-transparent border-input shadow-none focus-visible:ring-primary/10 transition-all font-mono placeholder:text-xs placeholder:font-sans placeholder:font-normal"
                     autoComplete="off"
                 />
 
                 <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                    {isLoading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+                    {isLoading && <Loader2 className="size-4 animate-spin text-muted-foreground/60" />}
                     {query && !isLoading && (
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            className="h-8 w-8 text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 rounded-lg"
                             onClick={handleClear}
                         >
-                            <X className="w-4 h-4" />
+                            <X className="size-4" />
                         </Button>
                     )}
                 </div>
@@ -220,7 +219,7 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
-                        className="absolute top-full left-0 right-0 z-[100] mt-1 bg-popover text-popover-foreground rounded-lg border shadow-sm overflow-hidden max-h-[300px] overflow-y-auto ring-1 ring-border/50"
+                        className="absolute top-full left-0 right-0 z-[100] mt-1.5 bg-popover text-popover-foreground rounded-xl border border-border/40 shadow-lg overflow-hidden max-h-[300px] overflow-y-auto"
                     >
                         <div className="p-1.5 space-y-0.5" ref={listRef}>
                             {results.map((product, index) => (
@@ -228,21 +227,21 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
                                     key={product.ean}
                                     onClick={() => handleSelect(product)}
                                     className={cn(
-                                        "w-full text-left px-3 py-2 text-xs rounded-md flex items-center justify-between group transition-all duration-200 border border-transparent",
+                                        "w-full text-left px-3 py-2.5 text-xs rounded-lg flex items-center justify-between group transition-all duration-200 border border-transparent",
                                         index === selectedIndex
-                                            ? "bg-primary/15 text-primary-foreground/90 border-primary/20 shadow-sm"
-                                            : "hover:bg-muted text-foreground"
+                                            ? "bg-primary/10 text-primary border-primary/20"
+                                            : "hover:bg-muted/50 text-foreground"
                                     )}
                                 >
                                     <div className="flex-1 min-w-0">
-                                        <div className={cn("font-medium truncate", index === selectedIndex ? "text-primary" : "")}>{product.name}</div>
-                                        <div className={cn("text-xs flex items-center gap-2", index === selectedIndex ? "text-primary/70" : "text-muted-foreground")}>
-                                            <Barcode className="w-3 h-3" />
-                                            <span className="font-mono opacity-80">{product.ean}</span>
+                                        <div className={cn("font-bold truncate", index === selectedIndex ? "text-primary" : "")}>{product.name}</div>
+                                        <div className={cn("text-[10px] flex items-center gap-1.5 mt-0.5", index === selectedIndex ? "text-primary/70" : "text-muted-foreground/60")}>
+                                            <Barcode className="size-3" />
+                                            <span className="font-mono">{product.ean}</span>
                                         </div>
                                     </div>
                                     {index === selectedIndex && (
-                                        <span className="text-xs font-semibold bg-background/50 px-1.5 py-0.5 rounded text-primary shadow-sm border border-primary/10">Enter</span>
+                                        <span className="text-[9px] font-black uppercase bg-primary/20 px-1.5 py-0.5 rounded text-primary tracking-wider">Enter</span>
                                     )}
                                 </button>
                             ))}

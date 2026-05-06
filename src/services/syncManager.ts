@@ -28,6 +28,7 @@ export class SyncManager {
     }
 
     async processQueue() {
+        console.log(`[SyncManager] processQueue called. isSyncing: ${this.isSyncing}, onLine: ${navigator.onLine}`);
         if (this.isSyncing || !navigator.onLine) return;
 
         this.isSyncing = true;
@@ -38,9 +39,12 @@ export class SyncManager {
                 .anyOf('pending', 'failed') // Retry failed ones too
                 .sortBy('timestamp');
 
-            if (pendingActions.length === 0) return;
+            if (pendingActions.length === 0) {
+                console.log('[SyncManager] No pending actions to sync.');
+                return;
+            }
             
-            console.log(`SyncManager: Processing queue (${pendingActions.length} items)`);
+            console.log(`[SyncManager] Processing queue (${pendingActions.length} items)`);
 
             // Group item upserts to batch them
             const itemUpserts: PendingAction[] = [];
@@ -65,17 +69,24 @@ export class SyncManager {
                     await db.pendingActions.where('id').anyOf(batchIds).modify({ status: 'syncing' });
 
                     try {
-                        const itemsData = currentBatch.map(a => ({
-                            id: a.data.id,
-                            session_id: a.data.session_id,
-                            ean: a.data.ean,
-                            product_name: a.data.product_name,
-                            quantity: a.data.quantity,
-                            scanned_by: a.data.scanned_by,
-                            id_producto: a.data.id_producto,
-                            device_id: a.data.device_id,
-                            device_name: a.data.device_name
-                        }));
+                        const itemsData = currentBatch.map(a => {
+                            // Ensure scanned_by is a valid UUID or null to avoid DB error 400
+                            const isValidUUID = (id?: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id || '');
+                            const scannedBy = isValidUUID(a.data.scanned_by) ? a.data.scanned_by : null;
+
+                            return {
+                                id: a.data.id,
+                                session_id: a.data.session_id,
+                                ean: a.data.ean,
+                                product_name: a.data.product_name,
+                                quantity: a.data.quantity,
+                                scanned_by: scannedBy,
+                                id_producto: a.data.id_producto,
+                                device_id: a.data.device_id,
+                                device_name: a.data.device_name,
+                                location_tag: a.data.location_tag
+                            };
+                        });
 
                         const { error } = await (supabase as any).rpc('batch_upsert_precount_items', {
                             p_items: itemsData

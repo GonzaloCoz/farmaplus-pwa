@@ -45,7 +45,7 @@ export function useHardwareScanner({
 
             const active = document.activeElement;
             const isTextInput = active instanceof HTMLInputElement
-                && (active.type === 'text' || active.type === 'search' || active.type === 'number' || active.type === 'tel');
+                && (active.type === 'text' || active.type === 'search' || active.type === 'number' || active.type === 'tel' || active.type === 'password');
             const isTextArea = active instanceof HTMLTextAreaElement;
             const inputHasFocus = isTextInput || isTextArea;
 

@@ -2,46 +2,80 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { 
+    Accordion,
+    AccordionItem,
+    AccordionTrigger,
+    AccordionPanel
+} from "@/components/ui/accordion";
+import { 
+    Card, 
+    CardContent, 
+    CardHeader, 
+    CardTitle,
+    CardFrame,
+    CardFrameHeader,
+    CardFrameTitle,
+    CardFrameDescription,
+    CardFrameAction,
+    CardPanel
+} from '@/components/ui/card';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import {
-    Scanner as Barcode,
-    Magnifer as Search,
-    TrashBinMinimalistic as Trash2,
-    Diskette as Save,
+import { 
+    ScanBarcode as Barcode,
+    Search,
+    Trash2,
+    Save,
     Upload,
-    AltArrowLeft as ArrowLeft,
-    AddCircle as Plus,
-    Restart as History,
+    ArrowLeft,
+    Plus,
+    History,
     Play,
     Calendar,
-    AltArrowRight as ArrowRight,
+    ArrowRight,
     Camera,
-    CheckCircle,
-    Widget as Wifi,
-    CloseCircle as WifiOff,
-    Widget as Package,
-    Document as FileText,
-    Restart as RotateCcw,
-    Bolt as Zap,
-    Forbidden as ZapOff,
+    CheckCircle2 as CheckCircle,
+    Wifi,
+    XCircle,
+    FileText,
+    RotateCcw,
+    ZapOff,
     Laptop,
     Monitor,
     Smartphone,
-    Danger,
-    InfoCircle,
+    AlertTriangle as Danger,
+    Info,
     Infinity,
     Keyboard,
-} from '@solar-icons/react';
+    Download,
+    ChevronDown,
+    Zap,
+    Package,
+    MapPin,
+    X,
+    Pencil,
+    FileSpreadsheet,
+    AlertCircle,
+    AlertTriangle,
+    LayoutGrid,
+    Hash,
+    Printer,
+    Check,
+    Maximize,
+    Settings,
+    Minimize,
+    Filter,
+    ArrowUp,
+    ArrowDown
+} from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
 import { SmartProductSearch } from '@/components/SmartProductSearch';
 import { PreCountList } from '@/components/PreCountList';
 import { usePreCount } from '@/hooks/usePreCount';
-import { MapPin } from 'lucide-react';
 import { NumericKeyboard } from '@/components/NumericKeyboard';
 import { LocationClosingDrawer } from '@/components/LocationClosingDrawer';
 import {
@@ -74,7 +108,7 @@ import {
     PaginationNext,
     PaginationPrevious,
 } from '@/components/ui/pagination';
-import { AltArrowDown as ChevronDown } from '@solar-icons/react';
+
 import {
     NumberField,
     NumberFieldDecrement,
@@ -103,7 +137,7 @@ import {
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import FileUpload from '@/components/FileUpload';
 import { formatBytes } from '@/hooks/use-file-upload';
-import { FileSpreadsheet, FileText as FileTextLucide, AlertCircle, AlertTriangle, CheckCircle2 } from 'lucide-react';
+
 import {
     InputOTP,
     InputOTPGroup,
@@ -113,7 +147,6 @@ import {
 import { ConnectedDevicesList } from '@/components/inventory/ConnectedDevicesList';
 
 import { QRPrintLayout } from '@/components/qr/QRPrintLayout';
-import { Printer, XCircle, Download, Check, Maximize, Settings, Minimize } from 'lucide-react';
 import QRCode from 'qrcode';
 import { db } from '@/services/db';
 import {
@@ -136,8 +169,9 @@ import {
     ComboboxPopup, 
     ComboboxTrigger,
 } from "@/components/ui/combobox";
-import { Filter, AddCircle as PlusIcon, CloseCircle as XIcon, MapPoint as MapPinIcon, AltArrowDown as ChevronDownIcon } from '@solar-icons/react';
+
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTab, TabsPanel } from "@/components/ui/tabs";
 import { toast } from "sonner";
 
 type Step = 'config' | 'admin_config' | 'admin_summary' | 'admin_sync' | 'qr_generator' | 'counting';
@@ -194,6 +228,7 @@ export default function PreCount() {
     });
     const [showQRPrintView, setShowQRPrintView] = useState(false);
     const [showNoZoneDialog, setShowNoZoneDialog] = useState(false);
+    const [adminTab, setAdminTab] = useState<string>("conexiones");
 
     // Listener para Alt + A (Admin Mode)
     useEffect(() => {
@@ -231,22 +266,170 @@ export default function PreCount() {
         errorCount,
         registerError,
         connectedDevices,
-        announcePresence
+        announcePresence,
+        sendFinalCount
     } = usePreCount();
 
-    // Auto-Resume Session
+    // Listener for incoming files from devices (Admin Side)
+    useEffect(() => {
+        if (accessMode !== 'admin') return;
+
+        const handleIncomingFile = (e: any) => {
+            const data = e.detail;
+            console.log('[Sync] Received file event. Data:', { 
+                deviceName: data?.deviceName, 
+                filename: data?.filename, 
+                contentSize: data?.content?.length,
+                isReceived: data?.isReceived
+            });
+
+            if (!data || !data.filename || !data.content) {
+                console.warn('[Sync] Ignored incomplete file data:', data);
+                return;
+            }
+            
+            const { deviceName, filename, content, timestamp } = data;
+            
+            // Switch to files tab automatically for the admin
+            setAdminTab('archivos');
+            
+            // Add to uploaded files list
+            const newFile = {
+                id: `received-${timestamp || Date.now()}`,
+                name: filename,
+                size: content.length,
+                content: content,
+                isReceived: true,
+                from: deviceName || 'Terminal',
+                lastModified: timestamp || Date.now()
+            };
+            
+            setUploadedFiles(prev => {
+                // Evitar duplicados si llegan varios eventos
+                if (prev.find(f => f.id === newFile.id)) return prev;
+                return [newFile, ...prev];
+            });
+            
+            console.log(`[Admin] Received file ${filename} from ${deviceName}`);
+        };
+
+        window.addEventListener('precount:device_finalized', handleIncomingFile);
+        
+        // LocalStorage fallback (Very useful for localhost/same-device testing)
+        const handleStorageChange = (e: StorageEvent) => {
+            if (e.key === 'precount:sync_file' && e.newValue) {
+                try {
+                    const data = JSON.parse(e.newValue);
+                    console.log('[Sync] Received file via LocalStorage fallback. Filename:', data.filename);
+                    handleIncomingFile({ detail: data });
+                    // Clean up after 1s to allow same file to be sent again if needed
+                    setTimeout(() => {
+                        if (localStorage.getItem('precount:sync_file') === e.newValue) {
+                            localStorage.removeItem('precount:sync_file');
+                        }
+                    }, 1000);
+                } catch (err) {
+                    console.error('[Sync] Error parsing fallback file:', err);
+                }
+            }
+        };
+        window.addEventListener('storage', handleStorageChange);
+
+        return () => {
+            window.removeEventListener('precount:device_finalized', handleIncomingFile);
+            window.removeEventListener('storage', handleStorageChange);
+        };
+    }, [accessMode]);
+
+    const [elapsedTime, setElapsedTime] = useState('00:00');
+
+    // Timer effect for real-time counter
+    useEffect(() => {
+        if (!session) {
+            setElapsedTime('00:00');
+            return;
+        }
+        
+        // Try both createdAt and created_at (common in Supabase/Dexie)
+        const dateValue = (session as any).created_at || (session as any).createdAt;
+        const startTime = dateValue ? new Date(dateValue).getTime() : Date.now();
+        
+        const updateTimer = () => {
+            if (isNaN(startTime)) {
+                setElapsedTime('00:00');
+                return;
+            }
+
+            const now = new Date().getTime();
+            const diff = Math.floor((now - startTime) / 1000);
+            
+            if (diff < 0) {
+                setElapsedTime('00:00');
+                return;
+            }
+
+            const hours = Math.floor(diff / 3600);
+            const minutes = Math.floor((diff % 3600) / 60);
+            const seconds = diff % 60;
+            
+            setElapsedTime(
+                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+            );
+        };
+
+        updateTimer();
+        const interval = setInterval(updateTimer, 1000); // Actualizar cada segundo
+        
+        return () => clearInterval(interval);
+    }, [session]);
+
+    // Calculate Stock Metrics from Master Catalog
+    const stockMetrics = useMemo(() => {
+        if (!masterCatalog || masterCatalog.length === 0) return null;
+
+        const eans = masterCatalog.length;
+        let positiveUnits = 0;
+        let negativeUnits = 0;
+        let totalValue = 0;
+        let negativeValue = 0;
+
+        masterCatalog.forEach(item => {
+            const stock = item.systemStock || 0;
+            const price = item.cost || item.salePrice || 0;
+
+            if (stock > 0) positiveUnits += stock;
+            if (stock < 0) {
+                negativeUnits += Math.abs(stock);
+                negativeValue += Math.abs(stock) * price;
+            }
+            
+            totalValue += stock * price;
+        });
+
+        return {
+            eans,
+            positiveUnits,
+            negativeUnits,
+            totalValue,
+            negativeValue
+        };
+    }, [masterCatalog]);
+
+    // Auto-Resume Session removed to allow manual selection
     useEffect(() => {
         const lastSessionId = localStorage.getItem('last_precount_session_id');
-        if (step === 'config' && lastSessionId && availableSessions.length > 0 && accessMode === null) {
-            const sessionToResume = availableSessions.find(s => s.id === lastSessionId);
-            if (sessionToResume) {
-                resumeSession(sessionToResume);
-                setAccessMode('zebra');
-                setStep('counting');
-                notify.info("Sesión retomada", "Has vuelto a tu sesión activa automáticamente.");
+        if (step === 'config' && lastSessionId && availableSessions.length > 0 && !sessionToResume) {
+            const lastSession = availableSessions.find(s => s.id === lastSessionId);
+            if (lastSession) {
+                setSessionToResume(lastSession);
+                // Also try to restore the profile if it was saved
+                const lastProfile = localStorage.getItem('precount_last_profile') as any;
+                if (lastProfile && ['admin', 'zebra', 'salon'].includes(lastProfile)) {
+                    setSelectedProfile(lastProfile);
+                }
             }
         }
-    }, [availableSessions.length, step, accessMode, resumeSession]);
+    }, [availableSessions, step, sessionToResume]);
 
     // Exit Warning
     useEffect(() => {
@@ -364,9 +547,16 @@ export default function PreCount() {
 
         let sessionToJoin = matchingSession;
 
-        // 2. Si no se encontró localmente (ej: el Admin acaba de crearla), buscamos directo en Supabase
+        // 2. Si no se encontró localmente, buscamos en Supabase (con reintento por si la sync es lenta)
         if (!sessionToJoin && normalizedPin !== "123456") {
-            const remoteSession = await getSessionByPin(normalizedPin);
+            let remoteSession = await getSessionByPin(normalizedPin);
+            
+            // Reintento rápido si falló (por latencia de red/sync)
+            if (!remoteSession) {
+                await new Promise(r => setTimeout(r, 1000));
+                remoteSession = await getSessionByPin(normalizedPin);
+            }
+
             if (remoteSession) {
                 sessionToJoin = remoteSession;
             }
@@ -403,13 +593,20 @@ export default function PreCount() {
                         const json: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
                         const rows = json.slice(1);
                         
-                        const catalog: MasterCatalogItem[] = rows.map((row) => ({
-                            ean: String(row[6]).trim(), // Columna G
-                            name: row[10], // Columna K
-                            systemStock: Number(row[15]) || 0, // Columna P
-                            cost: Number(row[19]) || 0, // Columna T
-                            salePrice: Number(row[21]) || 0, // Columna V
-                        })).filter(p => p.ean && p.name && p.ean !== 'undefined');
+                        const catalog: MasterCatalogItem[] = rows.map((row) => {
+                            const rawEans = String(row[16] || '').trim(); // Columna Q
+                            const eanList = rawEans.split('-').map(e => e.trim()).filter(e => e.length > 0);
+                            
+                            return {
+                                ean: eanList[0] || 'undefined', // Usamos el primero como principal
+                                eans: eanList, // Guardamos todos para búsqueda
+                                id_producto: String(row[0] || '').trim(), // Columna A
+                                name: String(row[3] || 'Sin Nombre').trim(), // Columna D
+                                systemStock: Number(row[4]) || 0, // Columna E
+                                cost: Number(row[10]) || 0, // Columna K
+                                salePrice: Number(row[10]) || 0, // Columna K (Uso el mismo para precio venta si no hay)
+                            };
+                        }).filter(p => p.ean !== 'undefined' && p.id_producto);
 
                         if (catalog.length === 0) {
                             setLoadStatus('warning');
@@ -454,6 +651,10 @@ export default function PreCount() {
             localStorage.setItem('precount_device_name', deviceName.trim());
         }
 
+        // Limpiar archivos subidos (el Excel maestro ya fue procesado y guardado en masterCatalog)
+        // Esto evita que aparezca en la lista de archivos de conteo al iniciar.
+        setUploadedFiles([]);
+
         await startSession(sectorName.trim(), masterCatalog || undefined, syncPin || undefined);
         setStep('counting');
     };
@@ -489,7 +690,9 @@ export default function PreCount() {
 
             // 1. Prioritize Master Catalog (Excel)
             if (session?.master_catalog) {
-                const masterItem = session.master_catalog.find((p: any) => p.ean === code);
+                const masterItem = session.master_catalog.find((p: any) => 
+                    p.ean === code || (p.eans && p.eans.includes(code))
+                );
                 if (masterItem) {
                     productToUse = {
                         ean: code,
@@ -497,6 +700,7 @@ export default function PreCount() {
                         cost: masterItem.cost,
                         salePrice: masterItem.salePrice,
                         stock: masterItem.systemStock,
+                        id_producto: masterItem.id_producto,
                         isMaster: true
                     };
                 }
@@ -858,36 +1062,61 @@ export default function PreCount() {
         }
         setShowFinishDialog(false);
         setFinishPassword('');
+        
+        // Si no es admin, enviamos el archivo al admin en lugar de descargarlo localmente
+        if (accessMode !== 'admin') {
+            const content = generateTXTContent();
+            if (content) {
+                const filename = `Colector_${deviceName || 'Zebra'}_${session?.sector}_${new Date().toISOString().split('T')[0]}.txt`;
+                const sent = await sendFinalCount(filename, content);
+                if (sent) {
+                    notify.success("Enviado", "El conteo ha sido enviado al Administrador.");
+                } else {
+                    notify.warning("Sincronización parcial", "El conteo se guardó localmente pero no se pudo confirmar el envío al Administrador. Verifique la conexión.");
+                }
+            }
+        } else {
+            // Si es admin, lo descargamos localmente por si acaso
+            handleExportTXT();
+        }
+        
+        // Marcar sesión como finalizada
         await finishSession();
-        navigate('/stock');
+        
+        notify.success("Sesión Finalizada", "El inventario ha sido cerrado.");
+        // Eliminamos la navegación automática para que "quede cerrado pero no cierre" (quede en vista readonly)
     };
 
 
 
-    // Exportar a TXT (Formato solicitado: IDProducto;EAN;Cantidad;0)
+    // Generar contenido del TXT (Formato: IDProducto;EAN;Cantidad;0)
+    const generateTXTContent = () => {
+        if (items.length === 0) return null;
+        const lines = items.map(item => {
+            const idProd = item.id_producto || '';
+            return `${idProd};${item.ean};${item.quantity};0`;
+        });
+        return lines.join('\n');
+    };
+
+    // Exportar a TXT
     const handleExportTXT = () => {
-        if (items.length === 0) {
+        const content = generateTXTContent();
+        if (!content) {
             notify.error("Error", 'No hay productos para exportar');
             return;
         }
 
         try {
-            const lines = items.map(item => {
-                const idProd = item.id_producto || '';
-                return `${idProd};${item.ean};${item.quantity};0`;
-            });
-
-            const content = lines.join('\n');
             const blob = new Blob([content], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = `ColectorDatos_${sector}_${new Date().toISOString().split('T')[0]}.txt`;
+            link.download = `ColectorDatos_${sector || session?.sector}_${new Date().toISOString().split('T')[0]}.txt`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
-
             notify.success("Operación exitosa", 'Archivo TXT generado correctamente');
         } catch (error) {
             console.error('Error generating TXT:', error);
@@ -1208,17 +1437,22 @@ export default function PreCount() {
                                                         sessionToResume?.id === s.id && "bg-primary text-primary-foreground border-primary"
                                                     )}
                                                     onClick={() => {
-                                                        setSessionToResume(s);
-                                                        // Scroll to profile selection
-                                                        const profileSection = document.getElementById('profile-selection-section');
-                                                        if (profileSection) {
-                                                            profileSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                        if (sessionToResume?.id === s.id) {
+                                                            setSessionToResume(null);
+                                                            notify.info("Selección cancelada", "Has desmarcado la sesión.");
+                                                        } else {
+                                                            setSessionToResume(s);
+                                                            // Scroll to profile selection
+                                                            const profileSection = document.getElementById('profile-selection-section');
+                                                            if (profileSection) {
+                                                                profileSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                            }
+                                                            notify.info("Sesión seleccionada", `Has seleccionado retomar: ${s.sector}. Ahora elige tu perfil.`);
                                                         }
-                                                        notify.info("Sesión seleccionada", `Has seleccionado retomar: ${s.sector}. Ahora elige tu perfil.`);
                                                     }}
                                                 >
                                                     {sessionToResume?.id === s.id ? 'Seleccionada' : 'Retomar'}
-                                                    <ArrowRight className="size-3" />
+                                                    {sessionToResume?.id === s.id ? <X className="size-3" /> : <ArrowRight className="size-3" />}
                                                 </Button>
                                             </div>
                                         </div>
@@ -1343,6 +1577,7 @@ export default function PreCount() {
                         onClick={() => {
                             if (selectedProfile) {
                                 setAccessMode(selectedProfile);
+                                localStorage.setItem('precount_last_profile', selectedProfile);
                                 if (sessionToResume) {
                                     resumeSession(sessionToResume);
                                     setStep('counting');
@@ -1456,7 +1691,7 @@ export default function PreCount() {
                 <FramePanel className="p-6 flex flex-col gap-4">
                     {loadStatus === 'success' && (
                         <Alert variant="success" className="animate-in fade-in zoom-in-95 duration-300">
-                            <CheckCircle2 className="size-4" />
+                            <CheckCircle className="size-4" />
                             <AlertTitle className="font-bold">Carga Exitosa</AlertTitle>
                             <AlertDescription className="text-muted-foreground/80">
                                 El archivo <span className="font-bold text-success/90">**{inventoryName}**</span> ha sido procesado localmente con éxito.
@@ -1486,7 +1721,7 @@ export default function PreCount() {
 
                     <div className="flex flex-col gap-3">
                         <Alert variant="outline" className="animate-in fade-in slide-in-from-bottom-2 duration-400 bg-muted/5 border-border/40">
-                            <InfoCircle className="size-4 text-muted-foreground/60" />
+                            <Info className="size-4 text-muted-foreground/60" />
                             <AlertTitle className="font-bold">Productos</AlertTitle>
                             <AlertDescription className="text-muted-foreground/70">
                                 Se han encontrado <span className="text-foreground font-semibold">{parsedStock?.total || 0}</span> productos en el archivo.
@@ -1494,7 +1729,7 @@ export default function PreCount() {
                         </Alert>
 
                         <Alert variant="outline" className="animate-in fade-in slide-in-from-bottom-2 duration-500 bg-muted/5 border-border/40">
-                            <FileTextLucide className="size-4 text-muted-foreground/60" />
+                            <FileText className="size-4 text-muted-foreground/60" />
                             <AlertTitle className="font-bold">Archivo</AlertTitle>
                             <AlertDescription className="text-muted-foreground/70 truncate">
                                 <span className="text-foreground font-semibold">{parsedStock?.filename || 'Sin nombre'}</span> ({formatBytes(parsedStock?.size || 0)})
@@ -1543,6 +1778,17 @@ export default function PreCount() {
                     <div className="flex items-center gap-2.5 font-bold text-sm tracking-tight text-foreground">
                         <Laptop className="size-4 text-primary" />
                         Conexión de Dispositivos
+                        {session?.synced === 1 ? (
+                            <span className="flex items-center gap-1 ml-2 px-1.5 py-0.5 bg-green-500/10 text-green-500 text-[10px] rounded-md border border-green-500/20">
+                                <div className="size-1.5 rounded-full bg-green-500 animate-pulse" />
+                                ONLINE
+                            </span>
+                        ) : (
+                            <span className="flex items-center gap-1 ml-2 px-1.5 py-0.5 bg-amber-500/10 text-amber-500 text-[10px] rounded-md border border-amber-500/20">
+                                <div className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                SINCRONIZANDO...
+                            </span>
+                        )}
                     </div>
                     <div className="flex items-center gap-2 px-2 py-0.5 bg-amber-500/10 rounded-full border border-amber-500/20">
                         <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Paso 3/3</span>
@@ -1576,11 +1822,6 @@ export default function PreCount() {
                                 Esta pantalla se actualizará automáticamente cuando se detecte una conexión entrante desde los dispositivos móviles.
                             </p>
                         </div>
-                    </div>
-
-                    {/* Connected Devices Section */}
-                    <div className="w-full mt-4 border-t border-border/10 pt-6">
-                        <ConnectedDevicesList devices={connectedDevices} className="max-h-[300px] rounded-xl border border-border/20 bg-muted/5 shadow-inner" />
                     </div>
                 </FramePanel>
             </Frame>
@@ -1627,7 +1868,7 @@ export default function PreCount() {
                             onClick={() => setShowQRPrintView(false)}
                             className="print:hidden"
                         >
-                            <XCircle className="size-4" />
+                            <X className="size-4" />
                         </Button>
                     </FrameHeader>
                     <FramePanel className="p-0 overflow-auto max-h-[50vh] custom-scrollbar bg-gray-50 print:bg-white">
@@ -1787,15 +2028,13 @@ export default function PreCount() {
                             </div>
                         </FrameHeader>
                         
-                        <FramePanel className="p-4 sm:p-6 space-y-6">
-                            <div className="space-y-1.5">
-                                <FrameTitle className="text-base font-bold tracking-tight">Código de verificación</FrameTitle>
-                                <FrameDescription className="text-xs text-muted-foreground">
-                                    Ingrese el código de 6 dígitos del panel central para sincronizar el dispositivo.
-                                </FrameDescription>
-                            </div>
+                        <FramePanel className="p-0">
+                            <CardPanel className="flex flex-col items-center justify-center space-y-8 text-center py-12 px-6">
+                                <div className="space-y-2">
+                                    <h3 className="text-2xl font-bold tracking-tight">Código de verificación</h3>
+                                    <p className="text-sm text-muted-foreground/70">Ingrese el código de 6 dígitos en la terminal Zebra</p>
+                                </div>
 
-                            <div className="flex flex-col items-center justify-center py-4">
                                 <InputOTP 
                                     maxLength={6} 
                                     value={otpValue} 
@@ -1808,28 +2047,28 @@ export default function PreCount() {
                                     autoFocus
                                 >
                                     <div className="flex items-center gap-2">
-                                        <InputOTPGroup className="gap-2">
-                                            <InputOTPSlot index={0} className="!h-12 !w-10 !rounded-lg !border border-border/30 bg-background shadow-xs text-xl font-black" />
-                                            <InputOTPSlot index={1} className="!h-12 !w-10 !rounded-lg !border border-border/30 bg-background shadow-xs text-xl font-black" />
-                                            <InputOTPSlot index={2} className="!h-12 !w-10 !rounded-lg !border border-border/30 bg-background shadow-xs text-xl font-black" />
+                                        <InputOTPGroup className="gap-1.5">
+                                            <InputOTPSlot index={0} className="!h-14 !w-12 !rounded-xl !border border-border/30 bg-background shadow-xs text-2xl font-black" />
+                                            <InputOTPSlot index={1} className="!h-14 !w-12 !rounded-xl !border border-border/30 bg-background shadow-xs text-2xl font-black" />
+                                            <InputOTPSlot index={2} className="!h-14 !w-12 !rounded-xl !border border-border/30 bg-background shadow-xs text-2xl font-black" />
                                         </InputOTPGroup>
                                         
-                                        <div className="mx-2 text-muted-foreground/20 font-bold text-xl">-</div>
+                                        <div className="mx-2 text-muted-foreground/20 font-bold text-2xl">-</div>
                                         
-                                        <InputOTPGroup className="gap-2">
-                                            <InputOTPSlot index={3} className="!h-12 !w-10 !rounded-lg !border border-border/30 bg-background shadow-xs text-xl font-black" />
-                                            <InputOTPSlot index={4} className="!h-12 !w-10 !rounded-lg !border border-border/30 bg-background shadow-xs text-xl font-black" />
-                                            <InputOTPSlot index={5} className="!h-12 !w-10 !rounded-lg !border border-border/30 bg-background shadow-xs text-xl font-black" />
+                                        <InputOTPGroup className="gap-1.5">
+                                            <InputOTPSlot index={3} className="!h-14 !w-12 !rounded-xl !border border-border/30 bg-background shadow-xs text-2xl font-black" />
+                                            <InputOTPSlot index={4} className="!h-14 !w-12 !rounded-xl !border border-border/30 bg-background shadow-xs text-2xl font-black" />
+                                            <InputOTPSlot index={5} className="!h-14 !w-12 !rounded-xl !border border-border/30 bg-background shadow-xs text-2xl font-black" />
                                         </InputOTPGroup>
                                     </div>
                                 </InputOTP>
-                            </div>
 
-                            <div className="bg-muted/5 p-3 rounded-xl border border-border/5">
-                                <p className="text-[11px] text-muted-foreground/60 leading-relaxed text-center">
-                                    Serás conectado automáticamente a la sesión al completar el código de 6 dígitos.
-                                </p>
-                            </div>
+                                <div className="max-w-[320px] space-y-4">
+                                    <p className="text-[11px] leading-relaxed text-muted-foreground/50">
+                                        Esta pantalla se actualizará automáticamente cuando se detecte una conexión entrante desde los dispositivos móviles.
+                                    </p>
+                                </div>
+                            </CardPanel>
                         </FramePanel>
                     </Frame>
 
@@ -1918,7 +2157,7 @@ export default function PreCount() {
 
                             {/* Right Column: Empty State or Connected Devices during config */}
                             <div className="hidden lg:flex lg:col-span-8 lg:col-start-5 flex-col min-h-0 bg-card border border-border/40 rounded-xl overflow-hidden shadow-sm">
-                                {step === 'admin_sync' ? (
+                                {(step === 'admin_sync' || step === 'qr_generator') ? (
                                     <ConnectedDevicesList devices={connectedDevices} />
                                 ) : (
                                     <div className="h-full flex flex-col items-center justify-center gap-6 text-center px-12 animate-in fade-in duration-700">
@@ -1934,9 +2173,7 @@ export default function PreCount() {
                                     </div>
                                 )}
                             </div>
-
                         </motion.div>
-
                     ) : (
                         <motion.div
                             key="counting"
@@ -1947,184 +2184,542 @@ export default function PreCount() {
                             transition={{ duration: 0.3 }}
                             className="flex-1 p-1 md:p-6 grid grid-cols-1 grid-rows-[auto_1fr] lg:grid-rows-none lg:grid-cols-12 gap-2 lg:gap-6 max-w-[1600px] mx-auto w-full h-full overflow-hidden"
                         >
-                            {/* Left Column: Escaneo */}
-                            <div className="lg:col-span-4 lg:col-start-1 flex flex-col gap-4 min-h-0">
-                                <Card className="flex flex-col lg:flex-1 overflow-visible bg-card border-muted/50 shadow-md">
-                                        {/* 1. Info Header & Location Widget */}
-                                        <div className={`p-3 sm:p-5 border-b border-border/40 transition-colors duration-500 bg-transparent`}>
-                                            <div className="flex flex-col gap-3">
-                                                <div className="flex items-center justify-between px-1 opacity-70">
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="flex items-center gap-1">
-                                                            <Smartphone className="size-3 text-muted-foreground" />
-                                                            <span className="text-[10px] uppercase font-bold tracking-tight text-muted-foreground/60">Dispositivo:</span>
-                                                            <span className="text-xs font-bold text-foreground">{deviceName || 'Zebra'}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-1 border-l border-border/20 pl-4">
-                                                            <span className="text-[10px] uppercase font-bold tracking-tight text-muted-foreground/60">Session:</span>
-                                                            <span className="text-xs font-bold text-foreground">#{session?.id?.toString().slice(-4)}</span>
-                                                        </div>
+                            {/* VISTA MONITOR ADMIN (3 COLUMNAS) */}
+                            {accessMode === 'admin' ? (
+                                <>
+                                    {/* Column 1: Tabs + Session Control (4 units) */}
+                                    <div className="lg:col-span-4 flex flex-col h-full min-h-0 bg-card border border-border/40 rounded-xl overflow-hidden shadow-sm">
+                                        
+                                        {/* Header Section (v0 Style) */}
+                                        <div className="px-6 pt-6 pb-4 flex items-center justify-between">
+                                            <div className="space-y-0.5">
+                                                <h1 className="text-2xl font-bold tracking-tight text-foreground leading-tight">
+                                                    {session?.sector || 'Inventario General'}
+                                                </h1>
+                                                <div className="flex items-center gap-3 text-sm text-muted-foreground/60">
+                                                    <div className="flex items-center">
+                                                        {(() => {
+                                                            const dateStr = format(new Date(), "dd 'de' MMMM, yyyy", { locale: es });
+                                                            return dateStr.charAt(0).toUpperCase() + dateStr.slice(1).replace(/de (\w)/, (match, p1) => `de ${p1.toUpperCase()}`);
+                                                        })()}
                                                     </div>
-                                                    <div className="flex items-center gap-1.5">
-                                                        <Button 
-                                                            variant="outline" 
-                                                            size="icon" 
-                                                            className={cn("text-muted-foreground hover:bg-primary/5 hover:text-primary", isZenMode && "bg-primary/10 text-primary border-primary/20")}
-                                                            onClick={() => setIsZenMode(!isZenMode)}
-                                                        >
-                                                            {isZenMode ? <Minimize /> : <Maximize />}
-                                                        </Button>
-                                                        <Button variant="outline" size="icon" className="text-muted-foreground hover:bg-primary/5 hover:text-primary">
-                                                            <Settings />
-                                                        </Button>
+                                                    <span className="text-muted-foreground/20 font-black">·</span>
+                                                    <div className="font-bold text-primary/70 tracking-tight">
+                                                        {elapsedTime}
                                                     </div>
                                                 </div>
+                                            </div>
+                                            <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20 font-bold text-[10px] flex items-center gap-1.5 px-2 py-1 h-fit">
+                                                <div className="size-1.5 rounded-full bg-green-500 animate-pulse" />
+                                                Online
+                                            </Badge>
+                                        </div>
 
-                                                <div className="flex items-center gap-1.5">
-                                                    {/* Selector: Pin + Combobox */}
-                                                    <div ref={setComboboxAnchor} className="flex-1 flex min-w-0">
-                                                        <Group className="flex-1 shadow-xs">
-                                                            <GroupText
-                                                                className="pointer-events-none px-2.5 border-input bg-transparent text-muted-foreground/80 shrink-0"
-                                                            >
-                                                                <MapPin className="size-4" />
-                                                            </GroupText>
-                                                            <GroupSeparator />
-                                                            <Combobox
-                                                                items={allSectors.map(s => s.tag)}
-                                                                value={activeLocation || undefined}
-                                                                onValueChange={(val) => {
-                                                                    if (typeof val === 'string') {
-                                                                        setActiveLocation(val);
-                                                                    }
+                                        {/* Tabs Navigation */}
+                                        <Tabs value={adminTab} onValueChange={setAdminTab} className="flex-1 flex flex-col min-h-0">
+                                            <div className="px-4 pb-2">
+                                                <TabsList className="w-full">
+                                                    <TabsTab value="resumen">Resumen</TabsTab>
+                                                    <TabsTab value="archivos">Archivos</TabsTab>
+                                                    <TabsTab value="conexiones">Conexiones</TabsTab>
+                                                </TabsList>
+                                            </div>
+                                            
+                                            <TabsPanel value="resumen" className="flex-1 flex flex-col gap-4 p-4 overflow-auto bg-muted/5">
+                                                {/* Frame 1: Resumen General - Key Metrics Pattern */}
+                                                <CardFrame className="w-full">
+                                                    <CardFrameHeader className="flex-row items-center justify-between py-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <Package className="size-4 text-primary" />
+                                                            <CardFrameTitle>Resumen de Catálogo</CardFrameTitle>
+                                                        </div>
+                                                    </CardFrameHeader>
+                                                    <Card>
+                                                        <CardPanel className="p-0">
+                                                            <div className="grid grid-cols-2 divide-x divide-y divide-border/40">
+                                                                {/* Metric 1: Total SKUs */}
+                                                                <div className="p-6 flex flex-col items-center justify-center text-center space-y-1">
+                                                                    <p className="text-xs font-medium text-muted-foreground/60 tracking-tight">Total skus</p>
+                                                                    <div className="flex items-baseline gap-2">
+                                                                        <span className="text-2xl font-bold tracking-tight">{stockMetrics?.eans.toLocaleString() || '0'}</span>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Metric 2: Total Unidades */}
+                                                                <div className="p-6 flex flex-col items-center justify-center text-center space-y-1">
+                                                                    <p className="text-xs font-medium text-muted-foreground/60 tracking-tight">Total unidades</p>
+                                                                    <div className="flex items-baseline gap-1">
+                                                                        <span className="text-2xl font-bold tracking-tight">{stockMetrics?.positiveUnits.toLocaleString() || '0'}</span>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Metric 3: Stock Negativo */}
+                                                                <div className="p-6 flex flex-col items-center justify-center text-center space-y-1">
+                                                                    <p className="text-xs font-medium text-muted-foreground/60 tracking-tight">Stock negativo</p>
+                                                                    <div className="flex items-baseline gap-2">
+                                                                        <span className="text-2xl font-bold tracking-tight text-red-500">{stockMetrics?.negativeUnits.toLocaleString() || '0'}</span>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Metric 4: Valorización Negativa */}
+                                                                <div className="p-6 flex flex-col items-center justify-center text-center space-y-1">
+                                                                    <p className="text-xs font-medium text-muted-foreground/60 tracking-tight">Valorización negativa</p>
+                                                                    <div className="flex items-baseline gap-2">
+                                                                        <span className="text-2xl font-bold tracking-tight text-red-600/80">$ {(stockMetrics?.negativeValue || 0).toLocaleString()}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </CardPanel>
+                                                    </Card>
+                                                </CardFrame>
+
+                                                {/* Frame 2: Estadísticas de Sesión */}
+                                                <CardFrame className="w-full">
+                                                    <CardFrameHeader className="flex-row items-center justify-between py-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <Zap className="size-4 text-primary" />
+                                                            <CardFrameTitle>Estadísticas de Sesión</CardFrameTitle>
+                                                        </div>
+                                                    </CardFrameHeader>
+                                                    <Card>
+                                                        <CardPanel className="p-0">
+                                                            <Accordion className="w-full">
+                                                                <AccordionItem value="item-1">
+                                                                    <AccordionTrigger className="px-6 py-4">Resumen de Terminales</AccordionTrigger>
+                                                                    <AccordionPanel className="px-6 pb-4 text-muted-foreground text-sm">
+                                                                        Información detallada sobre el estado de conexión y progreso de cada terminal Zebra activa.
+                                                                    </AccordionPanel>
+                                                                </AccordionItem>
+                                                                <AccordionItem value="item-2">
+                                                                    <AccordionTrigger className="px-6 py-4">Velocidad de Conteo</AccordionTrigger>
+                                                                    <AccordionPanel className="px-6 pb-4 text-muted-foreground text-sm">
+                                                                        Análisis promedio de productos escaneados por minuto en toda la sesión actual.
+                                                                    </AccordionPanel>
+                                                                </AccordionItem>
+                                                                <AccordionItem value="item-3">
+                                                                    <AccordionTrigger className="px-6 py-4">Alertas de Sincronización</AccordionTrigger>
+                                                                    <AccordionPanel className="px-6 pb-4 text-muted-foreground text-sm">
+                                                                        Registro de posibles conflictos o advertencias durante la transmisión de datos.
+                                                                    </AccordionPanel>
+                                                                </AccordionItem>
+                                                                <AccordionItem value="item-4">
+                                                                    <AccordionTrigger className="px-6 py-4">Historial de Errores</AccordionTrigger>
+                                                                    <AccordionPanel className="px-6 pb-4 text-muted-foreground text-sm">
+                                                                        Listado de EANs no encontrados o problemas de lectura reportados por los operadores.
+                                                                    </AccordionPanel>
+                                                                </AccordionItem>
+                                                            </Accordion>
+                                                        </CardPanel>
+                                                    </Card>
+                                                </CardFrame>
+                                            </TabsPanel>
+
+                                            <TabsPanel value="archivos" className="flex-1 overflow-auto p-4 bg-muted/5 space-y-4">
+                                                <CardFrame className="w-full">
+                                                    <CardFrameHeader className="flex-row items-center justify-between py-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <FileText className="size-4 text-primary" />
+                                                            <CardFrameTitle>Gestión de archivos de inventario</CardFrameTitle>
+                                                        </div>
+                                                        <CardFrameAction className="col-start-auto flex items-center gap-2">
+                                                            <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 font-bold text-[10px]">
+                                                                {uploadedFiles.length} archivos
+                                                            </Badge>
+                                                        </CardFrameAction>
+                                                    </CardFrameHeader>
+                                                    <Card>
+                                                        <CardPanel className="p-4 space-y-4">
+                                                            {/* Drop area style comp-549 */}
+                                                            <div
+                                                                className={cn(
+                                                                    "flex min-h-[160px] flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 transition-all cursor-pointer group",
+                                                                    "border-border/40 hover:border-primary/40 hover:bg-primary/5",
+                                                                    uploadedFiles.length > 0 && "min-h-[120px]"
+                                                                )}
+                                                                onClick={() => {
+                                                                    const input = document.getElementById('admin-file-upload-active');
+                                                                    if (input) input.click();
                                                                 }}
                                                             >
-                                                                <ComboboxTrigger
-                                                                    ref={comboboxAnchorRef}
-                                                                    render={
-                                                                        <SelectButton 
-                                                                            variant="outline" 
-                                                                            className="flex-1 bg-transparent hover:bg-muted/30 transition-colors font-bold text-sm shadow-none"
-                                                                        />
-                                                                    }
-                                                                >
-                                                                    <div className="flex items-center gap-2 truncate">
-                                                                        <span className="truncate">
-                                                                            {activeLocation || "Todos"}
-                                                                        </span>
-                                                                        {activeLocation && isActiveLocationClosed && (
-                                                                            <Badge variant="secondary" className="text-[8px] h-3.5 uppercase px-1 leading-none font-bold ml-1 opacity-70">Cerrado</Badge>
-                                                                        )}
+                                                                <input
+                                                                    id="admin-file-upload-active"
+                                                                    type="file"
+                                                                    className="sr-only"
+                                                                    multiple
+                                                                    accept=".txt,.csv"
+                                                                    onChange={(e) => {
+                                                                        if (e.target.files) {
+                                                                            const newFiles = Array.from(e.target.files).map(f => ({
+                                                                                id: Math.random().toString(36).substr(2, 9),
+                                                                                name: f.name,
+                                                                                size: f.size,
+                                                                                lastModified: f.lastModified
+                                                                            }));
+                                                                            setUploadedFiles(prev => [...prev, ...newFiles]);
+                                                                        }
+                                                                    }}
+                                                                />
+
+                                                                <div className="flex flex-col items-center justify-center text-center">
+                                                                    <div className="mb-3 flex size-12 shrink-0 items-center justify-center rounded-full border border-border/40 bg-background shadow-sm group-hover:scale-110 transition-transform">
+                                                                        <Upload className="size-5 text-muted-foreground/60 group-hover:text-primary transition-colors" />
                                                                     </div>
-                                                                </ComboboxTrigger>
-                                                                <ComboboxPopup 
-                                                                    anchor={comboboxAnchor} 
-                                                                    align="start"
-                                                                    className="w-[calc(var(--anchor-width)+2px)] z-[100] -ml-[1px]"
-                                                                >
-                                                                    <div className="border-b p-2">
-                                                                        <ComboboxInput
-                                                                            placeholder="Buscar sector..."
-                                                                            startAddon={<Search className="size-4" />}
-                                                                            className="h-8 ps-9"
-                                                                        />
+                                                                    <p className="mb-1 font-bold text-sm text-foreground">Subir archivos de conteo</p>
+                                                                    <p className="mb-3 text-muted-foreground text-[11px]">
+                                                                        Arrastre y suelte sus archivos .txt o haga clic para buscar
+                                                                    </p>
+                                                                    <div className="flex flex-wrap justify-center gap-1.5 text-muted-foreground/50 text-[10px] font-medium">
+                                                                        <span>Solo txt / csv</span>
+                                                                        <span>•</span>
+                                                                        <span>Máx 10 MB</span>
                                                                     </div>
-                                                                    <ComboboxEmpty>No se encontraron sectores.</ComboboxEmpty>
-                                                                    <ComboboxList className="max-h-64">
-                                                                        {allSectors.map((sector) => {
-                                                                            const sectorItemCount = items.filter(i => i.location_tag === sector.tag).length;
-                                                                            const sectorUnitCount = items.filter(i => i.location_tag === sector.tag).reduce((sum, i) => sum + i.quantity, 0);
-                                                                            return (
-                                                                                <ComboboxItem key={sector.tag} value={sector.tag}>
-                                                                                    <div className="flex items-center gap-2 w-full">
-                                                                                        <MapPin className={cn("size-3.5 mt-0.5", sector.status === 'closed' ? "text-muted-foreground" : "text-amber-500")} />
-                                                                                        <span className={cn("font-bold flex-1", sector.status === 'closed' && "text-muted-foreground line-through opacity-60")}>
-                                                                                            {sector.tag}
-                                                                                        </span>
-                                                                                        <span className="text-[9px] text-muted-foreground font-medium tabular-nums">
-                                                                                            {sectorItemCount}P · {sectorUnitCount}U
-                                                                                        </span>
-                                                                                        {sector.status === 'closed' && (
-                                                                                            <CheckCircle2 className="size-3 text-emerald-500" />
-                                                                                        )}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* File list style comp-549 */}
+                                                            {uploadedFiles.length > 0 && (
+                                                                <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                                                    <div className="flex items-center justify-between px-1">
+                                                                        <span className="text-sm font-bold text-foreground">Listado de archivos para procesar</span>
+                                                                        <Button 
+                                                                            variant="ghost" 
+                                                                            size="sm" 
+                                                                            className="h-6 text-[10px] font-bold text-destructive hover:bg-destructive/10"
+                                                                            onClick={() => setUploadedFiles([])}
+                                                                        >
+                                                                            Limpiar lista
+                                                                        </Button>
+                                                                    </div>
+                                                                    
+                                                                    <div className="grid gap-2">
+                                                                        {uploadedFiles.map((file) => (
+                                                                            <div
+                                                                                key={file.id}
+                                                                                className="flex items-center justify-between gap-3 rounded-xl border border-border/40 bg-muted/5 p-3 hover:bg-accent/30 transition-colors group/item"
+                                                                            >
+                                                                                <div className="flex items-center gap-3 overflow-hidden">
+                                                                                    <div className="flex aspect-square size-9 shrink-0 items-center justify-center rounded-lg border border-border/40 bg-background shadow-sm">
+                                                                                        <FileText className="size-4 text-primary/70" />
                                                                                     </div>
-                                                                                </ComboboxItem>
-                                                                            );
-                                                                        })}
-                                                                    </ComboboxList>
-                                                                </ComboboxPopup>
-                                                            </Combobox>
-                                                        </Group>
+                                                                                    <div className="flex min-w-0 flex-col gap-0.5">
+                                                                                        <p className="truncate font-bold text-[12px] text-foreground">
+                                                                                            {file.name || 'Archivo sin nombre'}
+                                                                                        </p>
+                                                                                        <p className="text-muted-foreground text-[10px] font-medium">
+                                                                                            {file.isReceived ? `Recibido de ${file.from || 'Terminal'}` : `${formatBytes(Number(file.size || 0))} • Listo para procesar`}
+                                                                                        </p>
+                                                                                    </div>
+                                                                                </div>
+
+                                                                                <div className="flex items-center gap-1">
+                                                                                    {file.content && (
+                                                                                        <Button
+                                                                                            variant="ghost"
+                                                                                            size="icon"
+                                                                                            className="size-7 text-primary hover:bg-primary/10 rounded-lg opacity-0 group-hover/item:opacity-100 transition-opacity"
+                                                                                            onClick={() => {
+                                                                                                const blob = new Blob([file.content], { type: 'text/plain' });
+                                                                                                const url = URL.createObjectURL(blob);
+                                                                                                const link = document.createElement('a');
+                                                                                                link.href = url;
+                                                                                                link.download = file.name;
+                                                                                                document.body.appendChild(link);
+                                                                                                link.click();
+                                                                                                document.body.removeChild(link);
+                                                                                                URL.revokeObjectURL(url);
+                                                                                            }}
+                                                                                        >
+                                                                                            <Download className="size-4" />
+                                                                                        </Button>
+                                                                                    )}
+                                                                                    <Button
+                                                                                        variant="ghost"
+                                                                                        size="icon"
+                                                                                        className="size-7 text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 rounded-lg opacity-0 group-hover/item:opacity-100 transition-opacity"
+                                                                                        onClick={() => setUploadedFiles(prev => prev.filter(f => f.id !== file.id))}
+                                                                                    >
+                                                                                        <X aria-hidden="true" className="size-4" />
+                                                                                    </Button>
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+
+                                                                    <Button className="w-full mt-2 bg-primary hover:bg-primary/90 text-primary-foreground font-bold h-10 rounded-xl shadow-none group">
+                                                                        <Zap className="size-4 mr-2 group-hover:animate-pulse" />
+                                                                        Procesar conteo general
+                                                                    </Button>
+                                                                </div>
+                                                            )}
+                                                        </CardPanel>
+                                                    </Card>
+                                                </CardFrame>
+                                            </TabsPanel>
+
+                                            <TabsPanel value="conexiones" className="flex-1 flex flex-col gap-0 overflow-y-auto custom-scrollbar">
+                                                <div className="p-4">
+                                                        <CardFrame className="w-full">
+                                                            <CardFrameHeader className="flex-row items-center justify-between py-3">
+                                                                <div className="flex items-center gap-2">
+                                                                    <Laptop className="size-4 text-primary" />
+                                                                    <CardFrameTitle>Conexión de Dispositivos</CardFrameTitle>
+                                                                </div>
+                                                                <CardFrameAction className="col-start-auto flex items-center gap-2">
+                                                                    <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20 font-bold text-[10px]">Online</Badge>
+                                                                    <Badge variant="outline" className="bg-orange-500/5 text-orange-600 border-orange-500/20 font-bold text-[10px]">Admin</Badge>
+                                                                </CardFrameAction>
+                                                            </CardFrameHeader>
+                                                            <Card>
+                                                                <CardPanel className="flex flex-col items-center justify-center space-y-6 text-center py-10">
+                                                                    <div className="space-y-2">
+                                                                        <h3 className="text-xl font-bold tracking-tight">Código de verificación</h3>
+                                                                        <p className="text-sm text-muted-foreground/70">Ingrese el código de 6 dígitos en la terminal Zebra</p>
+                                                                    </div>
+
+                                                                    <InputOTP maxLength={6} value={syncPin} readOnly>
+                                                                        <InputOTPGroup className="gap-1.5">
+                                                                            <InputOTPSlot index={0} className="!h-12 !w-10 !rounded-xl !border border-border/30 bg-background shadow-xs text-xl font-black" />
+                                                                            <InputOTPSlot index={1} className="!h-12 !w-10 !rounded-xl !border border-border/30 bg-background shadow-xs text-xl font-black" />
+                                                                            <InputOTPSlot index={2} className="!h-12 !w-10 !rounded-xl !border border-border/30 bg-background shadow-xs text-xl font-black" />
+                                                                        </InputOTPGroup>
+                                                                        <div className="mx-2 text-muted-foreground/20 font-bold text-xl">-</div>
+                                                                        <InputOTPGroup className="gap-1.5">
+                                                                            <InputOTPSlot index={3} className="!h-12 !w-10 !rounded-xl !border border-border/30 bg-background shadow-xs text-xl font-black" />
+                                                                            <InputOTPSlot index={4} className="!h-12 !w-10 !rounded-xl !border border-border/30 bg-background shadow-xs text-xl font-black" />
+                                                                            <InputOTPSlot index={5} className="!h-12 !w-10 !rounded-xl !border border-border/30 bg-background shadow-xs text-xl font-black" />
+                                                                        </InputOTPGroup>
+                                                                    </InputOTP>
+
+                                                                    <p className="max-w-[280px] text-[11px] leading-relaxed text-muted-foreground/50">
+                                                                        Esta pantalla se actualizará automáticamente cuando se detecte una conexión entrante desde los dispositivos móviles.
+                                                                    </p>
+                                                                </CardPanel>
+                                                            </Card>
+                                                        </CardFrame>
+                                                        <CardFrame className="w-full mt-4">
+                                                            <CardFrameHeader className="flex-row items-center justify-between py-3">
+                                                                <div className="flex items-center gap-2">
+                                                                    <Wifi className="size-4 text-primary" />
+                                                                    <CardFrameTitle>Terminales activas en la sesión</CardFrameTitle>
+                                                                </div>
+                                                                <CardFrameAction className="col-start-auto flex items-center gap-2">
+                                                                    <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 font-bold text-[10px]">
+                                                                        {connectedDevices.length} dispositivos
+                                                                    </Badge>
+                                                                </CardFrameAction>
+                                                            </CardFrameHeader>
+                                                            <Card>
+                                                                <CardPanel className="p-0 max-h-[300px] overflow-auto">
+                                                                    <ConnectedDevicesList devices={connectedDevices} />
+                                                                </CardPanel>
+                                                            </Card>
+                                                        </CardFrame>
+                                                    </div>
+                                                </TabsPanel>
+                                            </Tabs>
+
+                                            {/* Action Buttons inside Col 1 */}
+                                            <div className="flex flex-col gap-2 p-4 border-t border-border/40 bg-background mt-auto">
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <Button variant="outline" onClick={handleExportPDF} className="h-10 font-bold text-xs gap-2 rounded-xl border-border/40">
+                                                        <FileText className="size-4" /> PDF
+                                                    </Button>
+                                                    <Button variant="outline" onClick={handleExportTXT} className="h-10 font-bold text-xs gap-2 rounded-xl border-border/40">
+                                                        <Upload className="size-4" /> TXT
+                                                    </Button>
+                                                </div>
+                                                <Button onClick={handleFinishClick} className="w-full h-12 font-bold text-sm gap-2 rounded-xl">
+                                                    <CheckCircle className="size-5" /> Finalizar Inventario
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        {/* Column 2: Connected Terminals (8 units) */}
+                                        <div className="lg:col-span-8 lg:col-start-5 flex flex-col h-full min-h-0 bg-card border border-border/40 rounded-xl overflow-hidden shadow-sm">
+                                            <ConnectedDevicesList devices={connectedDevices} className="flex-1" />
+                                        </div>
+                                    </>
+                                ) : (
+                                /* VISTA CARGA (ZEBRA/SALON - 2 COLUMNAS) */
+                                <>
+                                    {/* Left Column: Escaneo / Info */}
+                                    <div className="lg:col-span-4 lg:col-start-1 flex flex-col gap-4 min-h-0">
+                                        <Card className="flex flex-col lg:flex-1 overflow-visible bg-card border-muted/50 shadow-md">
+                                            {/* 1. Info Header & Location Widget */}
+                                            <div className={`p-3 sm:p-5 border-b border-border/40 transition-colors duration-500 bg-transparent`}>
+                                                <div className="flex flex-col gap-3">
+                                                    <div className="flex items-center justify-between px-1 opacity-70">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="flex items-center gap-1">
+                                                                <Smartphone className="size-3 text-muted-foreground" />
+                                                                <span className="text-[10px] uppercase font-bold tracking-tight text-muted-foreground/60">Dispositivo:</span>
+                                                                <span className="text-xs font-bold text-foreground">{deviceName || 'Zebra'}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-1 border-l border-border/20 pl-4">
+                                                                <span className="text-[10px] uppercase font-bold tracking-tight text-muted-foreground/60">Session:</span>
+                                                                <span className="text-xs font-bold text-foreground">#{session?.id?.toString().slice(-4)}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <Button 
+                                                                variant="outline" 
+                                                                size="icon" 
+                                                                className={cn("text-muted-foreground hover:bg-primary/5 hover:text-primary", isZenMode && "bg-primary/10 text-primary border-primary/20")}
+                                                                onClick={() => setIsZenMode(!isZenMode)}
+                                                            >
+                                                                {isZenMode ? <Minimize /> : <Maximize />}
+                                                            </Button>
+                                                            <Button variant="outline" size="icon" className="text-muted-foreground hover:bg-primary/5 hover:text-primary">
+                                                                <Settings />
+                                                            </Button>
+                                                        </div>
                                                     </div>
 
-                                                    {/* Action Buttons: Independent for proper responsive sizing */}
-                                                    {activeLocation && (
+                                                    <div className="flex items-center gap-1.5">
+                                                        {/* Selector: Pin + Combobox */}
+                                                        <div ref={setComboboxAnchor} className="flex-1 flex min-w-0">
+                                                            <Group className="flex-1 shadow-xs">
+                                                                <GroupText
+                                                                    className="pointer-events-none px-2.5 border-input bg-transparent text-muted-foreground/80 shrink-0"
+                                                                >
+                                                                    <MapPin className="size-4" />
+                                                                </GroupText>
+                                                                <GroupSeparator />
+                                                                <Combobox
+                                                                    items={allSectors.map(s => s.tag)}
+                                                                    value={activeLocation || undefined}
+                                                                    onValueChange={(val) => {
+                                                                        if (typeof val === 'string') {
+                                                                            setActiveLocation(val);
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    <ComboboxTrigger
+                                                                        ref={comboboxAnchorRef}
+                                                                        render={
+                                                                            <SelectButton 
+                                                                                variant="outline" 
+                                                                                className="flex-1 bg-transparent hover:bg-muted/30 transition-colors font-bold text-sm shadow-none"
+                                                                            />
+                                                                        }
+                                                                    >
+                                                                        <div className="flex items-center gap-2 truncate">
+                                                                            <span className="truncate">
+                                                                                {activeLocation || "Todos"}
+                                                                            </span>
+                                                                            {activeLocation && isActiveLocationClosed && (
+                                                                                <Badge variant="secondary" className="text-[8px] h-3.5 uppercase px-1 leading-none font-bold ml-1 opacity-70">Cerrado</Badge>
+                                                                            )}
+                                                                        </div>
+                                                                    </ComboboxTrigger>
+                                                                    <ComboboxPopup 
+                                                                        anchor={comboboxAnchor} 
+                                                                        align="start"
+                                                                        className="w-[calc(var(--anchor-width)+2px)] z-[100] -ml-[1px]"
+                                                                    >
+                                                                        <div className="border-b p-2">
+                                                                            <ComboboxInput
+                                                                                placeholder="Buscar sector..."
+                                                                                startAddon={<Search className="size-4" />}
+                                                                                className="h-8 ps-9"
+                                                                            />
+                                                                        </div>
+                                                                        <ComboboxEmpty>No se encontraron sectores.</ComboboxEmpty>
+                                                                        <ComboboxList className="max-h-64">
+                                                                            {allSectors.map((sector) => {
+                                                                                const sectorItemCount = items.filter(i => i.location_tag === sector.tag).length;
+                                                                                const sectorUnitCount = items.filter(i => i.location_tag === sector.tag).reduce((sum, i) => sum + i.quantity, 0);
+                                                                                return (
+                                                                                    <ComboboxItem key={sector.tag} value={sector.tag}>
+                                                                                        <div className="flex items-center gap-2 w-full">
+                                                                                            <MapPin className={cn("size-3.5 mt-0.5", sector.status === 'closed' ? "text-muted-foreground" : "text-amber-500")} />
+                                                                                            <span className={cn("font-bold flex-1", sector.status === 'closed' && "text-muted-foreground line-through opacity-60")}>
+                                                                                                {sector.tag}
+                                                                                            </span>
+                                                                                            <span className="text-[9px] text-muted-foreground font-medium tabular-nums">
+                                                                                                {sectorItemCount}P · {sectorUnitCount}U
+                                                                                            </span>
+                                                                                            {sector.status === 'closed' && (
+                                                                                                <CheckCircle className="size-3 text-emerald-500" />
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </ComboboxItem>
+                                                                                );
+                                                                            })}
+                                                                        </ComboboxList>
+                                                                    </ComboboxPopup>
+                                                                </Combobox>
+                                                            </Group>
+                                                        </div>
+
+                                                        {/* Action Buttons: Independent for proper responsive sizing */}
+                                                        {activeLocation && (
+                                                            <Button
+                                                                variant="outline"
+                                                                size="icon"
+                                                                className="shrink-0 text-muted-foreground hover:bg-destructive/5 hover:text-destructive"
+                                                                onClick={() => setActiveLocation(null)}
+                                                                title="Volver al listado general"
+                                                            >
+                                                                <X />
+                                                            </Button>
+                                                        )}
                                                         <Button
                                                             variant="outline"
                                                             size="icon"
-                                                            className="shrink-0 text-muted-foreground hover:bg-destructive/5 hover:text-destructive"
-                                                            onClick={() => setActiveLocation(null)}
-                                                            title="Volver al listado general"
+                                                            disabled={activeLocation !== null && !isActiveLocationClosed}
+                                                            className={cn(
+                                                                "shrink-0 text-muted-foreground hover:bg-primary/5 hover:text-primary",
+                                                                (activeLocation !== null && !isActiveLocationClosed) && "opacity-30 grayscale"
+                                                            )}
+                                                            onClick={() => {
+                                                                const manualCode = prompt("Ingresa el código de la nueva zona (Ej: GO-01, CA-02):");
+                                                                if (manualCode) handleLocationScan(manualCode);
+                                                            }}
                                                         >
-                                                            <XIcon />
+                                                            <Plus />
                                                         </Button>
-                                                    )}
-                                                    <Button
-                                                        variant="outline"
-                                                        size="icon"
-                                                        disabled={activeLocation !== null && !isActiveLocationClosed}
-                                                        className={cn(
-                                                            "shrink-0 text-muted-foreground hover:bg-primary/5 hover:text-primary",
-                                                            (activeLocation !== null && !isActiveLocationClosed) && "opacity-30 grayscale"
-                                                        )}
-                                                        onClick={() => {
-                                                            const manualCode = prompt("Ingresa el código de la nueva zona (Ej: GO-01, CA-02):");
-                                                            if (manualCode) handleLocationScan(manualCode);
-                                                        }}
-                                                    >
-                                                        <Plus />
-                                                    </Button>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="icon"
-                                                        className="shrink-0 text-muted-foreground hover:bg-emerald-500/5 hover:text-emerald-500"
-                                                        disabled={!activeLocation}
-                                                        onClick={() => {
-                                                            if (activeLocation) handleLocationScan(activeLocation);
-                                                        }}
-                                                    >
-                                                        <CheckCircle2 />
-                                                    </Button>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="icon"
+                                                            className="shrink-0 text-muted-foreground hover:bg-emerald-500/5 hover:text-emerald-500"
+                                                            disabled={!activeLocation}
+                                                            onClick={() => {
+                                                                if (activeLocation) handleLocationScan(activeLocation);
+                                                            }}
+                                                        >
+                                                            <CheckCircle />
+                                                        </Button>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
 
-                                {/* 2. Counters Grid */}
-                                    <div className="grid grid-cols-3 divide-x divide-border/40 border-b border-border/40 bg-card/30">
-                                        <div className="p-4 flex flex-col items-center justify-center text-center">
-                                            <span className="text-xs font-semibold text-muted-foreground mb-2">Productos</span>
-                                            <div className="text-2xl font-black text-primary">
-                                                <AnimatedCounter value={totalProducts} digits={4} />
+                                            {/* 2. Counters Grid */}
+                                            <div className="grid grid-cols-3 divide-x divide-border/40 border-b border-border/40 bg-card/30">
+                                                <div className="p-4 flex flex-col items-center justify-center text-center">
+                                                    <span className="text-xs font-semibold text-muted-foreground mb-2">Productos</span>
+                                                    <div className="text-2xl font-black text-primary">
+                                                        <AnimatedCounter value={totalProducts} digits={4} />
+                                                    </div>
+                                                </div>
+                                                <div className="p-4 flex flex-col items-center justify-center text-center">
+                                                    <span className="text-xs font-semibold text-muted-foreground mb-2">Unidades</span>
+                                                    <div className="text-2xl font-bold text-foreground">
+                                                        <AnimatedCounter value={totalUnits} digits={4} />
+                                                    </div>
+                                                </div>
+                                                <div className="p-4 flex flex-col items-center justify-center text-center">
+                                                    <span className="text-xs font-semibold text-muted-foreground mb-2">Desconocidos</span>
+                                                    <div className="text-2xl font-bold text-amber-500">
+                                                        <AnimatedCounter value={errorCount} digits={3} />
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <div className="p-4 flex flex-col items-center justify-center text-center">
-                                            <span className="text-xs font-semibold text-muted-foreground mb-2">Unidades</span>
-                                            <div className="text-2xl font-bold text-foreground">
-                                                <AnimatedCounter value={totalUnits} digits={4} />
-                                            </div>
-                                        </div>
-                                        <div className="p-4 flex flex-col items-center justify-center text-center">
-                                            <span className="text-xs font-semibold text-muted-foreground mb-2">Desconocid.</span>
-                                            <div className="text-2xl font-bold text-amber-500">
-                                                <AnimatedCounter value={errorCount} digits={3} />
-                                            </div>
-                                        </div>
-                                    </div>
 
-                                    {/* 3. Actions / Modes */}
-                                    <div className={cn("p-4 border-b border-border/40 flex items-center justify-between transition-all", (activeLocation && !isActiveLocationClosed) ? "bg-card/50" : "bg-card/20 opacity-40 pointer-events-none grayscale")}>
-                                        <span className="text-xs font-semibold text-muted-foreground">Configuración de Escaneo</span>
-                                        <div className="flex items-center gap-4">
+                                            {/* 3. Actions / Modes */}
+                                            <div className={cn("p-4 border-b border-border/40 flex items-center justify-between transition-all", (activeLocation && !isActiveLocationClosed) ? "bg-card/50" : "bg-card/20 opacity-40 pointer-events-none grayscale")}>
+                                                <span className="text-xs font-semibold text-muted-foreground">Configuración de Escaneo</span>
+                                                <div className="flex items-center gap-4">
                                                     <Group aria-label="Configuración de Escaneo">
                                                         <Button 
                                                             variant={highSpeedMode && !isManualMode ? "secondary" : "outline"}
@@ -2181,208 +2776,200 @@ export default function PreCount() {
                                                             <Keyboard className="size-4" />
                                                         </Button>
                                                     </Group>
-                                        </div>
-                                    </div>
+                                                </div>
+                                            </div>
 
-                                     {/* 4. Search & Quantity Input - Visible en PC o Manual Mode en móvil */}
-                                    <div className={cn("px-4 py-2 space-y-3 border-b border-border/40 transition-all relative z-40", (activeLocation && !isActiveLocationClosed) ? "bg-card/50" : "bg-card/20 opacity-40 pointer-events-none grayscale", (!isManualMode && "hidden lg:block"))}>
-                                        {/* Search bar */}
-                                        <div className="relative z-50 w-full">
-                                            <SmartProductSearch
-                                                key={searchResetKey}
-                                                onSelect={(p) => {
-                                                    if (!activeLocation) return;
-                                                    
-                                                    const timeSinceScan = Date.now() - lastScanTimeRef.current;
-                                                    if (timeSinceScan < 500) return;
+                                            {/* 4. Search & Quantity Input */}
+                                            <div className={cn("px-4 py-2 space-y-3 border-b border-border/40 transition-all relative z-40", (activeLocation && !isActiveLocationClosed) ? "bg-card/50" : "bg-card/20 opacity-40 pointer-events-none grayscale", (!isManualMode && "hidden lg:block"))}>
+                                                {/* Search bar */}
+                                                <div className="relative z-50 w-full">
+                                                    <SmartProductSearch
+                                                        key={searchResetKey}
+                                                        onSelect={(p) => {
+                                                            if (!activeLocation) return;
+                                                            
+                                                            const timeSinceScan = Date.now() - lastScanTimeRef.current;
+                                                            if (timeSinceScan < 500) return;
 
-                                                    if (!p.name) {
-                                                        notify.warning("Advertencia", 'Producto no encontrado en la base de datos', {
-                                                            description: 'Puedes agregarlo manualmente',
-                                                        });
-                                                        registerError();
-                                                    } else {
-                                                        // notify.success("Operación exitosa", `Producto encontrado: ${p.name}`);
-                                                    }
+                                                            if (!p.name) {
+                                                                notify.warning("Advertencia", 'Producto no encontrado en la base de datos', {
+                                                                    description: 'Puedes agregarlo manualmente',
+                                                                });
+                                                                registerError();
+                                                            }
 
-                                                    setManualEAN(p.ean);
-                                                    setSelectedProduct({ ...p, stock: 0, salePrice: 0, cost: 0, id_producto: p.id_producto });
-                                                    setEditingItemId(null); // Clear editing when selecting a new product
+                                                            setManualEAN(p.ean);
+                                                            setSelectedProduct({ ...p, stock: 0, salePrice: 0, cost: 0, id_producto: p.id_producto });
+                                                            setEditingItemId(null);
 
-                                                    // En modo Cantidad (no highSpeed), abrir el teclado virtual solo en Zebra
-                                                    if (!highSpeedMode && accessMode === 'zebra') {
-                                                        setTimeout(() => setShowQtyDrawer(true), 80);
-                                                    } else {
-                                                        setTimeout(() => {
-                                                            document.getElementById('quantity-input')?.focus();
-                                                            (document.getElementById('quantity-input') as HTMLInputElement)?.select();
-                                                        }, 50);
-                                                    }
-                                                }}
-                                                autoFocus={true}
-                                                className="w-full"
-                                            />
-                                        </div>
-
-                                        {/* Quantity + Add - Hidden on Mobile unless logic demands it, but requested to hide always on mobile */}
-                                        <div className="hidden lg:flex gap-2 items-center">
-                                            <NumberField
-                                                key={searchResetKey}
-                                                value={quantity}
-                                                onValueChange={(val) => setQuantity(val ?? 1)}
-                                                min={1}
-                                                className="flex-1 relative"
-                                            >
-                                                <div className="relative">
-                                                    <NumberFieldDecrement />
-                                                    <NumberFieldInput
-                                                        id="quantity-input"
-                                                        className="h-11 text-base font-semibold"
-                                                        inputMode="none"
-                                                        onKeyDown={(e: React.KeyboardEvent) => {
-                                                            if (e.key === 'Enter') {
-                                                                handleAddProduct();
+                                                            if (!highSpeedMode && accessMode === 'zebra') {
+                                                                setTimeout(() => setShowQtyDrawer(true), 80);
+                                                            } else {
+                                                                setTimeout(() => {
+                                                                    document.getElementById('quantity-input')?.focus();
+                                                                    (document.getElementById('quantity-input') as HTMLInputElement)?.select();
+                                                                }, 50);
                                                             }
                                                         }}
+                                                        autoFocus={true}
+                                                        className="w-full"
                                                     />
-                                                    <NumberFieldIncrement />
                                                 </div>
-                                            </NumberField>
 
-                                            <Button
-                                                onClick={handleAddProduct}
-                                                size="lg"
-                                                className="h-11 px-6 shadow-sm font-bold tracking-wide flex-shrink-0"
-                                                disabled={!manualEAN.trim()}
-                                            >
-                                                 <Plus className="w-5 h-5" />
-                                            </Button>
-                                        </div>
-
-                                        <AnimatePresence>
-                                            {selectedProduct && (
-                                                <motion.button
-                                                    initial={{ opacity: 0, height: 0, scale: 0.95 }}
-                                                    animate={{ opacity: 1, height: 'auto', scale: 1 }}
-                                                    exit={{ opacity: 0, height: 0 }}
-                                                    className="w-full bg-primary/5 rounded border border-primary/10 flex items-center justify-between p-2 overflow-hidden mt-1.5 cursor-pointer active:scale-[0.98] transition-all text-left"
-                                                    onClick={() => {
-                                                        if (accessMode === 'zebra') {
-                                                            setShowQtyDrawer(true);
-                                                        } else {
-                                                            document.getElementById('quantity-input')?.focus();
-                                                            (document.getElementById('quantity-input') as HTMLInputElement)?.select();
-                                                        }
-                                                    }}
-                                                >
-                                                    <div className="flex items-center gap-2 min-w-0">
-                                                        <CheckCircle className="w-4 h-4 text-primary shrink-0" />
-                                                        <div className="min-w-0 flex flex-col sm:flex-row sm:items-baseline gap-1">
-                                                            <span className="font-semibold text-foreground text-sm truncate">{selectedProduct.name}</span>
-                                                            <span className="text-xs text-muted-foreground font-mono truncate">{selectedProduct.ean}</span>
+                                                {/* Quantity + Add */}
+                                                <div className="hidden lg:flex gap-2 items-stretch">
+                                                    <NumberField
+                                                        key={searchResetKey}
+                                                        value={quantity}
+                                                        onValueChange={(val) => setQuantity(val ?? 1)}
+                                                        min={1}
+                                                        className="flex-1 relative"
+                                                    >
+                                                        <div className="relative">
+                                                            <NumberFieldDecrement className="text-muted-foreground/40 hover:text-primary" />
+                                                            <NumberFieldInput
+                                                                id="quantity-input"
+                                                                className="h-11 text-sm font-bold bg-transparent border-input shadow-none focus-visible:ring-primary/10"
+                                                                inputMode="none"
+                                                                onKeyDown={(e: React.KeyboardEvent) => {
+                                                                    if (e.key === 'Enter') {
+                                                                        handleAddProduct();
+                                                                    }
+                                                                }}
+                                                            />
+                                                            <NumberFieldIncrement className="text-muted-foreground/40 hover:text-primary" />
                                                         </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-[9px] font-bold uppercase text-primary/40 tracking-wider">Editar</span>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            className="h-6 text-[10px] px-2 text-muted-foreground hover:text-destructive"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setSelectedProduct(null);
-                                                                setManualEAN('');
+                                                    </NumberField>
+
+                                                    <Button
+                                                        onClick={handleAddProduct}
+                                                        className="h-11 sm:h-11 px-6 shadow-none font-bold flex-shrink-0 bg-black dark:bg-white text-white dark:text-black hover:bg-black/90 dark:hover:bg-white/90 rounded-xl"
+                                                        disabled={!manualEAN.trim()}
+                                                    >
+                                                        <Plus className="size-5" />
+                                                    </Button>
+                                                </div>
+
+                                                <AnimatePresence>
+                                                    {selectedProduct && (
+                                                        <motion.button
+                                                            initial={{ opacity: 0, height: 0, scale: 0.95 }}
+                                                            animate={{ opacity: 1, height: 'auto', scale: 1 }}
+                                                            exit={{ opacity: 0, height: 0 }}
+                                                            className="w-full bg-primary/5 rounded border border-primary/10 flex items-center justify-between p-2 overflow-hidden mt-1.5 cursor-pointer active:scale-[0.98] transition-all text-left"
+                                                            onClick={() => {
+                                                                if (accessMode === 'zebra') {
+                                                                    setShowQtyDrawer(true);
+                                                                } else {
+                                                                    document.getElementById('quantity-input')?.focus();
+                                                                    (document.getElementById('quantity-input') as HTMLInputElement)?.select();
+                                                                }
                                                             }}
                                                         >
-                                                            Limpiar
+                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                <CheckCircle className="w-4 h-4 text-primary shrink-0" />
+                                                                <div className="min-w-0 flex flex-col sm:flex-row sm:items-baseline gap-1">
+                                                                    <span className="font-semibold text-foreground text-sm truncate">{selectedProduct.name}</span>
+                                                                    <span className="text-xs text-muted-foreground font-mono truncate">{selectedProduct.ean}</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5">
+                                                                <Button
+                                                                    size="icon"
+                                                                    variant="ghost"
+                                                                    className="size-7 text-muted-foreground/60 hover:text-primary hover:bg-primary/5"
+                                                                    onClick={() => {
+                                                                        if (accessMode === 'zebra') {
+                                                                            setShowQtyDrawer(true);
+                                                                        } else {
+                                                                            document.getElementById('quantity-input')?.focus();
+                                                                            (document.getElementById('quantity-input') as HTMLInputElement)?.select();
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    <Pencil className="size-3.5" />
+                                                                </Button>
+                                                                <Button
+                                                                    size="icon"
+                                                                    variant="ghost"
+                                                                    className="size-7 text-muted-foreground/60 hover:text-destructive hover:bg-destructive/5"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setSelectedProduct(null);
+                                                                        setManualEAN('');
+                                                                    }}
+                                                                >
+                                                                    <Trash2 className="size-3.5" />
+                                                                </Button>
+                                                            </div>
+                                                        </motion.button>
+                                                    )}
+                                                </AnimatePresence>
+                                            </div>
+
+                                            {/* Spacer to push action buttons to bottom - Oculto en móvil */}
+                                            <div className="hidden lg:block flex-1" />
+
+                                            {/* Action Buttons Footer - Oculto en móvil */}
+                                            {items.length > 0 && (
+                                                <div className="hidden lg:block p-3 border-t border-border/40 bg-card/50">
+                                                    <div className="flex items-center gap-2">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="flex-1 h-10 text-xs font-bold gap-2 rounded-xl border-border/40 bg-background hover:bg-muted/50"
+                                                            onClick={handleExportTXT}
+                                                        >
+                                                            <Upload className="w-4 h-4" />
+                                                            Exportar TXT
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            className="flex-[1.5] h-10 text-sm font-bold gap-2 rounded-xl bg-black dark:bg-white text-white dark:text-black hover:bg-black/90 dark:hover:bg-white/90 border border-border/20 shadow-none"
+                                                            onClick={handleFinishClick}
+                                                        >
+                                                            <CheckCircle className="w-4 h-4" />
+                                                            Finalizar Sesión
                                                         </Button>
                                                     </div>
-                                                </motion.button>
+                                                </div>
                                             )}
-                                        </AnimatePresence>
+                                        </Card>
                                     </div>
 
-                                    {/* Spacer to push action buttons to bottom - Oculto en móvil */}
-                                    <div className="hidden lg:block flex-1" />
-
-                                    {/* Action Buttons Footer - Oculto en móvil */}
-                                    {items.length > 0 && (
-                                        <div className="hidden lg:block p-3 border-t border-border/40 bg-card/50">
-                                            <div className="grid grid-cols-2 sm:flex sm:items-center gap-2">
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="h-9 text-xs font-bold gap-1.5 rounded-xl border-border/40"
-                                                    onClick={handleExportPDF}
-                                                >
-                                                    <FileText className="w-3.5 h-3.5" />
-                                                    PDF
-                                                </Button>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="h-9 text-xs font-bold gap-1.5 rounded-xl border-border/40"
-                                                    onClick={handleExportTXT}
-                                                >
-                                                    <Upload className="w-3.5 h-3.5" />
-                                                    TXT
-                                                </Button>
-                                                {session?.master_catalog && (
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="col-span-2 sm:flex-[1.5] h-9 text-xs font-bold gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 rounded-xl"
-                                                        onClick={handleExportExcel}
-                                                    >
-                                                        <FileSpreadsheet className="w-3.5 h-3.5" />
-                                                        Conciliar Excel
-                                                    </Button>
-                                                )}
-                                                <Button
-                                                    size="sm"
-                                                    className="col-span-2 sm:flex-[2] h-10 text-sm font-bold gap-1.5 rounded-xl bg-primary shadow-sm"
-                                                    onClick={handleFinishClick}
-                                                >
-                                                    <CheckCircle className="w-4 h-4" />
-                                                    Finalizar Sesión
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </Card>
-                            </div>
-
-                            {/* Right Column: Dense List / Table */}
-                            <div className="lg:col-span-8 lg:col-start-5 flex flex-col h-full min-h-0 bg-card border border-border/40 rounded-xl overflow-hidden shadow-sm">
-                                <PreCountList
-                                    items={activeLocation ? items.filter(item => item.location_tag === activeLocation) : items}
-                                    mode={listMode}
-                                    onUpdate={updateItem}
-                                    onDelete={removeItem}
-                                    onEditRequest={(item) => {
-                                        setSelectedProduct({
-                                            ean: item.ean,
-                                            name: item.productName || 'Producto',
-                                            stock: 0,
-                                            salePrice: 0,
-                                            cost: 0,
-                                            id_producto: item.id_producto
-                                        });
-                                        setManualEAN(item.ean);
-                                        setQuantity(item.quantity);
-                                        setEditingItemId(item.id);
-                                        if (accessMode === 'zebra') {
-                                            setShowQtyDrawer(true);
-                                        } else {
-                                            setTimeout(() => {
-                                                document.getElementById('quantity-input')?.focus();
-                                                (document.getElementById('quantity-input') as HTMLInputElement)?.select();
-                                            }, 50);
-                                        }
-                                    }}
-                                    masterCatalog={session?.master_catalog}
-                                />
-                            </div>
+                                    {/* Right Column: Dense List / Table (Solo para Zebra/Salon) */}
+                                    <div className="lg:col-span-8 lg:col-start-5 flex flex-col h-full min-h-0 bg-card border border-border/40 rounded-xl overflow-hidden shadow-sm">
+                                        <PreCountList
+                                            items={activeLocation ? items.filter(item => item.location_tag === activeLocation) : items}
+                                            mode={listMode}
+                                            onUpdate={updateItem}
+                                            onDelete={removeItem}
+                                            onEditRequest={(item) => {
+                                                setSelectedProduct({
+                                                    ean: item.ean,
+                                                    name: item.productName || 'Producto',
+                                                    stock: 0,
+                                                    salePrice: 0,
+                                                    cost: 0,
+                                                    id_producto: item.id_producto
+                                                });
+                                                setManualEAN(item.ean);
+                                                setQuantity(item.quantity);
+                                                setEditingItemId(item.id);
+                                                if (accessMode === 'zebra') {
+                                                    setShowQtyDrawer(true);
+                                                } else {
+                                                    setTimeout(() => {
+                                                        document.getElementById('quantity-input')?.focus();
+                                                        (document.getElementById('quantity-input') as HTMLInputElement)?.select();
+                                                    }, 50);
+                                                }
+                                            }}
+                                            masterCatalog={session?.master_catalog}
+                                        />
+                                    </div>
+                                </>
+                            )}
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -2435,7 +3022,7 @@ export default function PreCount() {
                 <DialogPopup className="max-w-[90vw] rounded-lg sm:max-w-[425px]">
                     <DialogHeader>
                         <div className="mx-auto w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mb-2">
-                            <MapPinIcon className="size-6 text-amber-600" />
+                            <MapPin className="size-6 text-amber-600" />
                         </div>
                         <DialogTitle className="text-center text-xl">Zona no seleccionada</DialogTitle>
                         <DialogDescription className="text-center">

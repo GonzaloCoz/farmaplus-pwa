@@ -340,8 +340,7 @@ export const cyclicInventoryService = {
                 .from('branch_laboratories')
                 .update({ 
                     status: 'completed',
-                    progress_percentage: 100,
-                    last_controlled: new Date().toISOString()
+                    progress_percentage: 100
                 })
                 .eq('branch_name', cleanBranch)
                 .eq('laboratory', cleanLab);

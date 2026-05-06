@@ -107,6 +107,7 @@ const AppRoutes = () => {
         }
       />
       <Route
+        path="/*"
         element={
           <ProtectedRoute>
             <AppLayout />
@@ -114,7 +115,7 @@ const AppRoutes = () => {
         }
       >
         <Route
-          path="/"
+          index
           element={
             <Suspense fallback={<DashboardSkeleton />}>
               <PageTransition>
@@ -124,7 +125,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/stock"
+          path="stock"
           element={
             <Suspense fallback={<DashboardSkeleton />}>
               <PageTransition>
@@ -134,7 +135,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/stock/pre-count"
+          path="stock/pre-count"
           element={
             <Suspense fallback={<DashboardSkeleton />}>
               <PageTransition>
@@ -144,7 +145,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/stock/import"
+          path="stock/import"
           element={
             <Suspense fallback={<DashboardSkeleton />}>
               <PageTransition>
@@ -154,7 +155,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/stock/recount-mobile"
+          path="stock/recount-mobile"
           element={
             <Suspense fallback={<DashboardSkeleton />}>
               <PageTransition>
@@ -164,7 +165,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/stock/expiration-control"
+          path="stock/expiration-control"
           element={
             <Suspense fallback={<DashboardSkeleton />}>
               <PageTransition>
@@ -174,7 +175,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/cyclic-inventory"
+          path="cyclic-inventory"
           element={
             <Suspense fallback={<DashboardSkeleton />}>
               <PageTransition>
@@ -184,7 +185,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/cyclic-inventory/:id"
+          path="cyclic-inventory/:id"
           element={
             <Suspense fallback={<DashboardSkeleton />}>
               <PageTransition>
@@ -194,7 +195,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/products"
+          path="products"
           element={
             <AdminRoute>
               <Suspense fallback={<PageSkeleton />}>
@@ -206,7 +207,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/reports"
+          path="reports"
           element={
             <Suspense fallback={<PageSkeleton />}>
               <PageTransition>
@@ -216,7 +217,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/comparison"
+          path="comparison"
           element={
             <AdminRoute>
               <Suspense fallback={<PageSkeleton />}>
@@ -228,7 +229,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/settings"
+          path="settings"
           element={
             <Suspense fallback={<PageSkeleton />}>
               <PageTransition>
@@ -238,7 +239,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/animations-demo"
+          path="animations-demo"
           element={
             <Suspense fallback={<DashboardSkeleton />}>
               <PageTransition>
@@ -248,7 +249,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/admin/audit"
+          path="admin/audit"
           element={
             <AdminRoute>
               <Suspense fallback={<PageSkeleton />}>
@@ -261,7 +262,7 @@ const AppRoutes = () => {
         />
 
         <Route
-          path="/admin/users"
+          path="admin/users"
           element={
             <AdminRoute>
               <Suspense fallback={<PageSkeleton />}>
@@ -273,7 +274,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/admin/branches"
+          path="admin/branches"
           element={
             <AdminRoute>
               <Suspense fallback={<PageSkeleton />}>
@@ -285,7 +286,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/smart-analyst"
+          path="smart-analyst"
           element={
             <Suspense fallback={<PageSkeleton />}>
               <PageTransition>
@@ -295,7 +296,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/inventory-reminder"
+          path="inventory-reminder"
           element={
             <Suspense fallback={<DashboardSkeleton />}>
               <PageTransition>
@@ -305,7 +306,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/foro"
+          path="foro"
           element={
             <Suspense fallback={<DashboardSkeleton />}>
               <PageTransition>
@@ -315,7 +316,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/foro/admin/edit"
+          path="foro/admin/edit"
           element={
             <Suspense fallback={<DashboardSkeleton />}>
               <PageTransition>
@@ -325,7 +326,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/foro/admin/edit/:id"
+          path="foro/admin/edit/:id"
           element={
             <Suspense fallback={<DashboardSkeleton />}>
               <PageTransition>
@@ -335,7 +336,7 @@ const AppRoutes = () => {
           }
         />
         <Route
-          path="/foro/:id"
+          path="foro/:id"
           element={
             <Suspense fallback={<DashboardSkeleton />}>
               <PageTransition>

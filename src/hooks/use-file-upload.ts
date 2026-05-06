@@ -5,6 +5,7 @@ import {
   type DragEvent,
   type InputHTMLAttributes,
   useCallback,
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -81,6 +82,24 @@ export const useFileUpload = (
     })),
     isDragging: false,
   }));
+
+  // Effect to trigger onFilesChange when files state changes
+  // This avoids "setState during render" warnings
+  const prevFilesRef = useRef<FileWithPreview[]>(state.files);
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+        isFirstRender.current = false;
+        return;
+    }
+    
+    // Only trigger if files actually changed to avoid infinite loops
+    if (onFilesChange && prevFilesRef.current !== state.files) {
+        onFilesChange(state.files);
+        prevFilesRef.current = state.files;
+    }
+  }, [state.files, onFilesChange]);
 
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -162,7 +181,6 @@ export const useFileUpload = (
         files: [],
       };
 
-      onFilesChange?.(newState.files);
       return newState;
     });
   }, [onFilesChange]);
@@ -237,14 +255,13 @@ export const useFileUpload = (
         onFilesAdded?.(validFiles);
 
         setState((prev) => {
-          const newFiles = !multiple
+          const newFilesList = !multiple
             ? validFiles
             : [...prev.files, ...validFiles];
-          onFilesChange?.(newFiles);
           return {
             ...prev,
             errors,
-            files: newFiles,
+            files: newFilesList,
           };
         });
       } else if (errors.length > 0) {
@@ -286,7 +303,6 @@ export const useFileUpload = (
         }
 
         const newFiles = prev.files.filter((file) => file.id !== id);
-        onFilesChange?.(newFiles);
 
         return {
           ...prev,

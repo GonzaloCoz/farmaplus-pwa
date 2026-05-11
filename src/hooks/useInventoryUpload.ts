@@ -162,8 +162,93 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
         reader.readAsBinaryString(file);
     };
 
+    const handleElectronImport = async (data: { rows: any[][], filename: string }) => {
+        if (!data.rows || data.rows.length < 2) return;
+
+        setIsUploading(true);
+
+        try {
+            // Pre-merge logic (similar to handleFileUpload)
+            let mergedCurrentItems: CyclicItem[] = [...currentItems];
+            const dbItems = await cyclicInventoryService.getLabInventory(branchName, labName);
+            if (dbItems.length > 0) {
+                const reactItemMap = new Map(currentItems.map(i => [String(i.ean).trim(), i]));
+                const merged: CyclicItem[] = dbItems.map(dbItem => {
+                    const reactVersion = reactItemMap.get(String(dbItem.ean).trim());
+                    return reactVersion || dbItem;
+                });
+                currentItems.forEach(rItem => {
+                    const ean = String(rItem.ean).trim();
+                    if (!merged.find(m => String(m.ean).trim() === ean)) merged.push(rItem);
+                });
+                mergedCurrentItems = merged;
+            }
+
+            // Procesamiento de filas (Lógica espejo del Worker pero directa)
+            const rows = data.rows;
+            const finalItems: any[] = [...mergedCurrentItems];
+            const eanMap = new Map();
+            finalItems.forEach((item, index) => eanMap.set(String(item.ean).trim(), index));
+
+            let addedCount = 0;
+            let updatedCount = 0;
+
+            for (let i = 1; i < rows.length; i++) {
+                const row: any = rows[i];
+                if (!row || !row[3]) continue;
+                const rawEan = row[2];
+                if (!rawEan) continue;
+                const ean = String(rawEan).trim();
+                if (!ean) continue;
+
+                let category = normalizeString(row[9]?.toString() || 'Varios').toUpperCase();
+                const rawCost = row[10];
+                const costValue = Math.round((Number(rawCost) || 0) * 100) / 100;
+
+                if (eanMap.has(ean)) {
+                    const index = eanMap.get(ean);
+                    const existingItem = { ...finalItems[index] };
+                    finalItems[index] = {
+                        ...existingItem,
+                        name: row[3],
+                        systemQuantity: Number(row[4]) || 0,
+                        cost: costValue,
+                        category: category
+                    };
+                    updatedCount++;
+                } else {
+                    finalItems.push({
+                        id: crypto.randomUUID(),
+                        ean: ean,
+                        name: row[3],
+                        systemQuantity: Number(row[4]) || 0,
+                        countedQuantity: Number(row[4]) || 0,
+                        cost: costValue,
+                        status: 'pending',
+                        category: category,
+                        wasReadjusted: false
+                    });
+                    addedCount++;
+                }
+            }
+
+            onItemsUpdated(finalItems);
+            await cyclicInventoryService.purgeAndSaveLabInventory(branchName, labName, finalItems);
+            
+            if (addedCount > 0 || updatedCount > 0) {
+                notify.success("Importación Plex25", `Se sincronizaron ${addedCount + updatedCount} productos desde el Launcher.`);
+            }
+        } catch (error) {
+            console.error("Error in handleElectronImport:", error);
+            notify.error("Error", "No se pudo procesar la importación del Launcher.");
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
     return {
         isUploading,
-        handleFileUpload
+        handleFileUpload,
+        handleElectronImport
     };
 }

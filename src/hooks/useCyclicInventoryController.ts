@@ -36,7 +36,7 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
     });
 
     // 2. Upload Logic
-    const { isUploading, handleFileUpload } = useInventoryUpload({
+    const { isUploading, handleFileUpload, handleElectronImport } = useInventoryUpload({
         branchName,
         labName,
         currentItems: items,
@@ -496,6 +496,7 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
 
         // Actions
         handleFileUpload,
+        handleElectronImport,
         handleUpdateQuantity,
         handleCheck,
         handleBulkCheck,

@@ -155,6 +155,29 @@ export default function CyclicInventory() {
     checkLockStatus();
   }, [user]);
 
+  // Listener para datos de Excel desde el Launcher (Electron)
+  useEffect(() => {
+    if ((window as any).electronAPI) {
+      console.log("[Electron] Registrando listener en Inventario Cíclico (Lista)");
+      const cleanup = (window as any).electronAPI.onExcelData((data: any) => {
+        const rows = data.rows || [];
+        // Columna O (índice 14) es el Laboratorio
+        const laboratory = rows[1] ? String(rows[1][14] || '').trim() : '';
+        
+        if (laboratory) {
+          notify.info("Archivo Detectado", `Redirigiendo a ${laboratory}...`);
+          // Almacenamos los datos temporalmente para que el detalle los pueda recoger tras la navegación
+          sessionStorage.setItem('pending_electron_excel', JSON.stringify(data));
+          navigate(`/cyclic-inventory/${encodeURIComponent(laboratory)}`);
+        } else {
+          notify.error("Error", "No se pudo identificar el laboratorio en el archivo enviado.");
+        }
+      });
+
+      return cleanup;
+    }
+  }, [navigate]);
+
   // Calcula la cantidad total de laboratorios por categoría
   const categoryCounts = useMemo(() => {
     const counts = new Map<string, number>();

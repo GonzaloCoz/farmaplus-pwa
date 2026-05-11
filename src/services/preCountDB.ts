@@ -326,10 +326,15 @@ export async function getSessionSummary(sessionId: string): Promise<{
 }
 
 export async function updatePreCountItem(id: string, updates: Partial<PreCountItem>): Promise<void> {
+    // 1. Update Local
     await db.items.update(id, updates);
-    // This function is rarely used directly in current flow, usually upsert is used.
-    // If used, we might need a specific sync handler.
-    // For now, assume it's local only fix or we need to queue a sync if it changes quantity.
+
+    // 2. Queue Sync
+    await syncManager.addToQueue({
+        type: 'update',
+        entity: 'item',
+        data: { id, ...updates }
+    });
 }
 
 export async function deletePreCountItem(id: string): Promise<void> {

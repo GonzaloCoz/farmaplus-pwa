@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { cn } from '@/lib/utils';
 import { Html5Qrcode } from 'html5-qrcode';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -15,9 +16,10 @@ interface BarcodeScannerProps {
     onOpenChange: (open: boolean) => void;
     onScan: (code: string) => void;
     onBatchScan?: (codes: string[]) => void;
+    variant?: 'dialog' | 'inline';
 }
 
-export function BarcodeScanner({ open, onOpenChange, onScan, onBatchScan }: BarcodeScannerProps) {
+export function BarcodeScanner({ open, onOpenChange, onScan, onBatchScan, variant = 'dialog' }: BarcodeScannerProps) {
     const [isScanning, setIsScanning] = useState(false);
     const [scannedCode, setScannedCode] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -80,7 +82,7 @@ export function BarcodeScanner({ open, onOpenChange, onScan, onBatchScan }: Barc
 
             const config = {
                 fps: 15,
-                qrbox: { width: 280, height: 280 },
+                qrbox: { width: 300, height: 100 },
                 aspectRatio: 1.0,
                 experimentalFeatures: { useBarCodeDetectorIfSupported: true },
             };
@@ -161,6 +163,88 @@ export function BarcodeScanner({ open, onOpenChange, onScan, onBatchScan }: Barc
         setScannedItems(prev => prev.filter((_, i) => i !== index));
     };
 
+    const renderScannerView = () => (
+        <div className={cn(
+            "relative overflow-hidden bg-black shrink-0 flex items-center justify-center",
+            variant === 'inline' ? "absolute inset-0 z-0 h-full w-full rounded-none" : "rounded-lg min-h-[300px]"
+        )}>
+            <style dangerouslySetInnerHTML={{ __html: `
+                #${readerElementId} {
+                    width: 100% !important;
+                    height: 100% !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                }
+                #${readerElementId} video {
+                    width: 100% !important;
+                    height: 100% !important;
+                    object-fit: cover !important;
+                }
+                #${readerElementId} canvas {
+                    display: none !important;
+                }
+                #${readerElementId} img {
+                    display: none !important;
+                }
+                #${readerElementId}__scan_region {
+                    border: none !important;
+                }
+            ` }} />
+            <div id={readerElementId} className="w-full h-full" />
+
+            {/* Scanner Focus Area Overlay - Positioned in the top 20% area */}
+            <div className="absolute inset-0 pointer-events-none z-10 flex items-start justify-center pt-[5vh] sm:pt-[7vh]">
+                {/* The central hole with shadow acting as the darkened overlay */}
+                <div 
+                    className={cn(
+                        "relative w-[300px] h-[100px] rounded-2xl border-2 border-white/50 shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] transition-all duration-500",
+                        scannedCode && "border-success scale-105 border-4"
+                    )}
+                >
+                    {/* Corner accents */}
+                    <div className="absolute -top-[2px] -left-[2px] size-6 border-t-4 border-l-4 border-white rounded-tl-2xl" />
+                    <div className="absolute -top-[2px] -right-[2px] size-6 border-t-4 border-r-4 border-white rounded-tr-2xl" />
+                    <div className="absolute -bottom-[2px] -left-[2px] size-6 border-b-4 border-l-4 border-white rounded-bl-2xl" />
+                    <div className="absolute -bottom-[2px] -right-[2px] size-6 border-b-4 border-r-4 border-white rounded-br-2xl" />
+                </div>
+            </div>
+
+            {/* Success Overlay */}
+            <AnimatePresence>
+                {scannedCode && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="absolute inset-0 bg-success/20 flex items-center justify-center z-20 pointer-events-none"
+                    >
+                        <div className="text-center text-white bg-success/80 p-6 rounded-full scale-110 shadow-2xl">
+                            <CheckCircle className="w-12 h-12 mx-auto" />
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+            
+            {error && variant === 'inline' && (
+                <div className="absolute inset-0 flex items-center justify-center bg-destructive/10 p-4 text-center z-30">
+                    <div className="bg-background/90 p-4 rounded-xl shadow-lg border border-destructive/20">
+                        <AlertCircle className="w-8 h-8 mx-auto mb-2 text-destructive" />
+                        <p className="text-sm font-medium text-destructive">{error}</p>
+                        <Button onClick={() => initScanner()} variant="outline" size="sm" className="mt-4 w-full">
+                            Reintentar
+                        </Button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+
+    if (variant === 'inline') {
+        if (!open) return null;
+        return renderScannerView();
+    }
+
     return (
         <Dialog open={open} onOpenChange={handleClose}>
             <DialogContent className="sm:max-w-[500px] max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
@@ -176,28 +260,7 @@ export function BarcodeScanner({ open, onOpenChange, onScan, onBatchScan }: Barc
 
                 <div className="flex-1 overflow-y-auto p-4 pt-0 space-y-4">
                     {/* Scanner View */}
-                    {!error && (
-                        <div className="relative rounded-lg overflow-hidden bg-black min-h-[250px] shrink-0">
-                            <div id={readerElementId} className="w-full" />
-
-                            {/* Success Overlay */}
-                            <AnimatePresence>
-                                {scannedCode && (
-                                    <motion.div
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        exit={{ opacity: 0 }}
-                                        className="absolute inset-0 bg-success/80 flex items-center justify-center z-10"
-                                    >
-                                        <div className="text-center text-white">
-                                            {scannedCode && <CheckCircle className="w-12 h-12 mx-auto mb-2 text-white" />}
-                                            <p className="font-mono font-bold">{scannedCode}</p>
-                                        </div>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-                        </div>
-                    )}
+                    {!error && renderScannerView()}
 
                     {/* Batch Mode Toggle */}
                     <div className="flex items-center justify-between bg-muted/50 p-3 rounded-lg">

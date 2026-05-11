@@ -106,13 +106,27 @@ export class SyncManager {
                             await new Promise(resolve => setTimeout(resolve, 500));
                         }
                     } catch (error: any) {
-                        console.error('Batch sync failed:', error);
-                        await db.pendingActions.where('id').anyOf(batchIds).modify({ 
-                            status: 'failed', 
-                            error: error.message || 'Batch error' 
-                        });
-                        // Stop this run on full batch failure to avoid hammering
-                        break;
+                        console.error(`Batch sync failed (${error.status || 'unknown'}):`, error);
+                        
+                        // FALLBACK: If batch fails, try items individually
+                        console.log(`[SyncManager] Falling back to individual sync for batch of ${currentBatch.length} items...`);
+                        
+                        for (const action of currentBatch) {
+                            try {
+                                await this.executeAction(action);
+                                // If success, cleanup
+                                if (action.id) await db.pendingActions.delete(action.id);
+                                if (action.data?.id) await db.items.update(action.data.id, { synced: 1 });
+                            } catch (indError: any) {
+                                console.error(`[SyncManager] Individual item sync failed for ${action.data?.ean}:`, indError);
+                                if (action.id) {
+                                    await db.pendingActions.update(action.id, { 
+                                        status: 'failed', 
+                                        error: indError.message || 'Individual sync error' 
+                                    });
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -173,9 +187,28 @@ export class SyncManager {
                     p_user_id: data.scanned_by,
                     p_id_producto: data.id_producto,
                     p_device_id: data.device_id,
-                    p_device_name: data.device_name
+                    p_device_name: data.device_name,
+                    p_location_tag: data.location_tag
                 });
-                if (error) throw error;
+
+                if (error) {
+                    // If 409/Conflict, try a direct update as a last resort
+                    const postgrestError = error as any;
+                    if (postgrestError.status === 409 || error.code === '23505') {
+                        console.log(`[SyncManager] Conflict on item ${data.ean}, attempting forced update...`);
+                        const { error: updateError } = await supabase
+                            .from('precount_items')
+                            .update({
+                                quantity: data.quantity,
+                                updated_at: new Date().toISOString()
+                            })
+                            .eq('id', data.id);
+                        
+                        if (updateError) throw updateError;
+                    } else {
+                        throw error;
+                    }
+                }
             } else if (type === 'delete') {
                 const { error } = await supabase.from('precount_items').delete().eq('id', data.id);
                 if (error) throw error;

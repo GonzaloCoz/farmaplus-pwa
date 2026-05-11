@@ -179,7 +179,7 @@ export function usePreCount(): UsePreCountReturn {
                         size: f.content?.length || 0
                     }));
                     setReceivedFiles(mapped);
-                    console.log(`[Sync] Loaded ${mapped.length} existing files`);
+                    console.log(`[Sync] Loaded ${mapped.length} existing files for session ${sid}`);
                 }
             } catch (err) {
                 console.error('[Sync] Error fetching existing files:', err);
@@ -227,10 +227,17 @@ export function usePreCount(): UsePreCountReturn {
             filesChannel = supabase
                 .channel(`public:precount_device_files:${session.id}`)
                 .on('postgres_changes',
-                    { event: 'INSERT', schema: 'public', table: 'precount_device_files', filter: `session_id=eq.${session.id}` },
+                    { event: 'INSERT', schema: 'public', table: 'precount_device_files' },
                     (payload) => {
                         const newFile = payload.new as any;
-                        console.log(`[Sync] DB file received:`, { 
+                        
+                        // Client-side session filtering (safer than DB-side filter for Realtime)
+                        if (newFile.session_id !== session.id) {
+                            console.log(`[Sync] Ignoring file for different session: ${newFile.session_id} (Current: ${session.id})`);
+                            return;
+                        }
+
+                        console.log(`[Sync] DB file received for session ${session.id}:`, { 
                             id: newFile.id, 
                             filename: newFile.filename, 
                             device: newFile.device_name,
@@ -275,6 +282,9 @@ export function usePreCount(): UsePreCountReturn {
                     })
                 .subscribe((status) => {
                     console.log(`[Sync] Device files channel status: ${status}`);
+                    if (status === 'CHANNEL_ERROR') {
+                        console.error('[Sync] Realtime channel error for precount_device_files. Check RLS or Publication.');
+                    }
                 });
 
             itemsChannel = supabase
@@ -371,12 +381,20 @@ export function usePreCount(): UsePreCountReturn {
     // Iniciar nueva sesión
     const startSession = async (sector: string, masterCatalog?: any[], syncPin?: string) => {
         if (!user) return;
+        
+        // PREVENCIÓN: Si ya tenemos una sesión activa con este mismo sector, no crear una nueva.
+        if (session && session.sector === sector && session.status === 'active') {
+            console.log('[Sync] Session already active, skipping creation.');
+            return;
+        }
+
         setIsLoading(true);
         try {
             const newSession = await createSession(sector, user.branchId, masterCatalog, syncPin);
             setSession(newSession);
             localStorage.setItem('last_precount_session_id', newSession.id);
-            // Refresh sessions list
+            sessionStorage.setItem('active_precount_session_id', newSession.id);
+            
             const sessions = await getActiveSessions({ branchId: user.branchId, role: user.role });
             setAvailableSessions(sessions);
             notify.success("Sesión iniciada", "La sesión ha sido creada correctamente");
@@ -522,7 +540,7 @@ export function usePreCount(): UsePreCountReturn {
         const deviceName = localStorage.getItem('precount_device_name') || 'Zebra';
         const deviceId = localStorage.getItem('precount_device_id') || 'unknown';
 
-        console.log(`[Sync] Sending final count: ${filename} (${content.length} chars)...`);
+        console.log(`[Sync] Sending final count for session ${session.id}: ${filename} (${content.length} chars)...`);
 
         // 1. PERSIST to Supabase DB (this is the reliable delivery mechanism)
         let dbInsertOk = false;
@@ -538,13 +556,13 @@ export function usePreCount(): UsePreCountReturn {
                 });
 
             if (error) {
-                console.error('[Sync] DB insert failed:', error);
+                console.error(`[Sync] DB insert failed for session ${session.id}:`, error);
             } else {
                 dbInsertOk = true;
-                console.log('[Sync] File persisted to DB successfully');
+                console.log(`[Sync] File persisted to DB successfully for session ${session.id}`);
             }
         } catch (err) {
-            console.error('[Sync] DB insert exception:', err);
+            console.error(`[Sync] DB insert exception for session ${session.id}:`, err);
         }
 
         // 2. BROADCAST a lightweight notification (just a ping, no file content)

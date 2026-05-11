@@ -91,6 +91,11 @@ const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDiv
 );
 CardFooter.displayName = "CardFooter";
 
+const CardFrameFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
+  <div ref={ref} data-slot="card-frame-footer" className={cn("p-2", className)} {...props} />
+));
+CardFrameFooter.displayName = "CardFrameFooter";
+
 export { 
   Card, 
   CardHeader, 
@@ -103,5 +108,6 @@ export {
   CardFrameTitle,
   CardFrameDescription,
   CardFrameAction,
+  CardFrameFooter,
   CardPanel
 };

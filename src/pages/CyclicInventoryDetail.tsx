@@ -150,6 +150,7 @@ export default function CyclicInventoryDetail() {
 
         // Actions
         handleFileUpload,
+        handleElectronImport,
         handleUpdateQuantity,
         handleCheck,
         handleBulkCheck,
@@ -208,6 +209,47 @@ export default function CyclicInventoryDetail() {
             }
         }
     }, [isLoading, items.length, pendingItems.length, controlledItems.length, adjustedItems.length, activeTab]);
+
+    // Listener para datos de Excel desde el Launcher (Electron)
+    useEffect(() => {
+        // 1. Verificar si hay datos pendientes de una navegación previa
+        const pendingDataStr = sessionStorage.getItem('pending_electron_excel');
+        if (pendingDataStr) {
+            try {
+                const data = JSON.parse(pendingDataStr);
+                const fileLabName = data.rows?.[1] ? String(data.rows[1][14] || '').trim() : '';
+                
+                if (fileLabName.toUpperCase() === labName.toUpperCase()) {
+                    console.log("[Electron] Procesando datos pendientes para:", labName);
+                    handleElectronImport(data);
+                    sessionStorage.removeItem('pending_electron_excel');
+                }
+            } catch (e) {
+                console.error("Error al procesar datos pendientes de Electron", e);
+            }
+        }
+
+        // 2. Escuchar nuevos eventos si ya estamos en la página
+        if ((window as any).electronAPI) {
+            console.log("[Electron] Registrando listener en Inventario Cíclico (Detalle):", labName);
+            const cleanup = (window as any).electronAPI.onExcelData((data: any) => {
+                const rows = data.rows || [];
+                const fileLabName = rows[1] ? String(rows[1][14] || '').trim() : '';
+                
+                // Si el laboratorio del archivo coincide con el actual, procesamos
+                if (fileLabName.toUpperCase() === labName.toUpperCase()) {
+                    handleElectronImport(data);
+                } else if (fileLabName) {
+                    // Si es otro laboratorio, guardamos y redirigimos
+                    toast.info("Cambio de Laboratorio", `El archivo es de ${fileLabName}. Redirigiendo...`);
+                    sessionStorage.setItem('pending_electron_excel', JSON.stringify(data));
+                    navigate(`/cyclic-inventory/${encodeURIComponent(fileLabName)}`);
+                }
+            });
+
+            return cleanup;
+        }
+    }, [labName, handleElectronImport, navigate]);
 
     return (
         <PageLayout className="pb-32 lg:pb-10">

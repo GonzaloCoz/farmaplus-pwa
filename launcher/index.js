@@ -189,62 +189,68 @@ function createWindow() {
 function handleFileArg(argv) {
   if (!argv || argv.length === 0) return;
 
+  // Filtrar argumentos que sean rutas de archivos válidas y soportadas
   const filePath = argv.find(arg => {
-    if (typeof arg !== 'string') return false;
-    const isExcel = arg.toLowerCase().endsWith('.xlsx') || 
-                  arg.toLowerCase().endsWith('.xls') || 
-                  arg.toLowerCase().endsWith('.csv') ||
-                  arg.toLowerCase().endsWith('.tmp');
-    return isExcel && fs.existsSync(arg);
+    if (typeof arg !== 'string' || arg.startsWith('--')) return false;
+    const lowerArg = arg.toLowerCase();
+    const isSupported = lowerArg.endsWith('.xlsx') || 
+                       lowerArg.endsWith('.xls') || 
+                       lowerArg.endsWith('.csv') ||
+                       lowerArg.endsWith('.tmp');
+    if (!isSupported) return false;
+    try {
+      return fs.existsSync(arg) && fs.statSync(arg).isFile();
+    } catch (e) { return false; }
   });
 
   if (filePath) {
-    console.log(`[Launcher] Procesando archivo: ${filePath}`);
-    
-    const isTemp = filePath.toLowerCase().includes('temp') || filePath.toLowerCase().includes('appdata');
-    
-    // Si el archivo ya está siendo procesado o es de un evento de watcher, 
-    // evitamos bucles infinitos si volvemos a disparar eventos
-    if (global.lastProcessedFile === filePath && Date.now() - (global.lastProcessedTime || 0) < 2000) {
+    // Evitar procesar el mismo archivo múltiples veces seguidas (debounce)
+    const now = Date.now();
+    if (global.lastProcessedFile === filePath && now - (global.lastProcessedTime || 0) < 3000) {
       return;
     }
+
+    // Solo procesar si el archivo tiene un tamaño mínimo (evitar archivos vacíos de sistema)
+    try {
+      const stats = fs.statSync(filePath);
+      if (stats.size === 0) return;
+    } catch (e) { return; }
+
+    console.log(`[Launcher] Evaluando archivo: ${filePath}`);
+    
+    // Un archivo se considera "temporal de Plex" solo si está en su carpeta específica
+    // o si es un .tmp que contiene palabras clave como 'stock' o 'plex'
+    const isPlexFolder = filePath.toLowerCase().includes('plex 25') || filePath.toLowerCase().includes('gestion\\temp');
+    const isPlexFile = filePath.toLowerCase().includes('stock') || filePath.toLowerCase().includes('plex');
+    const isTemp = (isPlexFolder || isPlexFile) && filePath.toLowerCase().endsWith('.tmp');
+
     global.lastProcessedFile = filePath;
-    global.lastProcessedTime = Date.now();
+    global.lastProcessedTime = now;
 
     if (isTemp) {
       const options = {
         title: 'Guardar Inventario Plex25',
-        defaultPath: path.join(app.getPath('documents'), 'Inventario_' + path.basename(filePath)),
+        defaultPath: path.join(app.getPath('documents'), 'Inventario_Plex_' + path.basename(filePath, '.tmp') + '.xlsx'),
         buttonLabel: 'Guardar y Procesar',
         filters: [
-          { name: 'Libro de Excel', extensions: ['xlsx'] },
-          { name: 'Excel 97-2003', extensions: ['xls'] },
-          { name: 'Archivo CSV', extensions: ['csv'] }
+          { name: 'Libro de Excel', extensions: ['xlsx'] }
         ]
       };
 
       dialog.showSaveDialog(mainWindow, options).then(result => {
         if (!result.canceled && result.filePath) {
           try {
-            fs.copyFileSync(filePath, result.filePath);
-            console.log(`[Launcher] Copia guardada en: ${result.filePath}`);
-            processFile(result.filePath);
-            
-            // Opcional: Intentar borrar el temporal para que Excel no lo abra
-            try {
-              fs.unlinkSync(filePath);
-            } catch (e) {
-              // Si falla (archivo bloqueado por Plex), no importa
-            }
+            // Aquí llamaríamos a la lógica de conversión si fuera necesario, 
+            // por ahora copiamos o procesamos directamente
+            processFile(filePath, result.filePath);
+            console.log(`[Launcher] Archivo Plex procesado y referenciado como: ${result.filePath}`);
           } catch (err) {
-            console.error("Error al guardar copia:", err);
-            processFile(filePath);
+            console.error("Error al procesar temporal:", err);
           }
-        } else {
-          processFile(filePath);
         }
       });
-    } else {
+    } else if (!filePath.toLowerCase().endsWith('.tmp')) {
+      // Los archivos Excel/CSV normales se procesan directo
       processFile(filePath);
     }
   }
@@ -305,16 +311,15 @@ function parsePlexTmp(filePath) {
   }
 }
 
-function processFile(filePath) {
+function processFile(filePath, savePath = null) {
   try {
     const ext = path.extname(filePath).toLowerCase();
     let data;
-    let filename = path.basename(filePath);
+    let filename = savePath ? path.basename(savePath) : path.basename(filePath);
 
     if (ext === '.tmp') {
       console.log(`[Launcher] Parseando archivo binario Plex: ${filePath}`);
       const records = parsePlexTmp(filePath);
-      // Formatear para que la PWA lo reciba igual que un Excel (array de arrays)
       data = [
         ['EAN', 'Producto', 'Movimiento', 'Cantidad'],
         ...records.map(r => [r.ean, r.producto, r.movimiento, r.cantidad])
@@ -392,34 +397,44 @@ function startWatcher() {
 
   watcher.on('add', (filePath) => {
     const ext = path.extname(filePath).toLowerCase();
-    const isExcel = ext === '.xlsx' || ext === '.xls' || ext === '.csv' || ext === '.tmp';
+    const isSupported = ext === '.xlsx' || ext === '.xls' || ext === '.csv' || ext === '.tmp';
     
-    if (isExcel) {
-      console.log(`[Watcher] Interceptada exportación: ${filePath}`);
-      // Pequeño delay para asegurar que cualquier proceso externo (Plex) haya soltado el archivo
-      setTimeout(() => {
-        if (fs.existsSync(filePath)) {
-          handleFileArg([filePath]);
-          if (mainWindow) {
-            mainWindow.show();
-            mainWindow.focus();
+    if (isSupported) {
+      // Solo disparar handleFileArg si el nombre parece relevante para evitar ruido en el log
+      const lowerPath = filePath.toLowerCase();
+      const isRelevant = lowerPath.includes('stock') || lowerPath.includes('plex') || lowerPath.includes('inventario') || ext !== '.tmp';
+      
+      if (isRelevant) {
+        setTimeout(() => {
+          if (fs.existsSync(filePath)) {
+            handleFileArg([filePath]);
           }
-        }
-      }, 500);
+        }, 1000); // Aumentado a 1s para mayor estabilidad con archivos en uso
+      }
     }
   });
 }
 
 function createTray() {
-  // Intentar usar el icono de la app o uno por defecto
-  const iconPath = path.join(__dirname, 'icon.png'); 
+  // En Windows, .ico funciona mejor para el tray. En otros, .png.
+  const iconName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+  const iconPath = path.join(__dirname, iconName);
   let trayIcon;
   
   if (fs.existsSync(iconPath)) {
-    trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
+    // Si es .ico, nativeImage lo maneja bien. Si es .png muy grande, resize ayuda.
+    trayIcon = nativeImage.createFromPath(iconPath);
+    if (iconName.endsWith('.png')) {
+      trayIcon = trayIcon.resize({ width: 16, height: 16 });
+    }
   } else {
-    // Icono vacío/fallback si no existe el archivo
-    trayIcon = nativeImage.createEmpty(); 
+    // Fallback: intentar el otro formato si el preferido no existe
+    const fallbackPath = path.join(__dirname, process.platform === 'win32' ? 'icon.png' : 'icon.ico');
+    if (fs.existsSync(fallbackPath)) {
+      trayIcon = nativeImage.createFromPath(fallbackPath).resize({ width: 16, height: 16 });
+    } else {
+      trayIcon = nativeImage.createEmpty();
+    }
   }
 
   tray = new Tray(trayIcon);

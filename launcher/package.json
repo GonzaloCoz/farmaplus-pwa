@@ -27,7 +27,8 @@
     },
     "compression": "maximum",
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "icon.ico"
     },
     "nsis": {
       "oneClick": true,
@@ -42,6 +43,8 @@
       "index.js",
       "preload.js",
       "package.json",
+      "icon.ico",
+      "icon.png",
       "node_modules/**/*"
     ],
     "fileAssociations": [

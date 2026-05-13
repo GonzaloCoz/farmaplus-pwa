@@ -179,7 +179,8 @@ function SettingsMenu({
     setIsZenMode,
     handleResetSector,
     handleExportTXT,
-    handleFinishClick
+    handleFinishClick,
+    accessMode
 }: any) {
     const { theme, toggleTheme } = useTheme();
     const isMobile = useMediaQuery("(max-width: 768px)");
@@ -214,13 +215,15 @@ function SettingsMenu({
                             >
                                 Ingreso de cantidad
                             </DrawerMenuItem>
-                            <DrawerMenuItem
-                                isSelected={isManualMode}
-                                indent
-                                onClick={() => setIsManualMode(!isManualMode)}
-                            >
-                                Teclado manual
-                            </DrawerMenuItem>
+                            {accessMode !== 'salon' && (
+                                <DrawerMenuItem
+                                    isSelected={isManualMode}
+                                    indent
+                                    onClick={() => setIsManualMode(!isManualMode)}
+                                >
+                                    Teclado manual
+                                </DrawerMenuItem>
+                            )}
                         </DrawerMenuGroup>
 
                         <DrawerMenuSeparator />
@@ -410,6 +413,7 @@ import {
     DialogHeader,
     DialogPopup,
     DialogTitle,
+    DialogPanel,
 } from '@/components/ui/dialog';
 import { Field, FieldLabel, FieldError } from '@/components/ui/field';
 import { Form } from '@/components/ui/form';
@@ -508,6 +512,8 @@ export default function PreCount() {
     const [adminTab, setAdminTab] = useState<string>("conexiones");
     const [isZenMode, setIsZenMode] = useState(false);
     const [pendingFile, setPendingFile] = useState<{ filename: string, rows: any[][], size: number, laboratory?: string } | null>(null);
+    const [showAddSectorDialog, setShowAddSectorDialog] = useState(false);
+    const [newSectorName, setNewSectorName] = useState('');
 
     // Listener para Alt + A (Admin Mode)
     useEffect(() => {
@@ -3092,10 +3098,7 @@ export default function PreCount() {
                                                                                     variant="outline"
                                                                                     size="icon"
                                                                                     className="shrink-0"
-                                                                                    onClick={() => {
-                                                                                        const manualCode = prompt("Ingresa el código de la nueva zona (Ej: GO-01, CA-02):");
-                                                                                        if (manualCode) handleLocationScan(manualCode);
-                                                                                    }}
+                                                                                    onClick={() => setShowAddSectorDialog(true)}
                                                                                 >
                                                                                     <Plus />
                                                                                 </Button>
@@ -3137,6 +3140,7 @@ export default function PreCount() {
                                                                                     setIsZenMode={setIsZenMode}
                                                                                     handleResetSector={handleResetSector}
                                                                                     handleExportTXT={handleExportTXT}
+                                                                                    accessMode={accessMode}
                                                                                     handleFinishClick={handleFinishClick}
                                                                                 />
                                                                             </div>
@@ -3209,21 +3213,26 @@ export default function PreCount() {
                                                                                     <Infinity className="size-4" />
                                                                                     Cantidad
                                                                                 </Button>
-                                                                                <GroupSeparator />
-                                                                                <Button
-                                                                                    variant={isManualMode ? "secondary" : "outline"}
-                                                                                    size="icon-sm"
-                                                                                    className={cn(
-                                                                                        "h-9 w-9 font-bold transition-all flex items-center justify-center",
-                                                                                        isManualMode ? "opacity-100" : "opacity-80 hover:opacity-100"
-                                                                                    )}
-                                                                                    onClick={(e) => {
-                                                                                        setIsManualMode(!isManualMode);
-                                                                                        (e.currentTarget as HTMLElement).blur();
-                                                                                    }}
-                                                                                >
-                                                                                    <Keyboard className="size-4" />
-                                                                                </Button>
+                                                                                {accessMode !== 'salon' && (
+                                                                                     <>
+                                                                                         <GroupSeparator />
+                                                                                         <Button
+                                                                                             variant={isManualMode ? "secondary" : "outline"}
+                                                                                             size="icon-sm"
+                                                                                             className={cn(
+                                                                                                 "h-9 w-9 font-bold transition-all flex items-center justify-center",
+                                                                                                 isManualMode ? "opacity-100" : "opacity-80 hover:opacity-100"
+                                                                                             )}
+                                                                                             onClick={(e) => {
+                                                                                                 setIsManualMode(!isManualMode);
+                                                                                                 (e.currentTarget as HTMLElement).blur();
+                                                                                             }}
+                                                                                             title="Modo Teclado Manual"
+                                                                                         >
+                                                                                             <Keyboard className="size-4" />
+                                                                                         </Button>
+                                                                                     </>
+                                                                                 )}
                                                                             </Group>
                                                                         </div>
                                                                     </div>
@@ -3234,7 +3243,7 @@ export default function PreCount() {
                                                                         <div className="relative z-50 w-full">
                                                                             <SmartProductSearch
                                                                                 key={searchResetKey}
-                                                                                onSelect={(p) => {
+                                                                                onSelect={async (p) => {
                                                                                     if (!activeLocation) return;
 
                                                                                     const timeSinceScan = Date.now() - lastScanTimeRef.current;
@@ -3251,9 +3260,17 @@ export default function PreCount() {
                                                                                     setSelectedProduct({ ...p, stock: 0, salePrice: 0, cost: 0, id_producto: p.id_producto });
                                                                                     setEditingItemId(null);
 
-                                                                                    if (!highSpeedMode && accessMode === 'zebra') {
-                                                                                        setTimeout(() => setShowQtyDrawer(true), 80);
-                                                                                    } else {
+                                                                                    if (highSpeedMode) {
+                                                                                         // En modo +1, agregar inmediatamente
+                                                                                         await addItem(p.ean, p.name, 1, p.id_producto, activeLocation || undefined);
+                                                                                         setManualEAN('');
+                                                                                         setSelectedProduct(null);
+                                                                                         setSearchResetKey(prev => prev + 1);
+                                                                                         trigger('success');
+                                                                                         playSound('success');
+                                                                                     } else if (accessMode === 'zebra') {
+                                                                                         setTimeout(() => setShowQtyDrawer(true), 80);
+                                                                                     } else {
                                                                                         setTimeout(() => {
                                                                                             document.getElementById('quantity-input')?.focus();
                                                                                             (document.getElementById('quantity-input') as HTMLInputElement)?.select();
@@ -3512,6 +3529,50 @@ export default function PreCount() {
                             Entendido
                         </Button>
                     </DialogFooter>
+                </DialogPopup>
+            </Dialog>
+
+            {/* Modal para añadir nuevo sector - Coss UI Pattern */}
+            <Dialog open={showAddSectorDialog} onOpenChange={setShowAddSectorDialog}>
+                <DialogPopup className="sm:max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>Nueva Zona / Sector</DialogTitle>
+                        <DialogDescription>
+                            Ingresa el código de la nueva zona de conteo (Ej: GO-01, CA-02).
+                        </DialogDescription>
+                    </DialogHeader>
+                    <Form 
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            if (newSectorName) {
+                                handleLocationScan(newSectorName);
+                                setNewSectorName('');
+                                setShowAddSectorDialog(false);
+                            }
+                        }} 
+                        className="contents"
+                    >
+                        <DialogPanel className="grid gap-4">
+                            <Field>
+                                <FieldLabel>Código del Sector</FieldLabel>
+                                <Input 
+                                    autoFocus
+                                    value={newSectorName} 
+                                    onChange={(e) => setNewSectorName(e.target.value.toUpperCase())} 
+                                    placeholder="Ej: GO-01" 
+                                    className="uppercase font-bold"
+                                />
+                            </Field>
+                        </DialogPanel>
+                        <DialogFooter>
+                            <DialogClose render={<Button variant="ghost" />}>
+                                Cancelar
+                            </DialogClose>
+                            <Button type="submit" disabled={!newSectorName}>
+                                Agregar
+                            </Button>
+                        </DialogFooter>
+                    </Form>
                 </DialogPopup>
             </Dialog>
 

@@ -11,6 +11,8 @@
   "author": "Farmaplus",
   "license": "ISC",
   "dependencies": {
+    "chokidar": "^3.6.0",
+    "mysql2": "^3.22.3",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
@@ -23,24 +25,43 @@
     "directories": {
       "output": "dist"
     },
+    "compression": "maximum",
     "win": {
-      "target": "portable"
+      "target": "nsis"
     },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Farmaplus Launcher",
+      "runAfterFinish": true
+    },
+    "files": [
+      "index.js",
+      "preload.js",
+      "package.json",
+      "node_modules/**/*"
+    ],
     "fileAssociations": [
       {
         "ext": "xlsx",
         "name": "Excel Spreadsheet",
-        "role": "Viewer"
+        "role": "Viewer",
+        "description": "Abrir con Farmaplus"
       },
       {
         "ext": "xls",
         "name": "Excel 97-2003 Spreadsheet",
-        "role": "Viewer"
+        "role": "Viewer",
+        "description": "Abrir con Farmaplus"
       },
       {
         "ext": "csv",
         "name": "CSV File",
-        "role": "Viewer"
+        "role": "Viewer",
+        "description": "Abrir con Farmaplus"
       }
     ]
   }

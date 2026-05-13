@@ -16,7 +16,7 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.ico', 'logo.png', 'logo512.png'],
+        includeAssets: ['favicon.ico', 'icon.png'],
         manifest: {
           name: 'Farmaplus - Gestión de Inventario',
           short_name: 'Farmaplus',
@@ -30,28 +30,40 @@ export default defineConfig(({ mode }) => {
           lang: 'es-ES',
           icons: [
             {
-              src: 'logo.png',
+              src: 'icon.png',
               sizes: '192x192',
               type: 'image/png',
-              purpose: 'any maskable'
+              purpose: 'any'
             },
             {
-              src: 'logo512.png',
+              src: 'icon.png',
               sizes: '512x512',
               type: 'image/png',
-              purpose: 'any maskable'
+              purpose: 'any'
+            },
+            {
+              src: 'icon.png',
+              sizes: '192x192',
+              type: 'image/png',
+              purpose: 'maskable'
+            },
+            {
+              src: 'icon.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable'
             }
           ],
           shortcuts: [
             {
               name: 'Stock',
               url: `${base}stock`,
-              icons: [{ src: 'logo.png', sizes: '192x192' }]
+              icons: [{ src: 'icon.png', sizes: '192x192' }]
             },
             {
               name: 'Inventarios',
               url: `${base}cyclic-inventory`,
-              icons: [{ src: 'logo.png', sizes: '192x192' }]
+              icons: [{ src: 'icon.png', sizes: '192x192' }]
             }
           ],
           categories: ['business', 'productivity']

@@ -42,7 +42,13 @@ foreach ($ext in $Extensions) {
 }
 
 Write-Host "¡Registro completado!" -ForegroundColor Green
-Write-Host "Para que sea automático:" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "MODO DE USO:" -ForegroundColor Cyan
+Write-Host "1. El Launcher ahora tiene 'Auto-Intercepción'. Monitorea archivos temporales (Plex25)."
+Write-Host "2. Asegúrate de que el Launcher esté abierto en segundo plano (ver ícono en el reloj)."
+Write-Host "3. Cuando exportes desde Plex, el Launcher capturará el archivo automáticamente."
+Write-Host ""
+Write-Host "PARA ASOCIACIÓN MANUAL (OPCIONAL):" -ForegroundColor Cyan
 Write-Host "1. Haz clic derecho en un archivo .xlsx"
 Write-Host "2. Selecciona 'Abrir con...' -> 'Elegir otra aplicación'"
 Write-Host "3. Selecciona '$AppName' y marca 'Siempre usar esta aplicación'" -ForegroundColor Yellow

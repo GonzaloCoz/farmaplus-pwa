@@ -224,13 +224,14 @@ function handleFileArg(argv) {
     const isPlexFolder = filePath.toLowerCase().includes('plex 25') || filePath.toLowerCase().includes('gestion\\temp');
     const isPlexFile = filePath.toLowerCase().includes('stock') || filePath.toLowerCase().includes('plex');
     const isTemp = (isPlexFolder || isPlexFile) && filePath.toLowerCase().endsWith('.tmp');
+    const isStockOriginal = filePath.toLowerCase().endsWith('stock_original.tmp');
 
     global.lastProcessedFile = filePath;
     global.lastProcessedTime = now;
 
-    if (isTemp || isPlexFolder || isPlexFile || (app.isPackaged && argv.length > 1)) {
-      // Prioridad absoluta a la ventana de "Guardar como" de Windows
-      const fileName = path.basename(filePath);
+    if (isStockOriginal || isTemp) {
+      // Prioridad máxima a stock_original.tmp (Captura instantánea de Plex25)
+      const fileName = isStockOriginal ? 'Stock_Plex_Auto_' + Date.now() + '.xlsx' : path.basename(filePath);
       const options = {
         title: 'Guardar y Procesar Inventario',
         defaultPath: path.join(app.getPath('documents'), fileName.endsWith('.tmp') ? fileName.replace('.tmp', '.xlsx') : fileName),
@@ -280,29 +281,24 @@ function parsePlexTmp(filePath) {
       const eanPos = match.index;
       const ean = match[0];
       
-      // Buscar nombre del producto (aproximado)
+      // En stock_original.tmp, el nombre viene después del EAN (saltando metadatos)
       let prodName = '';
       let k = eanPos + 13;
-      while (k < content.length && k < eanPos + 100) {
+      while (k < content.length && k < eanPos + 200) {
         const ch = content.charCodeAt(k);
+        // Filtramos caracteres imprimibles básicos
         if (ch >= 0x20 && ch < 0x7F) prodName += content[k];
-        else if (prodName.length > 3) break;
+        else if (prodName.length > 5) break; 
         k++;
       }
       
-      // Buscar tipo de movimiento
-      const context = content.substring(Math.max(0, eanPos - 20), Math.min(content.length, eanPos + 300));
-      const movTypeMatch = context.match(/(Alta de Stock|Baja de Stock|Ajuste|Carga de Inventario|Modificado)/);
-      const movementType = movTypeMatch ? movTypeMatch[0] : 'Desconocido';
-
-      // Buscar cantidad (intentar leer double después del nombre)
-      // En el análisis vimos que las cantidades suelen estar después del string del producto
+      // Buscar cantidad (en stock_original suelen ser 4-8 bytes después del nombre)
       let cantidad = 1;
       try {
-        // Buscamos un double razonable en los bytes siguientes
-        for (let i = k; i < k + 100; i++) {
-          const val = buf.readDoubleLE(i);
-          if (val > 0 && val < 100000 && Number.isInteger(val)) {
+        // Buscamos un valor numérico cercano
+        for (let i = k; i < k + 50; i++) {
+          const val = buf.readInt32LE(i);
+          if (val > 0 && val < 5000) {
             cantidad = val;
             break;
           }
@@ -312,7 +308,7 @@ function parsePlexTmp(filePath) {
       records.push({
         ean,
         producto: prodName.trim(),
-        movimiento: movementType,
+        movimiento: 'Stock Plex',
         cantidad: cantidad
       });
     }

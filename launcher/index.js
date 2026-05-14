@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog } = require('electron');
+const { exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -368,6 +369,38 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
     createTray();
     startWatcher();
+    ensureExcelSpoof();
+  });
+}
+
+function ensureExcelSpoof() {
+  if (!app.isPackaged) return; // No spoofear en desarrollo
+
+  const exePath = app.getPath('exe');
+  const script = `
+    $LauncherPath = "${exePath}"
+    $AppPath = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\excel.exe"
+    if (-not (Test-Path $AppPath)) { New-Item -Path $AppPath -Force | Out-Null }
+    Set-ItemProperty -Path $AppPath -Name "(Default)" -Value $LauncherPath
+    Set-ItemProperty -Path $AppPath -Name "Path" -Value (Split-Path $LauncherPath)
+
+    $ProgID = "Excel.Application"
+    $ClassPath = "HKCU:\\Software\\Classes\\$ProgID"
+    if (-not (Test-Path $ClassPath)) { New-Item -Path $ClassPath -Force | Out-Null }
+    Set-ItemProperty -Path $ClassPath -Name "(Default)" -Value "Microsoft Excel Application"
+    
+    $CLSID = "{00024500-0000-0000-C000-000000000046}"
+    $CLSIDPath = "HKCU:\\Software\\Classes\\CLSID\\$CLSID"
+    if (-not (Test-Path $CLSIDPath)) { New-Item -Path $CLSIDPath -Force | Out-Null }
+    $LocalServerPath = "$CLSIDPath\\LocalServer32"
+    if (-not (Test-Path $LocalServerPath)) { New-Item -Path $LocalServerPath -Force | Out-Null }
+    Set-ItemProperty -Path $LocalServerPath -Name "(Default)" -Value "\`"$LauncherPath\`""
+  `;
+  
+  const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
+  exec(`powershell.exe -ExecutionPolicy Bypass -EncodedCommand ${encodedScript}`, (err) => {
+    if (err) console.error('[Launcher] Error al asegurar identidad Excel:', err);
+    else console.log('[Launcher] Identidad Excel asegurada');
   });
 }
 

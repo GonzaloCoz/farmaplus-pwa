@@ -405,38 +405,64 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
     createTray();
     startWatcher();
-    ensureExcelSpoof();
+    ensureSystemIntegration();
   });
 }
 
-function ensureExcelSpoof() {
-  if (!app.isPackaged) return; // No spoofear en desarrollo
+function ensureSystemIntegration() {
+  if (!app.isPackaged) return;
 
   const exePath = app.getPath('exe');
   const script = `
     $LauncherPath = "${exePath}"
+    
+    # 1. Identidad Excel (Spoofing para Plex25)
     $AppPath = "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\excel.exe"
     if (-not (Test-Path $AppPath)) { New-Item -Path $AppPath -Force | Out-Null }
     Set-ItemProperty -Path $AppPath -Name "(Default)" -Value $LauncherPath
     Set-ItemProperty -Path $AppPath -Name "Path" -Value (Split-Path $LauncherPath)
 
     $ProgID = "Excel.Application"
-    $ClassPath = "HKCU:\\Software\\Classes\\$ProgID"
-    if (-not (Test-Path $ClassPath)) { New-Item -Path $ClassPath -Force | Out-Null }
-    Set-ItemProperty -Path $ClassPath -Name "(Default)" -Value "Microsoft Excel Application"
-    
     $CLSID = "{00024500-0000-0000-C000-000000000046}"
-    $CLSIDPath = "HKCU:\\Software\\Classes\\CLSID\\$CLSID"
-    if (-not (Test-Path $CLSIDPath)) { New-Item -Path $CLSIDPath -Force | Out-Null }
-    $LocalServerPath = "$CLSIDPath\\LocalServer32"
-    if (-not (Test-Path $LocalServerPath)) { New-Item -Path $LocalServerPath -Force | Out-Null }
-    Set-ItemProperty -Path $LocalServerPath -Name "(Default)" -Value "\`"$LauncherPath\`""
+    
+    # Registrar Clases y CLSID
+    foreach ($path in @("HKCU:\\Software\\Classes\\$ProgID", "HKCU:\\Software\\Classes\\CLSID\\$CLSID")) {
+        if (-not (Test-Path $path)) { New-Item -Path $path -Force | Out-Null }
+        Set-ItemProperty -Path $path -Name "(Default)" -Value "Farmaplus Excel Bridge"
+    }
+    
+    $LocalServer = "HKCU:\\Software\\Classes\\CLSID\\$CLSID\\LocalServer32"
+    if (-not (Test-Path $LocalServer)) { New-Item -Path $LocalServer -Force | Out-Null }
+    Set-ItemProperty -Path $LocalServer -Name "(Default)" -Value "\`"$LauncherPath\`""
+
+    # 2. Menú Contextual de Windows (Shell Integration)
+    $Extensions = @(".xls", ".xlsx", ".csv", ".tmp")
+    foreach ($ext in $Extensions) {
+        $ShellPath = "HKCU:\\Software\\Classes\\SystemFileAssociations\\$ext\\shell\\Farmaplus"
+        if (-not (Test-Path $ShellPath)) { New-Item -Path $ShellPath -Force | Out-Null }
+        Set-ItemProperty -Path $ShellPath -Name "(Default)" -Value "Enviar a Farmaplus"
+        Set-ItemProperty -Path $ShellPath -Name "Icon" -Value $LauncherPath
+        
+        $CommandPath = "$ShellPath\\command"
+        if (-not (Test-Path $CommandPath)) { New-Item -Path $CommandPath -Force | Out-Null }
+        Set-ItemProperty -Path $CommandPath -Name "(Default)" -Value "\`"$LauncherPath\`" \`"%1\`""
+    }
+
+    # 3. Protocolo farmaplus://
+    $ProtoPath = "HKCU:\\Software\\Classes\\farmaplus"
+    if (-not (Test-Path $ProtoPath)) { New-Item -Path $ProtoPath -Force | Out-Null }
+    Set-ItemProperty -Path $ProtoPath -Name "(Default)" -Value "URL:Farmaplus Protocol"
+    Set-ItemProperty -Path $ProtoPath -Name "URL Protocol" -Value ""
+    
+    $ProtoCmd = "$ProtoPath\\shell\\open\\command"
+    if (-not (Test-Path $ProtoCmd)) { New-Item -Path $ProtoCmd -Force | Out-Null }
+    Set-ItemProperty -Path $ProtoCmd -Name "(Default)" -Value "\`"$LauncherPath\`" \`"%1\`""
   `;
   
   const encodedScript = Buffer.from(script, 'utf16le').toString('base64');
   exec(`powershell.exe -ExecutionPolicy Bypass -EncodedCommand ${encodedScript}`, (err) => {
-    if (err) console.error('[Launcher] Error al asegurar identidad Excel:', err);
-    else console.log('[Launcher] Identidad Excel asegurada');
+    if (err) console.error('[Launcher] Error en integración pro:', err);
+    else console.log('[Launcher] Integración de sistema completa');
   });
 }
 

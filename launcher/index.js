@@ -228,30 +228,41 @@ function handleFileArg(argv) {
     global.lastProcessedFile = filePath;
     global.lastProcessedTime = now;
 
-    if (isTemp) {
+    if (isTemp || isPlexFolder || isPlexFile || (app.isPackaged && argv.length > 1)) {
+      // Prioridad absoluta a la ventana de "Guardar como" de Windows
+      const fileName = path.basename(filePath);
       const options = {
-        title: 'Guardar Inventario Plex25',
-        defaultPath: path.join(app.getPath('documents'), 'Inventario_Plex_' + path.basename(filePath, '.tmp') + '.xlsx'),
+        title: 'Guardar y Procesar Inventario',
+        defaultPath: path.join(app.getPath('documents'), fileName.endsWith('.tmp') ? fileName.replace('.tmp', '.xlsx') : fileName),
         buttonLabel: 'Guardar y Procesar',
         filters: [
-          { name: 'Libro de Excel', extensions: ['xlsx'] }
+          { name: 'Archivos de Excel', extensions: ['xlsx', 'xls'] },
+          { name: 'Todos los archivos', extensions: ['*'] }
         ]
       };
 
-      dialog.showSaveDialog(mainWindow, options).then(result => {
-        if (!result.canceled && result.filePath) {
-          try {
-            // Aquí llamaríamos a la lógica de conversión si fuera necesario, 
-            // por ahora copiamos o procesamos directamente
-            processFile(filePath, result.filePath);
-            console.log(`[Launcher] Archivo Plex procesado y referenciado como: ${result.filePath}`);
-          } catch (err) {
-            console.error("Error al procesar temporal:", err);
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+        
+        dialog.showSaveDialog(mainWindow, options).then(result => {
+          if (!result.canceled && result.filePath) {
+            try {
+              // Copiamos el archivo a la nueva ubicación elegida por el usuario
+              fs.copyFileSync(filePath, result.filePath);
+              processFile(result.filePath);
+              console.log(`[Launcher] Archivo guardado por usuario y procesado: ${result.filePath}`);
+            } catch (err) {
+              console.error("Error al guardar/procesar archivo:", err);
+              // Si falla la copia (ej. permisos), intentamos procesar el original igual
+              processFile(filePath);
+            }
           }
-        }
-      });
-    } else if (!filePath.toLowerCase().endsWith('.tmp')) {
-      // Los archivos Excel/CSV normales se procesan directo
+        });
+      }
+    } else {
+      // Archivos abiertos manualmente o que no cumplen criterios de Plex
       processFile(filePath);
     }
   }
@@ -318,6 +329,23 @@ function processFile(filePath, savePath = null) {
     let data;
     let filename = savePath ? path.basename(savePath) : path.basename(filePath);
 
+    // 1. Detección de Laboratorio (Contexto)
+    const detectLab = (name) => {
+      const labs = ['bago', 'roemmers', 'gador', 'casasco', 'bernabo', 'montpellier', 'baliarda', 'elea', 'andromaco', 'ivax', 'raffo', 'sidus', 'bayer'];
+      const found = labs.find(l => name.toLowerCase().includes(l));
+      return found ? found.toUpperCase() : null;
+    };
+    const labHint = detectLab(filename);
+
+    // 2. Backup automático para evitar pérdida de datos
+    const exportDir = path.join(app.getPath('documents'), 'Farmaplus_Exports');
+    if (!fs.existsSync(exportDir)) fs.mkdirSync(exportDir, { recursive: true });
+    const backupPath = path.join(exportDir, `${Date.now()}_${filename}`);
+    
+    try {
+      fs.copyFileSync(filePath, backupPath);
+    } catch (e) { console.error("No se pudo crear backup:", e); }
+
     if (ext === '.tmp') {
       console.log(`[Launcher] Parseando archivo binario Plex: ${filePath}`);
       const records = parsePlexTmp(filePath);
@@ -331,14 +359,22 @@ function processFile(filePath, savePath = null) {
       data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 });
     }
     
-    console.log(`Enviando ${data.length} filas a la PWA`);
+    console.log(`Enviando ${data.length} filas a la PWA. Lab detectado: ${labHint || 'Ninguno'}`);
     if (mainWindow) {
       mainWindow.webContents.send('excel-data', {
         filename: filename,
         rows: data,
-        size: fs.statSync(filePath).size
+        size: fs.statSync(filePath).size,
+        labHint: labHint,
+        backupPath: backupPath
       });
+      
+      // Foco agresivo para que el usuario lo vea
+      if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
+      mainWindow.focus();
+      mainWindow.setAlwaysOnTop(true);
+      setTimeout(() => mainWindow.setAlwaysOnTop(false), 1000);
     }
   } catch (error) {
     console.error("Error leyendo el archivo:", error);

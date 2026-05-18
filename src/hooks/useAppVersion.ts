@@ -23,7 +23,7 @@ interface AppVersionState {
 }
 
 // Current hardcoded version of the app
-export const CURRENT_APP_VERSION = 'v1.2.2 (Build 2026.03.11)';
+export const CURRENT_APP_VERSION = 'v1.2.x (Build 2026.05.18)';
 
 // Make the state globally reactive
 export const useAppVersion = create<AppVersionState>((set, get) => {

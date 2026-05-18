@@ -59,7 +59,7 @@ import {
 } from '@/components/ui/dialog';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Onboarding } from '@/components/Onboarding';
-import { cn } from '@/lib/utils';
+import { cn, normalizeString } from '@/lib/utils';
 import { FabMenu } from '@/components/FabMenu';
 import { DeleteConfirmationDialog } from '@/components/cyclic/DeleteConfirmationDialog';
 import { HistoryDialog } from '@/components/cyclic/HistoryDialog';
@@ -175,6 +175,47 @@ export default function CyclicInventoryDetail() {
         getSortedItems
 
     } = useCyclicInventoryController({ labName });
+
+    // Resumen de Rubros Controlados y Totales para el Diálogo de Finalización
+    const categoryStats = useMemo(() => {
+        const statsMap = CATEGORIES.map(category => {
+            const catItems = items.filter(item => {
+                const normCat = normalizeString(item.category || 'Varios').toUpperCase();
+                const normTarget = normalizeString(category).toUpperCase();
+                return normCat === normTarget;
+            });
+
+            let controlledUnits = 0;
+            let differenceUnits = 0;
+            let value = 0;
+
+            catItems.forEach(item => {
+                if (item.status !== 'pending') {
+                    controlledUnits += item.countedQuantity;
+                    const diff = item.countedQuantity - item.systemQuantity;
+                    differenceUnits += diff;
+                    value += diff * item.cost;
+                }
+            });
+
+            return {
+                category,
+                controlledUnits,
+                differenceUnits,
+                value: Math.round(value * 100) / 100
+            };
+        });
+
+        return statsMap;
+    }, [items]);
+
+    const totalControlledUnits = useMemo(() => {
+        return categoryStats.reduce((sum, s) => sum + s.controlledUnits, 0);
+    }, [categoryStats]);
+
+    const netBalance = useMemo(() => {
+        return shortageValue + surplusValue;
+    }, [shortageValue, surplusValue]);
 
     const handleAdminPurge = async () => {
         if (!adminPassword) {
@@ -819,67 +860,189 @@ export default function CyclicInventoryDetail() {
 
             {/* Save Dialog */}
             <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
-                <DialogPopup>
-                    <DialogHeader>
-                        <DialogTitle>Finalizar Inventario</DialogTitle>
-                        <DialogDescription id="finalize-dialog-description">
-                            Confirma los valores de ajuste para finalizar el control de este laboratorio.
-                        </DialogDescription>
-                    </DialogHeader>
+                <DialogContent showCloseButton={false} className="max-w-4xl p-0 gap-0 overflow-hidden border border-border/60 shadow-lg rounded-2xl bg-background">
                     <Form 
-                        className="contents" 
+                        className="flex flex-col md:flex-row min-h-[550px] gap-0" 
                         onSubmit={(e) => {
                             e.preventDefault();
                             handleSaveInventory();
                         }}
                     >
-                        <div className="px-6 py-4 flex flex-col gap-6">
-                            {/* Shortages Section */}
-                            <div className="space-y-3 p-4 bg-destructive/5 rounded-lg border border-destructive/10">
-                                <div className="flex justify-between items-center">
-                                    <Label className="text-destructive font-bold">Faltantes (Negativos)</Label>
-                                    <span className="font-mono font-bold text-destructive">
-                                        ${shortageValue.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                                    </span>
+                        {/* Columna Izquierda (45% de ancho en escritorio) */}
+                        <div className="w-full md:w-[42%] p-6 flex flex-col justify-between space-y-6">
+                            <div className="space-y-4">
+                                <div className="space-y-1">
+                                    <DialogTitle className="text-lg font-bold tracking-tight text-foreground">
+                                        Finalizar Control
+                                    </DialogTitle>
+                                    <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
+                                        Confirma los códigos de ajuste para cerrar el control del laboratorio <strong className="text-foreground">{labName}</strong>.
+                                    </DialogDescription>
                                 </div>
-                                <Field>
-                                    <Input
-                                        value={shortageId}
-                                        onChange={(e) => setShortageId(e.target.value)}
-                                        placeholder="ID Ajuste Faltantes (PLEX)"
-                                    />
-                                </Field>
+
+                                {/* Warning Alert Badge */}
+                                <div className="flex items-center gap-2.5 px-3 py-2 bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 rounded-xl text-[11px] font-medium leading-relaxed">
+                                    <AlertTriangle className="w-4 h-4 shrink-0 text-yellow-500" />
+                                    <span>Una vez finalizado, el inventario se cerrará y no podrá editarse.</span>
+                                </div>
+
+                                <div className="space-y-4 pt-2">
+                                    {/* Faltantes Card */}
+                                    <div className="p-4 rounded-xl border border-red-500/10 bg-red-500/5 space-y-2.5">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="p-1.5 rounded-lg bg-red-500/10 text-red-500">
+                                                    <TrashIcon className="w-4 h-4" />
+                                                </div>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-red-500/80">Faltantes (Negativos)</span>
+                                            </div>
+                                            <span className="font-mono font-bold text-red-500 text-sm">
+                                                -${Math.abs(shortageValue).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                            </span>
+                                        </div>
+                                        <Input
+                                            value={shortageId}
+                                            onChange={(e) => setShortageId(e.target.value)}
+                                            placeholder="ID Ajuste Faltantes (PLEX)"
+                                            className="h-10 text-xs bg-background/50 border-red-500/20 focus:border-red-500/50 focus:ring-red-500/10 rounded-xl"
+                                        />
+                                    </div>
+
+                                    {/* Sobrantes Card */}
+                                    <div className="p-4 rounded-xl border border-green-500/10 bg-green-500/5 space-y-2.5">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="p-1.5 rounded-lg bg-green-500/10 text-green-500">
+                                                    <CheckCircle className="w-4 h-4" />
+                                                </div>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-green-500/80">Sobrantes (Positivos)</span>
+                                            </div>
+                                            <span className="font-mono font-bold text-green-500 text-sm">
+                                                +${Math.abs(surplusValue).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                            </span>
+                                        </div>
+                                        <Input
+                                            value={surplusId}
+                                            onChange={(e) => setSurplusId(e.target.value)}
+                                            placeholder="ID Ajuste Sobrantes (PLEX)"
+                                            className="h-10 text-xs bg-background/50 border-green-500/20 focus:border-green-500/50 focus:ring-green-500/10 rounded-xl"
+                                        />
+                                    </div>
+                                </div>
                             </div>
 
-                            {/* Surpluses Section */}
-                            <div className="space-y-3 p-4 bg-success/5 rounded-lg border border-success/10">
-                                <div className="flex justify-between items-center">
-                                    <Label className="text-success font-bold">Sobrantes (Positivos)</Label>
-                                    <span className="font-mono font-bold text-success">
-                                        ${surplusValue.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                                    </span>
-                                </div>
-                                <Field>
-                                    <Input
-                                        value={surplusId}
-                                        onChange={(e) => setSurplusId(e.target.value)}
-                                        placeholder="ID Ajuste Sobrantes (PLEX)"
-                                    />
-                                </Field>
+                            <div className="flex flex-col gap-2 pt-2">
+                                <Button 
+                                    type="submit" 
+                                    disabled={isSaving}
+                                    className="h-11 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl transition-all shadow-sm active:scale-[0.98] flex items-center justify-center gap-2"
+                                >
+                                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                                    Confirmar y Finalizar
+                                </Button>
+                                
+                                <Button 
+                                    variant="ghost" 
+                                    type="button"
+                                    onClick={() => setShowSaveDialog(false)}
+                                    className="h-11 w-full text-[13px] text-muted-foreground hover:text-foreground font-medium rounded-xl hover:bg-muted/50 border border-border/40"
+                                >
+                                    Cancelar
+                                </Button>
                             </div>
                         </div>
 
-                        <DialogFooter>
-                            <DialogClose render={<Button type="button" variant="outline" disabled={isSaving} />}>
-                                Cancelar
-                            </DialogClose>
-                            <Button type="submit" disabled={isSaving}>
-                                {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                                Confirmar y Finalizar
-                            </Button>
-                        </DialogFooter>
+                        {/* Columna Derecha (58% de ancho en escritorio) */}
+                        <div className="w-full md:w-[58%] p-6 bg-muted/20 border-l border-border/30 flex flex-col justify-between space-y-4">
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between pb-1">
+                                    <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground/80">
+                                        Resumen de Rubros Controlados
+                                    </h3>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowSaveDialog(false)}
+                                        className="p-1.5 rounded-lg text-muted-foreground/75 hover:text-foreground hover:bg-muted/50 transition-colors"
+                                    >
+                                        <span className="sr-only">Cerrar</span>
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                </div>
+
+                                <ScrollArea className="h-[280px] pr-2">
+                                    <ScrollAreaViewport className="w-full h-full">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-4">
+                                            {categoryStats.map((catStat) => (
+                                                <div key={catStat.category} className="space-y-1.5">
+                                                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 pl-1">
+                                                        {catStat.category}
+                                                    </h4>
+                                                    <div className="bg-background border border-border/40 rounded-xl p-3 space-y-1.5">
+                                                        <div className="flex justify-between items-center text-[11px]">
+                                                            <span className="text-muted-foreground">Unidades</span>
+                                                            <span className="font-semibold text-foreground">{catStat.controlledUnits} u.</span>
+                                                        </div>
+                                                        <div className="flex justify-between items-center text-[11px]">
+                                                            <span className="text-muted-foreground">Diferencia</span>
+                                                            <span className={cn(
+                                                                "font-semibold",
+                                                                catStat.differenceUnits > 0 ? "text-green-500" : catStat.differenceUnits < 0 ? "text-red-500" : "text-muted-foreground"
+                                                            )}>
+                                                                {catStat.differenceUnits > 0 ? `+${catStat.differenceUnits}` : catStat.differenceUnits} u.
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex justify-between items-center text-[11px] pt-1.5 border-t border-border/30">
+                                                            <span className="text-muted-foreground">Valor Neto</span>
+                                                            <span className={cn(
+                                                                "font-mono font-bold",
+                                                                catStat.value > 0 ? "text-green-500" : catStat.value < 0 ? "text-red-500" : "text-muted-foreground"
+                                                            )}>
+                                                                {catStat.value > 0 ? `+$${catStat.value.toLocaleString('es-AR')}` : `$${catStat.value.toLocaleString('es-AR')}`}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </ScrollAreaViewport>
+                                    <ScrollAreaScrollbar />
+                                </ScrollArea>
+                            </div>
+
+                            <div className="pt-4 border-t border-border/40 space-y-2.5">
+                                <div className="flex justify-between items-center text-xs">
+                                    <span className="text-muted-foreground">Total Faltantes</span>
+                                    <span className="font-mono text-red-500 font-semibold">
+                                        -${Math.abs(shortageValue).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center text-xs">
+                                    <span className="text-muted-foreground">Total Sobrantes</span>
+                                    <span className="font-mono text-green-500 font-semibold">
+                                        +${Math.abs(surplusValue).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center text-xs">
+                                    <span className="text-muted-foreground">Total Unidades Controladas</span>
+                                    <span className="font-semibold text-foreground">
+                                        {totalControlledUnits} unidades
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center text-sm pt-2.5 border-t border-border/40">
+                                    <span className="font-semibold text-foreground">Balance de Ajuste</span>
+                                    <span className={cn(
+                                        "font-mono font-bold text-base",
+                                        netBalance > 0 ? "text-green-500" : netBalance < 0 ? "text-red-500" : "text-foreground"
+                                    )}>
+                                        {netBalance > 0 ? `+$${netBalance.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : `$${netBalance.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
                     </Form>
-                </DialogPopup>
+                </DialogContent>
             </Dialog>
 
             {/* History Dialog */}

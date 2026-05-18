@@ -164,6 +164,12 @@ export default function CyclicInventoryDetail() {
         // Special State
         shouldHidePendings,
 
+        // Mismatch Overrides
+        showMismatchDialog,
+        setShowMismatchDialog,
+        mismatchData,
+        handleResolveMismatch,
+
         // Advanced Logic
         sortBy, setSortBy,
         getSortedItems
@@ -905,6 +911,83 @@ export default function CyclicInventoryDetail() {
 
             {/* Onboarding Overlay */}
             <Onboarding />
+
+            {/* Laboratory Mismatch Resolution Dialog */}
+            <Dialog open={showMismatchDialog} onOpenChange={setShowMismatchDialog}>
+                <DialogContent className="max-w-md p-0 gap-0 overflow-hidden border border-border/60 shadow-md rounded-lg bg-background">
+                    <div className="flex items-center justify-between px-5 pt-5 pb-3">
+                        <DialogTitle className="text-base font-semibold tracking-tight flex items-center gap-2">
+                            <div className="p-1.5 rounded-lg bg-yellow-500/10 text-yellow-500">
+                                <AlertTriangle className="w-4 h-4" />
+                            </div>
+                            Discrepancia de Laboratorio
+                        </DialogTitle>
+                    </div>
+
+                    <div className="px-5 pb-5 space-y-4">
+                        <div className="space-y-1.5">
+                            <p className="text-[13px] text-muted-foreground leading-relaxed">
+                                El archivo Excel contiene el laboratorio <strong className="text-foreground">{mismatchData?.fileLabName}</strong>, pero actualmente estás controlando el laboratorio <strong className="text-foreground">{labName}</strong>.
+                            </p>
+                            {mismatchData?.isSimilar ? (
+                                <p className="text-[13px] text-muted-foreground leading-relaxed">
+                                    Encontramos los siguientes laboratorios similares autorizados en tu sucursal. Seleccioná uno para importar y redirigirte, o bien forzá la carga en el actual.
+                                </p>
+                            ) : (
+                                <p className="text-[13px] text-muted-foreground leading-relaxed">
+                                    No se encontraron laboratorios similares autorizados en tu sucursal. Podés forzar la carga de los productos en el laboratorio actual si corresponde.
+                                </p>
+                            )}
+                        </div>
+
+                        {mismatchData?.isSimilar && (
+                            <div className="space-y-2">
+                                <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 ml-px">
+                                    Laboratorios Similares Sugeridos
+                                </Label>
+                                <div className="space-y-1.5">
+                                    {mismatchData.similarLabs.map((similarLab) => (
+                                        <button
+                                            key={similarLab}
+                                            onClick={() => handleResolveMismatch('redirect', similarLab)}
+                                            className="w-full flex items-center justify-between p-3.5 rounded-xl border border-border/40 bg-muted/20 hover:bg-muted/40 hover:border-primary/30 transition-all text-left group active:scale-[0.99]"
+                                        >
+                                            <div className="space-y-0.5">
+                                                <div className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
+                                                    {similarLab}
+                                                </div>
+                                                <div className="text-[10px] text-muted-foreground">
+                                                    Laboratorio de la sucursal
+                                                </div>
+                                            </div>
+                                            <div className="text-[11px] font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity pr-1">
+                                                Importar y Redirigir →
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex flex-col gap-2 pt-2">
+                            <Button 
+                                onClick={() => handleResolveMismatch('current')}
+                                className="h-11 w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl transition-all shadow-sm active:scale-[0.98]"
+                            >
+                                Forzar carga en {labName}
+                            </Button>
+                            
+                            <Button 
+                                variant="ghost" 
+                                onClick={() => handleResolveMismatch('cancel')}
+                                className="h-11 w-full text-[13px] text-muted-foreground hover:text-foreground font-medium rounded-xl hover:bg-muted/50"
+                            >
+                                Cancelar Carga
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {/* Minimalist Admin Purge Modal */}
             <Dialog open={showAdminPurgeModal} onOpenChange={setShowAdminPurgeModal}>

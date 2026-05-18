@@ -36,7 +36,15 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
     });
 
     // 2. Upload Logic
-    const { isUploading, handleFileUpload, handleElectronImport } = useInventoryUpload({
+    const { 
+        isUploading, 
+        handleFileUpload, 
+        handleElectronImport,
+        showMismatchDialog,
+        setShowMismatchDialog,
+        mismatchData,
+        handleResolveMismatch
+    } = useInventoryUpload({
         branchName,
         labName,
         currentItems: items,
@@ -506,6 +514,12 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         handleResetData,
         handleConfirmDelete,
         handleForceRefreshProgress,
+        
+        // Mismatch Overrides
+        showMismatchDialog,
+        setShowMismatchDialog,
+        mismatchData,
+        handleResolveMismatch,
 
         // Special State
         shouldHidePendings

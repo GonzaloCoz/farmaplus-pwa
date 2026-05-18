@@ -1,9 +1,11 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { notify } from '@/lib/notifications';
 import { CyclicItem } from '@/services/cyclicInventoryService';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
-import { normalizeString } from '@/lib/utils';
+import { normalizeString, getStringSimilarity } from '@/lib/utils';
+import { getLaboratoriesForBranch } from '@/services/preCountDB';
 import { useUser } from '@/contexts/UserContext';
 import ExcelWorker from '../workers/excelWorker?worker';
 
@@ -17,9 +19,164 @@ interface UseInventoryUploadProps {
     onItemsUpdated: (items: CyclicItem[]) => void;
 }
 
+interface MismatchData {
+    fileLabName: string;
+    isSimilar: boolean;
+    similarLabs: string[];
+    fileContent?: any;
+    electronData?: any;
+}
+
 export function useInventoryUpload({ labName, branchName, currentItems, onItemsUpdated }: UseInventoryUploadProps) {
     const [isUploading, setIsUploading] = useState(false);
+    const [showMismatchDialog, setShowMismatchDialog] = useState(false);
+    const [mismatchData, setMismatchData] = useState<MismatchData | null>(null);
+    
+    const navigate = useNavigate();
     const { user } = useUser();
+
+    const handleResolveMismatch = async (action: 'current' | 'redirect' | 'cancel', chosenLab?: string) => {
+        if (action === 'cancel' || !mismatchData) {
+            setShowMismatchDialog(false);
+            setMismatchData(null);
+            setIsUploading(false);
+            return;
+        }
+
+        setIsUploading(true);
+        setShowMismatchDialog(false);
+
+        const targetLab = action === 'current' ? labName : (chosenLab || mismatchData.fileLabName);
+
+        try {
+            // Caso A: Carga de Archivo Manual (posee fileContent)
+            if (mismatchData.fileContent) {
+                const dbItems = await cyclicInventoryService.getLabInventory(branchName, targetLab);
+                const worker = new ExcelWorker();
+
+                worker.onmessage = async (eMsg) => {
+                    const { success, error, finalItems, addedCount, updatedCount } = eMsg.data;
+
+                    if (error) {
+                        notify.error("Error de archivo", error);
+                        setIsUploading(false);
+                        worker.terminate();
+                        return;
+                    }
+
+                    if (success) {
+                        // Actualizamos el estado en pantalla si nos quedamos en el mismo laboratorio (o si elegimos el mismo de la lista)
+                        if (action === 'current' || targetLab.toUpperCase() === labName.toUpperCase()) {
+                            onItemsUpdated(finalItems);
+                        }
+                        
+                        try {
+                            await cyclicInventoryService.purgeAndSaveLabInventory(branchName, targetLab, finalItems);
+                            
+                            if (addedCount > 0 || updatedCount > 0) {
+                                notify.success("Carga exitosa", `Se importaron ${addedCount} productos nuevos y ${updatedCount} existentes en ${targetLab}.`);
+                            } else {
+                                notify.info("Sin cambios", `Todos los productos ya estaban procesados en ${targetLab}.`);
+                            }
+
+                            if (action === 'redirect' && targetLab.toUpperCase() !== labName.toUpperCase()) {
+                                navigate(`/cyclic-inventory/${encodeURIComponent(targetLab)}`);
+                            }
+                        } catch (err) {
+                            console.error("Failed to save after upload:", err);
+                            notify.error("Error al guardar", "Se procesó el archivo pero hubo un problema al guardar.");
+                        } finally {
+                            setIsUploading(false);
+                            worker.terminate();
+                        }
+                    }
+                };
+
+                worker.onerror = (err) => {
+                    console.error("Worker Error:", err);
+                    notify.error("Error de procesamiento", "Hubo un fallo crítico en el worker.");
+                    setIsUploading(false);
+                    worker.terminate();
+                };
+
+                worker.postMessage({
+                    fileData: mismatchData.fileContent,
+                    labName: targetLab,
+                    branchName,
+                    currentItems: dbItems,
+                    bypassLabCheck: true
+                });
+            } 
+            // Caso B: Datos de importación de Launcher (Electron)
+            else if (mismatchData.electronData) {
+                const dbItems = await cyclicInventoryService.getLabInventory(branchName, targetLab);
+                const rows = mismatchData.electronData.rows;
+                const finalItems = [...dbItems];
+                const eanMap = new Map();
+                finalItems.forEach((item, index) => eanMap.set(String(item.ean).trim(), index));
+
+                let addedCount = 0;
+                let updatedCount = 0;
+
+                for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i];
+                    if (!row || !row[3]) continue;
+                    const rawEan = row[2];
+                    if (!rawEan) continue;
+                    const ean = String(rawEan).trim();
+                    if (!ean) continue;
+
+                    let category = normalizeString(row[9]?.toString() || 'Varios').toUpperCase();
+                    const rawCost = row[10];
+                    const costValue = Math.round((Number(rawCost) || 0) * 100) / 100;
+
+                    if (eanMap.has(ean)) {
+                        const index = eanMap.get(ean);
+                        const existingItem = { ...finalItems[index] };
+                        finalItems[index] = {
+                            ...existingItem,
+                            name: row[3],
+                            systemQuantity: Number(row[4]) || 0,
+                            cost: costValue,
+                            category: category
+                        };
+                        updatedCount++;
+                    } else {
+                        finalItems.push({
+                            id: crypto.randomUUID(),
+                            ean: ean,
+                            name: row[3],
+                            systemQuantity: Number(row[4]) || 0,
+                            countedQuantity: Number(row[4]) || 0,
+                            cost: costValue,
+                            status: 'pending',
+                            category: category,
+                            wasReadjusted: false
+                        });
+                        addedCount++;
+                    }
+                }
+
+                if (action === 'current' || targetLab.toUpperCase() === labName.toUpperCase()) {
+                    onItemsUpdated(finalItems);
+                }
+                
+                await cyclicInventoryService.purgeAndSaveLabInventory(branchName, targetLab, finalItems);
+                notify.success("Importación Exitosa", `Se sincronizaron ${addedCount + updatedCount} productos en ${targetLab}.`);
+                
+                if (action === 'redirect' && targetLab.toUpperCase() !== labName.toUpperCase()) {
+                    navigate(`/cyclic-inventory/${encodeURIComponent(targetLab)}`);
+                }
+                setIsUploading(false);
+            }
+        } catch (error) {
+            console.error("Error resolving mismatch:", error);
+            notify.error("Error", "No se pudieron procesar los datos.");
+            setIsUploading(false);
+        } finally {
+            setMismatchData(null);
+        }
+    };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -105,11 +262,42 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
             // Optimización Empresarial: Uso de Web Workers para rendimiento de UI a 60FPS
             const worker = new ExcelWorker();
 
-            worker.onmessage = async (e) => {
-                const { success, error, finalItems, addedCount, updatedCount, type, message } = e.data;
+            worker.onmessage = async (eMsg) => {
+                const { success, error, finalItems, addedCount, updatedCount, type, message, fileLabName } = eMsg.data;
 
                 if (type === 'debug') {
                     console.log('[Worker Debug]', message);
+                    return;
+                }
+
+                if (type === 'mismatch') {
+                    try {
+                        const allowedLabs = await getLaboratoriesForBranch(branchName);
+                        const uniqueLabNames = Array.from(new Set(allowedLabs.map(lab => lab.name)));
+                        const similarLabs = uniqueLabNames
+                            .map(name => ({
+                                name,
+                                similarity: getStringSimilarity(fileLabName, name)
+                            }))
+                            .filter(lab => lab.similarity >= 0.5) // Filtro de coincidencia
+                            .sort((a, b) => b.similarity - a.similarity)
+                            .slice(0, 5)
+                            .map(lab => lab.name);
+
+                        setMismatchData({
+                            fileLabName,
+                            isSimilar: similarLabs.length > 0,
+                            similarLabs,
+                            fileContent
+                        });
+                        setShowMismatchDialog(true);
+                    } catch (err) {
+                        console.error("Error seeking similar labs:", err);
+                        notify.error("Error de verificación", `El archivo pertenece a "${fileLabName}", pero estás intentando cargar datos para "${labName}".`);
+                        setIsUploading(false);
+                    } finally {
+                        worker.terminate();
+                    }
                     return;
                 }
 
@@ -155,7 +343,8 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 fileData: fileContent,
                 labName,
                 branchName,
-                currentItems: mergedCurrentItems
+                currentItems: mergedCurrentItems,
+                bypassLabCheck: false
             });
         };
 
@@ -168,6 +357,33 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
         setIsUploading(true);
 
         try {
+            const rows = data.rows;
+            const fileLabName = rows[1] ? String(rows[1][14] || '').trim() : '';
+
+            // Si hay discrepancia de laboratorio en la carga de Electron
+            if (fileLabName && fileLabName.toUpperCase() !== labName.toUpperCase() && fileLabName.toUpperCase() !== branchName.toUpperCase()) {
+                const allowedLabs = await getLaboratoriesForBranch(branchName);
+                const uniqueLabNames = Array.from(new Set(allowedLabs.map(lab => lab.name)));
+                const similarLabs = uniqueLabNames
+                    .map(name => ({
+                        name,
+                        similarity: getStringSimilarity(fileLabName, name)
+                    }))
+                    .filter(lab => lab.similarity >= 0.5)
+                    .sort((a, b) => b.similarity - a.similarity)
+                    .slice(0, 5)
+                    .map(lab => lab.name);
+
+                setMismatchData({
+                    fileLabName,
+                    isSimilar: similarLabs.length > 0,
+                    similarLabs,
+                    electronData: data
+                });
+                setShowMismatchDialog(true);
+                return;
+            }
+
             // Pre-merge logic (similar to handleFileUpload)
             let mergedCurrentItems: CyclicItem[] = [...currentItems];
             const dbItems = await cyclicInventoryService.getLabInventory(branchName, labName);
@@ -184,8 +400,6 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 mergedCurrentItems = merged;
             }
 
-            // Procesamiento de filas (Lógica espejo del Worker pero directa)
-            const rows = data.rows;
             const finalItems: any[] = [...mergedCurrentItems];
             const eanMap = new Map();
             finalItems.forEach((item, index) => eanMap.set(String(item.ean).trim(), index));
@@ -249,6 +463,10 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
     return {
         isUploading,
         handleFileUpload,
-        handleElectronImport
+        handleElectronImport,
+        showMismatchDialog,
+        setShowMismatchDialog,
+        mismatchData,
+        handleResolveMismatch
     };
 }

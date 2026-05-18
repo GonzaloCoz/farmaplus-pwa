@@ -16,7 +16,7 @@ const normalizeStringWorker = (str: string): string => {
 };
 
 self.onmessage = async (e: MessageEvent) => {
-    const { fileData, labName, branchName, currentItems } = e.data;
+    const { fileData, labName, branchName, currentItems, bypassLabCheck } = e.data;
 
     try {
         // 1. Procesar Excel
@@ -40,16 +40,16 @@ self.onmessage = async (e: MessageEvent) => {
             return;
         }
 
-        // 3. Verificación de Laboratorio (Strict matching)
+        // 3. Verificación de Laboratorio
         const currentLab = normalizeStringWorker(labName);
         const currentBranch = normalizeStringWorker(branchName || "");
         const uploadLab = normalizeStringWorker(fileLabName);
 
-        // El archivo es válido si coincide EXACTAMENTE con el laboratorio O con la sucursal
-        // (A veces el Excel trae el nombre de sucursal en lugar de laboratorio para inventarios generales)
-        if (uploadLab !== currentLab && uploadLab !== currentBranch) {
+        // El archivo es válido si coincide EXACTAMENTE con el laboratorio O con la sucursal, o si se saltea la verificación
+        if (!bypassLabCheck && uploadLab !== currentLab && uploadLab !== currentBranch) {
             self.postMessage({ 
-                error: `El archivo pertenece a "${fileLabName}", pero estás intentando cargar datos para "${labName}" en "${branchName}".` 
+                type: 'mismatch',
+                fileLabName
             });
             return;
         }

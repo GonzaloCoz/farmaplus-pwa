@@ -22,6 +22,7 @@ import {
   DangerCircle as AlertCircleIcon,
   TrashBinMinimalistic as Trash
 } from "@solar-icons/react";
+import { BookOpen, Users2, DownloadCloud, PenTool, Plus } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -29,7 +30,11 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogClose,
+  DialogPanel,
 } from "@/components/ui/dialog";
+import { Form } from "@/components/ui/form";
+import { Field, FieldLabel } from "@/components/ui/field";
 import {
   Menu,
   MenuPopup,
@@ -51,12 +56,34 @@ import { getLaboratoriesForBranch } from "@/services/preCountDB";
 import { cyclicInventoryService, CyclicInventoryStats } from "@/services/cyclicInventoryService";
 import { useUser } from "@/contexts/UserContext";
 import { usePrefetchLabInventory } from "@/hooks/useInventoryQueries";
+import { supabase } from "@/integrations/supabase/client";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type SortOption = "name-asc" | "name-desc" | "value-asc" | "value-desc";
 type FilterCategory = "MEDICAMENTOS" | "PERFUMERIA" | "ACCESORIOS" | "VARIOS";
 type StatusFilter = "all" | "controlado" | "pendiente" | "por_controlar";
 
 const CATEGORIES: FilterCategory[] = ["MEDICAMENTOS", "PERFUMERIA", "ACCESORIOS", "VARIOS"];
+
+const categoriesMap = {
+  MEDICAMENTOS: "Medicamentos",
+  PERFUMERIA: "Perfumería",
+  ACCESORIOS: "Accesorios",
+  VARIOS: "Varios",
+};
+
+type CategoryKey = keyof typeof categoriesMap;
+
+function renderCategoryValue(value: string[]) {
+  if (!value || value.length === 0) {
+    return "Seleccionar rubros...";
+  }
+
+  const firstCat = categoriesMap[value[0] as CategoryKey] || value[0];
+  const additionalCats =
+    value.length > 1 ? ` (+${value.length - 1} más)` : "";
+  return firstCat + additionalCats;
+}
 
 export default function CyclicInventory() {
   const navigate = useNavigate();
@@ -77,6 +104,12 @@ export default function CyclicInventory() {
   const [showMassResetDialog, setShowMassResetDialog] = useState(false);
   const [massResetChallenge, setMassResetChallenge] = useState("");
   const [massResetInput, setMassResetInput] = useState("");
+
+  // Add Lab Manually State
+  const [showAddLabDialog, setShowAddLabDialog] = useState(false);
+  const [newLabName, setNewLabName] = useState("");
+  const [newLabCategories, setNewLabCategories] = useState<string[]>(["MEDICAMENTOS"]);
+  const [isAddingLab, setIsAddingLab] = useState(false);
 
   useEffect(() => {
     const loadLabs = async () => {
@@ -348,6 +381,58 @@ export default function CyclicInventory() {
     }
   };
 
+  const handleAddLaboratory = async () => {
+    const cleanLabName = newLabName.trim().toUpperCase();
+    if (!cleanLabName) {
+      notify.error("Error", "El nombre del laboratorio no puede estar vacío.");
+      return;
+    }
+
+    if (!newLabCategories || newLabCategories.length === 0) {
+      notify.error("Error", "Debes seleccionar al menos un rubro.");
+      return;
+    }
+    
+    if (!user?.branchSheet) {
+      notify.error("Error", "No se identificó la sucursal activa.");
+      return;
+    }
+
+    setIsAddingLab(true);
+    try {
+      const rowsToInsert = newLabCategories.map(cat => ({
+        branch_name: user.branchSheet.toUpperCase().trim(),
+        laboratory: cleanLabName,
+        category: cat.toUpperCase().trim(),
+        status: 'pending'
+      }));
+
+      const { error } = await supabase
+        .from('branch_laboratories')
+        .upsert(rowsToInsert, {
+          onConflict: 'branch_name,laboratory,category'
+        });
+
+      if (error) throw error;
+
+      notify.success(
+        "Laboratorios Agregados", 
+        `Se asoció ${cleanLabName} a los rubros: ${newLabCategories.map(c => categoriesMap[c as CategoryKey] || c).join(', ')}.`
+      );
+      setShowAddLabDialog(false);
+      setNewLabName("");
+      setNewLabCategories(["MEDICAMENTOS"]);
+      
+      // Refresh database records
+      window.location.reload();
+    } catch (error: any) {
+      console.error("Error adding laboratory:", error);
+      notify.error("Error al agregar", error.message || "Ocurrió un error inesperado.");
+    } finally {
+      setIsAddingLab(false);
+    }
+  };
+
 
 
   if (isLoading) {
@@ -605,6 +690,10 @@ export default function CyclicInventory() {
                         <MenuSeparator className="my-2" />
                         <MenuGroup>
                           <MenuGroupLabel>Administración</MenuGroupLabel>
+                          <MenuItem onClick={() => setShowAddLabDialog(true)} className="text-foreground focus:text-foreground">
+                            <Plus className="w-4 h-4 text-muted-foreground" />
+                            <span>Agregar laboratorio</span>
+                          </MenuItem>
                           <MenuItem onClick={handleMassSync} className="text-primary focus:text-primary">
                             <RotateCcw className="w-4 h-4" />
                             <span>Sincronizar todo (Forzar)</span>
@@ -786,6 +875,70 @@ export default function CyclicInventory() {
               Reiniciar Todo
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Lab Manually Dialog */}
+      <Dialog open={showAddLabDialog} onOpenChange={setShowAddLabDialog}>
+        <DialogContent className="sm:max-w-md rounded-2xl shadow-xl border border-border/50">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-foreground font-bold">
+              <Plus className="w-5 h-5 text-primary" />
+              <span>Agregar laboratorio manualmente</span>
+            </DialogTitle>
+            <DialogDescription>
+              Esto asociará un nuevo laboratorio y rubros a la sucursal <strong>{user?.branchSheet}</strong> de forma directa.
+            </DialogDescription>
+          </DialogHeader>
+          <Form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleAddLaboratory();
+            }} 
+            className="contents"
+          >
+            <DialogPanel className="grid gap-5">
+              <Field>
+                <FieldLabel className="text-sm font-semibold text-foreground/90">Nombre del Laboratorio</FieldLabel>
+                <Input
+                  value={newLabName}
+                  onChange={(e) => setNewLabName(e.target.value.toUpperCase())}
+                  placeholder="Ej. ELEA, CASASCO, ROEMMERS..."
+                  className="font-bold uppercase h-11 px-4 rounded-xl border border-input focus:border-primary/50 transition-colors w-full"
+                />
+              </Field>
+              <Field>
+                <FieldLabel className="text-sm font-semibold text-foreground/90">Rubros / Categorías</FieldLabel>
+                <Select 
+                  value={newLabCategories} 
+                  onValueChange={setNewLabCategories}
+                  multiple
+                >
+                  <SelectTrigger className="w-full h-11 px-4 rounded-xl bg-popover text-foreground border border-input focus:border-primary/50 transition-colors">
+                    <SelectValue>{renderCategoryValue}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false}>
+                    <SelectItem value="MEDICAMENTOS">Medicamentos</SelectItem>
+                    <SelectItem value="PERFUMERIA">Perfumería</SelectItem>
+                    <SelectItem value="ACCESORIOS">Accesorios</SelectItem>
+                    <SelectItem value="VARIOS">Varios</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </DialogPanel>
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" className="h-10 rounded-xl" />} onClick={() => setShowAddLabDialog(false)}>
+                Cancelar
+              </DialogClose>
+              <Button 
+                type="submit"
+                disabled={isAddingLab || !newLabName.trim() || newLabCategories.length === 0}
+                className="bg-primary hover:bg-primary/95 text-primary-foreground font-semibold h-10 rounded-xl px-5"
+              >
+                {isAddingLab ? "Agregando..." : "Agregar Laboratorio"}
+              </Button>
+            </DialogFooter>
+          </Form>
         </DialogContent>
       </Dialog>
     </div>

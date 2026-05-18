@@ -860,9 +860,9 @@ export default function CyclicInventoryDetail() {
 
             {/* Save Dialog */}
             <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
-                <DialogContent showCloseButton={false} className="max-w-4xl p-0 gap-0 overflow-hidden border border-border/60 shadow-lg rounded-2xl bg-background">
+                <DialogContent showCloseButton={false} className="max-w-5xl p-0 gap-0 overflow-hidden border border-border/60 shadow-lg rounded-2xl bg-background">
                     <Form 
-                        className="flex flex-col md:flex-row min-h-[550px] gap-0" 
+                        className="flex flex-col md:flex-row min-h-[580px] gap-0" 
                         onSubmit={(e) => {
                             e.preventDefault();
                             handleSaveInventory();
@@ -883,7 +883,7 @@ export default function CyclicInventoryDetail() {
                                 {/* Warning Alert Badge */}
                                 <div className="flex items-center gap-2.5 px-3 py-2 bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 rounded-xl text-[11px] font-medium leading-relaxed">
                                     <AlertTriangle className="w-4 h-4 shrink-0 text-yellow-500" />
-                                    <span>Una vez finalizado, el inventario se cerrará y no podrá editarse.</span>
+                                    <span>Por favor, controlar ID y valores ingresados antes de confirmar.</span>
                                 </div>
 
                                 <div className="space-y-4 pt-2">
@@ -894,7 +894,7 @@ export default function CyclicInventoryDetail() {
                                                 <div className="p-1.5 rounded-lg bg-red-500/10 text-red-500">
                                                     <TrashIcon className="w-4 h-4" />
                                                 </div>
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-red-500/80">Faltantes (Negativos)</span>
+                                                <span className="text-sm font-semibold text-red-500/90">Faltantes (negativos)</span>
                                             </div>
                                             <span className="font-mono font-bold text-red-500 text-sm">
                                                 -${Math.abs(shortageValue).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
@@ -915,7 +915,7 @@ export default function CyclicInventoryDetail() {
                                                 <div className="p-1.5 rounded-lg bg-green-500/10 text-green-500">
                                                     <CheckCircle className="w-4 h-4" />
                                                 </div>
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-green-500/80">Sobrantes (Positivos)</span>
+                                                <span className="text-sm font-semibold text-green-500/90">Sobrantes (positivos)</span>
                                             </div>
                                             <span className="font-mono font-bold text-green-500 text-sm">
                                                 +${Math.abs(surplusValue).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
@@ -934,18 +934,19 @@ export default function CyclicInventoryDetail() {
                             <div className="flex flex-col gap-2 pt-2">
                                 <Button 
                                     type="submit" 
+                                    variant="default"
                                     disabled={isSaving}
-                                    className="h-11 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl transition-all shadow-sm active:scale-[0.98] flex items-center justify-center gap-2"
+                                    className="h-11 w-full bg-emerald-600 border-emerald-700 hover:bg-emerald-600/90 text-white font-semibold rounded-xl shadow-emerald-600/24 shadow-xs flex items-center justify-center gap-2"
                                 >
                                     {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                                    Confirmar y Finalizar
+                                    Confirmar y finalizar
                                 </Button>
                                 
                                 <Button 
-                                    variant="ghost" 
+                                    variant="outline" 
                                     type="button"
                                     onClick={() => setShowSaveDialog(false)}
-                                    className="h-11 w-full text-[13px] text-muted-foreground hover:text-foreground font-medium rounded-xl hover:bg-muted/50 border border-border/40"
+                                    className="h-11 w-full text-xs font-semibold rounded-xl"
                                 >
                                     Cancelar
                                 </Button>
@@ -956,8 +957,8 @@ export default function CyclicInventoryDetail() {
                         <div className="w-full md:w-[58%] p-6 bg-muted/20 border-l border-border/30 flex flex-col justify-between space-y-4">
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between pb-1">
-                                    <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground/80">
-                                        Resumen de Rubros Controlados
+                                    <h3 className="text-sm font-semibold text-foreground">
+                                        Resumen de rubros controlados
                                     </h3>
                                     <button
                                         type="button"
@@ -976,7 +977,7 @@ export default function CyclicInventoryDetail() {
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-4">
                                             {categoryStats.map((catStat) => (
                                                 <div key={catStat.category} className="space-y-1.5">
-                                                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70 pl-1">
+                                                    <h4 className="text-sm font-semibold text-foreground pl-1">
                                                         {catStat.category}
                                                     </h4>
                                                     <div className="bg-background border border-border/40 rounded-xl p-3 space-y-1.5">

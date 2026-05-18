@@ -190,7 +190,7 @@ export default function CyclicInventoryDetail() {
             let value = 0;
 
             catItems.forEach(item => {
-                if (item.status !== 'pending') {
+                if (item.status === 'controlled') {
                     controlledUnits += item.countedQuantity;
                     const diff = item.countedQuantity - item.systemQuantity;
                     differenceUnits += diff;

@@ -459,102 +459,123 @@ export default function CyclicInventory() {
       )}
 
       {/* Resumen del Panel */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="p-6 flex flex-col justify-between bg-card/40 dark:bg-card/20 backdrop-blur-sm border border-border/50 shadow-sm rounded-lg overflow-hidden relative group transition-all duration-300">
-          <div className="flex items-center gap-3 text-primary mb-4 relative z-10">
-            <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
-              <BarChart3 className="w-5 h-5" />
-            </div>
-            <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground/80">Avance Global</span>
-          </div>
-
-          <div className="space-y-1 relative z-10">
-            <div className="text-4xl font-black tracking-tighter flex items-baseline gap-1.5 text-foreground">
-              <CounterAnimation value={progressPercentage} />
-              <span className="text-xl font-bold opacity-30">%</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-1.5 bg-muted/50 rounded-full overflow-hidden">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progressPercentage}%` }}
-                  transition={{ duration: 1, ease: "easeOut" }}
-                  className="h-full bg-primary"
-                />
-              </div>
-              <span className="text-[10px] font-bold text-muted-foreground/60 whitespace-nowrap uppercase tracking-wider tabular-nums">
-                {controlledLabs}/{totalLabs}
+      <Card className="p-6 flex flex-col gap-6 transition-all duration-300">
+        {/* Top Breadcrumb and Financial Summary Section */}
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+          <div className="space-y-1">
+            <span className="text-[10px] font-bold text-muted-foreground tracking-wider">
+              Rubro seleccionado
+            </span>
+            <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+              <span>Inventario Cíclico</span>
+              <span className="text-muted-foreground/50">›</span>
+              <span className="text-primary font-bold">
+                {categoriesMap[categoryFilter as CategoryKey] || categoryFilter}
               </span>
             </div>
           </div>
-        </Card>
 
-        <Card className="p-6 flex flex-col justify-between bg-card/40 dark:bg-card/20 backdrop-blur-sm border border-border/50 shadow-sm rounded-lg overflow-hidden relative group transition-all duration-300">
-          <div className="flex items-center gap-3 text-success mb-4 relative z-10">
-            <div className="p-2 rounded-xl bg-success/10 border border-success/20">
-              <CheckCircle className="w-5 h-5" />
+          {/* Financial Values horizontal list */}
+          <div className="flex flex-wrap items-center gap-6 text-sm">
+            {/* Diferencia Neta */}
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Diferencia Neta</span>
+              <div className="flex items-baseline gap-2">
+                <span className={cn(
+                  "font-bold tracking-tight text-base",
+                  totalDifference < 0 ? "text-red-500 dark:text-red-400" : totalDifference > 0 ? "text-emerald-500" : "text-foreground"
+                )}>
+                  {totalDifference < 0 ? "-" : totalDifference > 0 ? "+" : ""}
+                  <span className="text-xs font-light opacity-50 mr-0.5">$</span>
+                  <CounterAnimation value={Math.abs(totalDifference)} />
+                </span>
+                <span className={cn("text-[10px] font-bold", totalDifference < 0 ? "text-red-500/80" : totalDifference > 0 ? "text-emerald-500/80" : "text-muted-foreground")}>
+                  {totalDifference < 0 ? "↓" : totalDifference > 0 ? "↑" : ""}{netTrend.value}%
+                </span>
+              </div>
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground/80">Controlados</span>
-          </div>
 
-          <div className="text-4xl font-black tracking-tighter text-success relative z-10">
-            <CounterAnimation value={controlledLabs} />
-          </div>
+            <div className="h-8 w-px bg-border/40 hidden sm:block" />
 
-          <div className="mt-2 h-1.5 w-full bg-success/10 rounded-full relative z-10 overflow-hidden">
-            <div className="h-full bg-success w-full opacity-30" />
-          </div>
-        </Card>
-
-        <Card className="p-6 flex flex-col justify-between bg-card/40 dark:bg-card/20 backdrop-blur-sm border border-border/50 shadow-sm rounded-lg overflow-hidden relative group transition-all duration-300">
-          <div className="flex items-center gap-3 text-muted-foreground mb-4 relative z-10">
-            <div className="p-2 rounded-xl bg-muted/50 border border-border/40">
-              <AlertCircle className="w-5 h-5" />
+            {/* Negativo Total */}
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Faltante Total</span>
+              <div className="flex items-baseline gap-2">
+                <span className="font-bold tracking-tight text-base text-red-500 dark:text-red-400">
+                  <span className="text-xs font-light opacity-50 mr-0.5">$</span>
+                  <CounterAnimation value={Math.abs(totalNegative)} />
+                </span>
+                <span className="text-[10px] font-bold text-red-500/80">
+                  ↓{negativeTrend.value}%
+                </span>
+              </div>
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground/80">Pendientes</span>
+
+            <div className="h-8 w-px bg-border/40 hidden sm:block" />
+
+            {/* Positivo Total */}
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Sobrante Total</span>
+              <div className="flex items-baseline gap-2">
+                <span className="font-bold tracking-tight text-base text-emerald-500">
+                  <span className="text-xs font-light opacity-50 mr-0.5">$</span>
+                  <CounterAnimation value={totalPositive} />
+                </span>
+                <span className="text-[10px] font-bold text-emerald-500/80">
+                  ↑{positiveTrend.value}%
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Central Progress Panel (Visual structure similar to reference image) */}
+        <div className="border bg-muted/20 dark:bg-muted/10 rounded-2xl p-5 flex flex-col gap-4 relative">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              {/* Custom signal/progress bars icon */}
+              <div className="flex items-end gap-0.5 h-4 w-4 text-emerald-500">
+                <div className="w-0.5 h-1.5 bg-current rounded-full" />
+                <div className="w-0.5 h-2.5 bg-current rounded-full" />
+                <div className="w-0.5 h-3.5 bg-current rounded-full" />
+              </div>
+              <span className="text-sm font-medium text-muted-foreground">
+                Avance: <span className="font-bold text-foreground tabular-nums text-base">{progressPercentage}%</span>
+              </span>
+            </div>
+
+            {/* Controlled/Total Badge */}
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-xs font-semibold px-2.5 py-1">
+                {controlledLabs} / {totalLabs} Controlados
+              </Badge>
+              <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 text-xs font-semibold px-2.5 py-1">
+                {pendingLabs} Pendientes
+              </Badge>
+            </div>
           </div>
 
-          <div className="text-4xl font-black tracking-tighter text-muted-foreground relative z-10">
-            <CounterAnimation value={pendingLabs} />
+          {/* Progress bar and ticks */}
+          <div className="space-y-2">
+            <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${progressPercentage}%` }}
+                transition={{ duration: 1, ease: "easeOut" }}
+                className="h-full bg-emerald-500 rounded-full"
+              />
+            </div>
+            {/* Ticks */}
+            <div className="flex justify-between text-[10px] text-muted-foreground/60 font-medium px-0.5">
+              <span>0%</span>
+              <span>25%</span>
+              <span>50%</span>
+              <span>75%</span>
+              <span>100%</span>
+            </div>
           </div>
-
-          <div className="mt-2 h-1.5 w-full bg-muted/50 rounded-full relative z-10 overflow-hidden">
-            <div className="h-full bg-muted-foreground w-full opacity-20" />
-          </div>
-        </Card>
-
-        <MetricCarousel
-          items={[
-            {
-              id: "net",
-              label: "Diferencia Neta",
-              value: totalDifference,
-              color: totalDifference < 0 ? "text-destructive" : totalDifference > 0 ? "text-success" : "text-foreground",
-              icon: DollarSign,
-              prefix: "$",
-              trend: netTrend
-            },
-            {
-              id: "negative",
-              label: "Negativo Total",
-              value: totalNegative,
-              color: "text-destructive",
-              icon: TrendingDown,
-              prefix: "$",
-              trend: negativeTrend
-            },
-            {
-              id: "positive",
-              label: "Positivo Total",
-              value: totalPositive,
-              color: "text-success",
-              icon: TrendingUp,
-              prefix: "$",
-              trend: positiveTrend
-            }
-          ]}
-        />
-      </div>
+        </div>
+      </Card>
 
       {/* Filtros y Búsqueda */}
       <div className="flex flex-col md:flex-row md:items-center justify-between transition-all gap-4 mb-4">

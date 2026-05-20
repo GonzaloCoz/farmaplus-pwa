@@ -22,7 +22,7 @@ import {
   DangerCircle as AlertCircleIcon,
   TrashBinMinimalistic as Trash
 } from "@solar-icons/react";
-import { BookOpen, Users2, DownloadCloud, PenTool, Plus } from 'lucide-react';
+import { BookOpen, Users2, DownloadCloud, PenTool, Plus, Edit } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -57,7 +57,18 @@ import { cyclicInventoryService, CyclicInventoryStats } from "@/services/cyclicI
 import { useUser } from "@/contexts/UserContext";
 import { usePrefetchLabInventory } from "@/hooks/useInventoryQueries";
 import { supabase } from "@/integrations/supabase/client";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectButton } from "@/components/ui/select";
+import {
+  Combobox,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxPopup,
+  ComboboxTrigger,
+  ComboboxValue,
+} from "@/components/ui/combobox";
+import { SearchIcon } from "lucide-react";
 
 type SortOption = "name-asc" | "name-desc" | "value-asc" | "value-desc";
 type FilterCategory = "MEDICAMENTOS" | "PERFUMERIA" | "ACCESORIOS" | "VARIOS";
@@ -105,11 +116,15 @@ export default function CyclicInventory() {
   const [massResetChallenge, setMassResetChallenge] = useState("");
   const [massResetInput, setMassResetInput] = useState("");
 
-  // Add Lab Manually State
+  // Add/Edit Lab Manually State
   const [showAddLabDialog, setShowAddLabDialog] = useState(false);
   const [newLabName, setNewLabName] = useState("");
   const [newLabCategories, setNewLabCategories] = useState<string[]>(["MEDICAMENTOS"]);
   const [isAddingLab, setIsAddingLab] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingLabOriginalName, setEditingLabOriginalName] = useState("");
+  const [selectedEditLab, setSelectedEditLab] = useState("");
+  const [selectedEditLabObj, setSelectedEditLabObj] = useState<{ label: string, value: string } | null>(null);
 
   useEffect(() => {
     const loadLabs = async () => {
@@ -255,6 +270,19 @@ export default function CyclicInventory() {
 
     return Array.from(grouped.values());
   }, [laboratories, categoryFilter]);
+
+  // Obtener nombres únicos de todos los laboratorios para la edición
+  const uniqueLabNames = useMemo(() => {
+    const names = new Set<string>();
+    laboratories.forEach(l => {
+      if (l.labName) names.add(l.labName.trim().toUpperCase());
+    });
+    return Array.from(names).sort();
+  }, [laboratories]);
+
+  const comboboxItems = useMemo(() => {
+    return uniqueLabNames.map(name => ({ label: name, value: name }));
+  }, [uniqueLabNames]);
 
   // Estadísticas del Panel - Usando laboratorios agrupados
   const totalLabs = groupedLaboratories.length;
@@ -428,6 +456,161 @@ export default function CyclicInventory() {
     } catch (error: any) {
       console.error("Error adding laboratory:", error);
       notify.error("Error al agregar", error.message || "Ocurrió un error inesperado.");
+    } finally {
+      setIsAddingLab(false);
+    }
+  };
+
+  const handleOpenAddDialog = () => {
+    setIsEditMode(false);
+    setEditingLabOriginalName("");
+    setSelectedEditLab("");
+    setSelectedEditLabObj(null);
+    setNewLabName("");
+    setNewLabCategories(["MEDICAMENTOS"]);
+    setShowAddLabDialog(true);
+  };
+
+  const handleOpenEditDialog = () => {
+    setIsEditMode(true);
+    setEditingLabOriginalName("");
+    setSelectedEditLab("");
+    setSelectedEditLabObj(null);
+    setNewLabName("");
+    setNewLabCategories([]);
+    setShowAddLabDialog(true);
+  };
+
+  const handleSelectLabToEdit = (labName: string) => {
+    setSelectedEditLab(labName);
+    setEditingLabOriginalName(labName);
+    setNewLabName(labName);
+    setSelectedEditLabObj({ label: labName, value: labName });
+    
+    // Find categories this lab currently has in our local list of labs
+    const existingCats = laboratories
+      .filter(l => l.labName.trim().toUpperCase() === labName.toUpperCase())
+      .map(l => l.category.trim().toUpperCase());
+    
+    setNewLabCategories(existingCats.length > 0 ? existingCats : ["MEDICAMENTOS"]);
+  };
+
+  const handleUpdateLaboratory = async () => {
+    const cleanOldName = editingLabOriginalName.trim().toUpperCase();
+    const cleanNewName = newLabName.trim().toUpperCase();
+    
+    if (!cleanOldName) {
+      notify.error("Error", "No se ha seleccionado ningún laboratorio para editar.");
+      return;
+    }
+    if (!cleanNewName) {
+      notify.error("Error", "El nombre del laboratorio no puede estar vacío.");
+      return;
+    }
+    if (!newLabCategories || newLabCategories.length === 0) {
+      notify.error("Error", "Debes seleccionar al menos un rubro.");
+      return;
+    }
+    if (!user?.branchSheet) {
+      notify.error("Error", "No se identificó la sucursal activa.");
+      return;
+    }
+
+    setIsAddingLab(true);
+    try {
+      const branchUpper = user.branchSheet.toUpperCase().trim();
+
+      // 1. Rename the laboratory name across all tables if it changed
+      if (cleanOldName !== cleanNewName) {
+        // A. Update branch_laboratories
+        const { error: errLab } = await supabase
+          .from('branch_laboratories')
+          .update({ laboratory: cleanNewName })
+          .ilike('branch_name', branchUpper)
+          .eq('laboratory', cleanOldName);
+        if (errLab) throw errLab;
+
+        // B. Update inventories
+        const { error: errInv } = await supabase
+          .from('inventories')
+          .update({ laboratory: cleanNewName })
+          .ilike('branch_name', branchUpper)
+          .eq('laboratory', cleanOldName);
+        if (errInv) console.error("Error updating inventories lab name:", errInv);
+
+        // C. Update inventory_adjustments
+        const { error: errAdj } = await supabase
+          .from('inventory_adjustments')
+          .update({ laboratory: cleanNewName })
+          .ilike('branch_name', branchUpper)
+          .eq('laboratory', cleanOldName);
+        if (errAdj) console.error("Error updating adjustments lab name:", errAdj);
+      }
+
+      // 2. Fetch the currently assigned categories for this lab in the branch
+      // to find which ones to add and which ones to delete
+      const { data: dbCurrentRows, error: errFetch } = await supabase
+        .from('branch_laboratories')
+        .select('category')
+        .ilike('branch_name', branchUpper)
+        .eq('laboratory', cleanNewName);
+      if (errFetch) throw errFetch;
+
+      const currentCats = (dbCurrentRows || []).map(r => r.category.trim().toUpperCase());
+      const desiredCats = newLabCategories.map(c => c.trim().toUpperCase());
+
+      // Find categories to add
+      const catsToAdd = desiredCats.filter(c => !currentCats.includes(c));
+      // Find categories to delete
+      const catsToDelete = currentCats.filter(c => !desiredCats.includes(c));
+
+      // A. Insert new categories
+      if (catsToAdd.length > 0) {
+        const rowsToInsert = catsToAdd.map(cat => ({
+          branch_name: user.branchSheet.toUpperCase().trim(),
+          laboratory: cleanNewName,
+          category: cat,
+          status: 'pending'
+        }));
+        const { error: errAdd } = await supabase
+          .from('branch_laboratories')
+          .upsert(rowsToInsert, {
+            onConflict: 'branch_name,laboratory,category'
+          });
+        if (errAdd) throw errAdd;
+      }
+
+      // B. Delete removed categories
+      if (catsToDelete.length > 0) {
+        // Delete from branch_laboratories
+        let queryLab = supabase.from('branch_laboratories').delete();
+        queryLab = queryLab.ilike('branch_name', branchUpper);
+        queryLab = queryLab.eq('laboratory', cleanNewName);
+        queryLab = queryLab.in('category', catsToDelete);
+        const { error: errDelLab } = await queryLab;
+        if (errDelLab) throw errDelLab;
+
+        // Delete pending inventory items under those removed categories
+        let queryInv = supabase.from('inventories').delete();
+        queryInv = queryInv.ilike('branch_name', branchUpper);
+        queryInv = queryInv.eq('laboratory', cleanNewName);
+        queryInv = queryInv.eq('status', 'pending');
+        queryInv = queryInv.in('category', catsToDelete);
+        const { error: errDelInv } = await queryInv;
+        if (errDelInv) console.error("Error deleting pending inventories for removed categories:", errDelInv);
+      }
+
+      notify.success(
+        "Laboratorio Actualizado", 
+        `Se actualizó el laboratorio ${cleanNewName} con los rubros: ${desiredCats.map(c => categoriesMap[c as CategoryKey] || c).join(', ')}.`
+      );
+      setShowAddLabDialog(false);
+      
+      // Refresh database records
+      window.location.reload();
+    } catch (error: any) {
+      console.error("Error updating laboratory:", error);
+      notify.error("Error al actualizar", error.message || "Ocurrió un error inesperado.");
     } finally {
       setIsAddingLab(false);
     }
@@ -711,9 +894,13 @@ export default function CyclicInventory() {
                         <MenuSeparator className="my-2" />
                         <MenuGroup>
                           <MenuGroupLabel>Administración</MenuGroupLabel>
-                          <MenuItem onClick={() => setShowAddLabDialog(true)} className="text-foreground focus:text-foreground">
+                          <MenuItem onClick={handleOpenAddDialog} className="text-foreground focus:text-foreground">
                             <Plus className="w-4 h-4 text-muted-foreground" />
                             <span>Agregar laboratorio</span>
+                          </MenuItem>
+                          <MenuItem onClick={handleOpenEditDialog} className="text-foreground focus:text-foreground">
+                            <Edit className="w-4 h-4 text-muted-foreground" />
+                            <span>Editar laboratorio</span>
                           </MenuItem>
                           <MenuItem onClick={handleMassSync} className="text-primary focus:text-primary">
                             <RotateCcw className="w-4 h-4" />
@@ -904,28 +1091,92 @@ export default function CyclicInventory() {
         <DialogContent className="sm:max-w-md rounded-2xl shadow-xl border border-border/50">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-foreground font-bold">
-              <Plus className="w-5 h-5 text-primary" />
-              <span>Agregar laboratorio manualmente</span>
+              {isEditMode ? (
+                <>
+                  <Edit className="w-5 h-5 text-primary" />
+                  <span>Editar laboratorio</span>
+                </>
+              ) : (
+                <>
+                  <Plus className="w-5 h-5 text-primary" />
+                  <span>Agregar laboratorio manualmente</span>
+                </>
+              )}
             </DialogTitle>
             <DialogDescription>
-              Esto asociará un nuevo laboratorio y rubros a la sucursal <strong>{user?.branchSheet}</strong> de forma directa.
+              {isEditMode ? (
+                <span>Modifica el nombre y rubros asociados al laboratorio seleccionado.</span>
+              ) : (
+                <span>Esto asociará un nuevo laboratorio y rubros a la sucursal <strong>{user?.branchSheet}</strong> de forma directa.</span>
+              )}
             </DialogDescription>
           </DialogHeader>
           <Form 
             onSubmit={(e) => {
               e.preventDefault();
-              handleAddLaboratory();
+              if (isEditMode) {
+                handleUpdateLaboratory();
+              } else {
+                handleAddLaboratory();
+              }
             }} 
             className="contents"
           >
             <DialogPanel className="grid gap-5">
+              {isEditMode && (
+                <Field>
+                  <FieldLabel className="text-sm font-semibold text-foreground/90">Seleccionar Laboratorio a Editar</FieldLabel>
+                  <Combobox 
+                    items={comboboxItems}
+                    value={selectedEditLabObj}
+                    onValueChange={(val: { label: string, value: string } | null) => {
+                      setSelectedEditLabObj(val);
+                      if (val) {
+                        handleSelectLabToEdit(val.value);
+                      } else {
+                        setSelectedEditLab("");
+                        setNewLabName("");
+                        setNewLabCategories([]);
+                      }
+                    }}
+                  >
+                    <ComboboxTrigger render={<SelectButton className="w-full h-11 px-4 rounded-xl bg-popover text-foreground border border-input focus:border-primary/50 transition-colors" />}>
+                      <ComboboxValue>
+                        {selectedEditLab || "Selecciona un laboratorio..."}
+                      </ComboboxValue>
+                    </ComboboxTrigger>
+                    <ComboboxPopup aria-label="Selecciona un laboratorio" className="w-full md:max-w-md overflow-hidden">
+                      <div className="border-b p-2">
+                        <ComboboxInput
+                          className="rounded-md before:rounded-[calc(var(--radius-md)-1px)]"
+                          placeholder="Buscar laboratorio..."
+                          showTrigger={false}
+                          startAddon={<SearchIcon className="w-4 h-4 text-muted-foreground" />}
+                        />
+                      </div>
+                      <ComboboxEmpty>No se encontraron laboratorios.</ComboboxEmpty>
+                      <ComboboxList>
+                        {(item: { label: string, value: string }) => (
+                          <ComboboxItem key={item.value} value={item}>
+                            {item.label}
+                          </ComboboxItem>
+                        )}
+                      </ComboboxList>
+                    </ComboboxPopup>
+                  </Combobox>
+                </Field>
+              )}
+
               <Field>
-                <FieldLabel className="text-sm font-semibold text-foreground/90">Nombre del Laboratorio</FieldLabel>
+                <FieldLabel className="text-sm font-semibold text-foreground/90">
+                  {isEditMode ? "Nuevo Nombre del Laboratorio" : "Nombre del Laboratorio"}
+                </FieldLabel>
                 <Input
                   value={newLabName}
                   onChange={(e) => setNewLabName(e.target.value.toUpperCase())}
                   placeholder="Ej. ELEA, CASASCO, ROEMMERS..."
-                  className="font-bold uppercase h-11 px-4 rounded-xl border border-input focus:border-primary/50 transition-colors w-full"
+                  disabled={isEditMode && !selectedEditLab}
+                  className="font-bold uppercase h-11 px-4 rounded-xl border border-input focus:border-primary/50 transition-colors w-full disabled:opacity-50"
                 />
               </Field>
               <Field>
@@ -935,7 +1186,10 @@ export default function CyclicInventory() {
                   onValueChange={setNewLabCategories}
                   multiple
                 >
-                  <SelectTrigger className="w-full h-11 px-4 rounded-xl bg-popover text-foreground border border-input focus:border-primary/50 transition-colors">
+                  <SelectTrigger 
+                    disabled={isEditMode && !selectedEditLab}
+                    className="w-full h-11 px-4 rounded-xl bg-popover text-foreground border border-input focus:border-primary/50 transition-colors disabled:opacity-50"
+                  >
                     <SelectValue>{renderCategoryValue}</SelectValue>
                   </SelectTrigger>
                   <SelectContent alignItemWithTrigger={false}>
@@ -953,10 +1207,10 @@ export default function CyclicInventory() {
               </DialogClose>
               <Button 
                 type="submit"
-                disabled={isAddingLab || !newLabName.trim() || newLabCategories.length === 0}
+                disabled={isAddingLab || !newLabName.trim() || newLabCategories.length === 0 || (isEditMode && !selectedEditLab)}
                 className="bg-primary hover:bg-primary/95 text-primary-foreground font-semibold h-10 rounded-xl px-5"
               >
-                {isAddingLab ? "Agregando..." : "Agregar Laboratorio"}
+                {isAddingLab ? (isEditMode ? "Guardando..." : "Agregando...") : (isEditMode ? "Guardar Cambios" : "Agregar Laboratorio")}
               </Button>
             </DialogFooter>
           </Form>

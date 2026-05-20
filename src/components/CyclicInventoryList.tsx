@@ -23,6 +23,7 @@ import { FixedSizeList as List } from 'react-window';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { Field, FieldLabel, FieldError } from '@/components/ui/field';
 import { Form } from '@/components/ui/form';
+import CheckedIcon from '@/components/icons/CheckedIcon';
 import {
     Dialog,
     DialogPopup,
@@ -248,10 +249,22 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                     </div>
 
                     {/* EAN */}
-                    <div className="px-4 py-3 flex flex-col justify-center font-mono tabular-nums">
-                        <span className="text-[13px] text-muted-foreground/80 leading-tight">
-                            {item.ean}
-                        </span>
+                    <div 
+                        className="px-4 py-3 flex flex-col justify-center font-mono tabular-nums cursor-copy select-none"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            copyToClipboard(item.ean, item.id);
+                            notify.success("Código Copiado", `El EAN ${item.ean} se copió al portapapeles.`);
+                        }}
+                    >
+                        <div className="flex items-center gap-1.5 group/ean">
+                            <span className="text-[13px] text-muted-foreground/80 leading-tight group-hover/ean:text-primary group-hover/ean:underline transition-colors">
+                                {item.ean}
+                            </span>
+                            {copiedId === item.id ? (
+                                <CheckedIcon size={14} color="#10b981" strokeWidth={2.5} />
+                            ) : null}
+                        </div>
                     </div>
 
                     {/* PRECIO */}

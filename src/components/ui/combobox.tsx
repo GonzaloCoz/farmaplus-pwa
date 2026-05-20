@@ -5,7 +5,7 @@ import { ChevronsUpDownIcon, XIcon } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { ScrollArea, ScrollAreaViewport, ScrollAreaScrollbar } from "@/components/ui/scroll-area";
 
 export const ComboboxContext: React.Context<{
   chipsRef: React.RefObject<Element | null> | null;
@@ -91,10 +91,10 @@ export function ComboboxInput({
       <ComboboxPrimitive.Input
         className={cn(
           startAddon &&
-            "data-[size=sm]:*:data-[slot=combobox-input]:ps-[calc(--spacing(7.5)-1px)] *:data-[slot=combobox-input]:ps-[calc(--spacing(8.5)-1px)] sm:data-[size=sm]:*:data-[slot=combobox-input]:ps-[calc(--spacing(7)-1px)] sm:*:data-[slot=combobox-input]:ps-[calc(--spacing(8)-1px)]",
+            "ps-9 sm:ps-8 data-[size=sm]:ps-8 sm:data-[size=sm]:ps-7",
           sizeValue === "sm"
-            ? "has-[+[data-slot=combobox-trigger],+[data-slot=combobox-clear]]:*:data-[slot=combobox-input]:pe-6.5"
-            : "has-[+[data-slot=combobox-trigger],+[data-slot=combobox-clear]]:*:data-[slot=combobox-input]:pe-7",
+            ? "has-[+[data-slot=combobox-trigger],+[data-slot=combobox-clear]]:pe-6 sm:has-[+[data-slot=combobox-trigger],+[data-slot=combobox-clear]]:pe-5.5"
+            : "has-[+[data-slot=combobox-trigger],+[data-slot=combobox-clear]]:pe-7 sm:has-[+[data-slot=combobox-trigger],+[data-slot=combobox-clear]]:pe-6.5",
           className,
         )}
         data-slot="combobox-input"
@@ -317,15 +317,18 @@ export function ComboboxList({
   ...props
 }: ComboboxPrimitive.List.Props): React.ReactElement {
   return (
-    <ScrollArea scrollbarGutter scrollFade>
-      <ComboboxPrimitive.List
-        className={cn(
-          "not-empty:scroll-py-1 not-empty:px-1 not-empty:py-1 in-data-has-overflow-y:pe-3",
-          className,
-        )}
-        data-slot="combobox-list"
-        {...props}
-      />
+    <ScrollArea scrollbarGutter scrollFade className="flex flex-col flex-1 overflow-hidden">
+      <ScrollAreaViewport className="max-h-60 overflow-y-auto outline-none">
+        <ComboboxPrimitive.List
+          className={cn(
+            "not-empty:scroll-py-1 not-empty:px-1 not-empty:py-1 in-data-has-overflow-y:pe-3",
+            className,
+          )}
+          data-slot="combobox-list"
+          {...props}
+        />
+      </ScrollAreaViewport>
+      <ScrollAreaScrollbar />
     </ScrollArea>
   );
 }

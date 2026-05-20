@@ -202,16 +202,43 @@ export default function Settings() {
         validLabIds.get(a.branch)?.add(`${a.lab}|${a.category}`);
       });
 
+      // Fetch ALL existing labs to build a lookup map of progress and status
+      const { data: existingLabsBulk, error: fetchBulkError } = await supabase
+        .from('branch_laboratories')
+        .select('*');
+
+      if (fetchBulkError) throw new Error(`Error fetching existing labs: ${fetchBulkError.message}`);
+
+      const existingLabsBulkMap = new Map<string, any>();
+      existingLabsBulk?.forEach(row => {
+        const key = `${row.branch_name.toUpperCase().trim()}|${row.laboratory.toUpperCase().trim()}|${row.category.toUpperCase().trim()}`;
+        existingLabsBulkMap.set(key, row);
+      });
+
       // 2. Insert/Update new assignments using UPSERT (Non-destructive to progress)
-      const insertData = Array.from(uniqueAssignments.values()).map(a => ({
-        branch_name: a.branch,
-        laboratory: a.lab,
-        category: a.category,
-        // Status might be reset to default or kept?
-        // If we want to ensure visibility, defaulting to 'pending' is safe for configuration updates.
-        status: 'pending' as const,
-        // No updated_at col
-      }));
+      const insertData = Array.from(uniqueAssignments.values()).map(a => {
+        const key = `${a.branch.toUpperCase().trim()}|${a.lab.toUpperCase().trim()}|${a.category.toUpperCase().trim()}`;
+        const existing = existingLabsBulkMap.get(key);
+        const hasProgress = existing && ((existing.progress_percentage || 0) > 0 || existing.status !== 'pending');
+
+        if (hasProgress) {
+          // Preserve existing stats and status
+          return {
+            ...existing,
+            branch_name: a.branch,
+            laboratory: a.lab,
+            category: a.category
+          };
+        } else {
+          return {
+            branch_name: a.branch,
+            laboratory: a.lab,
+            category: a.category,
+            status: 'pending' as const,
+            progress_percentage: 0
+          };
+        }
+      });
 
       // Insert in chunks
       const chunkSize = 500;
@@ -331,6 +358,21 @@ export default function Settings() {
       if (jsonData.length < 2) throw new Error("La hoja seleccionada no tiene datos válidos.");
 
       const headers = jsonData[1];
+      // 1. Fetch existing labs for this branch (WITH PROGRESS & STATS)
+      const { data: existingLabs, error: fetchError } = await supabase
+        .from('branch_laboratories')
+        .select('*')
+        .eq('branch_name', selectedBranchUpper);
+
+      if (fetchError) throw fetchError;
+
+      // Map existing records by composite key "LAB|CAT"
+      const existingLabsMap = new Map<string, any>();
+      existingLabs?.forEach(row => {
+        const key = `${row.laboratory.toUpperCase()}|${row.category.toUpperCase()}`;
+        existingLabsMap.set(key, row);
+      });
+
       const excelLabsSet = new Set<string>(); // composite keys: "LAB|CAT"
       const excelLabNamesOnlySet = new Set<string>(); // unique names: "LAB"
       const newAssignments: any[] = [];
@@ -348,26 +390,32 @@ export default function Settings() {
               excelLabNamesOnlySet.add(labName);
               if (!excelLabsSet.has(key)) {
                 excelLabsSet.add(key);
-                newAssignments.push({
-                   branch_name: selectedBranchUpper,
-                   laboratory: labName,
-                   category: category,
-                   status: 'pending',
-                   progress_percentage: 0
-                });
+                
+                const existing = existingLabsMap.get(key);
+                const hasProgress = existing && ((existing.progress_percentage || 0) > 0 || existing.status !== 'pending');
+
+                if (hasProgress) {
+                  // PRESERVE: Keep all existing stats and status
+                  newAssignments.push({
+                    ...existing,
+                    branch_name: selectedBranchUpper,
+                    laboratory: labName,
+                    category: category
+                  });
+                } else {
+                  newAssignments.push({
+                     branch_name: selectedBranchUpper,
+                     laboratory: labName,
+                     category: category,
+                     status: 'pending',
+                     progress_percentage: 0
+                  });
+                }
               }
             }
           }
         }
       }
-
-      // 1. Fetch existing labs for this branch (WITH PROGRESS)
-      const { data: existingLabs, error: fetchError } = await supabase
-        .from('branch_laboratories')
-        .select('id, laboratory, category, progress_percentage')
-        .eq('branch_name', selectedBranchUpper);
-
-      if (fetchError) throw fetchError;
 
       // 2. Identify Orphans with DATA GUARD & MULTI-RUBRO PROTECTION
       const protectedLabsProgress: string[] = [];

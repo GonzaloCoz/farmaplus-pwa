@@ -13,6 +13,7 @@ import {
     DialogDescription,
     DialogPanel,
     DialogFooter,
+    DialogClose,
 } from '@/components/ui/dialog';
 
 const ACKNOWLEDGED_VERSION_KEY = 'farmaplus_acknowledged_version';
@@ -77,65 +78,60 @@ export function AppUpdater() {
 
     return (
         <Dialog open={true} onOpenChange={() => setDismissed(true)}>
-            <DialogPopup className="max-w-[500px]" showCloseButton={false}>
+            <DialogPopup className="sm:max-w-md" showCloseButton={false}>
                 <DialogHeader>
                     <div className="flex items-center gap-4">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-foreground text-background">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-foreground text-background">
                             <ArrowDown className="w-5 h-5" />
                         </div>
                         <div>
                             <DialogTitle>Actualización disponible</DialogTitle>
-                            <DialogDescription>Farmaplus Gestión • Sistema Central</DialogDescription>
                         </div>
                     </div>
                 </DialogHeader>
 
-                <DialogPanel className="space-y-5">
-                    {/* Version badge */}
-                    <div className="flex items-center gap-3">
-                        <span className="text-sm font-bold text-foreground/80">Nueva versión</span>
-                        <span className="px-3 py-1 rounded-lg bg-foreground/5 border border-border/40 text-sm font-mono font-bold">
-                            {latestVersion.version}
-                        </span>
-                    </div>
-
-                    {/* Release Notes */}
-                    {latestVersion.release_notes && (
-                        <div className="rounded-lg border border-border/40 bg-muted/10 overflow-hidden">
-                            <div className="px-4 py-2.5 border-b border-border/40 bg-muted/20">
-                                <span className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/50">
-                                    Log de cambios
+                <DialogPanel>
+                    <div className="flex flex-col gap-4 [&_strong]:font-semibold [&_strong]:text-foreground">
+                        <div className="flex flex-col gap-4">
+                            <div className="flex items-center gap-3">
+                                <p>
+                                    <strong>Nueva versión</strong>
+                                </p>
+                                <span className="px-3 py-1 rounded-lg bg-foreground/5 border border-border/40 text-sm font-mono font-bold">
+                                    {latestVersion.version}
                                 </span>
                             </div>
-                            <div className="h-[120px] w-full p-4 overflow-y-auto no-scrollbar">
-                                <div className="text-sm leading-relaxed whitespace-pre-wrap text-foreground/70 font-medium italic">
-                                    {latestVersion.release_notes}
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
-                    <p className="text-xs text-muted-foreground/60 font-medium">
-                        La aplicación se reiniciará para aplicar los cambios. Tus datos guardados se mantendrán protegidos.
-                    </p>
+                            {latestVersion.release_notes && (
+                                <div className="flex flex-col gap-2 rounded-lg border border-border/40 bg-muted/10 p-4">
+                                    <p>
+                                        <strong>Log de cambios</strong>
+                                    </p>
+                                    <div className="text-sm leading-relaxed whitespace-pre-wrap text-foreground/70 font-medium italic pl-1 max-h-[120px] overflow-y-auto pr-1">
+                                        {latestVersion.release_notes}
+                                    </div>
+                                </div>
+                            )}
+
+                            <p className="text-xs text-muted-foreground/60 font-medium">
+                                La aplicación se reiniciará para aplicar los cambios. Tus datos guardados se mantendrán protegidos.
+                            </p>
+                        </div>
+                    </div>
                 </DialogPanel>
 
-                <DialogFooter className="justify-between">
-                    <span className="text-[9px] uppercase tracking-widest font-black text-muted-foreground/30">
-                        Actualización recomendable
-                    </span>
-                    <div className="flex gap-2">
-                        <Button variant="ghost" onClick={() => setDismissed(true)}>
-                            Más tarde
-                        </Button>
-                        <Button
-                            onClick={handleUpdate}
-                            className="h-10 px-6 rounded-xl bg-foreground text-background hover:bg-foreground/90 font-bold text-sm flex items-center gap-2 transition-all hover:scale-[1.05] shadow-lg shadow-foreground/10"
-                        >
-                            <RefreshCw className="w-3.5 h-3.5" />
-                            Actualizar ahora
-                        </Button>
-                    </div>
+                <DialogFooter>
+                    <DialogClose render={<Button variant="ghost" onClick={() => setDismissed(true)} />}>
+                        Más tarde
+                    </DialogClose>
+                    <Button
+                        type="button"
+                        onClick={handleUpdate}
+                        className="flex items-center gap-2"
+                    >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Actualizar ahora
+                    </Button>
                 </DialogFooter>
             </DialogPopup>
         </Dialog>

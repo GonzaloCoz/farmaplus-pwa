@@ -12,8 +12,8 @@ export function TotalStockValueWidget({ totalValue, changePercentage }: TotalSto
 
     return (
         <div className="h-full flex flex-col justify-between">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Valor Total</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 px-5 pt-4 pb-0 text-foreground">
+                <CardTitle className="text-lg font-medium tracking-tight">Valor Total</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>

@@ -102,7 +102,7 @@ export function TeamsChatWidget() {
         <div className="h-full flex flex-col no-scrollbar p-4 sm:p-5">
             {/* Header: Clean & Integrated */}
             <div className="flex flex-row items-center justify-between mb-4">
-                <span className="text-[20px] font-bold text-foreground tracking-tight">Chat Teams</span>
+                <span className="text-lg font-medium tracking-tight text-foreground">Chat Teams</span>
             </div>
 
             <div className="flex-1 flex flex-col relative z-10">

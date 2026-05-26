@@ -104,16 +104,16 @@ export function UpcomingInventoriesWidget({ onDateClick }: Props) {
     return (
         <div className="p-0 h-full flex flex-col relative overflow-hidden">
             {/* Header Section with Date & Actions */}
-            <div className="p-5 pb-2 flex items-center justify-between">
+            <div className="p-5 pb-0 flex items-center justify-between">
                 <div>
-                    <h2 className="text-base font-semibold text-foreground">
+                    <h2 className="text-lg font-medium tracking-tight text-foreground capitalize">
                         {currentDate.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}
                     </h2>
                 </div>
                 <div className="flex gap-1">
                     {hasPermission(user, 'MANAGE_CALENDAR_EVENTS') && (
                         <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-muted" onClick={() => setShowAddDialog(true)}>
-                            <Plus className="h-4 w-4" />
+                            <Plus className="h-5 w-5" />
                         </Button>
                     )}
                 </div>

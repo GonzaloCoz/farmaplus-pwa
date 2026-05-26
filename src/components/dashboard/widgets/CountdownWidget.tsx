@@ -100,13 +100,13 @@ export function CountdownWidget({
 
     return (
         <div className="h-full flex flex-col overflow-hidden relative group/card">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 px-5 pt-4 pb-2">
-                <CardTitle className="text-sm font-semibold tracking-tight">Plazo de Inventario</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 px-5 pt-4 pb-0 text-foreground">
+                <CardTitle className="text-lg font-medium tracking-tight">Plazo de Inventario</CardTitle>
                 <div className="flex items-center gap-2">
                     {/* Lock Status Indicator */}
                     {isLocked && (
                         <div className="flex items-center gap-1 text-xs text-destructive" title={lockReason === 'manual' ? 'Bloqueado manualmente' : 'Bloqueado por vencimiento'}>
-                            <Lock className="h-3.5 w-3.5" />
+                            <Lock className="h-4.5 w-4.5" />
                         </div>
                     )}
 
@@ -121,7 +121,7 @@ export function CountdownWidget({
                             className="relative z-50 text-muted-foreground hover:text-primary transition-colors opacity-0 group-hover/card:opacity-100 cursor-pointer"
                             title={isLocked ? 'Desbloquear inventario' : 'Bloquear inventario'}
                         >
-                            {isLocked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                            {isLocked ? <Unlock className="h-5 w-5" /> : <Lock className="h-5 w-5" />}
                         </button>
                     )}
 
@@ -136,10 +136,10 @@ export function CountdownWidget({
                             className="relative z-50 text-muted-foreground hover:text-primary transition-colors opacity-0 group-hover/card:opacity-100 cursor-pointer"
                             title="Configurar plazo"
                         >
-                            <Calendar className="h-4 w-4" />
+                            <Calendar className="h-5 w-5" />
                         </button>
                     )}
-                    {!isEditable && !canManageLock && <Calendar className="h-4 w-4 text-muted-foreground" />}
+                    {!isEditable && !canManageLock && <Calendar className="h-5 w-5 text-muted-foreground" />}
                 </div>
             </CardHeader>
             <CardContent className="flex flex-col justify-between flex-1 px-5 pb-5 pt-1 gap-4">

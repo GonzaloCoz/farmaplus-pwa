@@ -29,9 +29,9 @@ export function TopProductsWidget({ products = [] }: TopProductsWidgetProps) {
 
     return (
         <div className="h-full">
-            <CardHeader className="pb-3">
-                <CardTitle className="text-lg font-semibold">Top Diferencias</CardTitle>
-                <p className="text-sm text-muted-foreground">Productos con mayores discrepancias</p>
+            <CardHeader className="px-5 pt-4 pb-0 text-foreground">
+                <CardTitle className="text-lg font-medium tracking-tight">Top Diferencias</CardTitle>
+                <p className="text-xs text-muted-foreground mt-1">Productos con mayores discrepancias</p>
             </CardHeader>
             <CardContent>
                 <div className="space-y-3">

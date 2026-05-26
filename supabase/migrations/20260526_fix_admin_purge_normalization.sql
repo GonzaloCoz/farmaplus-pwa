@@ -1,7 +1,7 @@
--- ==========================================
--- RPC to purge a specific laboratory for a branch (ADMIN ONLY)
--- Includes password protection and audit logging
--- ==========================================
+-- ========================================================
+-- Migration: Fix admin_purge_lab_inventory_v1 normalization
+-- Date: 2026-05-26
+-- ========================================================
 
 CREATE OR REPLACE FUNCTION admin_purge_lab_inventory_v1(
     p_branch_name TEXT,
@@ -18,8 +18,6 @@ DECLARE
     v_count_adj INTEGER;
 BEGIN
     -- 1. Security Check: Password
-    -- Note: In a real production system, this should be compared against a salted hash in a secrets table.
-    -- For this specific request, we use the hardcoded "pistacho" check within the DB function.
     IF p_password <> 'pistacho' THEN
         RETURN json_build_object(
             'success', false, 
@@ -28,7 +26,7 @@ BEGIN
     END IF;
 
     -- 2. Perform Deletion using robust normalization
-    -- Delete from public.inventory_ledger_items (via ledger_id)
+    -- Delete from public.inventory_ledger_items
     DELETE FROM public.inventory_ledger_items
     WHERE ledger_id IN (
         SELECT id FROM public.inventory_ledger 
@@ -41,7 +39,7 @@ BEGIN
     WHERE public.normalize_string_sql(branch_name) = v_branch
     AND public.normalize_string_sql(laboratory) = v_lab;
 
-    -- Delete from public.inventory_reports (snapshots/PDFs)
+    -- Delete from public.inventory_reports
     DELETE FROM public.inventory_reports 
     WHERE public.normalize_string_sql(branch_name) = v_branch
     AND public.normalize_string_sql(laboratory) = v_lab;
@@ -52,13 +50,13 @@ BEGIN
     AND public.normalize_string_sql(laboratory) = v_lab;
     GET DIAGNOSTICS v_count_adj = ROW_COUNT;
 
-    -- Delete from public.inventories 
+    -- Delete from inventories 
     DELETE FROM public.inventories 
     WHERE public.normalize_string_sql(branch_name) = v_branch 
     AND public.normalize_string_sql(laboratory) = v_lab;
     GET DIAGNOSTICS v_count_inv = ROW_COUNT;
 
-    -- Delete from public.branch_laboratories (metadata/progress)
+    -- Delete from branch_laboratories (metadata/progress)
     DELETE FROM public.branch_laboratories 
     WHERE public.normalize_string_sql(branch_name) = v_branch
     AND public.normalize_string_sql(laboratory) = v_lab;
@@ -75,7 +73,7 @@ BEGIN
     )
     VALUES (
         p_user_id, 
-        NULL, -- Could be resolved from branch_name if needed
+        NULL,
         'ADMIN_PURGE_LAB', 
         'laboratory', 
         p_lab_name, 

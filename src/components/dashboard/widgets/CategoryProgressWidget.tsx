@@ -197,7 +197,7 @@ export function CategoryProgressWidget() {
         <>
             <div className="h-full flex flex-col overflow-hidden">
             <CardHeader className="pb-0 pt-4 px-5 flex flex-row items-center justify-between space-y-0 text-foreground">
-                <CardTitle className="text-xl font-medium tracking-tight">
+                <CardTitle className="text-lg font-medium tracking-tight">
                     {selectedCategory ? `Rubro: ${selectedCategory}` : 'Progreso de Inventario'}
                 </CardTitle>
                 <div className="flex items-center gap-1">

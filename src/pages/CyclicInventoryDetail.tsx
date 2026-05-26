@@ -163,6 +163,10 @@ export default function CyclicInventoryDetail() {
 
         // Special State
         shouldHidePendings,
+        isAdminEditActive,
+        setIsAdminEditActive,
+        handleSaveAdminEdit,
+        handleCancelAdminEdit,
 
         // Mismatch Overrides
         showMismatchDialog,
@@ -553,10 +557,16 @@ export default function CyclicInventoryDetail() {
                                                         </MenuItem>
 
                                                         {user?.role === 'admin' && (
-                                                            <MenuItem onClick={handleForceRefreshProgress} className="rounded-lg text-sm font-medium cursor-pointer">
-                                                                <Refresh className="w-4 h-4 text-muted-foreground" />
-                                                                Sincronizar avance (Forzar)
-                                                            </MenuItem>
+                                                            <>
+                                                                <MenuItem onClick={handleForceRefreshProgress} className="rounded-lg text-sm font-medium cursor-pointer">
+                                                                    <Refresh className="w-4 h-4 text-muted-foreground" />
+                                                                    Sincronizar avance (Forzar)
+                                                                </MenuItem>
+                                                                <MenuItem onClick={() => setIsAdminEditActive(!isAdminEditActive)} className="rounded-lg text-sm font-medium cursor-pointer">
+                                                                    <Pen className="w-4 h-4 text-muted-foreground" />
+                                                                    {isAdminEditActive ? "Desactivar edición de ajuste" : "Editar ajuste sin Excel"}
+                                                                </MenuItem>
+                                                            </>
                                                         )}
 
                                                         <MenuItem variant="destructive" onClick={handleResetData} className="rounded-lg text-sm font-medium cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10">
@@ -569,6 +579,19 @@ export default function CyclicInventoryDetail() {
                                         </Group>
                                     </div>
                                 </div>
+                                {isAdminEditActive && (
+                                    <Alert className="mb-4 bg-primary/10 border-primary/20 text-primary-foreground dark:text-primary animate-in slide-in-from-top duration-300 rounded-xl">
+                                        <div className="flex items-center gap-2">
+                                            <AlertTriangle className="w-5 h-5 text-primary" />
+                                            <div>
+                                                <AlertTitle className="font-bold text-sm text-primary">Modo Edición de Ajuste (Administrador)</AlertTitle>
+                                                <AlertDescription className="text-xs text-muted-foreground mt-0.5">
+                                                    Estás editando cantidades directamente sobre los ajustes guardados. Los cambios se guardarán sin dejar rastro en el historial ni modificar el ID de ajuste existente.
+                                                </AlertDescription>
+                                            </div>
+                                        </div>
+                                    </Alert>
+                                )}
                                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full shrink-0">
                                     {/* Row 2: Tabs + Actions Wrapper */}
                                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
@@ -672,15 +695,36 @@ export default function CyclicInventoryDetail() {
                                                 </Button>
                                             </Group>
 
-                                            {/* Finalizar Button */}
-                                            <GradientButton
-                                                onClick={handleFinalizeClick}
-                                                disabled={isSaving || (pendingItems.length === 0 && controlledItems.length === 0 && adjustedItems.length === 0)}
-                                                className="h-10 whitespace-nowrap"
-                                            >
-                                                <CheckCircle className="w-4 h-4" />
-                                                Finalizar
-                                            </GradientButton>
+                                            {/* Finalizar Button / Admin Save Changes */}
+                                            {isAdminEditActive ? (
+                                                <div className="flex gap-2">
+                                                    <Button
+                                                        variant="outline"
+                                                        onClick={handleCancelAdminEdit}
+                                                        disabled={isSaving}
+                                                        className="h-10"
+                                                    >
+                                                        Cancelar Edición
+                                                    </Button>
+                                                    <GradientButton
+                                                        onClick={handleSaveAdminEdit}
+                                                        disabled={isSaving}
+                                                        className="h-10 whitespace-nowrap"
+                                                    >
+                                                        <CheckCircle className="w-4 h-4" />
+                                                        Guardar Cambios (Admin)
+                                                    </GradientButton>
+                                                </div>
+                                            ) : (
+                                                <GradientButton
+                                                    onClick={handleFinalizeClick}
+                                                    disabled={isSaving || (pendingItems.length === 0 && controlledItems.length === 0 && adjustedItems.length === 0)}
+                                                    className="h-10 whitespace-nowrap"
+                                                >
+                                                    <CheckCircle className="w-4 h-4" />
+                                                    Finalizar
+                                                </GradientButton>
+                                            )}
                                         </div>
                                     </div>
                                     <ScrollArea className="flex-1 -mx-4 px-4 overflow-hidden">
@@ -761,7 +805,7 @@ export default function CyclicInventoryDetail() {
                                                     </Alert>
                                                 )}
 
-                                                {!isExcelUploaded && adjustedItems.length > 0 && (
+                                                {!isExcelUploaded && adjustedItems.length > 0 && !isAdminEditActive && (
                                                     <Alert className="bg-warning/10 border-warning/20 mb-4 rounded-lg py-3 shadow-none">
                                                         <AlertTriangle className="h-4 w-4 text-warning" />
                                                         <AlertDescription className="text-sm font-medium text-warning/80 ml-2">
@@ -776,7 +820,7 @@ export default function CyclicInventoryDetail() {
                                                     onCheck={handleCheck}
                                                     onBulkCheck={handleBulkCheck}
                                                     isPending={true}
-                                                    isExcelUploaded={isExcelUploaded}
+                                                    isExcelUploaded={isExcelUploaded || isAdminEditActive}
                                                 />
                                             </TabsContent>
 
@@ -788,7 +832,7 @@ export default function CyclicInventoryDetail() {
                                                     onBulkCheck={handleBulkCheck}
                                                     onRevert={handleRevertItem}
                                                     readOnly={false}
-                                                    isExcelUploaded={isExcelUploaded}
+                                                    isExcelUploaded={isExcelUploaded || isAdminEditActive}
                                                 />
                                             </TabsContent>
 
@@ -799,7 +843,7 @@ export default function CyclicInventoryDetail() {
                                                     onCheck={() => { }} // No check needed for adjusted
                                                     onBulkCheck={handleBulkCheck}
                                                     readOnly={false} // Enable editing for readjustments
-                                                    isExcelUploaded={isExcelUploaded}
+                                                    isExcelUploaded={isExcelUploaded || isAdminEditActive}
                                                 />
                                             </TabsContent>
 

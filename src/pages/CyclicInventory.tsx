@@ -140,6 +140,34 @@ export default function CyclicInventory() {
 
         // 2. Obtener estado actual del inventario desde Supabase (Filtrado por sucursal)
         const inventoryStats = await cyclicInventoryService.getAllCyclicInventories(user.branchSheet);
+
+        // 2b. Obtener todos los items del inventario para calcular métricas extra (IRA, desvío, ajustes)
+        const { data: inventoriesData, error: invError } = await supabase
+          .from('inventories')
+          .select('laboratory, category, quantity, system_quantity, status, ean')
+          .eq('branch_name', normalizeString(user.branchSheet));
+
+        if (invError) {
+          console.error("Error al obtener items de inventario para estadísticas:", invError);
+        }
+
+        const branchInv = inventoriesData || [];
+        const uniqueEans = Array.from(new Set(branchInv.map(i => i.ean)));
+
+        const costMap = new Map<string, number>();
+        if (uniqueEans.length > 0) {
+          const { data: productsData, error: prodError } = await supabase
+            .from('products')
+            .select('ean, cost')
+            .in('ean', uniqueEans);
+
+          if (prodError) {
+            console.error("Error al obtener costos de productos para estadísticas:", prodError);
+          } else {
+            productsData?.forEach(p => costMap.set(p.ean, p.cost || 0));
+          }
+        }
+
         // 3. Unir datos: Unión de Inventario Activo + Lista Maestra (para pendientes)
         const mergedData: CyclicInventoryStats[] = [...inventoryStats];
 
@@ -173,7 +201,39 @@ export default function CyclicInventory() {
           }
         });
 
-        setLaboratories(mergedData);
+        // Enriquecer datos con métricas extras calculadas client-side
+        const enrichedData = mergedData.map(lab => {
+          const normLabName = normalizeString(lab.labName);
+          const normCategory = normalizeString(lab.category || '');
+
+          // Filtrar items por laboratorio y categoría
+          const labItems = branchInv.filter(item => 
+            normalizeString(item.laboratory) === normLabName && 
+            normalizeString(item.category || '') === normCategory
+          );
+
+          const controlledItemsList = labItems.filter(i => i.status === 'controlled' || i.status === 'adjusted');
+          const adjustmentCount = controlledItemsList.filter(i => i.quantity !== i.system_quantity).length;
+          
+          const controlledCount = controlledItemsList.length;
+          const ira = controlledCount > 0 
+            ? ((controlledCount - adjustmentCount) / controlledCount) * 100 
+            : 100;
+
+          const systemValue = labItems.reduce((acc, item) => {
+            const cost = costMap.get(item.ean) || 0;
+            return acc + (item.system_quantity * cost);
+          }, 0);
+
+          return {
+            ...lab,
+            adjustmentCount,
+            ira,
+            systemValue
+          };
+        });
+
+        setLaboratories(enrichedData);
       } catch (error) {
         console.error("Error loading laboratories:", error);
       } finally {
@@ -288,11 +348,13 @@ export default function CyclicInventory() {
   const totalLabs = groupedLaboratories.length;
   const controlledLabs = groupedLaboratories.filter(l => l.status === 'controlado').length;
   const pendingLabs = groupedLaboratories.filter(l => l.status === 'pendiente').length;
+  const inProgressLabs = groupedLaboratories.filter(l => l.status === 'por_controlar').length;
 
   // Estadísticas Financieras (Global - todos los laboratorios agrupados)
   const totalDifference = groupedLaboratories.reduce((acc, curr) => acc + curr.differenceValue, 0);
   const totalNegative = groupedLaboratories.reduce((acc, curr) => acc + curr.negativeValue, 0);
   const totalPositive = groupedLaboratories.reduce((acc, curr) => acc + curr.positiveValue, 0);
+  const totalAbsoluteDifference = totalPositive + Math.abs(totalNegative);
 
   // Calcular Totales de Unidades para porcentajes de tendencia
   const totalSystemUnits = groupedLaboratories.reduce((acc, curr) => acc + curr.totalSystemUnits, 0);
@@ -311,6 +373,10 @@ export default function CyclicInventory() {
   const netTrend = calculateTrend(totalNegativeUnits + totalPositiveUnits, totalSystemUnits);
   const negativeTrend = calculateTrend(totalNegativeUnits, totalSystemUnits);
   const positiveTrend = calculateTrend(totalPositiveUnits, totalSystemUnits);
+  const absoluteTrend = calculateTrend(Math.abs(totalNegativeUnits) + totalPositiveUnits, totalSystemUnits);
+
+  // Nuevas métricas globales calculadas client-side
+  const globalProductsWithDiff = groupedLaboratories.reduce((acc, curr) => acc + (curr.adjustmentCount || 0), 0);
 
   const progressPercentage = totalLabs > 0 ? Math.round((controlledLabs / totalLabs) * 100) : 0;
 
@@ -680,6 +746,22 @@ export default function CyclicInventory() {
 
             <div className="h-8 w-px bg-border/40 hidden sm:block" />
 
+            {/* Valor Absoluto */}
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Valor Absoluto</span>
+              <div className="flex items-baseline gap-2">
+                <span className="font-bold tracking-tight text-base text-foreground">
+                  <span className="text-xs font-light opacity-50 mr-0.5">$</span>
+                  <CounterAnimation value={totalAbsoluteDifference} />
+                </span>
+                <span className="text-[10px] font-bold text-muted-foreground/60">
+                  {absoluteTrend.value}%
+                </span>
+              </div>
+            </div>
+
+            <div className="h-8 w-px bg-border/40 hidden sm:block" />
+
             {/* Negativo Total */}
             <div className="flex flex-col gap-0.5">
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Faltante Total</span>
@@ -728,12 +810,18 @@ export default function CyclicInventory() {
             </div>
 
             {/* Controlled/Total Badge */}
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-xs font-semibold px-2.5 py-1">
                 {controlledLabs} / {totalLabs} Controlados
               </Badge>
+              <Badge variant="outline" className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 text-xs font-semibold px-2.5 py-1">
+                {inProgressLabs} En Proceso
+              </Badge>
               <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 text-xs font-semibold px-2.5 py-1">
                 {pendingLabs} Pendientes
+              </Badge>
+              <Badge variant="outline" className="bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 text-xs font-semibold px-2.5 py-1">
+                {globalProductsWithDiff} Ajustes Realizados
               </Badge>
             </div>
           </div>
@@ -964,6 +1052,7 @@ export default function CyclicInventory() {
                   <TableHead className="text-right">Valor (+)</TableHead>
                   <TableHead className="text-center">Un. (+)</TableHead>
                   <TableHead className="text-right">Dif. Neta</TableHead>
+                  <TableHead className="text-center">Ajustes</TableHead>
                   <TableHead className="text-center w-[140px] pr-6">Avance</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1021,6 +1110,11 @@ export default function CyclicInventory() {
                           "text-muted-foreground"
                       )}>
                         {lab.differenceValue !== 0 ? (lab.differenceValue > 0 ? "+" : "") + new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(lab.differenceValue) : "–"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <span className="font-medium text-foreground tabular-nums">
+                        {lab.status !== 'pendiente' ? (lab.adjustmentCount ?? 0) : "–"}
                       </span>
                     </TableCell>
                     <TableCell className="text-center pr-6">

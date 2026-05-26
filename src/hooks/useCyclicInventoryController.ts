@@ -26,6 +26,7 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
     // Core State
     const [items, setItems] = useState<CyclicItem[]>([]);
     const [isExcelUploaded, setIsExcelUploaded] = useState(false);
+    const [isAdminEditActive, setIsAdminEditActive] = useState(false);
 
     // 1. Sync Logic (Load/Save/AutoSave/Reset)
     const { isLoading, setIsLoading, isSaving, setIsSaving, saveProgress } = useInventorySync({
@@ -54,9 +55,9 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         }
     });
 
-    // RULE: "Smart Hide" - If lab has adjusted items and NO Excel upload, hide pendings.
+    // RULE: "Smart Hide" - If lab has adjusted items and NO Excel upload, hide pendings. (salvo en edición admin)
     const hasAdjustedItems = items.some(i => i.status === 'adjusted');
-    const shouldHidePendings = hasAdjustedItems && !isExcelUploaded;
+    const shouldHidePendings = hasAdjustedItems && !isExcelUploaded && !isAdminEditActive;
 
     // We only count "visible" or "active" items for the Global Header
     const visibleItems = shouldHidePendings 
@@ -147,7 +148,7 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         const itemToUpdate = items.find(i => i.id === id);
         
         // REGLA DE NEGOCIO: Re-ajuste requiere carga previa de Excel
-        if (itemToUpdate?.status === 'adjusted' && !isExcelUploaded) {
+        if (itemToUpdate?.status === 'adjusted' && !isExcelUploaded && !isAdminEditActive) {
             notify.error(
                 "Acción bloqueada", 
                 "Para realizar un re-ajuste de productos ya finalizados, primero debes cargar el Excel de sistema actualizado."
@@ -155,25 +156,21 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
             return;
         }
 
+        // Obtener IDs de ajuste existentes de cualquier otro ítem que ya esté ajustado en la lista actual
+        const existingShortageId = items.find(i => i.status === 'adjusted' && i.shortageId)?.shortageId || "";
+        const existingSurplusId = items.find(i => i.status === 'adjusted' && i.surplusId)?.surplusId || "";
+
         setItems(prev => prev.map(item => {
             if (item.id === id) {
                 const diff = quantity - item.systemQuantity;
 
                 // Anomaly Detection Algorithm
-                // Trigger if:
-                // 1. Difference > 50 units AND > 50% deviation
-                // 2. OR Value Difference > $50,000 (Local Currency)
                 const absDiff = Math.abs(diff);
                 const isSignificantQty = absDiff > 50 && (absDiff / (item.systemQuantity || 1)) > 0.5;
                 const isHighValueDiff = (absDiff * item.cost) > 50000;
 
                 if ((isSignificantQty || isHighValueDiff) && navigator.vibrate) {
-                    // Stronger vibration for anomalies
                     navigator.vibrate([100, 50, 100, 50, 100]);
-                    // Here we could also trigger a UI toast/warning, but since we are in the loop,
-                    // we'll rely on the visual "Diferencia" badge turning red/orange in the UI 
-                    // or handle the specific alert in the UI component if needed.
-                    // For now, let's just log it or maybe set a flag on the item?
                 } else if (diff !== 0 && navigator.vibrate) {
                     navigator.vibrate([50, 50, 50]);
                 } else if (navigator.vibrate) {
@@ -181,13 +178,29 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
                 }
 
                 const isReadjustment = item.status === 'adjusted';
+                
+                let newShortageId = item.shortageId;
+                let newSurplusId = item.surplusId;
+                
+                if (isAdminEditActive) {
+                    if (diff < 0) {
+                        newShortageId = item.shortageId || existingShortageId || null;
+                    } else if (diff > 0) {
+                        newSurplusId = item.surplusId || existingSurplusId || null;
+                    } else {
+                        newShortageId = null;
+                        newSurplusId = null;
+                    }
+                }
 
                 return {
                     ...item,
                     countedQuantity: quantity,
                     readjustmentReason: reason,
-                    status: 'controlled', // Force to controlled so it can be finalized again
-                    wasReadjusted: isReadjustment ? true : item.wasReadjusted
+                    status: isAdminEditActive ? 'adjusted' as const : 'controlled' as const,
+                    wasReadjusted: isReadjustment ? true : item.wasReadjusted,
+                    shortageId: isAdminEditActive ? newShortageId : item.shortageId,
+                    surplusId: isAdminEditActive ? newSurplusId : item.surplusId
                 };
             }
             return item;
@@ -198,13 +211,19 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         if (updatedItem) {
             cyclicInventoryService.logScanEvent(branchName, labName, updatedItem.ean, user?.id, user?.name);
         }
-    }, [items, branchName, labName, user, isExcelUploaded]);
+    }, [items, branchName, labName, user, isExcelUploaded, isAdminEditActive]);
 
     const handleCheck = useCallback((id: string) => {
         if (navigator.vibrate) navigator.vibrate(50);
         setItems(prev => prev.map(item =>
             item.id === id
-                ? { ...item, status: 'controlled', countedQuantity: item.systemQuantity }
+                ? { 
+                    ...item, 
+                    status: isAdminEditActive ? 'adjusted' as const : 'controlled' as const, 
+                    countedQuantity: item.systemQuantity,
+                    shortageId: isAdminEditActive ? null : item.shortageId,
+                    surplusId: isAdminEditActive ? null : item.surplusId
+                  }
                 : item
         ));
         
@@ -215,14 +234,20 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         }
 
         notify.success("Operación exitosa", 'Producto controlado');
-    }, [items, branchName, labName, user]);
+    }, [items, branchName, labName, user, isAdminEditActive]);
 
     const handleBulkCheck = useCallback((ids: string[]) => {
         if (ids.length === 0) return;
         if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
         setItems(prev => prev.map(item =>
             ids.includes(item.id)
-                ? { ...item, status: 'controlled' as const, countedQuantity: item.systemQuantity }
+                ? { 
+                    ...item, 
+                    status: isAdminEditActive ? 'adjusted' as const : 'controlled' as const, 
+                    countedQuantity: item.systemQuantity,
+                    shortageId: isAdminEditActive ? null : item.shortageId,
+                    surplusId: isAdminEditActive ? null : item.surplusId
+                  }
                 : item
         ));
 
@@ -235,7 +260,7 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         });
 
         notify.success("Operación exitosa", `${ids.length} producto${ids.length > 1 ? 's' : ''} controlado${ids.length > 1 ? 's' : ''} sin diferencia`);
-    }, [items, branchName, labName, user]);
+    }, [items, branchName, labName, user, isAdminEditActive]);
 
     const handleRevertItem = useCallback((id: string) => {
         setItems(prev => prev.map(item =>
@@ -461,6 +486,42 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         }
     };
 
+    const handleSaveAdminEdit = async () => {
+        setIsSaving(true);
+        try {
+            await cyclicInventoryService.saveInventory(branchName, labName, items);
+            await cyclicInventoryService.recomputeLabProgress(branchName, labName);
+            await fetchPersistentStats();
+
+            notify.success("Operación exitosa", "Ajustes editados y guardados correctamente.");
+            setIsAdminEditActive(false);
+
+            queryClient.invalidateQueries({
+                queryKey: INVENTORY_KEYS.lab(branchName, labName)
+            });
+        } catch (error) {
+            console.error("Error saving admin edit:", error);
+            notify.error("Error", "Error al guardar los cambios del ajuste.");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleCancelAdminEdit = async () => {
+        setIsSaving(true);
+        try {
+            await queryClient.invalidateQueries({
+                queryKey: INVENTORY_KEYS.lab(branchName, labName)
+            });
+            setIsAdminEditActive(false);
+            notify.info("Edición cancelada", "Se descartaron los cambios no guardados.");
+        } catch (error) {
+            console.error("Error canceling admin edit:", error);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     return {
         // State
         items,
@@ -522,6 +583,10 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         handleResolveMismatch,
 
         // Special State
-        shouldHidePendings
+        shouldHidePendings,
+        isAdminEditActive,
+        setIsAdminEditActive,
+        handleSaveAdminEdit,
+        handleCancelAdminEdit
     };
 }

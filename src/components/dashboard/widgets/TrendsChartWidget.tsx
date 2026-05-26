@@ -29,8 +29,8 @@ export function TrendsChartWidget({ data = [] }: TrendsChartWidgetProps) {
 
     return (
         <div className="h-full">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-                <CardTitle className="text-lg font-semibold">Tendencias</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 px-5 pt-4 pb-0 text-foreground">
+                <CardTitle className="text-lg font-medium tracking-tight">Tendencias</CardTitle>
                 <div className="flex gap-2">
                     <Button
                         variant={period === '7d' ? 'default' : 'outline'}

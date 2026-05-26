@@ -18,9 +18,9 @@ export function SyncStatusWidget({
 }: SyncStatusWidgetProps) {
     return (
         <div className="h-full">
-            <CardHeader className="pb-3">
+            <CardHeader className="px-5 pt-4 pb-0 text-foreground">
                 <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg font-semibold">Sincronización</CardTitle>
+                    <CardTitle className="text-lg font-medium tracking-tight">Sincronización</CardTitle>
                     {isOnline ? (
                         <Wifi className="h-5 w-5 text-success" />
                     ) : (

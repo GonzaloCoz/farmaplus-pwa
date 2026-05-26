@@ -89,16 +89,16 @@ export function SmartAnalystWidget() {
                 {/* Header Background Accent */}
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary/10 to-transparent opacity-30" />
 
-                <CardHeader className="pb-2 pt-4 px-4">
-                    <div className="flex justify-between items-start">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">
+                <CardHeader className="pb-0 pt-4 px-5 text-foreground">
+                    <div className="flex justify-between items-center">
+                        <CardTitle className="text-lg font-medium tracking-tight">
                             Control de Vencimientos
                         </CardTitle>
-                        {isClean ? <CheckCircle className="w-4 h-4 text-emerald-500" /> : <BrainCircuit className="w-4 h-4 text-primary" />}
+                        {isClean ? <CheckCircle className="w-5 h-5 text-emerald-500" /> : <BrainCircuit className="w-5 h-5 text-primary" />}
                     </div>
                 </CardHeader>
 
-                <CardContent className="flex-1 flex flex-col px-4 pb-4 pt-0 min-h-0">
+                <CardContent className="flex-1 flex flex-col px-5 pb-5 pt-0 min-h-0">
                     <div className="flex items-baseline gap-2 mb-2">
                         <span className={`text-3xl font-bold ${isClean ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'}`}>
                             {isClean ? 'Todo en Orden' : `${alertCount}`}

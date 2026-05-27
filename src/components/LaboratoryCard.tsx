@@ -13,6 +13,7 @@ interface LaboratoryCardProps {
     progress?: number;
     onClick?: () => void;
     onMouseEnter?: () => void;
+    className?: string;
 }
 
 export function LaboratoryCard({
@@ -24,6 +25,7 @@ export function LaboratoryCard({
     progress = 0,
     onClick,
     onMouseEnter,
+    className,
 }: LaboratoryCardProps) {
     const displayProgress = progress || 0;
 
@@ -68,7 +70,10 @@ export function LaboratoryCard({
 
     return (
         <Card
-            className="group cursor-pointer transition-all duration-200 active:scale-[0.99] hover:border-border hover:shadow-md flex flex-col gap-3 p-5"
+            className={cn(
+                "group cursor-pointer transition-all duration-200 active:scale-[0.99] hover:border-border hover:shadow-md flex flex-col gap-3 p-5",
+                className
+            )}
             onClick={onClick}
             onMouseEnter={onMouseEnter}
         >

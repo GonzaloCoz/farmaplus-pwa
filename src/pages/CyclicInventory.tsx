@@ -110,6 +110,7 @@ export default function CyclicInventory() {
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessingMassAction, setIsProcessingMassAction] = useState(false);
   const [lockStatus, setLockStatus] = useState<{ isLocked: boolean, reason: 'manual' | 'deadline' | null }>({ isLocked: false, reason: null });
+  const [totalLedgerAdjustments, setTotalLedgerAdjustments] = useState(0);
 
   // Mass Reset State
   const [showMassResetDialog, setShowMassResetDialog] = useState(false);
@@ -234,6 +235,21 @@ export default function CyclicInventory() {
         });
 
         setLaboratories(enrichedData);
+
+        // Contar ajustes históricos reales del ledger (con ID de PLEX)
+        try {
+          const { count, error: ledgerErr } = await supabase
+            .from('inventory_ledger' as any)
+            .select('id', { count: 'exact', head: true })
+            .eq('branch_name', normalizeString(user.branchSheet))
+            .or('adjustment_id_shortage.not.is.null,adjustment_id_surplus.not.is.null');
+
+          if (!ledgerErr && count !== null) {
+            setTotalLedgerAdjustments(count);
+          }
+        } catch (ledgerCountErr) {
+          console.warn('Error al contar ajustes del ledger:', ledgerCountErr);
+        }
       } catch (error) {
         console.error("Error loading laboratories:", error);
       } finally {
@@ -374,10 +390,6 @@ export default function CyclicInventory() {
   const negativeTrend = calculateTrend(totalNegativeUnits, totalSystemUnits);
   const positiveTrend = calculateTrend(totalPositiveUnits, totalSystemUnits);
   const absoluteTrend = calculateTrend(Math.abs(totalNegativeUnits) + totalPositiveUnits, totalSystemUnits);
-
-  // Nuevas métricas globales calculadas client-side
-  const globalProductsWithDiff = groupedLaboratories.reduce((acc, curr) => acc + (curr.adjustmentCount || 0), 0);
-
   const progressPercentage = totalLabs > 0 ? Math.round((controlledLabs / totalLabs) * 100) : 0;
 
   const filteredAndSortedLabs = useMemo(() => {
@@ -820,9 +832,11 @@ export default function CyclicInventory() {
               <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 text-xs font-semibold px-2.5 py-1">
                 {pendingLabs} Pendientes
               </Badge>
+              {/* Ocultado por pedido del usuario temporalmente 
               <Badge variant="outline" className="bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 text-xs font-semibold px-2.5 py-1">
-                {globalProductsWithDiff} Ajustes Realizados
+                {totalLedgerAdjustments} Ajustes Realizados
               </Badge>
+              */}
             </div>
           </div>
 

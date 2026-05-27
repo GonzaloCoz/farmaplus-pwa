@@ -1333,5 +1333,242 @@ export const cyclicInventoryService = {
             // Silencioso para no bloquear la UI si el log falla
             console.warn("[ScanLog] Error logging event:", error);
         }
+    },
+
+    updateAdjustmentIds: async (
+        branchName: string,
+        labName: string,
+        newShortageId: string,
+        newSurplusId: string
+    ): Promise<void> => {
+        try {
+            const cleanBranch = normalizeString(branchName);
+            const cleanLab = normalizeString(labName);
+
+            // 1. Update inventories items
+            const { error: err1 } = await supabase
+                .from('inventories')
+                .update({
+                    adjustment_id_shortage: newShortageId || null,
+                    adjustment_id_surplus: newSurplusId || null
+                } as any)
+                .eq('branch_name', cleanBranch)
+                .eq('laboratory', cleanLab)
+                .eq('status', 'adjusted');
+
+            if (err1) throw err1;
+
+            // 2. Update inventory_adjustments
+            const { error: err2 } = await supabase
+                .from('inventory_adjustments')
+                .update({
+                    adjustment_id_shortage: newShortageId || null,
+                    adjustment_id_surplus: newSurplusId || null
+                } as any)
+                .eq('branch_name', cleanBranch)
+                .eq('laboratory', cleanLab);
+
+            if (err2) throw err2;
+
+            // 3. Update inventory_ledger
+            const { error: err3 } = await supabase
+                .from('inventory_ledger')
+                .update({
+                    adjustment_id_shortage: newShortageId || null,
+                    adjustment_id_surplus: newSurplusId || null
+                } as any)
+                .eq('branch_name', cleanBranch)
+                .eq('laboratory', cleanLab);
+
+            if (err3) throw err3;
+
+            console.log(`[CyclicService] Adjustment IDs updated successfully for ${labName} at ${branchName}`);
+        } catch (error) {
+            console.error("Error in updateAdjustmentIds:", error);
+            throw error;
+        }
+    },
+
+    updateSessionAdjustmentIds: async (
+        branchName: string,
+        labName: string,
+        sessionId: string,
+        newShortageId: string,
+        newSurplusId: string,
+        sessionCreatedAt: string
+    ): Promise<void> => {
+        try {
+            const cleanBranch = normalizeString(branchName);
+            const cleanLab = normalizeString(labName);
+
+            console.log(`[CyclicService] Starting updateSessionAdjustmentIds for session: ${sessionId}`);
+
+            // 1. Update inventory_ledger by ID (Standard Mode)
+            const { data: ledgerUpdateData, error: ledgerErr } = await supabase
+                .from('inventory_ledger')
+                .update({
+                    adjustment_id_shortage: newShortageId || null,
+                    adjustment_id_surplus: newSurplusId || null
+                } as any)
+                .eq('id', sessionId)
+                .select();
+
+            if (ledgerErr) {
+                console.warn("[CyclicService] ledger update error:", ledgerErr);
+            } else {
+                console.log(`[CyclicService] Ledger direct update completed. Rows affected: ${ledgerUpdateData?.length || 0}`);
+            }
+
+            // 2. Update inventory_adjustments directly by ID (Fallback Mode - where sessionId is the adjustment ID)
+            const { data: adjDirectData, error: adjDirectErr } = await supabase
+                .from('inventory_adjustments')
+                .update({
+                    adjustment_id_shortage: newShortageId || null,
+                    adjustment_id_surplus: newSurplusId || null
+                } as any)
+                .eq('id', sessionId)
+                .select();
+
+            let adjustmentsUpdatedCount = adjDirectData?.length || 0;
+
+            if (adjDirectErr) {
+                console.warn("[CyclicService] inventory_adjustments direct ID update error:", adjDirectErr);
+            } else {
+                console.log(`[CyclicService] inventory_adjustments direct ID update completed. Rows affected: ${adjustmentsUpdatedCount}`);
+            }
+
+            // If direct ID update didn't find any row in inventory_adjustments, it means sessionId is the ledger ID.
+            // In that case, we fall back to updating inventory_adjustments by created_at date range.
+            if (adjustmentsUpdatedCount === 0) {
+                console.log("[CyclicService] No adjustments updated by direct ID. Trying date-range matching...");
+                const timeLimit = 60000; // Increase to 60 seconds for robustness
+                const sessionDate = new Date(sessionCreatedAt);
+                const minTime = new Date(sessionDate.getTime() - timeLimit).toISOString();
+                const maxTime = new Date(sessionDate.getTime() + timeLimit).toISOString();
+
+                const { data: adjData, error: selectErr } = await supabase
+                    .from('inventory_adjustments')
+                    .select('id')
+                    .eq('branch_name', cleanBranch)
+                    .eq('laboratory', cleanLab)
+                    .gte('created_at', minTime)
+                    .lte('created_at', maxTime);
+
+                if (!selectErr && adjData && adjData.length > 0) {
+                    const adjIds = adjData.map(a => a.id);
+                    const { error: updateAdjErr } = await supabase
+                        .from('inventory_adjustments')
+                        .update({
+                            adjustment_id_shortage: newShortageId || null,
+                            adjustment_id_surplus: newSurplusId || null
+                        } as any)
+                        .in('id', adjIds);
+
+                    if (updateAdjErr) {
+                        console.error("Error updating inventory_adjustments by date-range:", updateAdjErr);
+                    } else {
+                        console.log(`[CyclicService] inventory_adjustments updated by date-range. Rows: ${adjIds.length}`);
+                    }
+                } else if (selectErr) {
+                    console.error("Error selecting adjustments for date-range:", selectErr);
+                }
+            }
+
+            // 3. Update inventories items
+            // First try to fetch EANs from inventory_ledger_items
+            const { data: itemsData, error: itemsErr } = await supabase
+                .from('inventory_ledger_items')
+                .select('ean')
+                .eq('ledger_id', sessionId);
+
+            let eans: string[] = [];
+            if (!itemsErr && itemsData && itemsData.length > 0) {
+                eans = itemsData.map(i => i.ean);
+            }
+
+            if (eans.length > 0) {
+                // Update inventories status adjusted items matching those EANs
+                const { error: invErr } = await supabase
+                    .from('inventories')
+                    .update({
+                        adjustment_id_shortage: newShortageId || null,
+                        adjustment_id_surplus: newSurplusId || null
+                    } as any)
+                    .eq('branch_name', cleanBranch)
+                    .eq('laboratory', cleanLab)
+                    .eq('status', 'adjusted')
+                    .in('ean', eans);
+
+                if (invErr) console.error("Error updating inventories items by EAN:", invErr);
+            } else {
+                // Fallback: If no EANs found in ledger (e.g. because ledger is empty in fallback mode),
+                // we update ALL adjusted items in inventories for this lab. This is extremely safe because
+                // only the active/recent adjusted session's items are kept in inventories anyway.
+                console.log("[CyclicService] No EANs found in ledger. Falling back to updating all adjusted items in inventories...");
+                const { error: invErr } = await supabase
+                    .from('inventories')
+                    .update({
+                        adjustment_id_shortage: newShortageId || null,
+                        adjustment_id_surplus: newSurplusId || null
+                    } as any)
+                    .eq('branch_name', cleanBranch)
+                    .eq('laboratory', cleanLab)
+                    .eq('status', 'adjusted');
+
+                if (invErr) console.error("Error updating all adjusted inventories items:", invErr);
+            }
+
+            console.log(`[CyclicService] Session IDs updated successfully for session ${sessionId}`);
+        } catch (error) {
+            console.error("Error in updateSessionAdjustmentIds:", error);
+            throw error;
+        }
+    },
+
+    hideLaboratory: async (branchName: string, labName: string, isHidden: boolean): Promise<void> => {
+        try {
+            const cleanBranch = normalizeString(branchName);
+            const cleanLabName = labName.trim().toUpperCase();
+            const eanKey = `HIDDEN_LAB_${cleanLabName}`;
+
+            if (isHidden) {
+                // Upsert dummy product first to satisfy foreign key constraint on ean -> products
+                const { error: prodError } = await supabase.from('products').upsert({
+                    ean: eanKey,
+                    name: `[SYSTEM] Hidden Lab - ${cleanLabName}`,
+                    laboratory: '_CONFIG_',
+                    cost: 0,
+                    sale_price: 0,
+                    stock: 0
+                }, { onConflict: 'ean' });
+
+                if (prodError) throw prodError;
+
+                // Upsert inventories config
+                const { error: invError } = await supabase.from('inventories').upsert({
+                    branch_name: cleanBranch,
+                    laboratory: '_CONFIG_',
+                    ean: eanKey,
+                    quantity: 1,
+                    system_quantity: 0,
+                    status: 'pending'
+                }, { onConflict: 'branch_name,laboratory,ean' });
+
+                if (invError) throw invError;
+            } else {
+                // Delete config from inventories
+                const { error: delError } = await supabase.from('inventories')
+                    .delete()
+                    .eq('branch_name', cleanBranch)
+                    .eq('laboratory', '_CONFIG_')
+                    .eq('ean', eanKey);
+
+                if (delError) throw delError;
+            }
+            console.log(`[CyclicService] Lab ${labName} hidden status set to ${isHidden} at ${branchName}`);
+        } catch (error) {
+            console.error("Error in hideLaboratory:", error);
+            throw error;
+        }
     }
 };

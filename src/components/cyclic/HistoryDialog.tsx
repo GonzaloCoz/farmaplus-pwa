@@ -8,7 +8,8 @@ import {
   RiUserLine, 
   RiArrowRightUpLine,
   RiArrowLeftDownLine,
-  RiInformationLine
+  RiInformationLine,
+  RiEditLine
 } from "@remixicon/react";
 
 import {
@@ -38,12 +39,14 @@ interface HistoryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   history: AdjustmentSession[];
+  onEditIds?: (session: AdjustmentSession) => void;
 }
 
 export function HistoryDialog({
   open,
   onOpenChange,
   history,
+  onEditIds,
 }: HistoryDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -135,10 +138,23 @@ export function HistoryDialog({
                       <div className="text-[10px] text-muted-foreground italic">
                         ID Sistema: {session.id.substring(0, 8)}...
                       </div>
-                      <Button variant="ghost" size="sm" className="h-7 text-[10px] font-bold uppercase tracking-wider hover:bg-primary/10 hover:text-primary transition-colors">
-                        <RiFileTextLine size={14} className="mr-1.5" />
-                        Ver Detalles
-                      </Button>
+                      <div className="flex gap-2">
+                        {onEditIds && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => onEditIds(session)}
+                            className="h-7 text-[10px] font-bold uppercase tracking-wider text-primary hover:bg-primary/10 hover:text-primary transition-colors"
+                          >
+                            <RiEditLine size={14} className="mr-1.5" />
+                            Editar IDs
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="sm" className="h-7 text-[10px] font-bold uppercase tracking-wider hover:bg-primary/10 hover:text-primary transition-colors">
+                          <RiFileTextLine size={14} className="mr-1.5" />
+                          Ver Detalles
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}

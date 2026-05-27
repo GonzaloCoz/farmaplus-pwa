@@ -10,6 +10,7 @@ import { useUser } from '@/contexts/UserContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { INVENTORY_KEYS, useAdjustmentHistoryQuery } from './useInventoryQueries';
+import { normalizeString } from '@/lib/utils';
 
 const CATEGORIES = ["Medicamentos", "Perfumería", "Accesorios", "Varios"];
 
@@ -27,6 +28,32 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
     const [items, setItems] = useState<CyclicItem[]>([]);
     const [isExcelUploaded, setIsExcelUploaded] = useState(false);
     const [isAdminEditActive, setIsAdminEditActive] = useState(false);
+    const [isLabHidden, setIsLabHidden] = useState(false);
+
+    useEffect(() => {
+        const checkHiddenStatus = async () => {
+            if (branchName && labName) {
+                const cleanBranch = normalizeString(branchName);
+                const cleanLabName = labName.trim().toUpperCase();
+                const eanKey = `HIDDEN_LAB_${cleanLabName}`;
+                
+                try {
+                    const { data } = await supabase
+                        .from('inventories')
+                        .select('quantity')
+                        .eq('branch_name', cleanBranch)
+                        .eq('laboratory', '_CONFIG_')
+                        .eq('ean', eanKey)
+                        .maybeSingle();
+                    
+                    setIsLabHidden(data?.quantity === 1);
+                } catch (err) {
+                    console.error("Error checking lab hidden status:", err);
+                }
+            }
+        };
+        checkHiddenStatus();
+    }, [branchName, labName]);
 
     // 1. Sync Logic (Load/Save/AutoSave/Reset)
     const { isLoading, setIsLoading, isSaving, setIsSaving, saveProgress } = useInventorySync({
@@ -493,11 +520,42 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
             await cyclicInventoryService.recomputeLabProgress(branchName, labName);
             await fetchPersistentStats();
 
+            // Guardar en el historial de ajustes el registro de esta edición administrativa
+            const adjustedItems = items.filter(i => i.status === 'adjusted');
+            const shortages = adjustedItems.filter(i => i.countedQuantity < i.systemQuantity);
+            const surpluses = adjustedItems.filter(i => i.countedQuantity > i.systemQuantity);
+            
+            const shortageVal = Math.round(shortages.reduce((acc, i) => acc + ((i.systemQuantity - i.countedQuantity) * i.cost), 0) * 100) / 100;
+            const surplusVal = Math.round(surpluses.reduce((acc, i) => acc + ((i.countedQuantity - i.systemQuantity) * i.cost), 0) * 100) / 100;
+
+            const existingShortageId = adjustedItems.find(i => i.shortageId)?.shortageId || "ADMIN_EDIT";
+            const existingSurplusId = adjustedItems.find(i => i.surplusId)?.surplusId || "ADMIN_EDIT";
+
+            const controlledCategories = Array.from(new Set(adjustedItems.map(i => i.category || 'Varios')));
+            const historyCategoryStr = controlledCategories.length > 0
+                ? controlledCategories.join(', ')
+                : currentCategory;
+
+            await cyclicInventoryService.saveAdjustmentHistory(branchName, labName, {
+                adjustment_id_shortage: existingShortageId,
+                adjustment_id_surplus: existingSurplusId,
+                shortage_value: shortageVal,
+                surplus_value: surplusVal,
+                total_units_adjusted: adjustedItems.length,
+                user_name: `${user?.name || 'Admin'} (Edición Admin)`,
+                user_id: user?.id,
+                items_snapshot: items,
+                category: historyCategoryStr
+            });
+
             notify.success("Operación exitosa", "Ajustes editados y guardados correctamente.");
             setIsAdminEditActive(false);
 
             queryClient.invalidateQueries({
                 queryKey: INVENTORY_KEYS.lab(branchName, labName)
+            });
+            queryClient.invalidateQueries({
+                queryKey: INVENTORY_KEYS.history(branchName, labName)
             });
         } catch (error) {
             console.error("Error saving admin edit:", error);
@@ -522,6 +580,78 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         }
     };
 
+    const handleToggleHideLab = async (checked: boolean) => {
+        setIsLabHidden(checked);
+        try {
+            await cyclicInventoryService.hideLaboratory(branchName, labName, checked);
+            notify.success(
+                "Operación exitosa",
+                checked ? "Laboratorio ocultado correctamente." : "Laboratorio visible nuevamente."
+            );
+            
+            queryClient.invalidateQueries({
+                queryKey: INVENTORY_KEYS.lab(branchName, labName)
+            });
+        } catch (error) {
+            console.error("Error toggling hidden state:", error);
+            notify.error("Error", "No se pudo cambiar el estado de visibilidad.");
+            setIsLabHidden(!checked); // Revertir estado
+        }
+    };
+
+    const handleUpdateAdjustmentIds = async (newShortageId: string, newSurplusId: string) => {
+        try {
+            await cyclicInventoryService.updateAdjustmentIds(
+                branchName,
+                labName,
+                newShortageId.trim(),
+                newSurplusId.trim()
+            );
+
+            queryClient.invalidateQueries({
+                queryKey: INVENTORY_KEYS.lab(branchName, labName)
+            });
+            queryClient.invalidateQueries({
+                queryKey: INVENTORY_KEYS.history(branchName, labName)
+            });
+
+            return true;
+        } catch (error) {
+            console.error("Error updating adjustment IDs in controller:", error);
+            throw error;
+        }
+    };
+
+    const handleUpdateSessionAdjustmentIds = async (
+        sessionId: string,
+        newShortageId: string,
+        newSurplusId: string,
+        sessionCreatedAt: string
+    ) => {
+        try {
+            await cyclicInventoryService.updateSessionAdjustmentIds(
+                branchName,
+                labName,
+                sessionId,
+                newShortageId.trim(),
+                newSurplusId.trim(),
+                sessionCreatedAt
+            );
+
+            queryClient.invalidateQueries({
+                queryKey: INVENTORY_KEYS.lab(branchName, labName)
+            });
+            queryClient.invalidateQueries({
+                queryKey: INVENTORY_KEYS.history(branchName, labName)
+            });
+
+            return true;
+        } catch (error) {
+            console.error("Error updating session adjustment IDs in controller:", error);
+            throw error;
+        }
+    };
+
     return {
         // State
         items,
@@ -530,6 +660,7 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         isUploading,
         isExcelUploaded,
         branchName,
+        isLabHidden,
 
         // Stats (Overriden by Global Logic)
         stats: {
@@ -575,6 +706,9 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         handleResetData,
         handleConfirmDelete,
         handleForceRefreshProgress,
+        handleToggleHideLab,
+        handleUpdateAdjustmentIds,
+        handleUpdateSessionAdjustmentIds,
         
         // Mismatch Overrides
         showMismatchDialog,

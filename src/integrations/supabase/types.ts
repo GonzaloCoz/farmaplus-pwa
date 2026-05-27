@@ -336,6 +336,7 @@ export interface Database {
                     id: string
                     branch_name: string
                     laboratory: string
+                    category: string | null
                     ean: string
                     quantity: number
                     system_quantity: number
@@ -350,6 +351,7 @@ export interface Database {
                     id?: string
                     branch_name: string
                     laboratory: string
+                    category?: string | null
                     ean: string
                     quantity?: number
                     system_quantity?: number
@@ -364,6 +366,7 @@ export interface Database {
                     id?: string
                     branch_name?: string
                     laboratory?: string
+                    category?: string | null
                     ean?: string
                     quantity?: number
                     system_quantity?: number

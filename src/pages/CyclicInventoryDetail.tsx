@@ -42,6 +42,7 @@ import {
     MenuGroup,
     MenuGroupLabel,
     MenuSeparator,
+    MenuCheckboxItem,
 } from "@/components/ui/menu";
 import { CyclicInventoryList } from '@/components/CyclicInventoryList';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
@@ -67,6 +68,8 @@ import { ReportExporter } from '@/lib/reportExporter';
 import { PageLayout } from "@/components/layout/PageLayout";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { FramePanel } from '@/components/ui/frame';
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 
 // Hooks & Components
 import { useCyclicInventoryController } from '@/hooks/useCyclicInventoryController';
@@ -93,6 +96,13 @@ export default function CyclicInventoryDetail() {
     const [adminPassword, setAdminPassword] = useState("");
     const [isAdminPurging, setIsAdminPurging] = useState(false);
     const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
+
+    // Edit Adjustment IDs State
+    const [showEditIdsDialog, setShowEditIdsDialog] = useState(false);
+    const [selectedSessionToEdit, setSelectedSessionToEdit] = useState<string>("active");
+    const [tempShortageId, setTempShortageId] = useState("");
+    const [tempSurplusId, setTempSurplusId] = useState("");
+    const [isSavingIds, setIsSavingIds] = useState(false);
 
     // Update window tab title with lab name
     useEffect(() => {
@@ -167,6 +177,10 @@ export default function CyclicInventoryDetail() {
         setIsAdminEditActive,
         handleSaveAdminEdit,
         handleCancelAdminEdit,
+        isLabHidden,
+        handleToggleHideLab,
+        handleUpdateAdjustmentIds,
+        handleUpdateSessionAdjustmentIds,
 
         // Mismatch Overrides
         showMismatchDialog,
@@ -565,6 +579,38 @@ export default function CyclicInventoryDetail() {
                                                                 <MenuItem onClick={() => setIsAdminEditActive(!isAdminEditActive)} className="rounded-lg text-sm font-medium cursor-pointer">
                                                                     <Pen className="w-4 h-4 text-muted-foreground" />
                                                                     {isAdminEditActive ? "Desactivar edición de ajuste" : "Editar ajuste sin Excel"}
+                                                                </MenuItem>
+                                                                <MenuItem 
+                                                                    onClick={() => {
+                                                                        const existingShortage = items.find(i => i.status === 'adjusted' && i.shortageId)?.shortageId || "";
+                                                                        const existingSurplus = items.find(i => i.status === 'adjusted' && i.surplusId)?.surplusId || "";
+                                                                        setSelectedSessionToEdit("active");
+                                                                        setTempShortageId(existingShortage);
+                                                                        setTempSurplusId(existingSurplus);
+                                                                        setShowEditIdsDialog(true);
+                                                                    }} 
+                                                                    className="rounded-lg text-sm font-medium cursor-pointer"
+                                                                >
+                                                                    <Pen className="w-4 h-4 text-muted-foreground" />
+                                                                    Editar IDs de ajuste
+                                                                </MenuItem>
+                                                                <MenuCheckboxItem
+                                                                    variant="switch"
+                                                                    checked={isLabHidden}
+                                                                    onCheckedChange={(checked) => handleToggleHideLab(checked)}
+                                                                    className="rounded-lg text-sm font-medium cursor-pointer"
+                                                                >
+                                                                    Ocultar laboratorio
+                                                                </MenuCheckboxItem>
+                                                                <MenuItem 
+                                                                    variant="destructive"
+                                                                    onClick={() => {
+                                                                        setShowAdminPurgeModal(true);
+                                                                    }} 
+                                                                    className="rounded-lg text-sm font-medium cursor-pointer text-destructive focus:text-destructive focus:bg-destructive/10"
+                                                                >
+                                                                    <TrashIcon className="w-4 h-4 opacity-80" />
+                                                                    Eliminar laboratorio
                                                                 </MenuItem>
                                                             </>
                                                         )}
@@ -1095,6 +1141,13 @@ export default function CyclicInventoryDetail() {
                 open={isHistoryDialogOpen}
                 onOpenChange={setIsHistoryDialogOpen}
                 history={history}
+                onEditIds={(session) => {
+                    setSelectedSessionToEdit(session.id);
+                    setTempShortageId(session.adjustment_id_shortage || "");
+                    setTempSurplusId(session.adjustment_id_surplus || "");
+                    setIsHistoryDialogOpen(false);
+                    setShowEditIdsDialog(true);
+                }}
             />
 
             {/* Security Delete Dialog */}
@@ -1267,7 +1320,128 @@ export default function CyclicInventoryDetail() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Edit Adjustment IDs Dialog (Coss UI Style) */}
+            <Dialog open={showEditIdsDialog} onOpenChange={(open) => !open && setShowEditIdsDialog(false)}>
+                <DialogContent showCloseButton={false} className="max-w-md p-0 gap-0 overflow-hidden border border-border/60 shadow-lg rounded-2xl bg-background">
+                    <Form
+                        onSubmit={async (e) => {
+                            e.preventDefault();
+                            setIsSavingIds(true);
+                            try {
+                                if (selectedSessionToEdit === "active") {
+                                    await handleUpdateAdjustmentIds(tempShortageId, tempSurplusId);
+                                } else {
+                                    const session = history.find(s => s.id === selectedSessionToEdit);
+                                    if (session) {
+                                        await handleUpdateSessionAdjustmentIds(
+                                            selectedSessionToEdit,
+                                            tempShortageId,
+                                            tempSurplusId,
+                                            session.created_at
+                                        );
+                                    }
+                                }
+                                setShowEditIdsDialog(false);
+                                toast.success("Operación exitosa", "IDs de ajuste actualizados correctamente.");
+                            } catch (err) {
+                                toast.error("Error", "No se pudieron actualizar los IDs de ajuste.");
+                            } finally {
+                                setIsSavingIds(false);
+                            }
+                        }}
+                        className="contents"
+                    >
+                        <div className="p-6 flex flex-col gap-6">
+                            <div className="space-y-1">
+                                <DialogTitle className="text-lg font-bold tracking-tight text-foreground">
+                                    Editar IDs de Ajuste
+                                </DialogTitle>
+                                <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
+                                    Modifica los IDs de ajuste cargados en PLEX para Faltantes y Sobrantes.
+                                </DialogDescription>
+                            </div>
+
+                            <div className="space-y-4">
+                                <Field className="space-y-1.5">
+                                    <FieldLabel className="text-xs font-semibold text-foreground/90">
+                                        Seleccionar Sesión / Historial
+                                    </FieldLabel>
+                                    <select
+                                        value={selectedSessionToEdit}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setSelectedSessionToEdit(val);
+                                            if (val === "active") {
+                                                const existingShortage = items.find(i => i.status === 'adjusted' && i.shortageId)?.shortageId || "";
+                                                const existingSurplus = items.find(i => i.status === 'adjusted' && i.surplusId)?.surplusId || "";
+                                                setTempShortageId(existingShortage);
+                                                setTempSurplusId(existingSurplus);
+                                            } else {
+                                                const session = history.find(s => s.id === val);
+                                                if (session) {
+                                                    setTempShortageId(session.adjustment_id_shortage || "");
+                                                    setTempSurplusId(session.adjustment_id_surplus || "");
+                                                }
+                                            }
+                                        }}
+                                        className="w-full h-10 px-3 text-xs rounded-xl border border-border/60 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer font-medium"
+                                    >
+                                        <option value="active">Control Activo (Actual)</option>
+                                        {history.map((session: any) => {
+                                            const dateStr = format(new Date(session.created_at), "d 'de' MMMM, HH:mm", { locale: es });
+                                            const categoryStr = session.category || "General";
+                                            return (
+                                                <option key={session.id} value={session.id}>
+                                                    {`${dateStr} - ${categoryStr} (${session.total_units_adjusted} unids)`}
+                                                </option>
+                                            );
+                                        })}
+                                    </select>
+                                </Field>
+
+                                <Field>
+                                    <FieldLabel className="text-xs font-semibold text-foreground/90">
+                                        ID Ajuste Faltantes (negativos)
+                                    </FieldLabel>
+                                    <Input
+                                        value={tempShortageId}
+                                        onChange={(e) => setTempShortageId(e.target.value)}
+                                        placeholder="ID Ajuste Faltantes (PLEX)"
+                                        className="h-10 text-xs rounded-xl"
+                                    />
+                                </Field>
+
+                                <Field>
+                                    <FieldLabel className="text-xs font-semibold text-foreground/90">
+                                        ID Ajuste Sobrantes (positivos)
+                                    </FieldLabel>
+                                    <Input
+                                        value={tempSurplusId}
+                                        onChange={(e) => setTempSurplusId(e.target.value)}
+                                        placeholder="ID Ajuste Sobrantes (PLEX)"
+                                        className="h-10 text-xs rounded-xl"
+                                    />
+                                </Field>
+                            </div>
+                        </div>
+
+                        <DialogFooter className="px-6 py-4 bg-muted/10 border-t border-border/20 gap-2">
+                            <DialogClose render={<Button type="button" variant="ghost" className="h-10 rounded-xl" />}>
+                                Cancelar
+                            </DialogClose>
+                            <Button
+                                type="submit"
+                                disabled={isSavingIds}
+                                className="h-10 bg-primary text-primary-foreground font-semibold rounded-xl"
+                            >
+                                {isSavingIds ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                                Guardar Cambios
+                            </Button>
+                        </DialogFooter>
+                    </Form>
+                </DialogContent>
+            </Dialog>
         </PageLayout>
     );
 }
-

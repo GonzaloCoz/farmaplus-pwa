@@ -98,20 +98,19 @@ export function LaboratoryCard({
             </div>
 
             {/* Diferencia neta */}
-            <div
+            <CounterAnimation 
+                value={Math.abs(differenceValue)} 
+                decimals={0} 
+                prefix={differenceValue < 0 ? "-$" : differenceValue > 0 ? "+$" : "$"}
                 className={cn(
-                    "text-3xl font-bold tracking-tight flex items-baseline",
+                    "text-3xl font-bold tracking-tight",
                     differenceValue < 0
                         ? "text-red-500 dark:text-red-400"
                         : differenceValue > 0
                         ? "text-emerald-500"
                         : "text-foreground"
                 )}
-            >
-                {differenceValue < 0 ? "-" : differenceValue > 0 ? "+" : ""}
-                <span className="text-xl font-light opacity-40 mr-0.5 align-baseline">$</span>
-                <CounterAnimation value={Math.abs(differenceValue)} decimals={0} />
-            </div>
+            />
 
             {/* Columnas sobrante / faltante + barra */}
             <div className="flex flex-col gap-2">
@@ -120,7 +119,7 @@ export function LaboratoryCard({
                     <div className="border-l-2 border-emerald-500 pl-2.5">
                         <div className="flex flex-col">
                             <span className="text-base font-bold text-card-foreground tracking-tight">
-                                +<CounterAnimation value={positiveValue} prefix="$" />
+                                <CounterAnimation value={positiveValue} prefix="+$" />
                             </span>
                             <span className="text-[10px] text-muted-foreground font-medium">sobrante</span>
                         </div>
@@ -135,7 +134,7 @@ export function LaboratoryCard({
                     <div className="border-l-2 border-orange-500 pl-2.5">
                         <div className="flex flex-col">
                             <span className="text-base font-bold text-card-foreground tracking-tight">
-                                -<CounterAnimation value={Math.abs(negativeValue)} prefix="$" />
+                                <CounterAnimation value={Math.abs(negativeValue)} prefix="-$" />
                             </span>
                             <span className="text-[10px] text-muted-foreground font-medium">faltante</span>
                         </div>

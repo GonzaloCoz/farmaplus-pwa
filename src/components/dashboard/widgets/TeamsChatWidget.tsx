@@ -1,176 +1,422 @@
-import { useState, useRef } from "react";
-import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
-import { Plain as Send, ChatLine as MessageSquare, Danger as AlertTriangle } from "@solar-icons/react";
-import { cn } from "@/lib/utils";
-import { motion } from "framer-motion";
+import { useState, useRef, useEffect, useCallback, useMemo, memo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useUser } from "@/contexts/UserContext";
 import { getTeamsRecipient } from "@/config/teamsConfig";
+import { cn } from "@/lib/utils";
+import {
+  HelpCircle as CircleQuestionMarkIcon,
+  Sparkles as SparklesIcon,
+  X,
+  CornerDownLeft as CornerDownLeftIcon
+} from "lucide-react";
 
-const QUICK_ACTIONS = [
-    {
-        label: "Diferencia de Stock",
-        icon: AlertTriangle,
-        color: "text-orange-500 border-orange-500/50 bg-orange-500/5",
-        message: "Hola, he detectado una diferencia de stock importante en...",
-    },
-    {
-        label: "Confirmar Cierre",
-        icon: MessageSquare,
-        color: "text-emerald-500 border-emerald-500/50 bg-emerald-500/5",
-        message: "Solicito confirmar el cierre del inventario para...",
-    },
-    {
-        label: "Solicitud Urgente",
-        icon: Plus,
-        color: "text-blue-500 border-blue-500/50 bg-blue-500/5",
-        message: "Necesito autorización urgente para...",
-    }
+import { Button } from "@/components/ui/button";
+import { ScrollArea, ScrollAreaViewport, ScrollAreaScrollbar } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
+import { TextSwap } from "@/components/ui/text-swap";
+import { useAIChat } from "@/hooks/useAIChat";
+import { aiChatService } from "@/services/aiChatService";
+import { useProactiveAlerts } from "@/hooks/useProactiveAlerts";
+
+const DEFAULT_WELCOME_MESSAGE = `Hola. Soy tu **Asistente de Inventarios y Teams** de Farmaplus.
+Puedo responder tus dudas sobre auditoría de stock, control de vencimientos, diferencias y el proceso general de inventarios cíclicos.
+También puedo redactar mensajes pre-configurados para que los envíes directamente por **Microsoft Teams**.
+*Prueba preguntando: "¿Cómo reporto una diferencia de stock?", "¿Cómo cierro un laboratorio?" o "¿Cómo audito vencimientos?"*`;
+
+const DEFAULT_LINKS = [
+  { label: "Enviar Alerta de Stock", type: "teams" as const, target: "Hola, he detectado una diferencia de stock importante." },
+  { label: "Ir a Inventarios", type: "navigate" as const, route: "/cyclic-inventory" },
+  { label: "Ver Vencimientos", type: "navigate" as const, route: "/stock/expiration-control" },
+  { label: "Ver Reportes", type: "navigate" as const, route: "/reports" },
+  { label: "Soporte Técnico", type: "teams" as const, target: "Hola, necesito asistencia técnica con el sistema de inventarios." },
+  { label: "Centro de Capacitación", type: "navigate" as const, route: "/foro" }
 ];
 
-const Paperclip = ({ className }: { className?: string }) => (
-    <svg className={className} width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.51a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-    </svg>
-);
+export const TeamsChatWidget = memo(function TeamsChatWidget() {
+  const { user } = useUser();
+  const navigate = useNavigate();
+  const [query, setQuery] = useState("");
+  
+  const {
+    messages,
+    isGenerating,
+    streamedText,
+    actions,
+    error,
+    sendMessage,
+    injectProactiveMessage,
+    resetChat
+  } = useAIChat();
 
-const AI_COLORS = {
-    dark: "#08102E",
-    blue: "#045598",
-    light: "#3b82f6" // Classic blue for the orb glow
-};
+  const { alert, dismissAlert } = useProactiveAlerts(user?.branchName);
+  const [showAlertBanner, setShowAlertBanner] = useState(false);
 
-const MotionOrb = () => {
-    return (
-        <div className="relative w-32 h-32 flex items-center justify-center">
-            {/* Core Glow */}
-            <motion.div
-                className="absolute inset-0 rounded-full blur-2xl opacity-40 bg-blue-500/50"
-                animate={{
-                    scale: [0.9, 1.1, 1],
-                    opacity: [0.3, 0.5, 0.3]
-                }}
-                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-            />
+  // Pre-load the Ollama model into memory as soon as the chat widget mounts.
+  // This eliminates the cold-start delay on the user's first message.
+  useEffect(() => {
+    aiChatService.warmup();
+  }, []);
 
-            {/* Main Orb Body */}
-            <div
-                className="absolute w-24 h-24 rounded-full z-0 overflow-hidden shadow-[0_0_40px_rgba(59,130,246,0.5)]"
-                style={{
-                    background: `radial-gradient(circle at 30% 30%, ${AI_COLORS.light}, ${AI_COLORS.blue})`
-                }}
+  const handleTriggerProactive = useCallback(() => {
+    if (!alert) return;
+    
+    let displayName = "🔍 Analizar alerta de sistema";
+    if (alert.type === 'discrepancy' && alert.details.laboratory) {
+      displayName = `🔍 Analizar diferencias del laboratorio ${alert.details.laboratory}`;
+    } else if (alert.type === 'stalled' && alert.details.laboratory) {
+      displayName = `⏳ Revisar estado del laboratorio ${alert.details.laboratory}`;
+    } else if (alert.type === 'expiration' && alert.details.productName) {
+      displayName = `⚠️ Auditar vencimiento de ${alert.details.productName}`;
+    }
+
+    injectProactiveMessage(alert.suggestedQuery, displayName, user?.branchName);
+    setShowAlertBanner(false);
+    dismissAlert();
+  }, [alert, injectProactiveMessage, user?.branchName, dismissAlert]);
+
+  const autoTriggeredRef = useRef(false);
+
+  useEffect(() => {
+    if (alert && messages.length === 0 && !isGenerating && !autoTriggeredRef.current) {
+      setShowAlertBanner(true);
+      autoTriggeredRef.current = true;
+
+      const timer = setTimeout(() => {
+        handleTriggerProactive();
+      }, 2000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [alert, messages.length, isGenerating, handleTriggerProactive]);
+
+  const [thinkingIndex, setThinkingIndex] = useState(0);
+  const THINKING_STATES = useMemo(() => [
+    "Pensando...",
+    "Consultando la base de datos...",
+    "Analizando inventarios...",
+    "Generando respuesta..."
+  ], []);
+
+  useEffect(() => {
+    if (isGenerating && !streamedText) {
+      const interval = setInterval(() => {
+        setThinkingIndex((prev) => (prev + 1) % THINKING_STATES.length);
+      }, 1250);
+      return () => clearInterval(interval);
+    } else {
+      setThinkingIndex(0);
+    }
+  }, [isGenerating, streamedText, THINKING_STATES.length]);
+
+  const inputRef = useRef<HTMLInputElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom on new messages or stream chunks
+  useEffect(() => {
+    const scrollToBottom = () => {
+      if (viewportRef.current) {
+        viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
+      }
+    };
+    scrollToBottom();
+    const timer = setTimeout(scrollToBottom, 50);
+    return () => clearTimeout(timer);
+  }, [messages, streamedText, isGenerating]);
+
+  const openTeamsChat = useCallback((text: string) => {
+    const encodedMessage = encodeURIComponent(text);
+    const targetEmail = getTeamsRecipient(user?.branchName);
+    const url = `https://teams.microsoft.com/l/chat/0/0?users=${targetEmail}&message=${encodedMessage}`;
+    window.open(url, '_blank');
+  }, [user?.branchName]);
+
+  const handleClear = useCallback(() => {
+    autoTriggeredRef.current = false;
+    resetChat();
+    setQuery("");
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 50);
+  }, [resetChat]);
+
+  const handleSend = useCallback(() => {
+    if (!query.trim() || isGenerating) return;
+    sendMessage(query, user?.branchName);
+    setQuery("");
+  }, [query, isGenerating, sendMessage, user?.branchName]);
+
+  const renderResponseText = (text: string) => {
+    return text.split("\n").map((line, index) => {
+      if (line.trim() === "") return null;
+      
+      const parts = line.split(/(\*\*.*?\*\*)/g);
+      const content = parts.map((part, i) => {
+        if (part.startsWith("**") && part.endsWith("**")) {
+          return (
+            <strong key={i} className="font-bold text-foreground">
+              {part.slice(2, -2)}
+            </strong>
+          );
+        }
+        return part;
+      });
+
+      // Handle simple list items
+      if (line.trim().startsWith("- ") || line.trim().startsWith("* ")) {
+        return (
+          <li key={index} className="ml-4 list-disc text-sm text-foreground/90 font-medium leading-relaxed my-0.5">
+            {content}
+          </li>
+        );
+      }
+
+      // Handle numbered list items
+      if (/^\d+\.\s/.test(line.trim())) {
+        return (
+          <li key={index} className="ml-4 list-decimal text-sm text-foreground/90 font-medium leading-relaxed my-0.5">
+            {content}
+          </li>
+        );
+      }
+
+      return (
+        <p key={index} className="leading-relaxed text-sm text-foreground/90 font-medium py-1">
+          {content}
+        </p>
+      );
+    });
+  };
+
+  const showWelcome = messages.length === 0 && !streamedText && !isGenerating;
+
+  return (
+    <div className="h-full w-full flex flex-col overflow-hidden relative">
+      {/* Top Search Bar */}
+      <div className="flex items-center gap-3 border-b border-border/40 px-4 py-3 bg-muted/10 dark:bg-zinc-900/10 shrink-0">
+        <div className="text-blue-500 shrink-0">
+          <SparklesIcon className={cn("size-4", isGenerating && "animate-pulse")} />
+        </div>
+        <input
+          disabled={isGenerating}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              handleSend();
+            }
+          }}
+          placeholder="Pregunta a la IA sobre stock, vencimientos..."
+          ref={inputRef}
+          className="flex-1 bg-transparent border-none focus:outline-none text-sm font-semibold placeholder:text-muted-foreground/45 text-foreground leading-relaxed h-8 focus:ring-0"
+          value={query}
+        />
+        {(query || messages.length > 0 || isGenerating) && (
+          <button
+            onClick={handleClear}
+            className="p-1.5 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 transition-colors"
+            title="Limpiar chat"
+          >
+            <X className="size-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Proactive Alert Banner */}
+      {showAlertBanner && alert && (
+        <div className={cn(
+          "px-4 py-2.5 border-b text-xs flex items-center justify-between gap-3 animate-in slide-in-from-top duration-300",
+          alert.severity === 'critical' 
+            ? "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20" 
+            : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+        )}>
+          <div className="flex items-center gap-2 font-semibold">
+            <span>⚠️</span>
+            <span className="truncate">
+              {alert.type === 'discrepancy' && `Diferencias detectadas en laboratorio ${alert.details.laboratory}`}
+              {alert.type === 'stalled' && `Laboratorio estancado: ${alert.details.laboratory}`}
+              {alert.type === 'expiration' && `Producto por vencer: ${alert.details.productName}`}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="xs"
+              variant="ghost"
+              className={cn(
+                "h-6 px-2 text-[10px] font-bold rounded-md hover:bg-black/5 dark:hover:bg-white/5",
+                alert.severity === 'critical' ? "text-red-700 dark:text-red-300" : "text-amber-700 dark:text-amber-300"
+              )}
+              onClick={handleTriggerProactive}
             >
-                {/* Glass Highlight */}
-                <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-white/30" />
-            </div>
-
-            {/* Central Icon */}
-            <div className="relative z-10 flex items-center justify-center">
-                <MessageSquare className="w-10 h-10 text-white drop-shadow-md" strokeWidth={1.5} />
-            </div>
+              Analizar ahora
+            </Button>
+            <button
+              onClick={() => {
+                setShowAlertBanner(false);
+                dismissAlert();
+              }}
+              className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+            >
+              <X className="size-3" />
+            </button>
+          </div>
         </div>
-    );
-};
+      )}
 
-export function TeamsChatWidget() {
-    const { user } = useUser();
-    const [message, setMessage] = useState("");
-    const inputRef = useRef<HTMLInputElement>(null);
+      {/* Body Area */}
+      <div className="flex-1 overflow-hidden relative">
+        <ScrollArea className="h-full w-full">
+          <ScrollAreaViewport 
+            ref={viewportRef as any}
+            className="h-full w-full outline-none"
+            scrollFade
+          >
+            <div className="p-5 flex flex-col gap-4">
+              {showWelcome && (
+                <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="text-muted-foreground text-sm space-y-3 leading-relaxed">
+                    {renderResponseText(DEFAULT_WELCOME_MESSAGE)}
+                  </div>
 
-    const openTeamsChat = (text: string) => {
-        const encodedMessage = encodeURIComponent(text);
-        const targetEmail = getTeamsRecipient(user?.branchName);
-        const url = `https://teams.microsoft.com/l/chat/0/0?users=${targetEmail}&message=${encodedMessage}`;
-        window.open(url, '_blank');
-        setMessage("");
-    };
-
-    const handleSend = () => {
-        if (!message.trim()) return;
-        openTeamsChat(message);
-    };
-
-    const handleQuickAction = (actionMessage: string) => {
-        openTeamsChat(actionMessage);
-    };
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') handleSend();
-    };
-
-    return (
-        <div className="h-full flex flex-col no-scrollbar p-4 sm:p-5">
-            {/* Header: Clean & Integrated */}
-            <div className="flex flex-row items-center justify-between mb-4">
-                <span className="text-lg font-medium tracking-tight text-foreground">Chat Teams</span>
-            </div>
-
-            <div className="flex-1 flex flex-col relative z-10">
-                {/* Main Content Area */}
-                <div className="flex-1 flex flex-col items-center justify-center text-center -mt-4">
-                    <div className="scale-90 mb-4 sm:mb-6">
-                        <MotionOrb />
-                    </div>
-
-                    <div className="space-y-1">
-                        <h3 className="text-[19px] sm:text-[21px] font-bold text-foreground tracking-tight leading-tight">
-                            Hola {user?.name?.split(' ')[0] || 'Gonzalo'}
-                        </h3>
-                        <p className="text-muted-foreground text-[12px] sm:text-sm">
-                            ¿En qué puedo ayudarte hoy?
-                        </p>
-                    </div>
-                </div>
-
-                {/* Quick Actions Area: Row layout */}
-                <div className="flex flex-row items-center justify-between gap-2 px-1 mb-4">
-                    {QUICK_ACTIONS.map((action) => (
-                        <button
-                            key={action.label}
-                            onClick={() => handleQuickAction(action.message)}
-                            className={cn(
-                                "flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-full border text-[10px] font-bold transition-all active:scale-[0.95]",
-                                action.color
-                            )}
-                        >
-                            <action.icon className="w-3.5 h-3.5" />
-                            <span className="truncate">{action.label}</span>
-                        </button>
+                  <div className="mt-5 flex flex-wrap gap-2">
+                    {DEFAULT_LINKS.map((link, index) => (
+                      <Button
+                        key={`${link.route || link.target}-${index}`}
+                        onClick={() => {
+                          if (link.type === "navigate" && link.route) {
+                            navigate(link.route);
+                          } else if (link.type === "teams" && link.target) {
+                            openTeamsChat(link.target);
+                          }
+                        }}
+                        size="sm"
+                        variant="secondary"
+                        className="text-xs font-bold px-4 py-2 h-auto rounded-full hover:bg-muted border border-border/30 bg-muted/40 shadow-xs"
+                      >
+                        {link.label}
+                      </Button>
                     ))}
+                  </div>
                 </div>
+              )}
 
-                {/* Single Area Input: Reverted design */}
-                <div className="px-3 pb-4">
-                    <div className="bg-muted/40 border border-border/40 rounded-full flex items-center p-1 shadow-sm transition-all focus-within:border-primary/40 focus-within:ring-4 focus-within:ring-primary/5">
-                        <div className="flex items-center justify-center w-9 h-9 text-muted-foreground ml-1">
-                            <Paperclip className="w-5 h-5 opacity-60" />
-                        </div>
-                        
-                        <input
-                            ref={inputRef as any}
-                            value={message}
-                            onChange={(e) => setMessage(e.target.value)}
-                            onKeyDown={handleKeyDown as any}
-                            placeholder="Escribe tu mensaje..."
-                            className="flex-1 bg-transparent border-none focus:outline-none text-[13px] px-2 placeholder:text-muted-foreground/50"
-                        />
-                        
-                        <Button
-                            onClick={handleSend}
-                            size="icon"
-                            className={cn(
-                                "h-9 w-9 rounded-full transition-all flex items-center justify-center shadow-lg mr-0.5",
-                                message.trim() 
-                                    ? "bg-[#045598] hover:bg-[#03447a] text-white" 
-                                    : "bg-muted text-muted-foreground opacity-50 cursor-not-allowed"
-                            )}
-                            disabled={!message.trim()}
-                        >
-                            <Send className="h-5 w-5" strokeWidth={1.5} />
-                        </Button>
-                    </div>
+              {/* Chat History */}
+              {messages.map((msg, index) => (
+                <div 
+                  key={index} 
+                  className={cn(
+                    "flex flex-col gap-1 w-full animate-in fade-in duration-200",
+                    msg.role === "user" ? "items-end" : "items-start"
+                  )}
+                >
+                  <span className={cn(
+                    "text-xs font-semibold px-1 mb-1",
+                    msg.role === "user" ? "text-muted-foreground" : "text-blue-500 flex items-center gap-1.5"
+                  )}>
+                    {msg.role === "user" ? (
+                      "Tú"
+                    ) : (
+                      <>
+                        <SparklesIcon className="size-3.5" /> Asistente de Inventarios
+                      </>
+                    )}
+                  </span>
+                  
+                  <div className={cn(
+                    "text-sm rounded-2xl px-4 py-2.5 max-w-[85%] border leading-relaxed",
+                    msg.role === "user" 
+                      ? "bg-primary/10 dark:bg-zinc-800 text-foreground border-primary/10" 
+                      : "bg-muted/10 dark:bg-zinc-900/10 text-muted-foreground border-border/20 space-y-2"
+                  )}>
+                    {msg.role === "user" ? (
+                      msg.displayContent || msg.content
+                    ) : (
+                      renderResponseText(msg.content)
+                    )}
+                  </div>
                 </div>
+              ))}
+
+              {/* Generating Block */}
+              {isGenerating && (
+                <div className="flex flex-col gap-1 items-start w-full animate-in fade-in duration-200">
+                  <span className="text-xs font-semibold text-blue-500 px-1 flex items-center gap-1.5 mb-1">
+                    <SparklesIcon className="size-3.5 animate-pulse" />
+                    <TextSwap text={!streamedText ? THINKING_STATES[thinkingIndex] : "Asistente de Inventarios (Escribiendo...)"} />
+                  </span>
+
+                  {!streamedText ? (
+                    <div className="flex flex-col gap-2 w-full max-w-[85%] pt-1">
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-[92%]" />
+                      <Skeleton className="h-4 w-[60%]" />
+                    </div>
+                  ) : (
+                    <div className="text-sm rounded-2xl px-4 py-2.5 max-w-[85%] border bg-muted/10 dark:bg-zinc-900/10 text-muted-foreground border-border/20 space-y-2 relative">
+                      {renderResponseText(streamedText)}
+                      <span className="inline-block w-1.5 h-3.5 bg-blue-500 animate-pulse ml-1 align-middle" />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Error Display */}
+              {error && (
+                <div 
+                  aria-live="polite" 
+                  className="text-red-500 text-xs font-semibold p-4 rounded-xl border border-red-500/20 bg-red-500/5 animate-in shake duration-300" 
+                  role="alert"
+                >
+                  {error}
+                </div>
+              )}
+
+              {/* Action Buttons for the latest response */}
+              {!isGenerating && !showWelcome && (
+                <div className="mt-2 flex flex-wrap gap-2 animate-in fade-in slide-in-from-bottom-1 duration-300">
+                  {actions.length > 0 ? (
+                    actions.map((link, index) => (
+                      <Button
+                        key={`${link.route || link.target}-${index}`}
+                        onClick={() => {
+                          if (link.type === "navigate" && link.route) {
+                            navigate(link.route);
+                          } else if (link.type === "teams" && link.target) {
+                            openTeamsChat(link.target);
+                          }
+                        }}
+                        size="sm"
+                        variant="secondary"
+                        className="text-xs font-bold px-4 py-2 h-auto rounded-full hover:bg-muted border border-border/30 bg-muted/40 shadow-xs"
+                      >
+                        {link.label}
+                      </Button>
+                    ))
+                  ) : (
+                    // Default fallback buttons when no actions are returned
+                    DEFAULT_LINKS.slice(0, 3).map((link, index) => (
+                      <Button
+                        key={`${link.route || link.target}-${index}`}
+                        onClick={() => {
+                          if (link.type === "navigate" && link.route) {
+                            navigate(link.route);
+                          } else if (link.type === "teams" && link.target) {
+                            openTeamsChat(link.target);
+                          }
+                        }}
+                        size="sm"
+                        variant="secondary"
+                        className="text-xs font-bold px-4 py-2 h-auto rounded-full hover:bg-muted border border-border/30 bg-muted/40 shadow-xs"
+                      >
+                        {link.label}
+                      </Button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
-        </div>
-    );
-}
+          </ScrollAreaViewport>
+          <ScrollAreaScrollbar />
+        </ScrollArea>
+      </div>
+    </div>
+  );
+});

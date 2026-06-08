@@ -1,11 +1,28 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import { notify } from '@/lib/notifications';
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Group, GroupSeparator } from "@/components/ui/group";
 import { Card } from "@/components/ui/card";
-import { Chart as BarChart3, CheckCircle, DangerCircle as AlertCircle, Dollar, GraphDown as TrendingDown, GraphUp as TrendingUp, Restart as Loader2, Dollar as DollarSign, Magnifer as Search, Filter, MenuDots as MoreVertical, Widget as GridIcon, List as ListIcon, ClockCircle as Clock } from "@solar-icons/react";
+import {
+  Chart as BarChart3,
+  CheckCircle,
+  DangerCircle as AlertCircle,
+  Dollar,
+  GraphDown as TrendingDown,
+  GraphUp as TrendingUp,
+  Restart as Loader2,
+  Magnifer as Search,
+  Filter,
+  MenuDots as MoreVertical,
+  Widget as GridIcon,
+  List as ListIcon,
+  ClockCircle as Clock,
+  Download,
+  Document as DocumentIcon,
+  TrashBinMinimalistic as Trash,
+} from "@solar-icons/react";
 import { LaboratoryCard, LaboratoryStatus } from "@/components/LaboratoryCard";
 import { CounterAnimation } from "@/components/CounterAnimation";
 import { MetricCarousel } from "@/components/MetricCarousel";
@@ -15,13 +32,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { cn, normalizeString } from "@/lib/utils";
 import { ReportExporter } from "@/lib/reportExporter";
-import { 
-  Download, 
-  Document, 
-  Restart as RotateCcw, 
-  DangerCircle as AlertCircleIcon,
-  TrashBinMinimalistic as Trash
-} from "@solar-icons/react";
 import { BookOpen, Users2, DownloadCloud, PenTool, Plus, Edit } from 'lucide-react';
 import {
   Dialog,
@@ -70,6 +80,10 @@ import {
 } from "@/components/ui/combobox";
 import { SearchIcon } from "lucide-react";
 
+// Aliases for icons that are used under multiple names
+const RotateCcw = Loader2;
+const AlertCircleIcon = AlertCircle;
+
 type SortOption = "name-asc" | "name-desc" | "value-asc" | "value-desc";
 type FilterCategory = "MEDICAMENTOS" | "PERFUMERIA" | "ACCESORIOS" | "VARIOS";
 type StatusFilter = "all" | "controlado" | "pendiente" | "por_controlar";
@@ -111,6 +125,10 @@ export default function CyclicInventory() {
   const [isProcessingMassAction, setIsProcessingMassAction] = useState(false);
   const [lockStatus, setLockStatus] = useState<{ isLocked: boolean, reason: 'manual' | 'deadline' | null }>({ isLocked: false, reason: null });
   const [totalLedgerAdjustments, setTotalLedgerAdjustments] = useState(0);
+
+  // Chunk loading state
+  const [visibleCount, setVisibleCount] = useState(16);
+  const observerTargetRef = useRef<HTMLDivElement | null>(null);
 
   // Mass Reset State
   const [showMassResetDialog, setShowMassResetDialog] = useState(false);
@@ -208,17 +226,17 @@ export default function CyclicInventory() {
           const normCategory = normalizeString(lab.category || '');
 
           // Filtrar items por laboratorio y categoría
-          const labItems = branchInv.filter(item => 
-            normalizeString(item.laboratory) === normLabName && 
+          const labItems = branchInv.filter(item =>
+            normalizeString(item.laboratory) === normLabName &&
             normalizeString(item.category || '') === normCategory
           );
 
           const controlledItemsList = labItems.filter(i => i.status === 'controlled' || i.status === 'adjusted');
           const adjustmentCount = controlledItemsList.filter(i => i.quantity !== i.system_quantity).length;
-          
+
           const controlledCount = controlledItemsList.length;
-          const ira = controlledCount > 0 
-            ? ((controlledCount - adjustmentCount) / controlledCount) * 100 
+          const ira = controlledCount > 0
+            ? ((controlledCount - adjustmentCount) / controlledCount) * 100
             : 100;
 
           const systemValue = labItems.reduce((acc, item) => {
@@ -287,7 +305,7 @@ export default function CyclicInventory() {
         const rows = data.rows || [];
         // Columna O (índice 14) es el Laboratorio
         const laboratory = rows[1] ? String(rows[1][14] || '').trim() : '';
-        
+
         if (laboratory) {
           notify.info("Archivo Detectado", `Redirigiendo a ${laboratory}...`);
           // Almacenamos los datos temporalmente para que el detalle los pueda recoger tras la navegación
@@ -306,7 +324,7 @@ export default function CyclicInventory() {
   const categoryCounts = useMemo(() => {
     const counts = new Map<string, number>();
     CATEGORIES.forEach(cat => counts.set(cat, 0));
-    
+
     // Usamos mapa temporal para agrupar únicos de todo el dataset
     const groupedLocal = new Map<string, CyclicInventoryStats>();
     laboratories.forEach(lab => {
@@ -426,26 +444,58 @@ export default function CyclicInventory() {
     return result;
   }, [groupedLaboratories, searchTerm, sortBy, statusFilter]);
 
+  // Chunk loading: Slice the data to render only visible items
+  const renderedLabs = useMemo(() => {
+    return filteredAndSortedLabs.slice(0, visibleCount);
+  }, [filteredAndSortedLabs, visibleCount]);
+
+  // Reset visible chunk count when filters change
+  useEffect(() => {
+    setVisibleCount(16);
+  }, [searchTerm, categoryFilter, sortBy, statusFilter]);
+
+  // Infinite scroll observer
+  useEffect(() => {
+    const target = observerTargetRef.current;
+    if (!target) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + 16, filteredAndSortedLabs.length));
+        }
+      },
+      {
+        rootMargin: "250px", // Pre-load next chunk seamlessly before reaching the end
+      }
+    );
+
+    observer.observe(target);
+    return () => {
+      if (target) observer.unobserve(target);
+    };
+  }, [filteredAndSortedLabs.length, visibleCount]);
+
   // --- Mass Actions ---
 
   const handleMassSync = async () => {
     if (!user?.branchSheet || filteredAndSortedLabs.length === 0) return;
-    
+
     setIsProcessingMassAction(true);
     notify.info("Sincronización Masiva", `Sincronizando ${filteredAndSortedLabs.length} laboratorios...`);
-    
+
     try {
       // Usamos Promise.all con un pequeño delay o secuencial para no saturar Supabase
       // En este caso, como son RPCs, podemos dispararlos en batches
       const labsToSync = filteredAndSortedLabs.filter(l => l.status !== 'pendiente');
-      
+
       for (const lab of labsToSync) {
         await cyclicInventoryService.recomputeLabProgress(user.branchSheet, lab.labName);
       }
-      
+
       notify.success("Sincronización Completada", "Todos los laboratorios han sido actualizados.");
       // Recargar datos
-      window.location.reload(); 
+      window.location.reload();
     } catch (error) {
       console.error("Error in mass sync:", error);
       notify.error("Error", "Ocurrió un error durante la sincronización masiva.");
@@ -471,7 +521,7 @@ export default function CyclicInventory() {
 
     try {
       const labsToReset = filteredAndSortedLabs.filter(l => l.status !== 'pendiente');
-      
+
       for (const lab of labsToReset) {
         await cyclicInventoryService.deleteInventory(user.branchSheet, lab.labName);
         await cyclicInventoryService.deleteAdjustmentHistory(user.branchSheet, lab.labName);
@@ -498,7 +548,7 @@ export default function CyclicInventory() {
       notify.error("Error", "Debes seleccionar al menos un rubro.");
       return;
     }
-    
+
     if (!user?.branchSheet) {
       notify.error("Error", "No se identificó la sucursal activa.");
       return;
@@ -522,13 +572,13 @@ export default function CyclicInventory() {
       if (error) throw error;
 
       notify.success(
-        "Laboratorios Agregados", 
+        "Laboratorios Agregados",
         `Se asoció ${cleanLabName} a los rubros: ${newLabCategories.map(c => categoriesMap[c as CategoryKey] || c).join(', ')}.`
       );
       setShowAddLabDialog(false);
       setNewLabName("");
       setNewLabCategories(["MEDICAMENTOS"]);
-      
+
       // Refresh database records
       window.location.reload();
     } catch (error: any) {
@@ -564,19 +614,19 @@ export default function CyclicInventory() {
     setEditingLabOriginalName(labName);
     setNewLabName(labName);
     setSelectedEditLabObj({ label: labName, value: labName });
-    
+
     // Find categories this lab currently has in our local list of labs
     const existingCats = laboratories
       .filter(l => l.labName.trim().toUpperCase() === labName.toUpperCase())
       .map(l => l.category.trim().toUpperCase());
-    
+
     setNewLabCategories(existingCats.length > 0 ? existingCats : ["MEDICAMENTOS"]);
   };
 
   const handleUpdateLaboratory = async () => {
     const cleanOldName = editingLabOriginalName.trim().toUpperCase();
     const cleanNewName = newLabName.trim().toUpperCase();
-    
+
     if (!cleanOldName) {
       notify.error("Error", "No se ha seleccionado ningún laboratorio para editar.");
       return;
@@ -679,11 +729,11 @@ export default function CyclicInventory() {
       }
 
       notify.success(
-        "Laboratorio Actualizado", 
+        "Laboratorio Actualizado",
         `Se actualizó el laboratorio ${cleanNewName} con los rubros: ${desiredCats.map(c => categoriesMap[c as CategoryKey] || c).join(', ')}.`
       );
       setShowAddLabDialog(false);
-      
+
       // Refresh database records
       window.location.reload();
     } catch (error: any) {
@@ -742,14 +792,14 @@ export default function CyclicInventory() {
             <div className="flex flex-col gap-0.5">
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Diferencia Neta</span>
               <div className="flex items-baseline gap-2">
-                <span className={cn(
-                  "font-bold tracking-tight text-base",
-                  totalDifference < 0 ? "text-red-500 dark:text-red-400" : totalDifference > 0 ? "text-emerald-500" : "text-foreground"
-                )}>
-                  {totalDifference < 0 ? "-" : totalDifference > 0 ? "+" : ""}
-                  <span className="text-xs font-light opacity-50 mr-0.5">$</span>
-                  <CounterAnimation value={Math.abs(totalDifference)} />
-                </span>
+                <CounterAnimation 
+                  value={Math.abs(totalDifference)} 
+                  prefix={totalDifference < 0 ? "-$" : totalDifference > 0 ? "+$" : "$"}
+                  className={cn(
+                    "font-bold tracking-tight text-base",
+                    totalDifference < 0 ? "text-red-500 dark:text-red-400" : totalDifference > 0 ? "text-emerald-500" : "text-foreground"
+                  )}
+                />
                 <span className={cn("text-[10px] font-bold", totalDifference < 0 ? "text-red-500/80" : totalDifference > 0 ? "text-emerald-500/80" : "text-muted-foreground")}>
                   {totalDifference < 0 ? "↓" : totalDifference > 0 ? "↑" : ""}{netTrend.value}%
                 </span>
@@ -762,10 +812,11 @@ export default function CyclicInventory() {
             <div className="flex flex-col gap-0.5">
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Valor Absoluto</span>
               <div className="flex items-baseline gap-2">
-                <span className="font-bold tracking-tight text-base text-foreground">
-                  <span className="text-xs font-light opacity-50 mr-0.5">$</span>
-                  <CounterAnimation value={totalAbsoluteDifference} />
-                </span>
+                <CounterAnimation 
+                  value={totalAbsoluteDifference} 
+                  prefix="$"
+                  className="font-bold tracking-tight text-base text-foreground"
+                />
                 <span className="text-[10px] font-bold text-muted-foreground/60">
                   {absoluteTrend.value}%
                 </span>
@@ -778,12 +829,13 @@ export default function CyclicInventory() {
             <div className="flex flex-col gap-0.5">
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Faltante Total</span>
               <div className="flex items-baseline gap-2">
-                <span className="font-bold tracking-tight text-base text-red-500 dark:text-red-400">
-                  <span className="text-xs font-light opacity-50 mr-0.5">$</span>
-                  <CounterAnimation value={Math.abs(totalNegative)} />
-                </span>
-                <span className="text-[10px] font-bold text-red-500/80">
-                  ↓{negativeTrend.value}%
+                <CounterAnimation 
+                  value={Math.abs(totalNegative)} 
+                  prefix="$"
+                  className="font-bold tracking-tight text-base text-red-500 dark:text-red-400"
+                />
+                <span className={cn("text-[10px] font-bold", totalNegative !== 0 ? "text-red-500/80" : "text-muted-foreground")}>
+                  {totalNegative !== 0 ? "↓" : ""}{negativeTrend.value}%
                 </span>
               </div>
             </div>
@@ -794,12 +846,13 @@ export default function CyclicInventory() {
             <div className="flex flex-col gap-0.5">
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Sobrante Total</span>
               <div className="flex items-baseline gap-2">
-                <span className="font-bold tracking-tight text-base text-emerald-500">
-                  <span className="text-xs font-light opacity-50 mr-0.5">$</span>
-                  <CounterAnimation value={totalPositive} />
-                </span>
-                <span className="text-[10px] font-bold text-emerald-500/80">
-                  ↑{positiveTrend.value}%
+                <CounterAnimation 
+                  value={totalPositive} 
+                  prefix="$"
+                  className="font-bold tracking-tight text-base text-emerald-500"
+                />
+                <span className={cn("text-[10px] font-bold", totalPositive !== 0 ? "text-emerald-500/80" : "text-muted-foreground")}>
+                  {totalPositive !== 0 ? "↑" : ""}{positiveTrend.value}%
                 </span>
               </div>
             </div>
@@ -892,135 +945,135 @@ export default function CyclicInventory() {
         <div className="flex items-center gap-3 flex-1 justify-end">
           {/* Barra de búsqueda fija como InputGroup */}
           <div className="flex-1 max-w-[240px] md:max-w-xs transition-all">
-              <InputGroup className="h-10 w-full bg-popover border-input shadow-xs">
-                  <InputGroupAddon className="bg-transparent border-none">
-                      <Search className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-                  </InputGroupAddon>
-                  <InputGroupInput 
-                      aria-label="Search" 
-                      placeholder="Buscar por nombre..." 
-                      type="search"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="bg-transparent border-none focus-visible:ring-0 text-sm h-full"
-                  />
-              </InputGroup>
+            <InputGroup className="h-10 w-full bg-popover border-input shadow-xs">
+              <InputGroupAddon className="bg-transparent border-none">
+                <Search className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
+              </InputGroupAddon>
+              <InputGroupInput
+                aria-label="Search"
+                placeholder="Buscar por nombre..."
+                type="search"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="bg-transparent border-none focus-visible:ring-0 text-sm h-full"
+              />
+            </InputGroup>
           </div>
 
           <Group aria-label="Acciones de tabla" className="shrink-0">
-              {/* Botón Alerta / Info */}
-              <Button variant="outline" size="icon" className="group">
-                  <AlertCircle className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-              </Button>
-              <GroupSeparator />
-              <Menu>
-                  <MenuTrigger render={
-                      <Button variant="outline" size="icon" className="group">
-                          <Filter className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-                      </Button>
-                  } />
-                  <MenuPopup align="end" className="w-52 p-2">
-                    <MenuGroup>
-                      <MenuGroupLabel>Ordenar por</MenuGroupLabel>
-                      <MenuItem onClick={() => setSortBy("name-asc")}>
-                        <Search className="w-4 h-4 text-muted-foreground" />
-                        <span>Nombre (A-Z)</span>
-                      </MenuItem>
-                      <MenuItem onClick={() => setSortBy("name-desc")}>
-                        <Search className="w-4 h-4 text-muted-foreground" />
-                        <span>Nombre (Z-A)</span>
-                      </MenuItem>
-                      <MenuItem onClick={() => setSortBy("value-desc")}>
-                        <TrendingUp className="w-4 h-4 text-success" />
-                        <span>Mayor Diferencia</span>
-                      </MenuItem>
-                      <MenuItem onClick={() => setSortBy("value-asc")}>
-                        <TrendingDown className="w-4 h-4 text-destructive" />
-                        <span>Menor Diferencia</span>
-                      </MenuItem>
-                    </MenuGroup>
-                    
-                    <MenuSeparator className="my-2" />
-                    
-                    <MenuGroup>
-                      <MenuGroupLabel>Filtrar por Estado</MenuGroupLabel>
-                      <MenuCheckboxItem checked={statusFilter === "all"} onCheckedChange={() => setStatusFilter("all")}>
-                        <div className="flex items-center gap-3">
-                          <ListIcon className="w-4 h-4 text-muted-foreground" />
-                          <span>Todas</span>
-                        </div>
-                      </MenuCheckboxItem>
-                      <MenuCheckboxItem checked={statusFilter === "controlado"} onCheckedChange={() => setStatusFilter("controlado")}>
-                        <div className="flex items-center gap-3">
-                          <CheckCircle className="w-4 h-4 text-success" />
-                          <span>Controlados</span>
-                        </div>
-                      </MenuCheckboxItem>
-                      <MenuCheckboxItem checked={statusFilter === "por_controlar"} onCheckedChange={() => setStatusFilter("por_controlar")}>
-                        <div className="flex items-center gap-3">
-                          <Clock className="w-4 h-4 text-purple-500" />
-                          <span>En Proceso</span>
-                        </div>
-                      </MenuCheckboxItem>
-                      <MenuCheckboxItem checked={statusFilter === "pendiente"} onCheckedChange={() => setStatusFilter("pendiente")}>
-                        <div className="flex items-center gap-3">
-                          <AlertCircle className="w-4 h-4 text-red-500" />
-                          <span>Pendientes</span>
-                        </div>
-                      </MenuCheckboxItem>
-                    </MenuGroup>
-                  </MenuPopup>
-              </Menu>
-              <GroupSeparator />
-              <Menu>
-                  <MenuTrigger render={
-                      <Button variant="outline" size="icon" className="group" disabled={isProcessingMassAction}>
-                          <MoreVertical className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-                      </Button>
-                  } />
-                  <MenuPopup align="end" className="w-64 p-2">
-                    <MenuGroup>
-                      <MenuGroupLabel>Reportes (Sucursal)</MenuGroupLabel>
-                      <MenuItem onClick={() => ReportExporter.exportSummaryToPDF(filteredAndSortedLabs, user?.branchSheet || "Sucursal")}>
-                        <Document className="w-4 h-4 text-muted-foreground" />
-                        <span>Descargar Reporte PDF</span>
-                      </MenuItem>
-                      <MenuItem onClick={() => ReportExporter.exportSummaryToExcel(filteredAndSortedLabs, user?.branchSheet || "Sucursal")}>
-                        <Download className="w-4 h-4 text-muted-foreground" />
-                        <span>Descargar Planilla Excel</span>
-                      </MenuItem>
-                    </MenuGroup>
+            {/* Botón Alerta / Info */}
+            <Button variant="outline" size="icon" className="group">
+              <AlertCircle className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+            </Button>
+            <GroupSeparator />
+            <Menu>
+              <MenuTrigger render={
+                <Button variant="outline" size="icon" className="group">
+                  <Filter className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                </Button>
+              } />
+              <MenuPopup align="end" className="w-52 p-2">
+                <MenuGroup>
+                  <MenuGroupLabel>Ordenar por</MenuGroupLabel>
+                  <MenuItem onClick={() => setSortBy("name-asc")}>
+                    <Search className="w-4 h-4 text-muted-foreground" />
+                    <span>Nombre (A-Z)</span>
+                  </MenuItem>
+                  <MenuItem onClick={() => setSortBy("name-desc")}>
+                    <Search className="w-4 h-4 text-muted-foreground" />
+                    <span>Nombre (Z-A)</span>
+                  </MenuItem>
+                  <MenuItem onClick={() => setSortBy("value-desc")}>
+                    <TrendingUp className="w-4 h-4 text-success" />
+                    <span>Mayor Diferencia</span>
+                  </MenuItem>
+                  <MenuItem onClick={() => setSortBy("value-asc")}>
+                    <TrendingDown className="w-4 h-4 text-destructive" />
+                    <span>Menor Diferencia</span>
+                  </MenuItem>
+                </MenuGroup>
 
-                    {user?.role === 'admin' && (
-                      <>
-                        <MenuSeparator className="my-2" />
-                        <MenuGroup>
-                          <MenuGroupLabel>Administración</MenuGroupLabel>
-                          <MenuItem onClick={handleOpenAddDialog} className="text-foreground focus:text-foreground">
-                            <Plus className="w-4 h-4 text-muted-foreground" />
-                            <span>Agregar laboratorio</span>
-                          </MenuItem>
-                          <MenuItem onClick={handleOpenEditDialog} className="text-foreground focus:text-foreground">
-                            <Edit className="w-4 h-4 text-muted-foreground" />
-                            <span>Editar laboratorio</span>
-                          </MenuItem>
-                          <MenuItem onClick={handleMassSync} className="text-primary focus:text-primary">
-                            <RotateCcw className="w-4 h-4" />
-                            <span>Sincronizar todo (Forzar)</span>
-                          </MenuItem>
-                          <MenuItem onClick={prepareMassReset} variant="destructive" className="text-destructive focus:text-destructive">
-                            <Trash className="w-4 h-4" />
-                            <span>Reiniciar sucursal</span>
-                          </MenuItem>
-                        </MenuGroup>
-                      </>
-                    )}
-                  </MenuPopup>
-              </Menu>
+                <MenuSeparator className="my-2" />
+
+                <MenuGroup>
+                  <MenuGroupLabel>Filtrar por Estado</MenuGroupLabel>
+                  <MenuCheckboxItem checked={statusFilter === "all"} onCheckedChange={() => setStatusFilter("all")}>
+                    <div className="flex items-center gap-3">
+                      <ListIcon className="w-4 h-4 text-muted-foreground" />
+                      <span>Todas</span>
+                    </div>
+                  </MenuCheckboxItem>
+                  <MenuCheckboxItem checked={statusFilter === "controlado"} onCheckedChange={() => setStatusFilter("controlado")}>
+                    <div className="flex items-center gap-3">
+                      <CheckCircle className="w-4 h-4 text-success" />
+                      <span>Controlados</span>
+                    </div>
+                  </MenuCheckboxItem>
+                  <MenuCheckboxItem checked={statusFilter === "por_controlar"} onCheckedChange={() => setStatusFilter("por_controlar")}>
+                    <div className="flex items-center gap-3">
+                      <Clock className="w-4 h-4 text-purple-500" />
+                      <span>En Proceso</span>
+                    </div>
+                  </MenuCheckboxItem>
+                  <MenuCheckboxItem checked={statusFilter === "pendiente"} onCheckedChange={() => setStatusFilter("pendiente")}>
+                    <div className="flex items-center gap-3">
+                      <AlertCircle className="w-4 h-4 text-red-500" />
+                      <span>Pendientes</span>
+                    </div>
+                  </MenuCheckboxItem>
+                </MenuGroup>
+              </MenuPopup>
+            </Menu>
+            <GroupSeparator />
+            <Menu>
+              <MenuTrigger render={
+                <Button variant="outline" size="icon" className="group" disabled={isProcessingMassAction}>
+                  <MoreVertical className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                </Button>
+              } />
+              <MenuPopup align="end" className="w-64 p-2">
+                <MenuGroup>
+                  <MenuGroupLabel>Reportes (Sucursal)</MenuGroupLabel>
+                  <MenuItem onClick={() => ReportExporter.exportSummaryToPDF(filteredAndSortedLabs, user?.branchSheet || "Sucursal")}>
+                    <DocumentIcon className="w-4 h-4 text-muted-foreground" />
+                    <span>Descargar Reporte PDF</span>
+                  </MenuItem>
+                  <MenuItem onClick={() => ReportExporter.exportSummaryToExcel(filteredAndSortedLabs, user?.branchSheet || "Sucursal")}>
+                    <Download className="w-4 h-4 text-muted-foreground" />
+                    <span>Descargar Planilla Excel</span>
+                  </MenuItem>
+                </MenuGroup>
+
+                {user?.role === 'admin' && (
+                  <>
+                    <MenuSeparator className="my-2" />
+                    <MenuGroup>
+                      <MenuGroupLabel>Administración</MenuGroupLabel>
+                      <MenuItem onClick={handleOpenAddDialog} className="text-foreground focus:text-foreground">
+                        <Plus className="w-4 h-4 text-muted-foreground" />
+                        <span>Agregar laboratorio</span>
+                      </MenuItem>
+                      <MenuItem onClick={handleOpenEditDialog} className="text-foreground focus:text-foreground">
+                        <Edit className="w-4 h-4 text-muted-foreground" />
+                        <span>Editar laboratorio</span>
+                      </MenuItem>
+                      <MenuItem onClick={handleMassSync} className="text-primary focus:text-primary">
+                        <RotateCcw className="w-4 h-4" />
+                        <span>Sincronizar todo (Forzar)</span>
+                      </MenuItem>
+                      <MenuItem onClick={prepareMassReset} variant="destructive" className="text-destructive focus:text-destructive">
+                        <Trash className="w-4 h-4" />
+                        <span>Reiniciar sucursal</span>
+                      </MenuItem>
+                    </MenuGroup>
+                  </>
+                )}
+              </MenuPopup>
+            </Menu>
           </Group>
 
-          <Tabs 
-            value={viewMode} 
+          <Tabs
+            value={viewMode}
             onValueChange={(val) => setViewMode(val as 'grid' | 'list')}
             className="items-center shrink-0"
           >
@@ -1039,7 +1092,7 @@ export default function CyclicInventory() {
       {/* Contenido Principal */}
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredAndSortedLabs.map((lab) => (
+          {renderedLabs.map((lab) => (
             <LaboratoryCard
               key={lab.labName}
               name={lab.labName}
@@ -1071,8 +1124,8 @@ export default function CyclicInventory() {
                 </TableRow>
               </TableHeader>
               <TableBody className="bg-background rounded-l-xl rounded-r-xl overflow-hidden shadow-xs/5">
-                {filteredAndSortedLabs.map((lab) => (
-                  <TableRow 
+                {renderedLabs.map((lab) => (
+                  <TableRow
                     key={lab.labName}
                     className="cursor-pointer border-t border-border/40 first:border-none"
                     onClick={() => navigate(`/cyclic-inventory/${encodeURIComponent(lab.labName)}`)}
@@ -1084,9 +1137,9 @@ export default function CyclicInventory() {
                       <div className="flex justify-center">
                         <div className={cn(
                           "size-1.5 rounded-full shadow-sm",
-                          lab.status === 'controlado' ? "bg-emerald-500" : 
-                          lab.status === 'por_controlar' ? "bg-blue-500" : 
-                          "bg-amber-500"
+                          lab.status === 'controlado' ? "bg-emerald-500" :
+                            lab.status === 'por_controlar' ? "bg-blue-500" :
+                              "bg-amber-500"
                         )} />
                       </div>
                     </TableCell>
@@ -1119,9 +1172,9 @@ export default function CyclicInventory() {
                     <TableCell className="text-right">
                       <span className={cn(
                         "font-mono font-medium tabular-nums",
-                        lab.differenceValue > 0 ? "text-emerald-600 dark:text-emerald-400" : 
-                        lab.differenceValue < 0 ? "text-red-600 dark:text-red-400" : 
-                          "text-muted-foreground"
+                        lab.differenceValue > 0 ? "text-emerald-600 dark:text-emerald-400" :
+                          lab.differenceValue < 0 ? "text-red-600 dark:text-red-400" :
+                            "text-muted-foreground"
                       )}>
                         {lab.differenceValue !== 0 ? (lab.differenceValue > 0 ? "+" : "") + new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(lab.differenceValue) : "–"}
                       </span>
@@ -1137,7 +1190,7 @@ export default function CyclicInventory() {
                           <span className={lab.progress > 0 ? "text-foreground" : "text-muted-foreground"}>{lab.progress}%</span>
                         </div>
                         <div className="h-1 bg-muted/40 rounded-full overflow-hidden">
-                          <div 
+                          <div
                             className="h-full bg-foreground/70"
                             style={{ width: `${lab.progress}%` }}
                           />
@@ -1150,6 +1203,13 @@ export default function CyclicInventory() {
             </Table>
           </FramePanel>
         </Frame>
+      )}
+
+      {/* Target for infinite scroll chunk loading */}
+      {visibleCount < filteredAndSortedLabs.length && (
+        <div ref={observerTargetRef} className="h-10 flex items-center justify-center py-8">
+          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        </div>
       )}
 
       {/* Mass Reset Confirmation Dialog */}
@@ -1170,7 +1230,7 @@ export default function CyclicInventory() {
               <p className="text-xs font-medium text-muted-foreground uppercase mb-1">Para confirmar, escribe:</p>
               <p className="text-lg font-black tracking-widest text-center select-none">{massResetChallenge}</p>
             </div>
-            
+
             <Input
               value={massResetInput}
               onChange={(e) => setMassResetInput(e.target.value.toUpperCase())}
@@ -1183,8 +1243,8 @@ export default function CyclicInventory() {
             <Button variant="outline" onClick={() => setShowMassResetDialog(false)}>
               Cancelar
             </Button>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               onClick={handleMassReset}
               disabled={massResetInput !== massResetChallenge}
             >
@@ -1219,7 +1279,7 @@ export default function CyclicInventory() {
               )}
             </DialogDescription>
           </DialogHeader>
-          <Form 
+          <Form
             onSubmit={(e) => {
               e.preventDefault();
               if (isEditMode) {
@@ -1227,14 +1287,14 @@ export default function CyclicInventory() {
               } else {
                 handleAddLaboratory();
               }
-            }} 
+            }}
             className="contents"
           >
             <DialogPanel className="grid gap-5">
               {isEditMode && (
                 <Field>
                   <FieldLabel className="text-sm font-semibold text-foreground/90">Seleccionar Laboratorio a Editar</FieldLabel>
-                  <Combobox 
+                  <Combobox
                     items={comboboxItems}
                     value={selectedEditLabObj}
                     onValueChange={(val: { label: string, value: string } | null) => {
@@ -1289,12 +1349,12 @@ export default function CyclicInventory() {
               </Field>
               <Field>
                 <FieldLabel className="text-sm font-semibold text-foreground/90">Rubros / Categorías</FieldLabel>
-                <Select 
-                  value={newLabCategories} 
+                <Select
+                  value={newLabCategories}
                   onValueChange={setNewLabCategories}
                   multiple
                 >
-                  <SelectTrigger 
+                  <SelectTrigger
                     disabled={isEditMode && !selectedEditLab}
                     className="w-full h-11 px-4 rounded-xl bg-popover text-foreground border border-input focus:border-primary/50 transition-colors disabled:opacity-50"
                   >
@@ -1313,7 +1373,7 @@ export default function CyclicInventory() {
               <DialogClose render={<Button variant="outline" className="h-10 rounded-xl" />} onClick={() => setShowAddLabDialog(false)}>
                 Cancelar
               </DialogClose>
-              <Button 
+              <Button
                 type="submit"
                 disabled={isAddingLab || !newLabName.trim() || newLabCategories.length === 0 || (isEditMode && !selectedEditLab)}
                 className="bg-primary hover:bg-primary/95 text-primary-foreground font-semibold h-10 rounded-xl px-5"

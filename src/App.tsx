@@ -1,6 +1,6 @@
 import { HashRouter, Route, Routes, Outlet, useLocation, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useEffect, lazy, Suspense } from "react";
+import { useEffect, lazy, Suspense, useState, useRef } from "react";
 import { AnimatePresence } from "framer-motion";
 
 import { AppLayout } from "./components/AppLayout";
@@ -368,6 +368,314 @@ const AppRoutes = () => {
 import { WindowManagerProvider } from "./contexts/WindowManagerContext";
 import { useAndroidBackButton } from "./hooks/useAndroidBackButton";
 
+// Toggle to temporarily pause/suspend the entire application UI
+const MAINTENANCE_MODE = true;
+
+// Playable Chrome T-Rex Dino Game
+const ChromeDinoGame = () => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [gameState, setGameState] = useState<'START' | 'PLAYING' | 'GAME_OVER'>('START');
+  const [score, setScore] = useState(0);
+  const [highScore, setHighScore] = useState(() => {
+    return parseInt(localStorage.getItem('dino_high_score') || '0', 10);
+  });
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Detect dark mode
+    const isDark = document.documentElement.classList.contains('dark') || document.body.classList.contains('dark');
+    const colorTheme = isDark ? '#e8eaed' : '#535353';
+    const groundColor = isDark ? '#5c5f62' : '#d2d2d2';
+
+    // Set canvas dimensions
+    canvas.width = 600;
+    canvas.height = 150;
+
+    let animationFrameId: number;
+    let isJumping = false;
+    const groundY = 130;
+    const dinoHeight = 36;
+    const dinoWidth = 34;
+    const startDinoY = groundY - dinoHeight; // 94
+    let dinoY = startDinoY; 
+    let dinoVy = 0;
+    const gravity = 0.5;
+    const jumpStrength = -9.5;
+
+    // Obstacles
+    interface Obstacle {
+      x: number;
+      width: number;
+      height: number;
+      speed: number;
+    }
+    let obstacles: Obstacle[] = [];
+    let obstacleTimer = 0;
+    let currentScore = 0;
+    let speedMultiplier = 1;
+
+    // Dino animation frame
+    let dinoFrame = 0;
+
+    // Handle inputs
+    const handleJump = () => {
+      if (gameState === 'START') {
+        setGameState('PLAYING');
+      } else if (gameState === 'PLAYING' && !isJumping) {
+        dinoVy = jumpStrength;
+        isJumping = true;
+      } else if (gameState === 'GAME_OVER') {
+        // Reset game
+        dinoY = startDinoY;
+        dinoVy = 0;
+        isJumping = false;
+        obstacles = [];
+        obstacleTimer = 0;
+        currentScore = 0;
+        speedMultiplier = 1;
+        setScore(0);
+        setGameState('PLAYING');
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' || e.code === 'ArrowUp') {
+        e.preventDefault();
+        handleJump();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    
+    // Add event listener to canvas for clicks/taps
+    const onCanvasClick = (e: MouseEvent) => {
+      e.preventDefault();
+      handleJump();
+    };
+    const onCanvasTouch = (e: TouchEvent) => {
+      e.preventDefault();
+      handleJump();
+    };
+
+    canvas.addEventListener('click', onCanvasClick);
+    canvas.addEventListener('touchstart', onCanvasTouch);
+
+    // Drawing functions
+    const drawDino = (ctx: CanvasRenderingContext2D, y: number, frame: number) => {
+      ctx.fillStyle = colorTheme;
+      const x = 50; // Dino fixed X
+      
+      // Head
+      ctx.fillRect(x + 16, y + 0, 16, 4); // Top of head
+      ctx.fillRect(x + 14, y + 4, 20, 4); // Forehead / snout
+      ctx.fillRect(x + 14, y + 8, 20, 4); // Eye level
+      ctx.fillRect(x + 14, y + 12, 12, 4); // Jaw
+      ctx.fillRect(x + 18, y + 16, 12, 2); // Mouth bottom
+      
+      // Eye
+      ctx.fillStyle = isDark ? '#202124' : '#ffffff';
+      ctx.fillRect(x + 18, y + 4, 2, 2);
+      ctx.fillStyle = colorTheme;
+
+      // Neck & Body
+      ctx.fillRect(x + 8, y + 12, 8, 14); // Back / neck
+      ctx.fillRect(x + 0, y + 16, 20, 12); // Main body
+      ctx.fillRect(x + 0, y + 20, 24, 6);  // Chest
+      
+      // Tail
+      ctx.fillRect(x - 4, y + 14, 4, 8);
+      ctx.fillRect(x - 8, y + 16, 4, 6);
+      
+      // Arms
+      ctx.fillRect(x + 22, y + 18, 4, 2);
+      ctx.fillRect(x + 22, y + 20, 2, 2);
+
+      // Legs
+      if (gameState === 'PLAYING') {
+        const legToggle = Math.floor(frame / 6) % 2 === 0;
+        if (legToggle) {
+          // Leg 1 down
+          ctx.fillRect(x + 6, y + 28, 4, 6);
+          ctx.fillRect(x + 6, y + 34, 6, 2);
+          // Leg 2 bent
+          ctx.fillRect(x + 14, y + 28, 4, 4);
+        } else {
+          // Leg 1 bent
+          ctx.fillRect(x + 6, y + 28, 4, 4);
+          // Leg 2 down
+          ctx.fillRect(x + 14, y + 28, 4, 6);
+          ctx.fillRect(x + 14, y + 34, 6, 2);
+        }
+      } else {
+        // Standing
+        ctx.fillRect(x + 6, y + 28, 4, 6);
+        ctx.fillRect(x + 6, y + 34, 6, 2);
+        ctx.fillRect(x + 14, y + 28, 4, 6);
+        ctx.fillRect(x + 14, y + 34, 6, 2);
+      }
+    };
+
+    const drawCactus = (ctx: CanvasRenderingContext2D, x: number, width: number, height: number) => {
+      ctx.fillStyle = colorTheme;
+      // Main stem
+      ctx.fillRect(x + width / 3, groundY - height, width / 3, height);
+      // Left arm
+      ctx.fillRect(x, groundY - height * 0.7, width / 3, 4);
+      ctx.fillRect(x, groundY - height * 0.7 - 6, 4, 6);
+      // Right arm
+      ctx.fillRect(x + width * 2/3, groundY - height * 0.8, width / 3, 4);
+      ctx.fillRect(x + width - 4, groundY - height * 0.8 - 8, 4, 8);
+    };
+
+    const drawGround = (ctx: CanvasRenderingContext2D) => {
+      ctx.strokeStyle = groundColor;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, groundY);
+      ctx.lineTo(600, groundY);
+      ctx.stroke();
+
+      // Ground details
+      ctx.fillStyle = groundColor;
+      ctx.fillRect(100, groundY + 5, 5, 1);
+      ctx.fillRect(250, groundY + 8, 12, 1);
+      ctx.fillRect(400, groundY + 4, 8, 1);
+      ctx.fillRect(550, groundY + 6, 4, 1);
+    };
+
+    // Game loop
+    const update = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw ground
+      drawGround(ctx);
+
+      // Physics/Logic
+      if (gameState === 'PLAYING') {
+        dinoFrame++;
+        
+        // Gravity
+        dinoVy += gravity;
+        dinoY += dinoVy;
+
+        if (dinoY >= startDinoY) {
+          dinoY = startDinoY;
+          dinoVy = 0;
+          isJumping = false;
+        }
+
+        // Spawn obstacles
+        obstacleTimer--;
+        if (obstacleTimer <= 0) {
+          const height = 18 + Math.random() * 20;
+          const width = 12 + Math.random() * 8;
+          obstacles.push({
+            x: 600,
+            width,
+            height,
+            speed: 4.5 * speedMultiplier
+          });
+          obstacleTimer = 80 + Math.random() * 70;
+        }
+
+        // Move and draw obstacles
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+          const obs = obstacles[i];
+          obs.x -= obs.speed;
+
+          drawCactus(ctx, obs.x, obs.width, obs.height);
+
+          // Check collision (AABB)
+          const dinoLeft = 50 - 2;
+          const dinoRight = 50 + 26;
+          const dinoTop = dinoY + 2;
+          const dinoBottom = dinoY + dinoHeight;
+
+          const obsLeft = obs.x;
+          const obsRight = obs.x + obs.width;
+          const obsTop = groundY - obs.height;
+          const obsBottom = groundY;
+
+          if (
+            dinoRight > obsLeft &&
+            dinoLeft < obsRight &&
+            dinoBottom > obsTop &&
+            dinoTop < obsBottom
+          ) {
+            setGameState('GAME_OVER');
+            if (currentScore > highScore) {
+              setHighScore(currentScore);
+              localStorage.setItem('dino_high_score', currentScore.toString());
+            }
+          }
+
+          // Remove off-screen obstacles
+          if (obs.x + obs.width < 0) {
+            obstacles.splice(i, 1);
+            currentScore += 10;
+            setScore(currentScore);
+            
+            if (currentScore % 100 === 0) {
+              speedMultiplier += 0.08;
+            }
+          }
+        }
+      } else {
+        // Draw static obstacles
+        obstacles.forEach(obs => {
+          drawCactus(ctx, obs.x, obs.width, obs.height);
+        });
+      }
+
+      // Draw Dino
+      drawDino(ctx, dinoY, dinoFrame);
+
+      // UI messages on canvas
+      if (gameState === 'GAME_OVER') {
+        ctx.fillStyle = colorTheme;
+        ctx.font = 'bold 13px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('G A M E   O V E R', 300, 50);
+        ctx.font = '10px monospace';
+        ctx.fillText('TOCÁ O ESPACIO PARA REINICIAR', 300, 75);
+      }
+
+      animationFrameId = requestAnimationFrame(update);
+    };
+
+    update();
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('keydown', handleKeyDown);
+      canvas.removeEventListener('click', onCanvasClick);
+      canvas.removeEventListener('touchstart', onCanvasTouch);
+    };
+  }, [gameState, highScore]);
+
+  return (
+    <div className="flex flex-col items-center select-none w-full max-w-[600px] mx-auto">
+      <div className="flex justify-end w-full mb-1 font-mono text-xs tracking-wider font-bold opacity-60 text-right">
+        <span className="mr-4">HI {highScore.toString().padStart(5, '0')}</span>
+        <span>{score.toString().padStart(5, '0')}</span>
+      </div>
+      <canvas 
+        ref={canvasRef} 
+        className="w-full aspect-[4/1] bg-transparent cursor-pointer border-b border-slate-300 dark:border-slate-700"
+      />
+      {gameState === 'START' && (
+        <p className="mt-4 text-xs font-mono opacity-60 animate-pulse text-center">
+          [ Presioná ESPACIO o tocá el juego para saltar ]
+        </p>
+      )}
+    </div>
+  );
+};
+
 const App = () => {
 
   useEffect(() => {
@@ -380,11 +688,43 @@ const App = () => {
       }
     };
 
-    initialize();
+    if (!MAINTENANCE_MODE) {
+      initialize();
+    }
   }, []);
 
 
   /* Splash screen removed */
+
+  if (MAINTENANCE_MODE) {
+    return (
+      <div className="min-h-screen bg-[#f7f7f7] dark:bg-[#202124] text-[#535353] dark:text-[#e8eaed] font-sans flex flex-col justify-center items-center p-6 select-none md:p-12 transition-colors duration-200">
+        <div className="max-w-[600px] w-full text-left flex flex-col">
+          {/* Dino Game inside canvas */}
+          <div className="mb-12 w-full">
+            <ChromeDinoGame />
+          </div>
+          
+          <h1 className="text-xl md:text-2xl font-medium mb-5 font-sans tracking-wide">
+            Servidor en mantenimiento
+          </h1>
+          
+          <div className="text-sm opacity-85 leading-relaxed font-sans mb-8">
+            <p className="mb-3">Actualmente estamos trabajando en la reparación del servidor y el restablecimiento de la conexión con la página.</p>
+            <p className="mb-3">Mientras tanto, puedes:</p>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>Esperar unos minutos. Te avisaremos en cuanto el sistema se encuentre online nuevamente.</li>
+              <li>Jugar un rato con el Dino T-Rex para hacer más corta la espera.</li>
+            </ul>
+          </div>
+          
+          <div className="text-xs opacity-50 font-mono tracking-wider">
+            ERR_PLATFORM_TEMPORARILY_PAUSED_FOR_MAINTENANCE
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <QueryClientProvider client={queryClient}>

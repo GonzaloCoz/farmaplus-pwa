@@ -1,40 +1,21 @@
-import { useEffect, useState } from "react";
-import { motion, useSpring, useTransform } from "framer-motion";
+import { memo } from "react";
 
 interface CounterAnimationProps {
     value: number;
-    duration?: number;
+    duration?: number; // Kept for backward compatibility with existing component signatures
     className?: string;
     prefix?: string;
     suffix?: string;
     decimals?: number;
 }
 
-export function CounterAnimation({
+export const CounterAnimation = memo(function CounterAnimation({
     value,
-    duration = 1,
     className = "",
     prefix = "",
     suffix = "",
     decimals = 0,
 }: CounterAnimationProps) {
-    const [displayValue, setDisplayValue] = useState(0);
-    const spring = useSpring(0, { duration: duration * 1000 });
-    const display = useTransform(spring, (latest) =>
-        latest.toFixed(decimals)
-    );
-
-    useEffect(() => {
-        spring.set(value);
-    }, [spring, value]);
-
-    useEffect(() => {
-        const unsubscribe = display.on("change", (latest) => {
-            setDisplayValue(parseFloat(latest));
-        });
-        return unsubscribe;
-    }, [display]);
-
     const formatNumber = (num: number) => {
         if (decimals === 0) {
             return Math.round(num).toLocaleString();
@@ -45,11 +26,27 @@ export function CounterAnimation({
         });
     };
 
+    const formattedValue = formatNumber(value);
+    const fullString = `${prefix}${formattedValue}${suffix}`;
+    const charArray = fullString.split("");
+
     return (
-        <motion.span className={className}>
-            {prefix}
-            {formatNumber(displayValue)}
-            {suffix}
-        </motion.span>
+        <span
+            key={fullString}
+            className={`t-digit-group is-animating font-bold tabular-nums ${className}`}
+        >
+            {charArray.map((char, index) => {
+                const stagger = index > 0 ? index : undefined;
+                return (
+                    <span
+                        key={index}
+                        className="t-digit"
+                        data-stagger={stagger}
+                    >
+                        {char}
+                    </span>
+                );
+            })}
+        </span>
     );
-}
+});

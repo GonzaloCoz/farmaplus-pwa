@@ -3,11 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { useUser } from "@/contexts/UserContext";
 import { getTeamsRecipient } from "@/config/teamsConfig";
 import { cn } from "@/lib/utils";
+import { hasPermission } from "@/config/permissions";
 import {
   HelpCircle as CircleQuestionMarkIcon,
   Sparkles as SparklesIcon,
   X,
-  CornerDownLeft as CornerDownLeftIcon
+  CornerDownLeft as CornerDownLeftIcon,
+  Lock as LockIcon
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -36,6 +38,7 @@ export const TeamsChatWidget = memo(function TeamsChatWidget() {
   const { user } = useUser();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
+  const isAIEnabled = hasPermission(user, 'USE_AI_CHAT');
   
   const {
     messages,
@@ -54,8 +57,10 @@ export const TeamsChatWidget = memo(function TeamsChatWidget() {
   // Pre-load the Ollama model into memory as soon as the chat widget mounts.
   // This eliminates the cold-start delay on the user's first message.
   useEffect(() => {
-    aiChatService.warmup();
-  }, []);
+    if (isAIEnabled) {
+      aiChatService.warmup();
+    }
+  }, [isAIEnabled]);
 
   const handleTriggerProactive = useCallback(() => {
     if (!alert) return;
@@ -188,6 +193,38 @@ export const TeamsChatWidget = memo(function TeamsChatWidget() {
   };
 
   const showWelcome = messages.length === 0 && !streamedText && !isGenerating;
+
+  // ─── Locked state for users without USE_AI_CHAT permission ───
+  if (!isAIEnabled) {
+    return (
+      <div className="h-full w-full flex flex-col overflow-hidden relative">
+        {/* Top bar — same visual as normal widget */}
+        <div className="flex items-center gap-3 border-b border-border/40 px-4 py-3 bg-muted/10 dark:bg-zinc-900/10 shrink-0">
+          <div className="text-muted-foreground/40 shrink-0">
+            <SparklesIcon className="size-4" />
+          </div>
+          <input
+            disabled
+            placeholder="Pregunta a la IA sobre stock, vencimientos..."
+            className="flex-1 bg-transparent border-none focus:outline-none text-sm font-semibold placeholder:text-muted-foreground/25 text-foreground leading-relaxed h-8 focus:ring-0 cursor-not-allowed"
+          />
+        </div>
+
+        {/* Locked body */}
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center select-none">
+          <div className="w-10 h-10 rounded-full bg-muted/50 flex items-center justify-center">
+            <LockIcon className="size-4 text-muted-foreground/50" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-foreground/60">Asistente IA</p>
+            <p className="text-xs text-muted-foreground/50 mt-1 leading-relaxed max-w-[200px]">
+              Esta función no está disponible en tu perfil actualmente.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full w-full flex flex-col overflow-hidden relative">

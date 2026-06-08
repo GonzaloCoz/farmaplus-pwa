@@ -8,7 +8,8 @@ export type Permission =
     | 'IMPERSONATE_BRANCH'
     | 'EDIT_DASHBOARD_LAYOUT'
     | 'MANAGE_CALENDAR_EVENTS'
-    | 'MANAGE_USERS'; // Special for gcoz
+    | 'MANAGE_USERS'  // Special for gcoz
+    | 'USE_AI_CHAT';  // Only enabled for gcoz
 
 export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     'admin': [
@@ -43,6 +44,11 @@ export function hasPermission(user: User | null, permission: Permission): boolea
     // 2. Fallback to role-based permissions
     // Special override for gcoz for MANAGE_USERS is less needed if we persist it, but kept for safety
     if (permission === 'MANAGE_USERS' && user.username.toLowerCase() === 'gcoz') {
+        return true;
+    }
+
+    // AI Chat is exclusively available for gcoz
+    if (permission === 'USE_AI_CHAT' && user.username.toLowerCase() === 'gcoz') {
         return true;
     }
 

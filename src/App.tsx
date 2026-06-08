@@ -369,7 +369,7 @@ import { WindowManagerProvider } from "./contexts/WindowManagerContext";
 import { useAndroidBackButton } from "./hooks/useAndroidBackButton";
 
 // Toggle to temporarily pause/suspend the entire application UI
-const MAINTENANCE_MODE = true;
+const MAINTENANCE_MODE = false;
 
 // Playable Chrome T-Rex Dino Game
 const ChromeDinoGame = () => {

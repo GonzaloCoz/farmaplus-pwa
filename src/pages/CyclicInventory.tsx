@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { notify } from '@/lib/notifications';
 import { useNavigate } from "react-router-dom";
@@ -128,7 +128,7 @@ export default function CyclicInventory() {
 
   // Chunk loading state
   const [visibleCount, setVisibleCount] = useState(16);
-  const observerTargetRef = useRef<HTMLDivElement | null>(null);
+  const observerRef = useRef<IntersectionObserver | null>(null);
 
   // Mass Reset State
   const [showMassResetDialog, setShowMassResetDialog] = useState(false);
@@ -444,6 +444,29 @@ export default function CyclicInventory() {
     return result;
   }, [groupedLaboratories, searchTerm, sortBy, statusFilter]);
 
+  // Callback ref for IntersectionObserver - must be defined after filteredAndSortedLabs
+  const observerTargetRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (observerRef.current) observerRef.current.disconnect();
+
+      if (!node) return;
+
+      observerRef.current = new IntersectionObserver(
+        (entries) => {
+          if (entries[0].isIntersecting) {
+            setVisibleCount((prev) => Math.min(prev + 16, filteredAndSortedLabs.length));
+          }
+        },
+        {
+          rootMargin: "250px",
+        }
+      );
+
+      observerRef.current.observe(node);
+    },
+    [filteredAndSortedLabs.length]
+  );
+
   // Chunk loading: Slice the data to render only visible items
   const renderedLabs = useMemo(() => {
     return filteredAndSortedLabs.slice(0, visibleCount);
@@ -453,28 +476,6 @@ export default function CyclicInventory() {
   useEffect(() => {
     setVisibleCount(16);
   }, [searchTerm, categoryFilter, sortBy, statusFilter]);
-
-  // Infinite scroll observer
-  useEffect(() => {
-    const target = observerTargetRef.current;
-    if (!target) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          setVisibleCount((prev) => Math.min(prev + 16, filteredAndSortedLabs.length));
-        }
-      },
-      {
-        rootMargin: "250px", // Pre-load next chunk seamlessly before reaching the end
-      }
-    );
-
-    observer.observe(target);
-    return () => {
-      if (target) observer.unobserve(target);
-    };
-  }, [filteredAndSortedLabs.length, visibleCount]);
 
   // --- Mass Actions ---
 

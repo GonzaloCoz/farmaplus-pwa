@@ -82,13 +82,16 @@ self.onmessage = async (e: MessageEvent) => {
             if (eanMap.has(ean)) {
                 const index = eanMap.get(ean);
                 const existingItem = { ...finalItems[index] };
+                const newSystemQty = Number(row[4]) || 0;
 
                 // Si ya fue controlado o ajustado, mantenemos su estado y cantidad contada
                 // Pero actualizamos los datos básicos del sistema que vienen del nuevo Excel
+                // Si el producto aún está pendiente, actualizamos también la cantidad física contada.
                 finalItems[index] = {
                     ...existingItem,
                     name: row[3],
-                    systemQuantity: Number(row[4]) || 0,
+                    systemQuantity: newSystemQty,
+                    countedQuantity: existingItem.status === 'pending' ? newSystemQty : existingItem.countedQuantity,
                     cost: costValue,
                     category: category
                 };

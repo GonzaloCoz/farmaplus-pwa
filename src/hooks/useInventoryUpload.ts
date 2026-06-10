@@ -133,10 +133,12 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                     if (eanMap.has(ean)) {
                         const index = eanMap.get(ean);
                         const existingItem = { ...finalItems[index] };
+                        const newSystemQty = Number(row[4]) || 0;
                         finalItems[index] = {
                             ...existingItem,
                             name: row[3],
-                            systemQuantity: Number(row[4]) || 0,
+                            systemQuantity: newSystemQty,
+                            countedQuantity: existingItem.status === 'pending' ? newSystemQty : existingItem.countedQuantity,
                             cost: costValue,
                             category: category
                         };
@@ -422,10 +424,12 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 if (eanMap.has(ean)) {
                     const index = eanMap.get(ean);
                     const existingItem = { ...finalItems[index] };
+                    const newSystemQty = Number(row[4]) || 0;
                     finalItems[index] = {
                         ...existingItem,
                         name: row[3],
-                        systemQuantity: Number(row[4]) || 0,
+                        systemQuantity: newSystemQty,
+                        countedQuantity: existingItem.status === 'pending' ? newSystemQty : existingItem.countedQuantity,
                         cost: costValue,
                         category: category
                     };

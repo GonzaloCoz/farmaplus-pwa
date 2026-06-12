@@ -19,6 +19,7 @@ import { QuickActionsWidget } from "@/components/dashboard/widgets/QuickActionsW
 import { CountdownWidget } from "@/components/dashboard/widgets/CountdownWidget";
 import { CategoryProgressWidget } from "@/components/dashboard/widgets/CategoryProgressWidget";
 import { CalendarWidget } from "@/components/dashboard/widgets/CalendarWidget";
+import { TrendsChartWidget } from "@/components/dashboard/widgets/TrendsChartWidget";
 import { hasPermission } from "@/config/permissions";
 import { User } from "@/contexts/UserContext";
 
@@ -54,7 +55,7 @@ export const WidgetRenderer = memo(({
         case 'smart-analyst':
             return <SmartAnalystWidget />;
         case 'metrics-carousel':
-            return <MetricsCarouselWidget metrics={metrics} />;
+            return <TrendsChartWidget type="positive" />;
         case 'inventory-summary':
             return <InventorySummaryWidget />;
         case 'inventory-alerts':
@@ -87,6 +88,8 @@ export const WidgetRenderer = memo(({
             return <ActivityTimelineWidget />;
         case 'category-distribution':
             return <CategoryDistributionWidget />;
+        case 'trends-chart':
+            return <TrendsChartWidget type="negative" />;
         case 'monthly-goals':
             return <MonthlyGoalsWidget />;
         case 'sync-status':

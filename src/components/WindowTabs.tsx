@@ -1,9 +1,8 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { Plus, Undo, Redo } from "lucide-react";
 import { Magnifer as Search, CloseCircle as X, MenuDots as MoreHorizontal, Widget as LayoutDashboard, Database, ClipboardList, Widget as Package, Document as FileText, Chart as BarChart2, ShieldCheck, Widget as Microscope, TrashBinMinimalistic as Trash2 } from "@solar-icons/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import Logo from "@/assets/logo.svg";
 import { useWindowManager } from "@/contexts/WindowManagerContext";
 import {
     DropdownMenu,
@@ -41,10 +40,22 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
 
     return (
         <div className="flex items-center w-full h-full gap-2 px-2 lg:px-4 overflow-hidden bg-transparent">
-            {/* Logo */}
-            <div className="flex items-center justify-center h-10 w-10 shrink-0 bg-muted/50 border border-border/40 rounded-xl">
-                <img src={Logo} alt="Logo" className="h-[20px] w-auto opacity-100" />
-            </div>
+            {/* Navigation Buttons (Back & Forward) */}
+            <button
+                onClick={() => window.history.back()}
+                className="flex items-center justify-center h-10 w-10 shrink-0 bg-muted/50 border border-border/40 rounded-xl hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                title="Atrás"
+            >
+                <Undo className="w-5 h-5" />
+            </button>
+
+            <button
+                onClick={() => window.history.forward()}
+                className="flex items-center justify-center h-10 w-10 shrink-0 bg-muted/50 border border-border/40 rounded-xl hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                title="Adelante"
+            >
+                <Redo className="w-5 h-5" />
+            </button>
 
             {/* Search Button */}
             <Button

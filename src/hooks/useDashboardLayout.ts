@@ -37,11 +37,24 @@ const DEFAULT_WIDGETS: Widget[] = [
     {
         id: 'metrics-carousel',
         type: 'metrics-carousel',
-        title: 'Métricas Financieras',
-        description: 'Diferencia neta, negativos y positivos',
+        title: 'Sobrantes de Inventario',
+        description: 'Evolución mensual de diferencias positivas',
         icon: Dollar,
         visible: true,
         order: 1,
+        size: 'small',
+        span: 1,
+        row: 'top',
+        mandatory: true
+    },
+    {
+        id: 'trends-chart',
+        type: 'trends-chart',
+        title: 'Faltantes de Inventario',
+        description: 'Evolución mensual de diferencias negativas',
+        icon: History,
+        visible: true,
+        order: 2,
         size: 'small',
         span: 1,
         row: 'top',
@@ -255,7 +268,7 @@ const DEFAULT_WIDGETS: Widget[] = [
 ];
 
 export function useDashboardLayout(userId?: string) {
-    const storageKey = `dashboard - layout - v5 - ${userId || 'default'} `; // v5 para forzar reset con nuevo grid
+    const storageKey = `dashboard - layout - v7 - ${userId || 'default'} `; // v7 para forzar reset con nuevo grid
 
     const [widgets, setWidgets] = useState<Widget[]>(() => {
         try {

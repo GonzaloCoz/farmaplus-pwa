@@ -124,6 +124,12 @@ export default defineConfig(({ mode }) => {
       alias: {
         "@": path.resolve(__dirname, "./src"),
       },
+      dedupe: ['react', 'react-dom']
+    },
+    server: {
+      watch: {
+        ignored: ['**/android/**', '**/dist/**']
+      }
     },
     build: {
       rollupOptions: {
@@ -153,6 +159,11 @@ export default defineConfig(({ mode }) => {
       target: 'es2015',
     },
     optimizeDeps: {
+      entries: [
+        'index.html',
+        '!android/**',
+        '!dist/**',
+      ],
       include: [
         'react',
         'react-dom',

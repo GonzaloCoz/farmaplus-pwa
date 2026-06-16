@@ -4,6 +4,12 @@ if (savedTheme === "dark") {
   document.documentElement.classList.add("dark");
 }
 
+// Registrar clase si estamos en Electron
+const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
+if (isElectron) {
+  document.documentElement.classList.add("is-electron");
+}
+
 import ReactDOM from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";

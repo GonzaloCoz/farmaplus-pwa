@@ -319,6 +319,18 @@
   .dark body {
     background-color: var(--background);
   }
+
+  html.is-electron body, html.is-electron .dark body {
+    background-color: transparent !important;
+  }
+
+  html.is-electron {
+    --layout-tray: rgba(18, 18, 18, 0.55);
+    --layout-wrapper: rgba(22, 22, 24, 0.45);
+    --layout-frame: rgba(24, 24, 27, 0.4);
+    --layout-content: rgba(30, 30, 30, 0.4);
+    --layout-card: rgba(39, 39, 42, 0.5);
+  }
 }
 
 @layer components {
@@ -615,7 +627,7 @@
 }
 
 
-/* Transitions.dev — Text states swap */
+/* Transitions.dev ï¿½ Text states swap */
 :root {
   --text-swap-dur: 150ms;
   --text-swap-translate-y: 4px;

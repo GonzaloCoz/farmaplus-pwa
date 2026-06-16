@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
-import { Plus, Undo, Redo } from "lucide-react";
+import { Plus, Undo, Redo, Minus, Square, X as XIcon } from "lucide-react";
 import { Magnifer as Search, CloseCircle as X, MenuDots as MoreHorizontal, Widget as LayoutDashboard, Database, ClipboardList, Widget as Package, Document as FileText, Chart as BarChart2, ShieldCheck, Widget as Microscope, TrashBinMinimalistic as Trash2 } from "@solar-icons/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -22,6 +22,7 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
     const { user } = useUser();
     const { windows, activeWindowId, openWindow, closeWindow, setActiveWindow, closeAllWindows } = useWindowManager();
 
+    const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
 
     const handleCreateJob = () => {
         openWindow('/', undefined, undefined, true);
@@ -39,20 +40,22 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
     };
 
     return (
-        <div className="flex items-center w-full h-full gap-2 px-2 lg:px-4 overflow-hidden bg-transparent">
+        <div className="flex items-center w-full h-full gap-1.5 px-2 overflow-hidden bg-transparent">
             {/* Navigation Buttons (Back & Forward) */}
             <button
                 onClick={() => window.history.back()}
-                className="flex items-center justify-center h-10 w-10 shrink-0 bg-muted/50 border border-border/40 rounded-xl hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                className="flex items-center justify-center h-8 w-8 shrink-0 bg-muted/50 border border-border/40 rounded-lg hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                 title="Atrás"
+                style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
             >
                 <Undo className="w-5 h-5" />
             </button>
 
             <button
                 onClick={() => window.history.forward()}
-                className="flex items-center justify-center h-10 w-10 shrink-0 bg-muted/50 border border-border/40 rounded-xl hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                className="flex items-center justify-center h-8 w-8 shrink-0 bg-muted/50 border border-border/40 rounded-lg hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                 title="Adelante"
+                style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
             >
                 <Redo className="w-5 h-5" />
             </button>
@@ -60,8 +63,9 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
             {/* Search Button */}
             <Button
                 variant="secondary"
-                className="!h-10 px-4 gap-2 shrink-0 rounded-xl font-light text-[14px] transition-colors"
+                className="!h-8 px-3 gap-1.5 shrink-0 rounded-lg font-light text-[13px] transition-colors"
                 onClick={onSearchClick}
+                style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
             >
                 <Search className="w-[18px] h-[18px]" />
                 <span>Buscar</span>
@@ -70,8 +74,9 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
             {/* Create Job Button */}
             <Button
                 variant="secondary"
-                className="!h-10 px-4 gap-2 shrink-0 rounded-xl font-light text-[14px] transition-colors"
+                className="!h-8 px-3 gap-1.5 shrink-0 rounded-lg font-light text-[13px] transition-colors"
                 onClick={handleCreateJob}
+                style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
             >
                 <Plus className="w-[18px] h-[18px]" />
                 <span>Nueva</span>
@@ -81,7 +86,9 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
             <div className="w-[1px] h-6 bg-border/40 mx-2 shrink-0" />
 
             {/* Tabs List */}
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2 mask-linear-fade flex-1">
+            <div 
+                className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2 mask-linear-fade flex-1"
+            >
                 {windows.map((win) => {
                     const isActive = activeWindowId === win.id;
                     const isSpecialGreen = win.path === '/inventory-reminder';
@@ -90,13 +97,14 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
                         <div
                             key={win.id}
                             className={cn(
-                                "group relative flex items-center h-10 px-4 gap-3 rounded-xl transition-all cursor-pointer shrink-0 select-none",
+                                "group relative flex items-center h-8 px-3 gap-2 rounded-lg transition-all cursor-pointer shrink-0 select-none",
                                 isSpecialGreen 
                                     ? "bg-[#0e5e4d] text-white hover:bg-[#0c5041]"
                                     : isActive
                                         ? "bg-secondary text-secondary-foreground"
                                         : "bg-transparent text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
                             )}
+                            style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
                             onClick={() => handleTabClick(win.id, win.path)}
                         >
                             <span className={cn(
@@ -132,7 +140,7 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
                 {/* More Button */}
                 <DropdownMenu>
                     <DropdownMenuTrigger render={
-                        <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl shrink-0 text-muted-foreground bg-muted/40 hover:bg-muted/80 border border-border/40 data-[open]:bg-muted/80">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg shrink-0 text-muted-foreground bg-muted/40 hover:bg-muted/80 border border-border/40 data-[open]:bg-muted/80" style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}>
                             <MoreHorizontal className="w-[18px] h-[18px]" />
                         </Button>
                     } />
@@ -146,11 +154,45 @@ export function WindowTabs({ onSearchClick }: { onSearchClick: () => void }) {
             </div>
 
             {/* Right Side Actions */}
-            <div className="flex items-center gap-2 ml-4 shrink-0">
+            <div 
+                className="flex items-center gap-2 ml-4 shrink-0" 
+            >
                 <TrainingCenterButton />
                 <NotificationsMenu />
                 <div className="w-[1px] h-4 bg-border/40 mx-1" />
                 <ProfileDropdown />
+                
+                {isElectron && (
+                    <>
+                        <div className="w-[1px] h-4 bg-border/40 mx-1 shrink-0" />
+                        <div className="flex items-center gap-1 shrink-0">
+                            <button
+                                onClick={() => (window as any).electronAPI.minimize()}
+                                className="flex items-center justify-center h-8 w-8 shrink-0 text-white hover:bg-white/10 rounded-md transition-colors cursor-pointer"
+                                style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
+                                title="Minimizar"
+                            >
+                                <Minus className="w-5 h-5" />
+                            </button>
+                            <button
+                                onClick={() => (window as any).electronAPI.maximize()}
+                                className="flex items-center justify-center h-8 w-8 shrink-0 text-white hover:bg-white/10 rounded-md transition-colors cursor-pointer"
+                                style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
+                                title="Maximizar"
+                            >
+                                <Square className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => (window as any).electronAPI.close()}
+                                className="flex items-center justify-center h-8 w-8 shrink-0 text-white hover:bg-red-600 transition-colors rounded-md cursor-pointer"
+                                style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
+                                title="Cerrar"
+                            >
+                                <XIcon className="w-5 h-5" />
+                            </button>
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );

@@ -78,6 +78,7 @@ export function NotificationsMenu() {
   const [open, setOpen] = useState(false);
   const { notifications, unreadCount, markAsRead, markAllAsRead, deleteNotification } = useNotifications();
   const { user } = useUser();
+  const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
   const [activeTab, setActiveTab] = useState<NotifTab>('todas');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -164,9 +165,10 @@ export function NotificationsMenu() {
         <button
           onClick={() => setOpen(true)}
           aria-label="Notificaciones"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-muted/50 border border-border/40 hover:bg-muted/80 dark:hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+          style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
         >
-          <Bell className={`w-4 h-4 ${unreadCount > 0 ? 'text-accent' : 'text-muted-foreground'}`} />
+          <Bell className={`w-[18px] h-[18px] ${unreadCount > 0 ? 'text-accent' : 'text-secondary-foreground'}`} />
           {unreadCount > 0 && (
             <span
               className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-accent text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-background shadow-sm"

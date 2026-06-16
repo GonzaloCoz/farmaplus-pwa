@@ -2,9 +2,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { Widget as Grid3x3, Restart as RotateCcw, CheckCircle as Check, Pen as Edit3 } from "@solar-icons/react";
-import { cn } from "@/lib/utils";
+import { cn, normalizeString } from "@/lib/utils";
 import { useUser } from "@/contexts/UserContext";
 import { hasPermission } from "@/config/permissions";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface DashboardHeaderProps {
     isEditMode: boolean;
@@ -37,6 +38,33 @@ export function DashboardHeader({
         return "Buenas noches";
     };
 
+    const getBranchAwards = (branchName?: string) => {
+        if (!branchName) return [];
+        const normalized = normalizeString(branchName);
+        const awards: { emoji: string; tooltip: string }[] = {
+            "DEVOTO III": [
+                { emoji: "🏆", tooltip: "Doble mérito: 1.º en finalizar y menor diferencia de stock. ¡Felicitaciones!" },
+            ],
+            "BOEDO": [
+                { emoji: "🥈", tooltip: "2.º Puesto en finalización. ¡Gracias por su excelente compromiso y trabajo!" },
+                { emoji: "🥉", tooltip: "3.º Puesto en menor diferencia de stock. ¡Gran precisión!" },
+            ],
+            "VILLA BALLESTER II": [
+                { emoji: "🥉", tooltip: "3.º Puesto en finalización. ¡Gracias por su excelente compromiso y trabajo!" },
+            ],
+            "BELGRANO VIII": [
+                { emoji: "🥈", tooltip: "2.º Puesto en menor diferencia de stock. ¡Gran precisión!" },
+            ],
+            "RECOLETA IV": [
+                { emoji: "🏅", tooltip: "4.º Puesto en menor diferencia de stock. ¡Excelente control de inventario!" },
+            ],
+            "PALERMO III": [
+                { emoji: "🏅", tooltip: "5.º Puesto en menor diferencia de stock. ¡Excelente control de inventario!" },
+            ],
+        }[normalized] || [];
+        return awards;
+    };
+
     return (
         <motion.div variants={itemVariants} className="space-y-1 pt-4 lg:pt-0">
             {/* Date */}
@@ -52,7 +80,28 @@ export function DashboardHeader({
                             — {user.branchName}
                         </span>
                     )}
-                    <span className="wave ml-2 hidden lg:inline-block">👋</span>
+                    {(() => {
+                        const awards = getBranchAwards(user?.branchName);
+                        if (awards.length > 0) {
+                            return awards.map((award, idx) => (
+                                <Tooltip key={idx}>
+                                    <TooltipTrigger render={
+                                        <span className="ml-1 hidden lg:inline-block cursor-help select-none">
+                                            {award.emoji}
+                                        </span>
+                                    } />
+                                    <TooltipContent>
+                                        <p className="text-xs font-normal text-popover-foreground">
+                                            {award.tooltip}
+                                        </p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            ));
+                        }
+                        return (
+                            <span className="wave ml-2 hidden lg:inline-block">👋</span>
+                        );
+                    })()}
                 </h1>
 
                 <div className="flex gap-2">

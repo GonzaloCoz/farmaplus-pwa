@@ -15,14 +15,26 @@ import { AppUpdater } from "@/components/AppUpdater";
 
 export function AppLayout() {
   const { windows, activeWindowId } = useWindowManager();
+  const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
 
   return (
-    <div className="isolate relative flex h-screen w-full bg-[var(--body-bg)] overflow-hidden transition-all duration-500">
-      <div className="flex-1 h-full relative p-0 lg:p-2">
+    <div className={cn(
+      "isolate relative flex h-screen w-full overflow-hidden transition-all duration-500",
+      isElectron ? "bg-transparent" : "bg-[var(--body-bg)]"
+    )}>
+      <div className={cn("flex-1 h-full relative p-0", !isElectron && "lg:p-2")}>
         {/* Outer container - Flat on mobile, framed on desktop */}
-        <div className="relative h-full w-full bg-[var(--layout-tray)] rounded-none lg:rounded-lg lg:shadow-sm lg:border border-border/40 overflow-hidden flex flex-col">
+        <div className={cn(
+          "relative h-full w-full overflow-hidden flex flex-col",
+          isElectron 
+            ? "bg-transparent border-none rounded-xl shadow-none" 
+            : "bg-[var(--layout-tray)] rounded-none lg:rounded-lg lg:shadow-sm lg:border border-border/40"
+        )}>
           {/* Header inside outer container */}
-          <div className="hidden lg:block px-2 pt-1">
+          <div className={cn(
+            "hidden lg:block",
+            isElectron ? "px-2 pt-1 pb-0" : "px-2 pt-1"
+          )}>
             <DesktopHeader />
           </div>
 

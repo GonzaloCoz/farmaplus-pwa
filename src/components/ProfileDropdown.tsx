@@ -13,6 +13,7 @@ export function ProfileDropdown() {
     const { user, logout } = useUser();
     const navigate = useNavigate();
     const [open, setOpen] = useState(false);
+    const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
 
     const getInitials = () => {
         if (!user) return "??";
@@ -44,9 +45,10 @@ export function ProfileDropdown() {
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger render={
                 <button
-                    className="group flex items-center justify-center h-10 w-10 rounded-xl overflow-hidden hover:ring-2 hover:ring-primary/20 transition-all bg-muted/50 border border-border/40"
+                    className="group flex items-center justify-center h-8 w-8 rounded-lg overflow-hidden transition-all bg-secondary hover:bg-secondary/80 text-secondary-foreground"
+                    style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
                 >
-                    <div className="h-full w-full flex items-center justify-center text-[11px] font-bold text-blue-600 transition-colors group-hover:bg-blue-600 group-hover:text-white">
+                    <div className="h-full w-full flex items-center justify-center text-[10px] font-bold text-secondary-foreground">
                         {initials}
                     </div>
                 </button>

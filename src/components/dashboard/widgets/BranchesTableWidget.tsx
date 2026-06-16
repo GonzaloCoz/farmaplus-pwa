@@ -41,6 +41,7 @@ import { Magnifer as Search, AltArrowUp as ChevronUp, AltArrowDown as ChevronDow
 import * as XLSX from 'xlsx';
 import { cn, normalizeString } from '@/lib/utils';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useUser } from '@/contexts/UserContext';
 import { useUserBranches } from '@/hooks/useUserBranches';
 import { useQuery } from '@tanstack/react-query';
@@ -82,6 +83,39 @@ interface BranchSummary {
     adjustmentsValue: number;
     status: 'controlado' | 'por_controlar' | 'pendiente';
 }
+
+// Branch awards system - each branch can have multiple awards
+interface BranchAward {
+    emoji: string;
+    tooltip: string;
+}
+
+const BRANCH_AWARDS: Record<string, BranchAward[]> = {
+    "DEVOTO III": [
+        { emoji: "🏆", tooltip: "Doble mérito: 1.º en finalizar y menor diferencia de stock. ¡Felicitaciones!" },
+    ],
+    "BOEDO": [
+        { emoji: "🥈", tooltip: "2.º Puesto en finalización. ¡Gracias por su excelente compromiso y trabajo!" },
+        { emoji: "🥉", tooltip: "3.º Puesto en menor diferencia de stock. ¡Gran precisión!" },
+    ],
+    "VILLA BALLESTER II": [
+        { emoji: "🥉", tooltip: "3.º Puesto en finalización. ¡Gracias por su excelente compromiso y trabajo!" },
+    ],
+    "BELGRANO VIII": [
+        { emoji: "🥈", tooltip: "2.º Puesto en menor diferencia de stock. ¡Gran precisión!" },
+    ],
+    "RECOLETA IV": [
+        { emoji: "🏅", tooltip: "4.º Puesto en menor diferencia de stock. ¡Excelente control de inventario!" },
+    ],
+    "PALERMO III": [
+        { emoji: "🏅", tooltip: "5.º Puesto en menor diferencia de stock. ¡Excelente control de inventario!" },
+    ],
+};
+
+const getBranchAwards = (branchName: string): BranchAward[] => {
+    const normalized = normalizeString(branchName || '');
+    return BRANCH_AWARDS[normalized] || [];
+};
 
 // Status dot color mapping (matching p-table-4 flights pattern)
 const getStatusColor = (status: BranchSummary['status']) => {
@@ -172,11 +206,33 @@ const columns: ColumnDef<BranchSummary>[] = [
         accessorKey: 'branchName',
         header: 'Sucursal',
         size: 180,
-        cell: ({ row }) => (
-            <div className="font-medium">
-                {row.getValue('branchName')}
-            </div>
-        ),
+        cell: ({ row }) => {
+            const branchName = row.getValue('branchName') as string;
+            const awards = getBranchAwards(branchName);
+
+            return (
+                <div className="font-medium flex items-center gap-1">
+                    <span>{branchName}</span>
+                    {awards.map((award, idx) => (
+                        <Tooltip key={idx}>
+                            <TooltipTrigger render={
+                                <span 
+                                    className="text-base cursor-help select-none"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    {award.emoji}
+                                </span>
+                            } />
+                            <TooltipContent>
+                                <p className="text-xs font-normal">
+                                    {award.tooltip}
+                                </p>
+                            </TooltipContent>
+                        </Tooltip>
+                    ))}
+                </div>
+            );
+        },
     },
     {
         accessorKey: 'deploymentDate',

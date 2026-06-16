@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, dialog, screen } = require('electron');
 const { exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -11,12 +11,67 @@ let tray = null;
 let isQuitting = false;
 let watcher = null;
 
+// ── Custom maximize state (avoids native DWM maximize that breaks Mica) ──
+let isCustomMaximized = false;
+let savedBounds = null;
+
+// ── IPC Handlers for custom window controls ──
+ipcMain.on('window-minimize', () => {
+  if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.on('window-maximize', () => {
+  if (!mainWindow) return;
+
+  if (isCustomMaximized) {
+    // Restore to previously saved bounds
+    isCustomMaximized = false;
+    if (savedBounds) {
+      mainWindow.setBounds(savedBounds, true);
+    }
+    // Re-apply Acrylic after short delay to allow DWM to settle
+    setTimeout(() => {
+      if (mainWindow) mainWindow.setBackgroundMaterial('acrylic');
+    }, 150);
+  } else {
+    // Save current bounds and expand to work area (not native maximize)
+    savedBounds = mainWindow.getBounds();
+    const { workArea } = screen.getDisplayMatching(savedBounds);
+    isCustomMaximized = true;
+    mainWindow.setBounds({
+      x: workArea.x,
+      y: workArea.y,
+      width: workArea.width,
+      height: workArea.height
+    }, true);
+    // Re-apply Acrylic after short delay to allow DWM to settle
+    setTimeout(() => {
+      if (mainWindow) mainWindow.setBackgroundMaterial('acrylic');
+    }, 150);
+  }
+});
+
+ipcMain.on('window-close', () => {
+  if (mainWindow) mainWindow.close();
+});
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    show: false, // Don't show the window until it's ready, prevents white flash
-    backgroundColor: '#0a0a0a', // Dark background matching the app theme
+    minWidth: 900,
+    minHeight: 600,
+    show: false,
+
+    // ── Sin barra de título nativa de Windows ──
+    frame: false,
+
+    // ── Efecto Acrílico (Windows 11) — más transparente que Mica, muestra el escritorio ──
+    backgroundMaterial: 'acrylic',
+
+    // ── Esquinas redondeadas (Windows 11) ──
+    roundedCorners: true,
+
     autoHideMenuBar: true,
     icon: path.join(__dirname, 'icon.ico'),
     webPreferences: {
@@ -25,6 +80,7 @@ function createWindow() {
       nodeIntegration: false
     }
   });
+
 
   const isDev = !app.isPackaged;
   const pwaUrl = isDev ? 'http://localhost:5173' : 'https://farmaplus.vercel.app/';
@@ -171,6 +227,19 @@ function createWindow() {
       mainWindow.hide();
     }
     return false;
+  });
+
+  // Re-apply Acrylic when restoring from minimized state
+  mainWindow.on('restore', () => {
+    setTimeout(() => {
+      if (mainWindow) mainWindow.setBackgroundMaterial('acrylic');
+    }, 200);
+  });
+
+  mainWindow.on('show', () => {
+    setTimeout(() => {
+      if (mainWindow) mainWindow.setBackgroundMaterial('acrylic');
+    }, 200);
   });
 
   mainWindow.once('ready-to-show', () => {

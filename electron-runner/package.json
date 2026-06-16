@@ -1,0 +1,12 @@
+{
+  "name": "farmaplus-electron-runner",
+  "version": "1.0.0",
+  "description": "Electron wrapper for FarmaPlus PWA",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.4.0"
+  }
+}

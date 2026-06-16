@@ -11,6 +11,7 @@ export function TrainingCenterButton({
     className
 }: TrainingCenterButtonProps) {
     const { openWindow } = useWindowManager();
+    const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
 
     const handleOpenForo = () => {
         openWindow("/foro", "Centro de Capacitación");
@@ -20,12 +21,13 @@ export function TrainingCenterButton({
         <button
             onClick={handleOpenForo}
             className={cn(
-                "inline-flex h-10 w-10 items-center justify-center rounded-xl bg-muted/50 border border-border/40 hover:bg-muted/80 dark:hover:bg-zinc-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
+                "inline-flex h-8 w-8 items-center justify-center rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
                 className
             )}
+            style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
             title="Centro de Capacitación"
         >
-            <NotebookBookmark className="w-5 h-5 text-muted-foreground" />
+            <NotebookBookmark className="w-[18px] h-[18px] text-secondary-foreground" />
         </button>
     );
 }

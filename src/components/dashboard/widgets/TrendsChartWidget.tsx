@@ -17,11 +17,12 @@ import { CounterAnimation } from "@/components/CounterAnimation";
 import * as React from "react";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "@/contexts/UserContext";
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import { useTheme } from "@/hooks/useTheme";
 import { Tooltip as BaseTooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { normalizeString } from "@/lib/utils";
 
 // Extra top margin so the units badge is never clipped at the top of the chart
 const CHART_TOP_MARGIN = 28;
@@ -75,15 +76,18 @@ export function TrendsChartWidget({ type = "positive" }: TrendsChartWidgetProps)
     }
   }, [isDark]);
 
+  const queryClient = useQueryClient();
+
   // ── Fetch adjustments data from database ──
   const { data: dbData, isLoading } = useQuery({
     queryKey: ["historical-adjustments", user?.branchName],
     queryFn: async () => {
       if (!user?.branchName) return [];
+      const cleanBranch = normalizeString(user.branchName);
       const { data, error } = await supabase
         .from("inventory_adjustments")
         .select("created_at, shortage_value, surplus_value, total_units_adjusted")
-        .ilike("branch_name", user.branchName)
+        .eq("branch_name", cleanBranch)
         .order("created_at", { ascending: true });
       if (error) {
         console.error("Error loading historical adjustments:", error);
@@ -95,42 +99,142 @@ export function TrendsChartWidget({ type = "positive" }: TrendsChartWidgetProps)
     staleTime: 1000 * 60 * 5,
   });
 
+  // ── Fetch live data from branch_laboratories ──
+  const { data: liveLabs, isLoading: isLiveLoading } = useQuery({
+    queryKey: ["live-branch-laboratories", user?.branchName],
+    queryFn: async () => {
+      if (!user?.branchName) return [];
+      const cleanBranch = normalizeString(user.branchName);
+      const { data, error } = await supabase
+        .from("branch_laboratories")
+        .select("positive_value, negative_value, positive_units, negative_units, status")
+        .eq("branch_name", cleanBranch);
+      if (error) {
+        console.error("Error loading live branch laboratories:", error);
+        throw error;
+      }
+      return data || [];
+    },
+    enabled: !!user?.branchName,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // ── Set up realtime subscription to adjustments and labs ──
+  React.useEffect(() => {
+    if (!user?.branchName) return;
+    
+    const cleanBranch = normalizeString(user.branchName);
+    
+    const channel = supabase
+      .channel(`dashboard-realtime-${cleanBranch}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "branch_laboratories",
+          filter: `branch_name=eq.${cleanBranch}`
+        },
+        () => {
+          queryClient.invalidateQueries({
+            queryKey: ["live-branch-laboratories", user.branchName]
+          });
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "inventory_adjustments",
+          filter: `branch_name=eq.${cleanBranch}`
+        },
+        () => {
+          queryClient.invalidateQueries({
+            queryKey: ["historical-adjustments", user.branchName]
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.branchName, queryClient]);
+
   // ── Process data month-by-month ──
   const chartData = React.useMemo(() => {
-    if (!dbData || dbData.length === 0) return [];
+    if (!user?.branchName) return [];
 
     const MONTH_NAMES = [
       "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
       "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
     ];
 
-    const grouped = dbData.reduce((acc: Record<string, any>, row: any) => {
-      const date = new Date(row.created_at);
-      const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      if (!acc[yearMonth]) {
-        acc[yearMonth] = {
-          yearMonth,
-          month: MONTH_NAMES[date.getMonth()],
-          shortage: 0,
-          surplus: 0,
-          shortage_units: 0,
-          surplus_units: 0,
-          dateObj: date,
-        };
-      }
-      acc[yearMonth].shortage += Number(row.shortage_value || 0);
-      acc[yearMonth].surplus += Number(row.surplus_value || 0);
-      const total = Number(row.shortage_value || 0) + Number(row.surplus_value || 0);
-      const totalUnits = Number(row.total_units_adjusted || 0);
-      if (total > 0) {
-        acc[yearMonth].shortage_units += Math.round(totalUnits * (Number(row.shortage_value || 0) / total));
-        acc[yearMonth].surplus_units += Math.round(totalUnits * (Number(row.surplus_value || 0) / total));
-      } else {
-        acc[yearMonth].shortage_units += Math.round(totalUnits / 2);
-        acc[yearMonth].surplus_units += Math.round(totalUnits / 2);
-      }
-      return acc;
-    }, {} as Record<string, any>);
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonthIdx = now.getMonth();
+    const currentYearMonth = `${currentYear}-${String(currentMonthIdx + 1).padStart(2, "0")}`;
+
+    const grouped: Record<string, any> = {};
+
+    // 1. Process historical data (excluding current month to avoid double-counting)
+    if (dbData && dbData.length > 0) {
+      dbData.forEach((row: any) => {
+        const date = new Date(row.created_at);
+        const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+        
+        if (yearMonth === currentYearMonth) return;
+
+        if (!grouped[yearMonth]) {
+          grouped[yearMonth] = {
+            yearMonth,
+            month: MONTH_NAMES[date.getMonth()],
+            shortage: 0,
+            surplus: 0,
+            shortage_units: 0,
+            surplus_units: 0,
+            dateObj: date,
+          };
+        }
+        grouped[yearMonth].shortage += Number(row.shortage_value || 0);
+        grouped[yearMonth].surplus += Number(row.surplus_value || 0);
+        const total = Number(row.shortage_value || 0) + Number(row.surplus_value || 0);
+        const totalUnits = Number(row.total_units_adjusted || 0);
+        if (total > 0) {
+          grouped[yearMonth].shortage_units += Math.round(totalUnits * (Number(row.shortage_value || 0) / total));
+          grouped[yearMonth].surplus_units += Math.round(totalUnits * (Number(row.surplus_value || 0) / total));
+        } else {
+          grouped[yearMonth].shortage_units += Math.round(totalUnits / 2);
+          grouped[yearMonth].surplus_units += Math.round(totalUnits / 2);
+        }
+      });
+    }
+
+    // 2. Add real-time entry for the current month
+    let liveSurplusValue = 0;
+    let liveShortageValue = 0;
+    let liveSurplusUnits = 0;
+    let liveShortageUnits = 0;
+
+    if (liveLabs && liveLabs.length > 0) {
+      liveLabs.forEach((lab: any) => {
+        liveSurplusValue += Number(lab.positive_value || 0);
+        liveShortageValue += Math.abs(Number(lab.negative_value || 0));
+        liveSurplusUnits += Number(lab.positive_units || 0);
+        liveShortageUnits += Math.abs(Number(lab.negative_units || 0));
+      });
+    }
+
+    grouped[currentYearMonth] = {
+      yearMonth: currentYearMonth,
+      month: MONTH_NAMES[currentMonthIdx],
+      shortage: liveShortageValue,
+      surplus: liveSurplusValue,
+      shortage_units: liveShortageUnits,
+      surplus_units: liveSurplusUnits,
+      dateObj: now,
+    };
 
     const sortedList = Object.values(grouped)
       .sort((a: any, b: any) => a.dateObj.getTime() - b.dateObj.getTime())
@@ -158,7 +262,7 @@ export function TrendsChartWidget({ type = "positive" }: TrendsChartWidgetProps)
         changePercentage,
       };
     });
-  }, [dbData, type]);
+  }, [dbData, liveLabs, user?.branchName, type]);
 
   // ── Default to last month ──
   const defaultData = React.useMemo(() => {
@@ -264,7 +368,7 @@ export function TrendsChartWidget({ type = "positive" }: TrendsChartWidgetProps)
   const unitsColors = getBadgeColors(type);
 
   // ── Loading ──
-  if (isLoading) {
+  if (isLoading || isLiveLoading) {
     return (
       <div className="h-full flex items-center justify-center p-6 min-h-[180px]">
         <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />

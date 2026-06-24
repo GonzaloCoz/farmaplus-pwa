@@ -11,7 +11,6 @@ export const TAB_CONFIG: Record<string, { title: string, icon: React.ReactNode }
     "/stock/expiration-control": { title: "Control de Vencimiento", icon: <Clock size={16} weight="LineDuotone" /> },
     "/cyclic-inventory": { title: "Inventarios Cíclicos", icon: <BarChart3 size={16} weight="LineDuotone" /> },
     "/comparison": { title: "Comparativa", icon: <TrendingUp size={16} weight="LineDuotone" /> },
-    "/products": { title: "Productos", icon: <Package size={16} weight="LineDuotone" /> },
     "/reports": { title: "Reportes", icon: <FileText size={16} weight="LineDuotone" /> },
     "/settings": { title: "Configuración", icon: <Settings size={16} weight="LineDuotone" /> },
     "/admin/audit": { title: "Auditoría", icon: <ShieldCheck size={16} weight="LineDuotone" /> },

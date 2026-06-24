@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Loader2, Search, XCircle as X, ScanBarcode as Barcode } from 'lucide-react';
-import { searchProducts, Product } from '@/services/preCountDB';
+import { Product, searchProducts } from '@/services/preCountDB';
+import { db } from '@/services/db';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -11,9 +12,10 @@ interface SmartProductSearchProps {
     onSelect: (product: { name: string, ean: string, id_producto?: string }) => void;
     autoFocus?: boolean;
     className?: string;
+    sessionId?: string;
 }
 
-export function SmartProductSearch({ onSelect, autoFocus = true, className }: SmartProductSearchProps) {
+export function SmartProductSearch({ onSelect, autoFocus = true, className, sessionId }: SmartProductSearchProps) {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<Product[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -42,34 +44,61 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Search Effect
+    // Search Effect - queries IndexedDB if sessionId is provided, otherwise Supabase
     useEffect(() => {
-        const performSearch = async () => {
-            if (selectionLockRef.current) return;
-            
-            if (debouncedQuery.length < 2) {
-                setResults([]);
-                setIsOpen(false);
-                return;
-            }
+        if (selectionLockRef.current) return;
 
+        if (debouncedQuery.length < 2) {
+            setResults([]);
+            setIsOpen(false);
+            return;
+        }
+
+        const performSearch = async () => {
             setIsLoading(true);
             try {
-                const data = await searchProducts(debouncedQuery);
+                const queryLower = debouncedQuery.toLowerCase().trim();
+                let filtered: Product[] = [];
+
+                if (sessionId) {
+                    // Buscar en la base de datos local IndexedDB db.precount_products para la sesión activa
+                    const dbProducts = await db.precount_products
+                        .where('session_id')
+                        .equals(sessionId)
+                        .filter(p =>
+                            (p.name || '').toLowerCase().includes(queryLower) ||
+                            (p.ean || '').includes(queryLower)
+                        )
+                        .limit(50)
+                        .toArray();
+
+                    filtered = dbProducts.map(p => ({
+                        ean: p.ean,
+                        name: p.name,
+                        cost: p.cost,
+                        salePrice: p.salePrice || 0,
+                        id_producto: p.id_producto
+                    }));
+                } else {
+                    // Fallback: Buscar en Supabase usando el servicio global
+                    const data = await searchProducts(debouncedQuery);
+                    filtered = data;
+                }
+
                 if (!selectionLockRef.current) {
-                    setResults(data);
-                    setIsOpen(data.length > 0);
+                    setResults(filtered);
+                    setIsOpen(filtered.length > 0);
                     setSelectedIndex(0);
                 }
             } catch (error) {
-                console.error(error);
+                console.error('Error al buscar productos en buscador:', error);
             } finally {
                 setIsLoading(false);
             }
         };
 
         performSearch();
-    }, [debouncedQuery]);
+    }, [debouncedQuery, sessionId]);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'ArrowDown') {
@@ -93,8 +122,36 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
             if (isOpen && results.length > 0) {
                 onSelect(results[selectedIndex]);
                 setTimeout(() => { selectionLockRef.current = false; }, 500);
+            } else if (currentQuery && sessionId) {
+                const queryLower = currentQuery.toLowerCase();
+                const lookupProduct = async () => {
+                    try {
+                        let found = await db.precount_products
+                            .where('[session_id+ean]')
+                            .equals([sessionId, currentQuery])
+                            .first();
+
+                        if (!found) {
+                            found = await db.precount_products
+                                .where('session_id')
+                                .equals(sessionId)
+                                .filter(p => (p.name || '').toLowerCase().includes(queryLower))
+                                .first();
+                        }
+
+                        if (found) {
+                            onSelect({ ean: found.ean, name: found.name, id_producto: found.id_producto });
+                        } else {
+                            onSelect({ ean: currentQuery, name: '' });
+                        }
+                    } catch (err) {
+                        onSelect({ ean: currentQuery, name: '' });
+                    } finally {
+                        setTimeout(() => { selectionLockRef.current = false; }, 500);
+                    }
+                };
+                lookupProduct();
             } else if (currentQuery) {
-                // If scanner was too fast for debounce, lookup manually now
                 const quickLookup = async () => {
                     try {
                         const data = await searchProducts(currentQuery);
@@ -130,10 +187,9 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
         setTimeout(() => { selectionLockRef.current = false; }, 500);
     };
 
-    // Auto-EAN detection (Omit Enter)
+    // Auto-EAN detection (Omit Enter) - queries local DB if sessionId is provided, otherwise Supabase
     useEffect(() => {
         const q = query.trim();
-        // Standard EAN full lengths: 13, 14
         if (!selectionLockRef.current && (q.length === 13 || q.length === 14) && /^\d+$/.test(q)) {
             const timer = setTimeout(async () => {
                 selectionLockRef.current = true;
@@ -141,24 +197,41 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
                 setQuery('');
                 setIsOpen(false);
                 setResults([]);
-                
-                try {
-                    const data = await searchProducts(q);
-                    if (data.length > 0) {
-                        onSelect(data[0]);
-                    } else {
+
+                if (sessionId) {
+                    try {
+                        const found = await db.precount_products
+                            .where('[session_id+ean]')
+                            .equals([sessionId, q])
+                            .first();
+                        onSelect(found
+                            ? { ean: found.ean, name: found.name, id_producto: found.id_producto }
+                            : { ean: q, name: '' }
+                        );
+                    } catch (err) {
                         onSelect({ ean: q, name: '' });
+                    } finally {
+                        setTimeout(() => { selectionLockRef.current = false; }, 300);
                     }
-                } catch (err) {
-                    onSelect({ ean: q, name: '' });
-                } finally {
-                    setTimeout(() => { selectionLockRef.current = false; }, 300);
+                } else {
+                    try {
+                        const data = await searchProducts(q);
+                        if (data.length > 0) {
+                            onSelect(data[0]);
+                        } else {
+                            onSelect({ ean: q, name: '' });
+                        }
+                    } catch (err) {
+                        onSelect({ ean: q, name: '' });
+                    } finally {
+                        setTimeout(() => { selectionLockRef.current = false; }, 300);
+                    }
                 }
-            }, 150); // Small 150ms delay to allow manual typing a 14th digit without EAN-13 cutting it
-            
+            }, 150);
+
             return () => clearTimeout(timer);
         }
-    }, [query]);
+    }, [query, sessionId]);
 
     const handleClear = () => {
         setQuery('');
@@ -252,4 +325,3 @@ export function SmartProductSearch({ onSelect, autoFocus = true, className }: Sm
         </div>
     );
 }
-

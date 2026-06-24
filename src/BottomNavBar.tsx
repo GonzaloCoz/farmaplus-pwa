@@ -10,12 +10,12 @@ import {
     Chart as BarChart3,
 } from "@solar-icons/react";
 import { useUser } from "@/contexts/UserContext";
+import { ZebraIcon } from "@/components/icons/ZebraIcon";
 
 const navItems = [
     { to: "/", icon: LayoutGrid, label: "Dashboard" },
     { to: "/stock", icon: Upload, label: "Stock" },
     { to: "/cyclic-inventory", icon: FileText, label: "Cíclico" },
-    { to: "/products", icon: Package, label: "Productos", roles: ['admin', 'mod'] as const },
     { to: "/reports", icon: BarChart3, label: "Reportes", roles: ['admin', 'mod'] as const },
 ];
 
@@ -35,7 +35,7 @@ export function BottomNavBar() {
             className="relative z-50 w-full border-t bg-background backdrop-blur-sm sm:hidden bottom-nav"
         >
             <div className="grid items-center justify-center text-xs" style={{ height: 'var(--nav-height)', gridTemplateColumns: `repeat(${filteredNavItems.length}, 1fr)` }}>
-                {filteredNavItems.map(({ to, icon: Icon, label }) => (
+                {filteredNavItems.map(({ to, icon: Icon, label, zebraIcon }: any) => (
                     <NavLink
                         key={to}
                         to={to}
@@ -66,13 +66,14 @@ export function BottomNavBar() {
                                             ease: [0.2, 0.0, 0, 1.0],
                                         }}
                                     >
-                                        <Icon
-                                            weight={isActive ? "BoldDuotone" : "LineDuotone"}
-                                            className={cn(
-                                                "relative z-10 h-5 w-5",
-                                                isActive && "text-primary"
-                                            )}
-                                        />
+                                        {zebraIcon ? (
+                                            <ZebraIcon className={cn("relative z-10 h-5 w-5", isActive && "text-primary")} />
+                                        ) : (
+                                            <Icon
+                                                weight={isActive ? "BoldDuotone" : "LineDuotone"}
+                                                className={cn("relative z-10 h-5 w-5", isActive && "text-primary")}
+                                            />
+                                        )}
                                     </motion.div>
                                 </div>
                                 <motion.span

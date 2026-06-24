@@ -213,6 +213,11 @@ export class SyncManager {
                 const { error } = await supabase.from('precount_items').delete().eq('id', data.id);
                 if (error) throw error;
             }
+        } else if (entity === 'device_file') {
+            if (type === 'create') {
+                const { error } = await (supabase as any).from('precount_device_files').insert(data);
+                if (error) throw error;
+            }
         }
     }
 }

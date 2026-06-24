@@ -121,41 +121,46 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 for (let i = 1; i < rows.length; i++) {
                     const row = rows[i];
                     if (!row || !row[3]) continue;
-                    const rawEan = row[2];
+                    const id_producto = row[0] ? String(row[0]).trim() : '';
+                    const rawEan = row[16];
                     if (!rawEan) continue;
-                    const ean = String(rawEan).trim();
-                    if (!ean) continue;
+                    const eanList = String(rawEan).split('-').map(e => e.trim()).filter(e => e.length > 0);
+                    if (eanList.length === 0) continue;
 
                     let category = normalizeString(row[9]?.toString() || 'Varios').toUpperCase();
                     const rawCost = row[10];
                     const costValue = Math.round((Number(rawCost) || 0) * 100) / 100;
 
-                    if (eanMap.has(ean)) {
-                        const index = eanMap.get(ean);
-                        const existingItem = { ...finalItems[index] };
-                        const newSystemQty = Number(row[4]) || 0;
-                        finalItems[index] = {
-                            ...existingItem,
-                            name: row[3],
-                            systemQuantity: newSystemQty,
-                            countedQuantity: existingItem.status === 'pending' ? newSystemQty : existingItem.countedQuantity,
-                            cost: costValue,
-                            category: category
-                        };
-                        updatedCount++;
-                    } else {
-                        finalItems.push({
-                            id: crypto.randomUUID(),
-                            ean: ean,
-                            name: row[3],
-                            systemQuantity: Number(row[4]) || 0,
-                            countedQuantity: Number(row[4]) || 0,
-                            cost: costValue,
-                            status: 'pending',
-                            category: category,
-                            wasReadjusted: false
-                        });
-                        addedCount++;
+                    for (const ean of eanList) {
+                        if (eanMap.has(ean)) {
+                            const index = eanMap.get(ean);
+                            const existingItem = { ...finalItems[index] };
+                            const newSystemQty = Number(row[4]) || 0;
+                            finalItems[index] = {
+                                ...existingItem,
+                                name: row[3],
+                                systemQuantity: newSystemQty,
+                                countedQuantity: existingItem.status === 'pending' ? newSystemQty : existingItem.countedQuantity,
+                                cost: costValue,
+                                category: category,
+                                id_producto: id_producto
+                            };
+                            updatedCount++;
+                        } else {
+                            finalItems.push({
+                                id: crypto.randomUUID(),
+                                ean: ean,
+                                name: row[3],
+                                systemQuantity: Number(row[4]) || 0,
+                                countedQuantity: Number(row[4]) || 0,
+                                cost: costValue,
+                                status: 'pending',
+                                category: category,
+                                wasReadjusted: false,
+                                id_producto: id_producto
+                            });
+                            addedCount++;
+                        }
                     }
                 }
 
@@ -412,41 +417,46 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
             for (let i = 1; i < rows.length; i++) {
                 const row: any = rows[i];
                 if (!row || !row[3]) continue;
-                const rawEan = row[2];
+                const id_producto = row[0] ? String(row[0]).trim() : '';
+                const rawEan = row[16];
                 if (!rawEan) continue;
-                const ean = String(rawEan).trim();
-                if (!ean) continue;
+                const eanList = String(rawEan).split('-').map(e => e.trim()).filter(e => e.length > 0);
+                if (eanList.length === 0) continue;
 
                 let category = normalizeString(row[9]?.toString() || 'Varios').toUpperCase();
                 const rawCost = row[10];
                 const costValue = Math.round((Number(rawCost) || 0) * 100) / 100;
 
-                if (eanMap.has(ean)) {
-                    const index = eanMap.get(ean);
-                    const existingItem = { ...finalItems[index] };
-                    const newSystemQty = Number(row[4]) || 0;
-                    finalItems[index] = {
-                        ...existingItem,
-                        name: row[3],
-                        systemQuantity: newSystemQty,
-                        countedQuantity: existingItem.status === 'pending' ? newSystemQty : existingItem.countedQuantity,
-                        cost: costValue,
-                        category: category
-                    };
-                    updatedCount++;
-                } else {
-                    finalItems.push({
-                        id: crypto.randomUUID(),
-                        ean: ean,
-                        name: row[3],
-                        systemQuantity: Number(row[4]) || 0,
-                        countedQuantity: Number(row[4]) || 0,
-                        cost: costValue,
-                        status: 'pending',
-                        category: category,
-                        wasReadjusted: false
-                    });
-                    addedCount++;
+                for (const ean of eanList) {
+                    if (eanMap.has(ean)) {
+                        const index = eanMap.get(ean);
+                        const existingItem = { ...finalItems[index] };
+                        const newSystemQty = Number(row[4]) || 0;
+                        finalItems[index] = {
+                            ...existingItem,
+                            name: row[3],
+                            systemQuantity: newSystemQty,
+                            countedQuantity: existingItem.status === 'pending' ? newSystemQty : existingItem.countedQuantity,
+                            cost: costValue,
+                            category: category,
+                            id_producto: id_producto
+                        };
+                        updatedCount++;
+                    } else {
+                        finalItems.push({
+                            id: crypto.randomUUID(),
+                            ean: ean,
+                            name: row[3],
+                            systemQuantity: Number(row[4]) || 0,
+                            countedQuantity: Number(row[4]) || 0,
+                            cost: costValue,
+                            status: 'pending',
+                            category: category,
+                            wasReadjusted: false,
+                            id_producto: id_producto
+                        });
+                        addedCount++;
+                    }
                 }
             }
 

@@ -11,7 +11,6 @@ const StockRecountMobile = lazy(() => import("@/pages/StockRecountMobile"));
 const ExpirationControl = lazy(() => import("@/pages/ExpirationControl"));
 const CyclicInventory = lazy(() => import("@/pages/CyclicInventory"));
 const CyclicInventoryDetail = lazy(() => import("@/pages/CyclicInventoryDetail"));
-const Products = lazy(() => import("@/pages/Products"));
 const Reports = lazy(() => import("@/pages/Reports"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const AnimationsDemo = lazy(() => import("@/pages/AnimationsDemo"));
@@ -38,7 +37,6 @@ export function WindowRouter({ currentPath }: { initialPath: string, currentPath
                     <Route path="/stock/expiration-control" element={<ExpirationControl />} />
                     <Route path="/cyclic-inventory" element={<CyclicInventory />} />
                     <Route path="/cyclic-inventory/:id" element={<CyclicInventoryDetail />} />
-                    <Route path="/products" element={<Products />} />
                     <Route path="/reports" element={<Reports />} />
                     <Route path="/comparison" element={<BranchComparison />} />
                     <Route path="/settings" element={<Settings />} />

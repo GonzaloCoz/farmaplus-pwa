@@ -90,9 +90,13 @@ export function PreCountList({ items, mode = "full", onUpdate, onDelete, onEditR
 
     const pageCount = Math.ceil(filteredItems.length / pageSize);
 
-    const getLab = (id_producto?: string) => {
-        if (!id_producto || !masterCatalog) return "Laboratorio";
-        return "Laboratorio"; 
+    const getLab = (id_producto?: string, ean?: string) => {
+        if (!masterCatalog) return "Laboratorio";
+        const matched = masterCatalog.find(item => 
+            (id_producto && item.id_producto === id_producto) || 
+            (ean && (item.ean === ean || item.eans?.includes(ean)))
+        );
+        return matched?.laboratory || "Laboratorio"; 
     };
 
     return (
@@ -123,7 +127,7 @@ export function PreCountList({ items, mode = "full", onUpdate, onDelete, onEditR
                                     <div className="font-bold text-[13px] leading-tight line-clamp-1">{item.productName}</div>
                                 </TableCell>
                                 <TableCell className="py-2 px-3">
-                                    <div className="font-medium text-muted-foreground text-[12px] truncate">{getLab(item.id_producto)}</div>
+                                    <div className="font-medium text-muted-foreground text-[12px] truncate">{getLab(item.id_producto, item.ean)}</div>
                                 </TableCell>
                                 <TableCell className="py-2 px-3 text-center">
                                     <Badge variant="outline" size="sm" className="h-6 px-2 bg-blue-50/50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-900/50 font-normal">

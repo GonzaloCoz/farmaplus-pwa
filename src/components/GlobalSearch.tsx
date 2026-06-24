@@ -19,7 +19,6 @@ const STATIC_INDEX: ResultItem[] = [
   { id: "dashboard", title: "Dashboard", url: "/", type: "page" },
   { id: "import", title: "Importar Inventario", url: "/import", type: "page" },
   { id: "cyclic", title: "Inventarios Cíclicos", url: "/cyclic", type: "page" },
-  { id: "products", title: "Productos", url: "/products", type: "page" },
   { id: "reports", title: "Reportes", url: "/reports", type: "page" },
   { id: "settings", title: "Configuración", url: "/settings", type: "other" },
 ];

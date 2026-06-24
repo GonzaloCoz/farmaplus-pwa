@@ -19,6 +19,12 @@ import React from "react";
 
 import { Capacitor } from "@capacitor/core";
 
+// En APK nativo, arrancar directamente en el Colector de Datos
+// ponytail: hash redirect — lo más simple sin tocar el router
+if (Capacitor.isNativePlatform() && !window.location.hash.startsWith('#/stock/pre-count')) {
+  window.location.hash = '#/stock/pre-count';
+}
+
 const root = ReactDOM.createRoot(document.getElementById("root")!);
 root.render(
   <React.StrictMode>

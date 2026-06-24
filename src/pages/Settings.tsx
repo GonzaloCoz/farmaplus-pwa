@@ -7,7 +7,7 @@ import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 
 import { Smartphone, Cloud as Wifi, TrashBinMinimalistic as Trash2, InfoCircle as Info, Cloud, Database, Bell, Shield, User as UserIcon, UsersGroupTwoRounded as Users } from "@solar-icons/react";
-import { clearProducts, addProducts, Product } from "@/services/productService";
+
 import { SyncStatusBottomSheet } from "@/components/SyncStatusBottomSheet";
 import { Input } from "@/components/ui/input";
 import * as XLSX from 'xlsx';
@@ -73,7 +73,6 @@ export default function Settings() {
     scannerSensitivity: 50
   });
 
-  const [isImporting, setIsImporting] = useState(false);
   const [isImportingLabs, setIsImportingLabs] = useState(false);
   const [isPurging, setIsPurging] = useState(false);
   const [isUpdatingGoals, setIsUpdatingGoals] = useState(false);
@@ -497,98 +496,7 @@ export default function Settings() {
     }
   };
 
-  // ... (handlers remain - keep existing implementation)
-  const handleClearCache = async () => {
-    if (confirm("¿Estás seguro de que deseas borrar la base de datos de productos? Esta acción no se puede deshacer.")) {
-      try {
-        await clearProducts();
-        notify.success("Operación exitosa", "Base de datos de productos eliminada correctamente");
-      } catch (e) {
-        notify.error("Error", "Error al eliminar datos");
-      }
-    }
-  };
 
-  const handleImportProducts = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    // ... (keep existing implementation)
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setIsImporting(true);
-    try {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data);
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
-
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: "A" });
-      const products: Product[] = [];
-      const headerRow: any = jsonData[0] || {};
-
-      // Encontrar índices de columnas por nombre
-      let colId = "A";
-      let colName = "B";
-      let colEan = "C";
-
-      Object.entries(headerRow).forEach(([key, value]) => {
-        const val = String(value).toLowerCase().trim();
-        if (val.includes("idproducto")) colId = key;
-        if (val === "producto" || val === "nombre") colName = key;
-        if (val.includes("barcode") || val.includes("codigo") || val.includes("ean")) colEan = key;
-      });
-
-      for (let i = 1; i < jsonData.length; i++) {
-        const row: any = jsonData[i];
-        const rawId = row[colId];
-        const rawName = row[colName];
-        const rawEans = row[colEan];
-
-        if (!rawName || !rawEans) continue;
-
-        const idProducto = rawId ? String(rawId).trim() : undefined;
-        const name = String(rawName).trim();
-        const eanString = String(rawEans).trim();
-
-        const eanList = eanString.split(/[-,\s;]+/).map(e => e.trim()).filter(e => e.length > 0);
-
-        eanList.forEach(ean => {
-          products.push({
-            ean: ean,
-            name: name,
-            cost: 0,
-            salePrice: 0,
-            laboratory: undefined,
-            category: '',
-            stock: 0,
-            id_producto: idProducto
-          });
-        });
-      }
-
-      if (products.length === 0) {
-        notify.error("Error", "No se encontraron productos válidos. Verifica las columnas (IDProducto, Producto, Barcodes).");
-        return;
-      }
-
-      // Deduplicar productos por EAN para evitar el error "ON CONFLICT DO UPDATE command cannot affect row a second time"
-      const uniqueProductsMap = new Map<string, Product>();
-      products.forEach(p => uniqueProductsMap.set(p.ean, p));
-      const uniqueProducts = Array.from(uniqueProductsMap.values());
-
-      if (confirm(`Se encontraron ${uniqueProducts.length} códigos EAN únicos (de ${jsonData.length - 1} filas). ¿Deseas reemplazar la base de datos actual?`)) {
-        await clearProducts();
-        await addProducts(uniqueProducts);
-        notify.success("Operación exitosa", `${uniqueProducts.length} productos con IDProducto importados correctamente.`);
-      }
-      event.target.value = '';
-    } catch (error: any) {
-      console.error("Error importing products:", error);
-      const errorDetail = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
-      notify.error("Error", `Error al importar: ${errorDetail.substring(0, 100)}`);
-    } finally {
-      setIsImporting(false);
-    }
-  };
 
   const handlePurgeAll = async () => {
     setIsPurging(true);
@@ -856,59 +764,7 @@ export default function Settings() {
               </Card>
             )}
 
-            {/* Base de Datos */}
-            {isAdmin && (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <Database className="w-5 h-5 text-primary" />
-                    <CardTitle>Base de Datos de Productos</CardTitle>
-                  </div>
-                  <CardDescription>Gestiona el catálogo de productos local.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-4">
-                    <div className="p-4 border rounded-lg bg-muted/30 space-y-4">
-                      <div>
-                        <h3 className="font-medium mb-1">Importar Productos desde Excel</h3>
-                        <p className="text-sm text-muted-foreground mb-3">
-                          Actualiza la base de datos con un archivo .xlsx. El archivo debe tener columnas "A: IDProducto", "B: Producto" y "C: Barcodes" (EANs separados por guiones o comas).
-                        </p>
 
-                        <div className="flex gap-2">
-                          <Input
-                            type="file"
-                            accept=".xlsx, .xls"
-                            onChange={handleImportProducts}
-                            disabled={isImporting}
-                            className="cursor-pointer"
-                          />
-                        </div>
-                        {isImporting && (
-                          <p className="text-sm text-muted-foreground mt-2 animate-pulse">
-                            Procesando archivo...
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="pt-2">
-                      <Button
-                        variant="destructive"
-                        className="w-full sm:w-auto"
-                        onClick={handleClearCache}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Borrar datos locales y caché
-                      </Button>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Utiliza esto si experimentas problemas con la aplicación. Se borrarán los datos no sincronizados.
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
 
             {/* Panel de Administración */}
             {user?.role === 'admin' && (

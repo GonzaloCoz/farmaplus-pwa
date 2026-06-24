@@ -51,6 +51,7 @@ export interface CyclicItem {
     shortageId?: string;
     surplusId?: string;
     readjustmentReason?: string;
+    id_producto?: string;
 }
 
 export const cyclicInventoryService = {
@@ -87,7 +88,8 @@ export const cyclicInventoryService = {
                     shortageId: item.adjustment_id_shortage,
                     surplusId: item.adjustment_id_surplus,
                     cost: item.product_cost || 0,
-                    updatedAt: item.updated_at
+                    updatedAt: item.updated_at,
+                    id_producto: item.id_producto || undefined
                 };
 
                 // Enterprise Validation
@@ -119,7 +121,8 @@ export const cyclicInventoryService = {
                 wasReadjusted: item.wasReadjusted || false,
                 readjustmentReason: item.readjustmentReason,
                 shortageId: item.shortageId,
-                surplusId: item.surplusId
+                surplusId: item.surplusId,
+                id_producto: item.id_producto
             }));
 
             // Call the database function (RPC V2)
@@ -520,22 +523,12 @@ export const cyclicInventoryService = {
                 controlledCount++;
             }
 
-            // Include in financials if it's controlled OR if it's pending but has a difference (user input)
-            // This ensures real-time visibility of potential adjustments
-            const diff = item.countedQuantity - item.systemQuantity;
+            // Include in financials ONLY if it's controlled or adjusted (user input)
+            // ponytail: ignore pending items to prevent massive false shortages
+            const diff = isControlled ? (item.countedQuantity - item.systemQuantity) : 0;
 
             if (diff !== 0) {
                 const value = diff * item.cost;
-
-                // Only add to system units if we consider this item "processed" or if we want total inventory value?
-                // Actually totalSystemUnits is usually sum of all system quantities regardless of count.
-                // But here we are summing inside the loop. Let's make sure we sum system units for ALL items if desired, 
-                // or just keep the logic consistent. 
-                // The original code only summed totalSystemUnits if controlled.
-                // Let's sum totalSystemUnits for ALL items to be safe, or at least consistent with financials.
-
-                // However, to keep it simple and safe:
-                // We calculate financials for ANYTHING with a diff.
 
                 if (diff < 0) {
                     negative += value;
@@ -546,9 +539,6 @@ export const cyclicInventoryService = {
                 }
             }
 
-            // Create a separate loop or logic for totalSystemUnits if needed, 
-            // but original code only added to totalSystemUnits if controlled. 
-            // Let's stick to adding to totals if it contributes to the diff or is controlled.
             if (isControlled || diff !== 0) {
                 totalSystemUnits += item.systemQuantity;
             }

@@ -15,6 +15,7 @@ export const CyclicItemSchema = z.object({
     updatedAt: z.string().optional().nullable(),
     shortageId: z.string().optional().nullable(),
     surplusId: z.string().optional().nullable(),
+    id_producto: z.string().optional().nullable(),
 });
 
 export const CyclicInventoryStatsSchema = z.object({

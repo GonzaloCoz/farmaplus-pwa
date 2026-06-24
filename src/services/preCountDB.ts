@@ -42,6 +42,7 @@ export interface MasterCatalogItem {
     systemStock: number;
     cost: number;
     salePrice: number;
+    laboratory?: string;
 }
 
 export interface PreCountSession extends LocalSession {
@@ -357,7 +358,14 @@ export async function initDB() {
         await db.open();
         console.log('Local DB initialized');
     } catch (e) {
-        console.error('Failed to open Local DB', e);
+        console.warn('Failed to open Local DB, attempting recovery...', e);
+        try {
+            await db.delete();
+            await db.open();
+            console.log('Local DB recovered after schema reset');
+        } catch (e2) {
+            console.error('Local DB recovery failed', e2);
+        }
     }
 }
 

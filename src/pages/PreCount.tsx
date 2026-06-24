@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
+import { useUser } from '@/contexts/UserContext';
 import {
     Accordion,
     AccordionItem,
@@ -99,8 +101,8 @@ import {
     MenuTrigger,
 } from "@/components/ui/menu";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
-import { MasterCatalogItem, getSessionByPin, PreCountSession, getDeviceId } from '@/services/preCountDB';
-import { Product, getProductByEAN, addProducts } from '@/services/productService';
+import { MasterCatalogItem, getSessionByPin, PreCountSession, getDeviceId, getProductByEAN } from '@/services/preCountDB';
+import { Product } from '@/services/preCountDB';
 import { notify } from '@/lib/notifications';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
 import * as XLSX from 'xlsx';
@@ -183,6 +185,7 @@ function SettingsMenu({
     accessMode
 }: any) {
     const { theme, toggleTheme } = useTheme();
+    const { logout } = useUser();
     const isMobile = useMediaQuery("(max-width: 768px)");
 
     const trigger = (
@@ -317,6 +320,21 @@ function SettingsMenu({
                                     Finalizar sesión
                                 </DrawerMenuItem>
                             </DrawerClose>
+                            {Capacitor.isNativePlatform() && (
+                                <DrawerClose asChild>
+                                    <DrawerMenuItem
+                                        variant="destructive"
+                                        icon={<LogOut className="size-4" />}
+                                        onClick={async () => {
+                                            if (confirm("¿Estás seguro de que deseas cerrar sesión?")) {
+                                                await logout();
+                                            }
+                                        }}
+                                    >
+                                        Cerrar sesión
+                                    </DrawerMenuItem>
+                                </DrawerClose>
+                            )}
                         </DrawerMenuGroup>
                     </DrawerMenu>
                 </DrawerPanel>
@@ -380,6 +398,16 @@ function SettingsMenu({
                         <CheckCircle className="size-4 mr-2" />
                         Finalizar sesión
                     </MenuItem>
+                    {Capacitor.isNativePlatform() && (
+                        <MenuItem variant="destructive" onClick={async () => {
+                            if (confirm("¿Estás seguro de que deseas cerrar sesión?")) {
+                                await logout();
+                            }
+                        }}>
+                            <LogOut className="size-4 mr-2" />
+                            Cerrar sesión
+                        </MenuItem>
+                    )}
                 </MenuGroup>
             </MenuPopup>
         </Menu>
@@ -469,6 +497,7 @@ type Step = 'config' | 'admin_config' | 'admin_summary' | 'admin_sync' | 'qr_gen
 
 export default function PreCount() {
     const navigate = useNavigate();
+    const { logout } = useUser();
     const [step, setStep] = useState<Step>('config');
     const [autoSave, setAutoSave] = useState(true);
     const [sortOrder, setSortOrder] = useState<'name_asc' | 'name_desc' | 'qty_asc' | 'qty_desc'>('name_asc');
@@ -898,6 +927,7 @@ export default function PreCount() {
                     systemStock: Number(row[stockIdx]) || 0,
                     cost: Number(row[costIdx]) || 0,
                     salePrice: Number(row[costIdx]) || 0,
+                    laboratory: String(row[14] || '').trim()
                 };
             }).filter(p => p.ean !== 'undefined' && p.id_producto);
 
@@ -958,6 +988,7 @@ export default function PreCount() {
                                 systemStock: Number(row[4]) || 0, // Columna E
                                 cost: Number(row[10]) || 0, // Columna K
                                 salePrice: Number(row[10]) || 0, // Columna K (Uso el mismo para precio venta si no hay)
+                                laboratory: String(row[14] || '').trim()
                             };
                         }).filter(p => p.ean !== 'undefined' && p.id_producto);
 
@@ -1048,44 +1079,22 @@ export default function PreCount() {
 
             let productToUse: any = null;
 
-            // 1. Prioritize Master Catalog (Excel)
-            if (session?.master_catalog) {
-                const masterItem = session.master_catalog.find((p: any) =>
-                    p.ean === code || (p.eans && p.eans.includes(code))
-                );
-                if (masterItem) {
+            // Fuente ÚNICA de datos: la tabla IndexedDB de la sesión activa
+            if (session?.id) {
+                const dbProduct = await db.precount_products
+                    .where('[session_id+ean]')
+                    .equals([session.id, code])
+                    .first();
+                if (dbProduct) {
                     productToUse = {
                         ean: code,
-                        name: masterItem.name,
-                        cost: masterItem.cost,
-                        salePrice: masterItem.salePrice,
-                        stock: masterItem.systemStock,
-                        id_producto: masterItem.id_producto,
+                        name: dbProduct.name,
+                        cost: dbProduct.cost,
+                        salePrice: dbProduct.salePrice || 0,
+                        stock: dbProduct.stock || 0,
+                        id_producto: dbProduct.id_producto,
                         isMaster: true
                     };
-                }
-            }
-
-            // 2. Fallback to enhanced cache and database
-            if (!productToUse) {
-                const cached = await enhancedProductCache.get(code);
-                if (cached) {
-                    productToUse = {
-                        ean: code,
-                        name: cached.name,
-                        cost: cached.cost,
-                        salePrice: cached.salePrice,
-                        stock: cached.stock,
-                        category: cached.category,
-                        laboratory: cached.laboratory,
-                        id_producto: cached.id_producto,
-                        isNewToMaster: true // Flag as not in master excel
-                    };
-                } else {
-                    const product = await getProductByEAN(code);
-                    if (product) {
-                        productToUse = { ...product, isNewToMaster: true };
-                    }
                 }
             }
 
@@ -1357,33 +1366,26 @@ export default function PreCount() {
         const qty = baseQty;
 
         let productName = selectedProduct?.name;
+        let idProducto = selectedProduct?.id_producto;
 
-        // Si no hay producto seleccionado, intentar buscarlo maestro -> cache -> bd
-        if (!productName) {
-            if (session?.master_catalog) {
-                const masterItem = session.master_catalog.find((p: any) => p.ean === manualEAN.trim());
-                if (masterItem) productName = masterItem.name;
-            }
-
-            if (!productName) {
-                const cached = await enhancedProductCache.get(manualEAN.trim());
-                if (cached) {
-                    productName = cached.name;
-                } else {
-                    const dbProduct = await getProductByEAN(manualEAN.trim());
-                    if (dbProduct) {
-                        productName = dbProduct.name;
-                    }
-                }
+        // Si no hay producto seleccionado, intentar buscarlo en IndexedDB de la sesión -> cache -> bd
+        if (!productName && session?.id) {
+            const dbProduct = await db.precount_products
+                .where('[session_id+ean]')
+                .equals([session.id, manualEAN.trim()])
+                .first();
+            if (dbProduct) {
+                productName = dbProduct.name;
+                idProducto = dbProduct.id_producto;
             }
         }
 
-        // Si aún no hay nombre, usar genérico
-        // Obtener IDProducto de la selección o del caché
-        let idProducto = selectedProduct?.id_producto;
-        if (!idProducto) {
+        if (!productName) {
             const cached = await enhancedProductCache.get(manualEAN.trim());
-            if (cached) idProducto = cached.id_producto;
+            if (cached) {
+                productName = cached.name;
+                if (!idProducto) idProducto = cached.id_producto;
+            }
         }
 
         // Si estamos editando, usar updateItem para reemplazar el valor
@@ -1765,24 +1767,7 @@ export default function PreCount() {
         }
     };
 
-    // Cargar productos de ejemplo (para testing)
-    const loadSampleProducts = async () => {
-        const sampleProducts: Product[] = [
-            { ean: '7790001234567', name: 'Shampoo Dove 400ml', cost: 850, salePrice: 1200, stock: 0 },
-            { ean: '7790002345678', name: 'Acondicionador Pantene 300ml', cost: 920, salePrice: 1350, stock: 0 },
-            { ean: '7790003456789', name: 'Jabón Dove 90g', cost: 180, salePrice: 280, stock: 0 },
-            { ean: '7790004567890', name: 'Desodorante Rexona 150ml', cost: 650, salePrice: 950, stock: 0 },
-            { ean: '7790005678901', name: 'Crema Dental Colgate 90g', cost: 420, salePrice: 620, stock: 0 },
-            { ean: '7790006789012', name: 'Enjuague Bucal Listerine 500ml', cost: 1100, salePrice: 1580, stock: 0 },
-            { ean: '7790007890123', name: 'Papel Higiénico Elite x4', cost: 890, salePrice: 1250, stock: 0 },
-            { ean: '7790008901234', name: 'Toallas Femeninas Always x8', cost: 520, salePrice: 780, stock: 0 },
-            { ean: '7790009012345', name: 'Pañales Pampers M x30', cost: 3200, salePrice: 4500, stock: 0 },
-            { ean: '7790010123456', name: 'Algodón Estrella 100g', cost: 280, salePrice: 420, stock: 0 },
-        ];
 
-        await addProducts(sampleProducts);
-        notify.success("Operación exitosa", 'Productos de ejemplo cargados');
-    };
 
     // Vista de Selección de Modo (Triple recuadro - Coss UI Redesign)
     const renderSelection = () => (
@@ -1972,10 +1957,27 @@ export default function PreCount() {
                     <Button
                         variant="outline"
                         className="flex-1 font-bold h-11 rounded-xl shadow-none border-border/40"
-                        onClick={() => navigate('/stock')}
+                        onClick={async () => {
+                            if (Capacitor.isNativePlatform()) {
+                                if (confirm("¿Estás seguro de que deseas cerrar sesión?")) {
+                                    await logout();
+                                }
+                            } else {
+                                navigate('/stock');
+                            }
+                        }}
                     >
-                        <ArrowLeft className="size-4 mr-2" />
-                        Retroceder
+                        {Capacitor.isNativePlatform() ? (
+                            <>
+                                <LogOut className="size-4 mr-2 text-destructive" />
+                                <span className="text-destructive">Cerrar Sesión</span>
+                            </>
+                        ) : (
+                            <>
+                                <ArrowLeft className="size-4 mr-2" />
+                                Retroceder
+                            </>
+                        )}
                     </Button>
                     <Button
                         variant={selectedProfile ? "default" : "outline"}
@@ -3243,6 +3245,7 @@ export default function PreCount() {
                                                                         <div className="relative z-50 w-full">
                                                                             <SmartProductSearch
                                                                                 key={searchResetKey}
+                                                                                sessionId={session?.id}
                                                                                 onSelect={async (p) => {
                                                                                     if (!activeLocation) return;
 

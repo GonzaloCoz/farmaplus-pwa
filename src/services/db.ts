@@ -4,7 +4,7 @@ import Dexie, { Table } from 'dexie';
 export interface PendingAction {
     id?: number;
     type: 'create' | 'update' | 'delete';
-    entity: 'session' | 'item' | 'product';
+    entity: 'session' | 'item' | 'product' | 'device_file';
     data: any; // The payload to send
     timestamp: number;
     status: 'pending' | 'syncing' | 'failed' | 'success';
@@ -49,17 +49,21 @@ export interface LocalItem {
 }
 
 export interface LocalProduct {
-    codebar: string;
+    ean: string;
     name: string;
+    cost: number;
+    salePrice?: number;
     laboratory?: string;
-    // We can cache more details here
+    stock?: number;
+    id_producto?: string;
+    session_id: string;
 }
 
 export class FarmaplusDB extends Dexie {
     sessions!: Table<LocalSession>;
     items!: Table<LocalItem>;
     locations!: Table<LocalLocationStatus>;
-    products!: Table<LocalProduct>;
+    precount_products!: Table<LocalProduct>;
     pendingActions!: Table<PendingAction>;
 
     constructor() {
@@ -98,6 +102,15 @@ export class FarmaplusDB extends Dexie {
             items: 'id, session_id, ean, [session_id+ean], [session_id+ean+device_id], [session_id+location_tag], synced, id_producto, device_id, scanned_by, location_tag',
             locations: '++id, [session_id+location_tag], status',
             products: 'codebar, name',
+            pendingActions: '++id, status, timestamp, entity'
+        });
+
+        this.version(9).stores({
+            sessions: 'id, status, start_time, synced, user_id, branch_id',
+            items: 'id, session_id, ean, [session_id+ean], [session_id+ean+device_id], [session_id+location_tag], synced, id_producto, device_id, scanned_by, location_tag',
+            locations: '++id, [session_id+location_tag], status',
+            products: null,
+            precount_products: 'ean, name, session_id, [session_id+ean]',
             pendingActions: '++id, status, timestamp, entity'
         });
     }

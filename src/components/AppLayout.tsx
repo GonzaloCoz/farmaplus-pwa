@@ -12,10 +12,12 @@ import { WindowRouter } from "@/components/WindowRouter";
 import { getTabMetaForPath } from "@/config/tabConfig";
 import { ScrollArea, ScrollAreaViewport, ScrollAreaScrollbar } from "@/components/ui/scroll-area";
 import { AppUpdater } from "@/components/AppUpdater";
+import { Capacitor } from "@capacitor/core";
 
 export function AppLayout() {
   const { windows, activeWindowId } = useWindowManager();
   const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
+  const isNative = Capacitor.isNativePlatform();
 
   return (
     <div className={cn(
@@ -81,9 +83,9 @@ export function AppLayout() {
           </div>
 
           <div className="sticky bottom-0 z-10">
-            <BottomNavBar />
+            {!isNative && <BottomNavBar />}
           </div>
-          <TopAppBar />
+          {!isNative && <TopAppBar />}
           <SyncStatus />
         </div>
       </div>

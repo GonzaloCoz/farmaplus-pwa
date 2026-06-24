@@ -54,6 +54,7 @@ interface UsePreCountReturn {
     registerError: () => void;
     announcePresence: (explicitSessionId?: string) => Promise<void>;
     sendFinalCount: (filename: string, content: string) => Promise<boolean>;
+    isDownloadingCatalog?: boolean;
 }
 
 export interface ConnectedDevice {
@@ -80,6 +81,7 @@ export function usePreCount(): UsePreCountReturn {
     const [connectedDevices, setConnectedDevices] = useState<ConnectedDevice[]>([]);
     const [receivedFiles, setReceivedFiles] = useState<ReceivedFile[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isDownloadingCatalog, setIsDownloadingCatalog] = useState(false);
     const { user } = useUser();
 
     // LIVE QUERY for items - This is our source of truth
@@ -358,6 +360,119 @@ export function usePreCount(): UsePreCountReturn {
         };
     }, [activeSessionId, user?.branchId, user?.role]);
 
+    // Descarga en segundo plano del catálogo para dispositivos que se unen
+    useEffect(() => {
+        const downloadCatalog = async () => {
+            if (!session?.id) return;
+            
+            try {
+                // Verificar si ya tenemos el catálogo localmente en la base de datos local
+                const localSession = await db.sessions.get(session.id) as PreCountSession;
+                if (localSession?.master_catalog && localSession.master_catalog.length > 0) {
+                    // Ya tenemos el catálogo localmente, no hacer nada
+                    return;
+                }
+
+                if (!navigator.onLine) {
+                    console.log('[Sync] Dispositivo sin conexión. La descarga del catálogo de stock se reintentará al conectarse.');
+                    return;
+                }
+
+                setIsDownloadingCatalog(true);
+                console.log('[Sync] Iniciando descarga en segundo plano del catálogo de stock para la sesión:', session.id);
+                
+                const { data, error } = await (supabase as any)
+                    .from('precount_device_files')
+                    .select('content')
+                    .eq('session_id', session.id)
+                    .eq('device_id', 'system')
+                    .eq('filename', 'master_catalog.json')
+                    .maybeSingle();
+
+                if (error) throw error;
+
+                if (data && data.content) {
+                    const parsedCatalog = JSON.parse(data.content);
+                    console.log(`[Sync] Catálogo descargado con éxito. Productos: ${parsedCatalog.length}`);
+                    
+                    // Guardar en la base de datos local IndexedDB
+                    await db.sessions.update(session.id, {
+                        master_catalog: parsedCatalog
+                    });
+
+                    // Guardar productos en la tabla db.precount_products
+                    const dbProducts = parsedCatalog.map((p: any) => ({
+                        ean: p.ean,
+                        name: p.name,
+                        cost: p.cost || 0,
+                        salePrice: p.salePrice || 0,
+                        laboratory: p.laboratory || '',
+                        stock: p.systemStock || 0,
+                        id_producto: p.id_producto || '',
+                        session_id: session.id
+                    }));
+                    await db.precount_products.bulkPut(dbProducts);
+                    console.log(`[Sync] Guardados localmente ${dbProducts.length} productos en db.precount_products`);
+
+                    // Actualizar el estado local de la sesión
+                    setSession(prev => prev && prev.id === session.id ? {
+                        ...prev,
+                        master_catalog: parsedCatalog
+                    } : prev);
+
+                    notify.success("Catálogo cargado", `Se sincronizaron ${parsedCatalog.length} productos de stock en segundo plano para búsqueda offline.`, { duration: 4000 });
+                } else {
+                    console.warn('[Sync] No se encontró un catálogo cargado para esta sesión en Supabase.');
+                }
+            } catch (err) {
+                console.error('[Sync] Error al descargar el catálogo en segundo plano:', err);
+            } finally {
+                setIsDownloadingCatalog(false);
+            }
+        };
+
+        downloadCatalog();
+
+        // Escuchar cambios de estado de red para reintentar la descarga
+        const handleOnline = () => {
+            downloadCatalog();
+        };
+
+        window.addEventListener('online', handleOnline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+        };
+    }, [session?.id]);
+
+    // Asegurar que los productos locales estén cargados en db.precount_products si existen en session.master_catalog
+    const sessionId = session?.id;
+    useEffect(() => {
+        const restoreProducts = async () => {
+            if (!sessionId || !session?.master_catalog || session.master_catalog.length === 0) return;
+            try {
+                const count = await db.precount_products.where('session_id').equals(sessionId).count();
+                if (count === 0) {
+                    console.log(`[Sync] db.precount_products está vacío para la sesión activa ${sessionId}. Restaurando desde master_catalog...`);
+                    const dbProducts = session.master_catalog.map((p: any) => ({
+                        ean: p.ean,
+                        name: p.name,
+                        cost: p.cost || 0,
+                        salePrice: p.salePrice || 0,
+                        laboratory: p.laboratory || '',
+                        stock: p.systemStock || 0,
+                        id_producto: p.id_producto || '',
+                        session_id: sessionId
+                    }));
+                    await db.precount_products.bulkPut(dbProducts);
+                    console.log(`[Sync] Restaurados ${dbProducts.length} productos para la sesión ${sessionId} en db.precount_products`);
+                }
+            } catch (err) {
+                console.error('[Sync] Error al restaurar productos locales:', err);
+            }
+        };
+        restoreProducts();
+    }, [sessionId, session?.master_catalog]);
+
 
     // Helper to map DB item to UI item
     const mapInternalItemToUI = (dbItem: any): UIPreCountItem => ({
@@ -382,9 +497,9 @@ export function usePreCount(): UsePreCountReturn {
     const startSession = async (sector: string, masterCatalog?: any[], syncPin?: string) => {
         if (!user) return;
         
-        // PREVENCIÓN: Si ya tenemos una sesión activa con este mismo sector, no crear una nueva.
-        if (session && session.sector === sector && session.status === 'active') {
-            console.log('[Sync] Session already active, skipping creation.');
+        // PREVENCIÓN: Si ya tenemos una sesión activa con este mismo sector y el mismo PIN, no crear una nueva.
+        if (session && session.sector === sector && session.status === 'active' && session.sync_pin === syncPin) {
+            console.log('[Sync] Session already active with same PIN, skipping creation.');
             return;
         }
 
@@ -395,6 +510,39 @@ export function usePreCount(): UsePreCountReturn {
             localStorage.setItem('last_precount_session_id', newSession.id);
             sessionStorage.setItem('active_precount_session_id', newSession.id);
             
+            // Guardar productos del catálogo maestro localmente en db.precount_products
+            if (masterCatalog && masterCatalog.length > 0) {
+                const dbProducts = masterCatalog.map(p => ({
+                    ean: p.ean,
+                    name: p.name,
+                    cost: p.cost || 0,
+                    salePrice: p.salePrice || 0,
+                    laboratory: p.laboratory || '',
+                    stock: p.systemStock || 0,
+                    id_producto: p.id_producto || '',
+                    session_id: newSession.id
+                }));
+                await db.precount_products.bulkPut(dbProducts);
+                console.log(`[Sync] Guardados localmente ${dbProducts.length} productos en db.precount_products al iniciar sesión`);
+            }
+            
+            // Encolar la subida del catálogo a Supabase para sincronización offline-first
+            if (masterCatalog && masterCatalog.length > 0) {
+                console.log('[Sync] Queueing master catalog upload for session:', newSession.id);
+                const { syncManager } = await import('@/services/syncManager');
+                await syncManager.addToQueue({
+                    type: 'create',
+                    entity: 'device_file',
+                    data: {
+                        session_id: newSession.id,
+                        device_id: 'system',
+                        device_name: 'System',
+                        filename: 'master_catalog.json',
+                        content: JSON.stringify(masterCatalog)
+                    }
+                });
+            }
+
             const sessions = await getActiveSessions({ branchId: user.branchId, role: user.role });
             setAvailableSessions(sessions);
             notify.success("Sesión iniciada", "La sesión ha sido creada correctamente");
@@ -451,6 +599,7 @@ export function usePreCount(): UsePreCountReturn {
         setAvailableSessions(prev => prev.filter(s => s.id !== id));
         try {
             await deleteSessionDB(id);
+            await db.precount_products.where('session_id').equals(id).delete();
             if (session?.id === id) setSession(null);
             notify.success("Sesión eliminada", "La sesión ha sido eliminada correctamente");
         } catch (error) {
@@ -514,6 +663,7 @@ export function usePreCount(): UsePreCountReturn {
                 await cyclicInventoryService.markLabAsControlled(user.branchName, session.sector);
             }
 
+            await db.precount_products.where('session_id').equals(session.id).delete();
             setSession(null);
             localStorage.removeItem('last_precount_session_id');
             notify.success("Sesión finalizada", "La sesión se cerró y finalizó");
@@ -618,6 +768,7 @@ export function usePreCount(): UsePreCountReturn {
         refreshItems,
         registerError,
         announcePresence,
-        sendFinalCount
+        sendFinalCount,
+        isDownloadingCatalog
     };
 }

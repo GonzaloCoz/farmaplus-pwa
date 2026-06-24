@@ -14,7 +14,6 @@ const menuItems = [
   { title: "Control de Vencimiento", url: "/smart-analyst", icon: Clock, comingSoon: true },
   { title: "Inventarios Cíclicos", url: "/cyclic-inventory", icon: BarChart3 },
   { title: "Comparativa", url: "/comparison", icon: TrendingUp, roles: ['admin'] as const },
-  { title: "Productos", url: "/products", icon: Package, roles: ['admin'] as const },
   { title: "Reportes", url: "/reports", icon: FileText, roles: ['admin', 'mod'] as const },
 ];
 

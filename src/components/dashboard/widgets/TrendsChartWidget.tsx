@@ -99,24 +99,26 @@ export function TrendsChartWidget({ type = "positive" }: TrendsChartWidgetProps)
     staleTime: 1000 * 60 * 5,
   });
 
-  // ── Fetch live data from branch_laboratories ──
+  // ── Fetch live current-month metrics directly from inventories (via RPC) ──
+  // ponytail: avoids frozen branch_laboratories values from previous cycles
   const { data: liveLabs, isLoading: isLiveLoading } = useQuery({
-    queryKey: ["live-branch-laboratories", user?.branchName],
+    queryKey: ["live-current-month-metrics", user?.branchName],
     queryFn: async () => {
-      if (!user?.branchName) return [];
+      if (!user?.branchName) return null;
       const cleanBranch = normalizeString(user.branchName);
-      const { data, error } = await supabase
-        .from("branch_laboratories")
-        .select("positive_value, negative_value, positive_units, negative_units, status")
-        .eq("branch_name", cleanBranch);
+      const { data, error } = await (supabase as any).rpc(
+        "get_branch_current_month_metrics",
+        { p_branch_name: cleanBranch }
+      );
       if (error) {
-        console.error("Error loading live branch laboratories:", error);
+        console.error("Error loading current-month metrics:", error);
         throw error;
       }
-      return data || [];
+      // RPC returns an array with one row
+      return (data && data.length > 0) ? data[0] : null;
     },
     enabled: !!user?.branchName,
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 60 * 2,
   });
 
   // ── Set up realtime subscription to adjustments and labs ──
@@ -132,12 +134,12 @@ export function TrendsChartWidget({ type = "positive" }: TrendsChartWidgetProps)
         {
           event: "*",
           schema: "public",
-          table: "branch_laboratories",
+          table: "inventories",
           filter: `branch_name=eq.${cleanBranch}`
         },
         () => {
           queryClient.invalidateQueries({
-            queryKey: ["live-branch-laboratories", user.branchName]
+            queryKey: ["live-current-month-metrics", user.branchName]
           });
         }
       )
@@ -211,30 +213,24 @@ export function TrendsChartWidget({ type = "positive" }: TrendsChartWidgetProps)
       });
     }
 
-    // 2. Add real-time entry for the current month
-    let liveSurplusValue = 0;
-    let liveShortageValue = 0;
-    let liveSurplusUnits = 0;
-    let liveShortageUnits = 0;
+    // 2. Datos del mes actual: directamente desde inventories (via RPC) — sin valores congelados
+    const liveSurplusValue  = Number(liveLabs?.surplus_value  ?? 0);
+    const liveShortageValue = Number(liveLabs?.shortage_value ?? 0);
+    const liveSurplusUnits  = Number(liveLabs?.surplus_units  ?? 0);
+    const liveShortageUnits = Number(liveLabs?.shortage_units ?? 0);
 
-    if (liveLabs && liveLabs.length > 0) {
-      liveLabs.forEach((lab: any) => {
-        liveSurplusValue += Number(lab.positive_value || 0);
-        liveShortageValue += Math.abs(Number(lab.negative_value || 0));
-        liveSurplusUnits += Number(lab.positive_units || 0);
-        liveShortageUnits += Math.abs(Number(lab.negative_units || 0));
-      });
+    // Solo agrega el mes actual si hay datos reales
+    if (liveSurplusValue > 0 || liveShortageValue > 0 || liveSurplusUnits > 0 || liveShortageUnits > 0) {
+      grouped[currentYearMonth] = {
+        yearMonth: currentYearMonth,
+        month: MONTH_NAMES[currentMonthIdx],
+        shortage: liveShortageValue,
+        surplus: liveSurplusValue,
+        shortage_units: liveShortageUnits,
+        surplus_units: liveSurplusUnits,
+        dateObj: now,
+      };
     }
-
-    grouped[currentYearMonth] = {
-      yearMonth: currentYearMonth,
-      month: MONTH_NAMES[currentMonthIdx],
-      shortage: liveShortageValue,
-      surplus: liveSurplusValue,
-      shortage_units: liveShortageUnits,
-      surplus_units: liveSurplusUnits,
-      dateObj: now,
-    };
 
     const sortedList = Object.values(grouped)
       .sort((a: any, b: any) => a.dateObj.getTime() - b.dateObj.getTime())

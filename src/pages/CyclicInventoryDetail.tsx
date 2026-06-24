@@ -188,6 +188,11 @@ export default function CyclicInventoryDetail() {
         mismatchData,
         handleResolveMismatch,
 
+        // Import Mode Dialog
+        showImportModeDialog,
+        setShowImportModeDialog,
+        handleSelectImportMode,
+
         // Advanced Logic
         sortBy, setSortBy,
         getSortedItems
@@ -1244,6 +1249,64 @@ export default function CyclicInventoryDetail() {
                                 className="h-11 w-full text-[13px] text-muted-foreground hover:text-foreground font-medium rounded-xl hover:bg-muted/50"
                             >
                                 Cancelar Carga
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Import Mode Selection Dialog (Combinar vs Sobrescribir) */}
+            <Dialog open={showImportModeDialog} onOpenChange={setShowImportModeDialog}>
+                <DialogContent className="max-w-md p-0 gap-0 overflow-hidden border border-border/60 shadow-md rounded-lg bg-background">
+                    <div className="flex items-center justify-between px-5 pt-5 pb-3">
+                        <DialogTitle className="text-base font-semibold tracking-tight flex items-center gap-2">
+                            <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                                <Document className="w-4 h-4" />
+                            </div>
+                            Modo de Carga
+                        </DialogTitle>
+                    </div>
+
+                    <div className="px-5 pb-5 space-y-4">
+                        <div className="space-y-1.5">
+                            <p className="text-[13px] text-muted-foreground leading-relaxed">
+                                Ya existen productos cargados para <strong className="text-foreground">{labName}</strong>. ¿Cómo deseas proceder con el nuevo archivo?
+                            </p>
+                        </div>
+
+                        <div className="space-y-2.5">
+                            <button
+                                onClick={() => handleSelectImportMode('overwrite')}
+                                className="w-full flex flex-col p-4 rounded-xl border border-primary/30 bg-primary/5 hover:bg-primary/10 hover:border-primary/50 text-left transition-all group"
+                            >
+                                <span className="text-xs font-semibold text-primary">
+                                    Carga Limpia (Recomendado)
+                                </span>
+                                <span className="text-[11px] text-muted-foreground mt-1">
+                                    Reemplaza todos los productos anteriores con los del nuevo Excel. Ideal si los datos previos quedaron corruptos o desactualizados.
+                                </span>
+                            </button>
+
+                            <button
+                                onClick={() => handleSelectImportMode('merge')}
+                                className="w-full flex flex-col p-4 rounded-xl border border-border/40 bg-muted/20 hover:bg-muted/40 hover:border-border/60 text-left transition-all group"
+                            >
+                                <span className="text-xs font-semibold text-foreground group-hover:text-foreground transition-colors">
+                                    Combinar (Merge)
+                                </span>
+                                <span className="text-[11px] text-muted-foreground mt-1">
+                                    Conserva los recuentos y productos existentes, y agrega solo los artículos nuevos del Excel.
+                                </span>
+                            </button>
+                        </div>
+
+                        <div className="flex flex-col gap-2 pt-1">
+                            <Button 
+                                variant="ghost" 
+                                onClick={() => setShowImportModeDialog(false)}
+                                className="h-10 w-full text-[13px] text-muted-foreground hover:text-foreground font-medium rounded-xl hover:bg-muted/50"
+                            >
+                                Cancelar
                             </Button>
                         </div>
                     </div>

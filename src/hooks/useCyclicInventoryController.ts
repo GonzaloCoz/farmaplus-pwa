@@ -71,7 +71,10 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         showMismatchDialog,
         setShowMismatchDialog,
         mismatchData,
-        handleResolveMismatch
+        handleResolveMismatch,
+        showImportModeDialog,
+        setShowImportModeDialog,
+        handleSelectImportMode
     } = useInventoryUpload({
         branchName,
         labName,
@@ -715,6 +718,11 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         setShowMismatchDialog,
         mismatchData,
         handleResolveMismatch,
+
+        // Import Mode Dialog
+        showImportModeDialog,
+        setShowImportModeDialog,
+        handleSelectImportMode,
 
         // Special State
         shouldHidePendings,

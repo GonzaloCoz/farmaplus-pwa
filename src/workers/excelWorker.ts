@@ -64,38 +64,61 @@ self.onmessage = async (e: MessageEvent) => {
             eanMap.set(String(item.ean).trim(), index);
         });
 
+        // ponytail: mapear dinámicamente cabeceras de Excel para soportar variaciones de columnas (Plex, preconteo, etc)
+        const headers = Array.isArray(data[0]) ? data[0].map(h => String(h || '').trim().toLowerCase()) : [];
+        const getIndex = (names: string[], fallback: number) => {
+            const idx = headers.findIndex(h => names.includes(h));
+            return idx !== -1 ? idx : fallback;
+        };
+
+        const idProductoIndex = getIndex(['idproducto', 'id_producto', 'id_prod', 'idprod', 'id'], 0);
+        const nameIndex = getIndex(['producto', 'detalle', 'name', 'nombre', 'descripcion', 'descrip'], 3);
+        const qtyIndex = getIndex(['cantidad', 'cant', 'stock', 'sistema', 'systemquantity', 'system_quantity', 'cantidad_sistema'], 4);
+        const categoryIndex = getIndex(['rubro', 'categoria', 'category'], 9);
+        
+        let costIndex = headers.findIndex(h => ['costo', 'cost', 'precio_costo'].includes(h));
+        if (costIndex === -1) {
+            costIndex = getIndex(['precio', 'price', 'precio_venta'], 10);
+        }
+        
+        const codigosBarraIndex = headers.findIndex(h => h === 'codigosbarra');
+        const eanIndex = getIndex(['codebar', 'codigobarra', 'barras', 'código de barras', 'ean'], 2);
+
         let addedCount = 0;
         let updatedCount = 0;
 
         for (let i = 1; i < data.length; i++) {
             const row: any = data[i];
-            if (!row || !row[3]) continue;
+            if (!row) continue;
             
-            // Columna A (index 0) - IDProducto
-            const id_producto = row[0] ? String(row[0]).trim() : '';
+            const name = row[nameIndex] ? String(row[nameIndex]).trim() : '';
+            if (!name) continue;
+            
+            const id_producto = row[idProductoIndex] ? String(row[idProductoIndex]).trim() : '';
 
-            // Columna Q (index 16) - CodigosBarra
-            const rawEan = row[16];
+            // Intentar de codigosBarraIndex, si no usar el eanIndex
+            const rawEan = (codigosBarraIndex !== -1 && row[codigosBarraIndex]) ? row[codigosBarraIndex] : row[eanIndex];
             if (!rawEan) continue;
+            
             const eanList = String(rawEan).split('-').map(e => e.trim()).filter(e => e.length > 0);
             if (eanList.length === 0) continue;
 
-            let category = normalizeStringWorker(row[9]?.toString() || 'Varios');
-            const rawCost = row[10];
+            const category = normalizeStringWorker(row[categoryIndex]?.toString() || 'Varios');
+            const rawCost = row[costIndex];
             const costValue = Math.round((Number(rawCost) || 0) * 100) / 100;
 
             for (const ean of eanList) {
                 if (eanMap.has(ean)) {
                     const index = eanMap.get(ean);
                     const existingItem = { ...finalItems[index] };
-                    const newSystemQty = Number(row[4]) || 0;
+                    const newSystemQty = Number(row[qtyIndex]) || 0;
 
                     // Si ya fue controlado o ajustado, mantenemos su estado y cantidad contada
                     // Pero actualizamos los datos básicos del sistema que vienen del nuevo Excel
                     // Si el producto aún está pendiente, actualizamos también la cantidad física contada.
                     finalItems[index] = {
                         ...existingItem,
-                        name: row[3],
+                        name: name,
                         systemQuantity: newSystemQty,
                         countedQuantity: existingItem.status === 'pending' ? newSystemQty : existingItem.countedQuantity,
                         cost: costValue,
@@ -111,9 +134,9 @@ self.onmessage = async (e: MessageEvent) => {
                 finalItems.push({
                     id: self.crypto.randomUUID ? self.crypto.randomUUID() : Math.random().toString(36).substring(2),
                     ean: ean,
-                    name: row[3],
-                    systemQuantity: Number(row[4]) || 0,
-                    countedQuantity: Number(row[4]) || 0,
+                    name: name,
+                    systemQuantity: Number(row[qtyIndex]) || 0,
+                    countedQuantity: Number(row[qtyIndex]) || 0,
                     cost: costValue,
                     status: 'pending',
                     category: category,

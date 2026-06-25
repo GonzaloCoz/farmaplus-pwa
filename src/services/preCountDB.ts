@@ -37,6 +37,7 @@ export {
 export interface MasterCatalogItem {
     ean: string;
     eans?: string[];
+    isPrimaryEan?: boolean; // true solo en el primer EAN; false en los secundarios
     id_producto: string;
     name: string;
     systemStock: number;

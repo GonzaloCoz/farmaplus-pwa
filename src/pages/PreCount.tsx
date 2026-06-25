@@ -915,21 +915,33 @@ export default function PreCount() {
             const eanIdx = findIdx(['EAN', 'BARCODE', 'BARRAS'], 16);
 
             const rows = data.rows.slice(1); // Saltar encabezado
-            const catalog: MasterCatalogItem[] = rows.map((row) => {
+            // Expandir por EAN: cada EAN secundario apunta al mismo IDProducto
+            const catalog: MasterCatalogItem[] = [];
+            rows.forEach((row) => {
                 const rawEans = String(row[eanIdx] || '').trim();
-                const eanList = rawEans.split('-').map(e => e.trim()).filter(e => e.length > 0);
+                const eanList = rawEans.split('-').map((e: string) => e.trim()).filter((e: string) => e.length > 0);
+                if (eanList.length === 0 || !row[idIdx]) return;
 
-                return {
-                    ean: eanList[0] || 'undefined',
-                    eans: eanList,
-                    id_producto: String(row[idIdx] || '').trim(),
-                    name: String(row[nameIdx] || 'Sin Nombre').trim(),
-                    systemStock: Number(row[stockIdx]) || 0,
-                    cost: Number(row[costIdx]) || 0,
-                    salePrice: Number(row[costIdx]) || 0,
-                    laboratory: String(row[14] || '').trim()
-                };
-            }).filter(p => p.ean !== 'undefined' && p.id_producto);
+                const idProducto = String(row[idIdx]).trim();
+                const name = String(row[nameIdx] || 'Sin Nombre').trim();
+                const systemStock = Number(row[stockIdx]) || 0;
+                const cost = Number(row[costIdx]) || 0;
+                const laboratory = String(row[14] || '').trim();
+
+                eanList.forEach((ean: string, idx: number) => {
+                    catalog.push({
+                        ean,
+                        eans: eanList,
+                        isPrimaryEan: idx === 0,
+                        id_producto: idProducto,
+                        name,
+                        systemStock,
+                        cost,
+                        salePrice: cost,
+                        laboratory
+                    });
+                });
+            });
 
             if (catalog.length === 0) {
                 setLoadStatus('warning');
@@ -976,21 +988,33 @@ export default function PreCount() {
                         const json: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
                         const rows = json.slice(1);
 
-                        const catalog: MasterCatalogItem[] = rows.map((row) => {
+                        // Expandir por EAN: cada EAN secundario apunta al mismo IDProducto
+                        const catalog: MasterCatalogItem[] = [];
+                        rows.forEach((row) => {
                             const rawEans = String(row[16] || '').trim(); // Columna Q
-                            const eanList = rawEans.split('-').map(e => e.trim()).filter(e => e.length > 0);
+                            const eanList = rawEans.split('-').map((e: string) => e.trim()).filter((e: string) => e.length > 0);
+                            if (eanList.length === 0 || !row[0]) return;
 
-                            return {
-                                ean: eanList[0] || 'undefined', // Usamos el primero como principal
-                                eans: eanList, // Guardamos todos para búsqueda
-                                id_producto: String(row[0] || '').trim(), // Columna A
-                                name: String(row[3] || 'Sin Nombre').trim(), // Columna D
-                                systemStock: Number(row[4]) || 0, // Columna E
-                                cost: Number(row[10]) || 0, // Columna K
-                                salePrice: Number(row[10]) || 0, // Columna K (Uso el mismo para precio venta si no hay)
-                                laboratory: String(row[14] || '').trim()
-                            };
-                        }).filter(p => p.ean !== 'undefined' && p.id_producto);
+                            const idProducto = String(row[0]).trim(); // Columna A
+                            const name = String(row[3] || 'Sin Nombre').trim(); // Columna D
+                            const systemStock = Number(row[4]) || 0; // Columna E
+                            const cost = Number(row[10]) || 0; // Columna K
+                            const laboratory = String(row[14] || '').trim();
+
+                            eanList.forEach((ean: string, idx: number) => {
+                                catalog.push({
+                                    ean,
+                                    eans: eanList,
+                                    isPrimaryEan: idx === 0,
+                                    id_producto: idProducto,
+                                    name,
+                                    systemStock,
+                                    cost,
+                                    salePrice: cost,
+                                    laboratory
+                                });
+                            });
+                        });
 
                         if (catalog.length === 0) {
                             setLoadStatus('warning');
@@ -1563,9 +1587,18 @@ export default function PreCount() {
             let totalSystem = 0;
             let totalDiffVal = 0;
 
-            session.master_catalog.forEach(master => {
-                processedEans.add(master.ean);
-                const counted = groupedItems[master.ean] || 0;
+            // Solo iterar sobre los EANs primarios para evitar contar el stock
+            // del sistema múltiples veces cuando un producto tiene varios EANs.
+            // Los EANs secundarios también se contabilizan porque groupedItems los acumula.
+            const catalogForReport = session.master_catalog.filter(
+                m => m.isPrimaryEan !== false || !m.eans || m.eans.length <= 1
+            );
+
+            catalogForReport.forEach(master => {
+                // Sumar conteo de TODOS los EANs del mismo producto
+                const allEans = master.eans && master.eans.length > 0 ? master.eans : [master.ean];
+                const counted = allEans.reduce((sum, ean) => sum + (groupedItems[ean] || 0), 0);
+                allEans.forEach(ean => processedEans.add(ean));
                 const diffQty = counted - master.systemStock;
                 const diffValue = diffQty * master.cost;
 

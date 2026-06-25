@@ -19,6 +19,34 @@ import { notify } from '@/lib/notifications';
 import { useUser } from '@/contexts/UserContext';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 
+/**
+ * Expande el master_catalog a filas de db.precount_products: UNA fila por EAN.
+ * Si un producto tiene eans=[A, B, C], se crean 3 filas con la misma
+ * id_producto/name/stock, permitiendo que cualquier EAN sea encontrado.
+ * NOTA: Solo aplica al Colector de Datos (PreCount). No afecta el inventario cíclico.
+ */
+function expandCatalogToDbProducts(catalog: any[], sessionId: string) {
+    const rows: any[] = [];
+    catalog.forEach(p => {
+        // Usar el array completo de EANs si existe, si no usar solo el principal
+        const eans: string[] = (p.eans && p.eans.length > 0) ? p.eans : [p.ean];
+        eans.forEach((ean: string) => {
+            if (!ean || ean === 'undefined') return;
+            rows.push({
+                ean,
+                name: p.name,
+                cost: p.cost || 0,
+                salePrice: p.salePrice || 0,
+                laboratory: p.laboratory || '',
+                stock: p.systemStock || 0,
+                id_producto: p.id_producto || '',
+                session_id: sessionId
+            });
+        });
+    });
+    return rows;
+}
+
 export interface UIPreCountItem {
     id: string;
     sessionId: string;
@@ -401,18 +429,10 @@ export function usePreCount(): UsePreCountReturn {
                     });
 
                     // Guardar productos en la tabla db.precount_products
-                    const dbProducts = parsedCatalog.map((p: any) => ({
-                        ean: p.ean,
-                        name: p.name,
-                        cost: p.cost || 0,
-                        salePrice: p.salePrice || 0,
-                        laboratory: p.laboratory || '',
-                        stock: p.systemStock || 0,
-                        id_producto: p.id_producto || '',
-                        session_id: session.id
-                    }));
+                    // Se expande: una fila por EAN para que cualquier EAN secundario sea buscable
+                    const dbProducts = expandCatalogToDbProducts(parsedCatalog, session.id);
                     await db.precount_products.bulkPut(dbProducts);
-                    console.log(`[Sync] Guardados localmente ${dbProducts.length} productos en db.precount_products`);
+                    console.log(`[Sync] Guardados localmente ${dbProducts.length} filas EAN en db.precount_products (${parsedCatalog.length} productos)`);
 
                     // Actualizar el estado local de la sesión
                     setSession(prev => prev && prev.id === session.id ? {
@@ -453,18 +473,10 @@ export function usePreCount(): UsePreCountReturn {
                 const count = await db.precount_products.where('session_id').equals(sessionId).count();
                 if (count === 0) {
                     console.log(`[Sync] db.precount_products está vacío para la sesión activa ${sessionId}. Restaurando desde master_catalog...`);
-                    const dbProducts = session.master_catalog.map((p: any) => ({
-                        ean: p.ean,
-                        name: p.name,
-                        cost: p.cost || 0,
-                        salePrice: p.salePrice || 0,
-                        laboratory: p.laboratory || '',
-                        stock: p.systemStock || 0,
-                        id_producto: p.id_producto || '',
-                        session_id: sessionId
-                    }));
+                    // Expansión: una fila por EAN para que EANs secundarios sean buscables
+                    const dbProducts = expandCatalogToDbProducts(session.master_catalog, sessionId);
                     await db.precount_products.bulkPut(dbProducts);
-                    console.log(`[Sync] Restaurados ${dbProducts.length} productos para la sesión ${sessionId} en db.precount_products`);
+                    console.log(`[Sync] Restauradas ${dbProducts.length} filas EAN para la sesión ${sessionId} en db.precount_products (${session.master_catalog.length} productos)`);
                 }
             } catch (err) {
                 console.error('[Sync] Error al restaurar productos locales:', err);
@@ -511,19 +523,11 @@ export function usePreCount(): UsePreCountReturn {
             sessionStorage.setItem('active_precount_session_id', newSession.id);
             
             // Guardar productos del catálogo maestro localmente en db.precount_products
+            // Se expande: una fila por EAN para que cualquier EAN secundario sea buscable
             if (masterCatalog && masterCatalog.length > 0) {
-                const dbProducts = masterCatalog.map(p => ({
-                    ean: p.ean,
-                    name: p.name,
-                    cost: p.cost || 0,
-                    salePrice: p.salePrice || 0,
-                    laboratory: p.laboratory || '',
-                    stock: p.systemStock || 0,
-                    id_producto: p.id_producto || '',
-                    session_id: newSession.id
-                }));
+                const dbProducts = expandCatalogToDbProducts(masterCatalog, newSession.id);
                 await db.precount_products.bulkPut(dbProducts);
-                console.log(`[Sync] Guardados localmente ${dbProducts.length} productos en db.precount_products al iniciar sesión`);
+                console.log(`[Sync] Guardados localmente ${dbProducts.length} filas EAN en db.precount_products al iniciar sesión (${masterCatalog.length} productos)`);
             }
             
             // Encolar la subida del catálogo a Supabase para sincronización offline-first

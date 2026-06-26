@@ -99,6 +99,15 @@ export function PreCountList({ items, mode = "full", onUpdate, onDelete, onEditR
         return matched?.laboratory || "Laboratorio"; 
     };
 
+    const getRubro = (id_producto?: string, ean?: string) => {
+        if (!masterCatalog) return "Varios";
+        const matched = masterCatalog.find(item => 
+            (id_producto && item.id_producto === id_producto) || 
+            (ean && (item.ean === ean || item.eans?.includes(ean)))
+        );
+        return matched?.rubro || "Varios"; 
+    };
+
     return (
         <CardFrame 
             ref={containerRef}
@@ -108,12 +117,13 @@ export function PreCountList({ items, mode = "full", onUpdate, onDelete, onEditR
                 <Table variant="card" className="scrollbar-none w-full border-collapse">
                     <TableHeader className="sticky top-0 bg-secondary/10 dark:bg-secondary/5 backdrop-blur-sm z-10 rounded-t-2xl overflow-hidden">
                         <TableRow className="hover:bg-transparent border-none">
-                            <TableHead className="w-[15%] min-w-[140px] py-4 h-12 align-middle text-center pl-5">Código EAN</TableHead>
-                            <TableHead className="w-[32%] min-w-[200px] py-4 h-12 align-middle">Producto</TableHead>
-                            <TableHead className="w-[15%] min-w-[130px] py-4 h-12 align-middle">Laboratorio</TableHead>
+                            <TableHead className="w-[12%] min-w-[140px] py-4 h-12 align-middle text-center pl-5">Código EAN</TableHead>
+                            <TableHead className="w-[28%] min-w-[200px] py-4 h-12 align-middle">Producto</TableHead>
+                            <TableHead className="w-[12%] min-w-[130px] py-4 h-12 align-middle">Laboratorio</TableHead>
+                            <TableHead className="w-[12%] min-w-[120px] py-4 h-12 align-middle">Rubro</TableHead>
                             <TableHead className="w-[10%] min-w-[100px] py-4 h-12 align-middle text-center">Sector</TableHead>
                             <TableHead className="w-[10%] min-w-[80px] py-4 h-12 align-middle text-center">Hora</TableHead>
-                            <TableHead className="w-[8%] min-w-[70px] py-4 h-12 align-middle text-center">Cant.</TableHead>
+                            <TableHead className="w-[6%] min-w-[70px] py-4 h-12 align-middle text-center">Cant.</TableHead>
                             <TableHead className="w-[10%] min-w-[100px] py-4 h-12 align-middle text-center pr-5">Acciones</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -128,6 +138,9 @@ export function PreCountList({ items, mode = "full", onUpdate, onDelete, onEditR
                                 </TableCell>
                                 <TableCell className="py-2 px-3">
                                     <div className="font-medium text-muted-foreground text-[12px] truncate">{getLab(item.id_producto, item.ean)}</div>
+                                </TableCell>
+                                <TableCell className="py-2 px-3">
+                                    <div className="font-medium text-muted-foreground text-[12px] truncate">{getRubro(item.id_producto, item.ean)}</div>
                                 </TableCell>
                                 <TableCell className="py-2 px-3 text-center">
                                     <Badge variant="outline" size="sm" className="h-6 px-2 bg-blue-50/50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-900/50 font-normal">
@@ -169,7 +182,7 @@ export function PreCountList({ items, mode = "full", onUpdate, onDelete, onEditR
                         {/* Fill empty space if pageItems is less than pageSize to keep footer anchored */}
                         {pageItems.length < pageSize && pageItems.length > 0 && (
                              <TableRow style={{ height: (pageSize - pageItems.length) * 46 }} className="border-none hover:bg-transparent">
-                                 <TableCell colSpan={7} className="p-0 border-none" />
+                                 <TableCell colSpan={8} className="p-0 border-none" />
                              </TableRow>
                         )}
                     </TableBody>

@@ -55,8 +55,6 @@ self.onmessage = async (e: MessageEvent) => {
         }
 
         // 4. Lógica de Procesamiento (Sincronización Maestra - MODO MERGE)
-        // Ya no filtramos currentItems destructivamente. Los mantenemos todos.
-        // Esto permite que el nuevo Excel rellene los huecos sin pisar lo ya hecho.
         const finalItems: any[] = [...currentItems];
         
         const eanMap = new Map();

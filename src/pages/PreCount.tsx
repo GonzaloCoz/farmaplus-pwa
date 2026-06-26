@@ -106,6 +106,7 @@ import { Product } from '@/services/preCountDB';
 import { notify } from '@/lib/notifications';
 import { AnimatedCounter } from '@/components/AnimatedCounter';
 import * as XLSX from 'xlsx';
+import ExcelNightWorker from '../workers/excelNightWorker?worker';
 import jsPDF from 'jspdf';
 import JsBarcode from 'jsbarcode';
 import { enhancedProductCache } from '@/services/enhancedProductCache';
@@ -684,13 +685,14 @@ export default function PreCount() {
     const stockMetrics = useMemo(() => {
         if (!masterCatalog || masterCatalog.length === 0) return null;
 
-        const eans = masterCatalog.length;
+        const eans = masterCatalog.filter(item => item.isPrimaryEan).length;
         let positiveUnits = 0;
         let negativeUnits = 0;
         let totalValue = 0;
         let negativeValue = 0;
 
         masterCatalog.forEach(item => {
+            if (!item.isPrimaryEan) return;
             const stock = item.systemStock || 0;
             const price = item.cost || item.salePrice || 0;
 
@@ -900,71 +902,55 @@ export default function PreCount() {
                 throw new Error("El archivo no contiene suficientes datos.");
             }
 
-            const header = data.rows[0];
-            
-            // Inventario Cíclico (carga de laboratorios):
-            // Usar SOLO la columna C (índice 2) = Codebar como EAN único.
-            // La columna Q (CodigosBarra) con múltiples EANs separados por '-'
-            // se reserva EXCLUSIVAMENTE para inventarios nocturnos (colector físico).
-            const findIdx = (names: string[], fallback: number) => {
-                const idx = header.findIndex(h => names.some(n => String(h).toUpperCase().includes(n.toUpperCase())));
-                return idx === -1 ? fallback : idx;
+            const worker = new ExcelNightWorker();
+
+            worker.onmessage = (eMsg) => {
+                const { success, error, catalog } = eMsg.data;
+
+                if (error) {
+                    notify.error("Error", error);
+                    setLoadStatus('error');
+                    worker.terminate();
+                    return;
+                }
+
+                if (success) {
+                    const primaryCount = catalog.filter((item: MasterCatalogItem) => item.isPrimaryEan).length;
+                    if (catalog.length === 0) {
+                        setLoadStatus('warning');
+                        notify.error("Error de formato", "No se encontraron productos válidos en el archivo.");
+                    } else {
+                        setLoadStatus('success');
+                        notify.success("Datos Cargados", `Se procesaron ${primaryCount} productos correctamente.`);
+                        
+                        // Autocompletar nombre si estamos en configuración
+                        if (step === 'admin_config' || step === 'config') {
+                            const laboratory = catalog[0]?.laboratory || '';
+                            const suffix = laboratory ? ` (${laboratory})` : '';
+                            setInventoryName(data.filename.replace(/\.[^/.]+$/, "") + suffix);
+                        }
+                    }
+
+                    setMasterCatalog(catalog);
+                    setParsedStock({
+                        total: primaryCount,
+                        filename: data.filename,
+                        size: data.size
+                    });
+                    
+                    worker.terminate();
+                }
             };
 
-            const idIdx = findIdx(['ID', 'CODIGO', 'INTERNO'], 0);
-            const nameIdx = findIdx(['NOMBRE', 'DESCRIPCION', 'PRODUCTO'], 3);
-            const stockIdx = findIdx(['STOCK', 'SISTEMA', 'CANT'], 4);
-            const costIdx = findIdx(['COSTO', 'PRECIO', 'VALOR'], 10);
-            // Columna C (índice 2) = Codebar: EAN principal del producto para inventario cíclico
-            const codebarIdx = 2;
+            worker.onerror = (err) => {
+                console.error("Worker Error:", err);
+                notify.error("Error", "Hubo un fallo crítico al procesar los datos de Electron.");
+                setLoadStatus('error');
+                worker.terminate();
+            };
 
-            const rows = data.rows.slice(1); // Saltar encabezado
-            // Una sola entrada por producto usando el EAN de la columna C (Codebar)
-            const catalog: MasterCatalogItem[] = [];
-            rows.forEach((row) => {
-                const ean = String(row[codebarIdx] || '').trim();
-                if (!ean || !row[idIdx]) return;
+            worker.postMessage({ rows: data.rows });
 
-                const idProducto = String(row[idIdx]).trim();
-                const name = String(row[nameIdx] || 'Sin Nombre').trim();
-                const systemStock = Number(row[stockIdx]) || 0;
-                const cost = Number(row[costIdx]) || 0;
-                const laboratory = String(row[14] || '').trim();
-
-                catalog.push({
-                    ean,
-                    eans: [ean],
-                    isPrimaryEan: true,
-                    id_producto: idProducto,
-                    name,
-                    systemStock,
-                    cost,
-                    salePrice: cost,
-                    laboratory
-                });
-            });
-
-            if (catalog.length === 0) {
-                setLoadStatus('warning');
-                notify.error("Error de formato", "No se encontraron productos válidos en el archivo.");
-            } else {
-                setLoadStatus('success');
-                notify.success("Datos Cargados", `Se procesaron ${catalog.length} productos correctamente.`);
-                
-                // Autocompletar nombre si estamos en configuración
-                if (step === 'admin_config' || step === 'config') {
-                    const laboratory = rows[0] ? String(rows[0][14] || '').trim() : '';
-                    const suffix = laboratory ? ` (${laboratory})` : '';
-                    setInventoryName(data.filename.replace(/\.[^/.]+$/, "") + suffix);
-                }
-            }
-
-            setMasterCatalog(catalog);
-            setParsedStock({
-                total: catalog.length,
-                filename: data.filename,
-                size: data.size
-            });
         } catch (err) {
             console.error("Error en handleElectronImport:", err);
             notify.error("Error", 'No se pudo procesar el archivo. Verifique el formato.');
@@ -979,63 +965,59 @@ export default function PreCount() {
             if (file instanceof File) {
                 const reader = new FileReader();
                 reader.onload = (e) => {
-                    try {
-                        const data = e.target?.result;
-                        const workbook = XLSX.read(data, { type: 'binary' });
-                        const firstSheetName = workbook.SheetNames[0];
-                        const worksheet = workbook.Sheets[firstSheetName];
+                    const fileContent = e.target?.result;
+                    const worker = new ExcelNightWorker();
 
-                        // Parse according to master template format
-                        const json: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-                        const rows = json.slice(1);
+                    worker.onmessage = (eMsg) => {
+                        const { success, error, catalog } = eMsg.data;
 
-                        // Inventario Cíclico (carga de laboratorios):
-                        // Usar SOLO la columna C (índice 2) = Codebar como EAN único por producto.
-                        // La columna Q (índice 16, CodigosBarra) con múltiples EANs separados por '-'
-                        // se reserva EXCLUSIVAMENTE para inventarios nocturnos (colector físico).
-                        const catalog: MasterCatalogItem[] = [];
-                        rows.forEach((row) => {
-                            const ean = String(row[2] || '').trim(); // Columna C = Codebar (EAN único)
-                            if (!ean || !row[0]) return;
-
-                            const idProducto = String(row[0]).trim(); // Columna A
-                            const name = String(row[3] || 'Sin Nombre').trim(); // Columna D
-                            const systemStock = Number(row[4]) || 0; // Columna E
-                            const cost = Number(row[10]) || 0; // Columna K
-                            const laboratory = String(row[14] || '').trim();
-
-                            catalog.push({
-                                ean,
-                                eans: [ean],
-                                isPrimaryEan: true,
-                                id_producto: idProducto,
-                                name,
-                                systemStock,
-                                cost,
-                                salePrice: cost,
-                                laboratory
-                            });
-                        });
-
-                        if (catalog.length === 0) {
-                            setLoadStatus('warning');
-                            notify.error("Error de formato", "No se encontraron productos válidos en el archivo estructurado.");
-                        } else {
-                            setLoadStatus('success');
+                        if (error) {
+                            notify.error("Error", error);
+                            setLoadStatus('error');
+                            setUploadedFiles([]);
+                            setMasterCatalog(null);
+                            worker.terminate();
+                            return;
                         }
 
-                        setMasterCatalog(catalog);
-                        setParsedStock({
-                            total: catalog.length,
-                            filename: file.name,
-                            size: file.size
-                        });
-                    } catch (err) {
-                        notify.error("Error", 'No se pudo leer el archivo de stock. Verifique el formato.');
+                        if (success) {
+                            const primaryCount = catalog.filter((item: MasterCatalogItem) => item.isPrimaryEan).length;
+                            if (catalog.length === 0) {
+                                setLoadStatus('warning');
+                                notify.error("Error de formato", "No se encontraron productos válidos en el archivo estructurado.");
+                            } else {
+                                setLoadStatus('success');
+                                notify.success("Datos Cargados", `Se procesaron ${primaryCount} productos correctamente.`);
+                                
+                                // Autocompletar nombre si estamos en configuración
+                                if (step === 'admin_config' || step === 'config') {
+                                    const laboratory = catalog[0]?.laboratory || '';
+                                    const suffix = laboratory ? ` (${laboratory})` : '';
+                                    setInventoryName(file.name.replace(/\.[^/.]+$/, "") + suffix);
+                                }
+                            }
+
+                            setMasterCatalog(catalog);
+                            setParsedStock({
+                                total: primaryCount,
+                                filename: file.name,
+                                size: file.size
+                            });
+                            
+                            worker.terminate();
+                        }
+                    };
+
+                    worker.onerror = (err) => {
+                        console.error("Worker Error:", err);
+                        notify.error("Error", "Hubo un fallo crítico al procesar el archivo.");
                         setLoadStatus('error');
                         setUploadedFiles([]);
                         setMasterCatalog(null);
-                    }
+                        worker.terminate();
+                    };
+
+                    worker.postMessage({ fileData: fileContent });
                 };
                 reader.readAsBinaryString(file);
             }

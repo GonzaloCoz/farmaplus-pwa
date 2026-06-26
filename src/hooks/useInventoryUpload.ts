@@ -7,7 +7,7 @@ import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { normalizeString, getStringSimilarity } from '@/lib/utils';
 import { getLaboratoriesForBranch } from '@/services/preCountDB';
 import { useUser } from '@/contexts/UserContext';
-import ExcelWorker from '../workers/excelWorker?worker';
+import ExcelWorker from '../workers/excelCyclicWorker?worker';
 
 // Definir categorías para evitar dependencias circulares o redefiniciones
 const CATEGORIES = ["Medicamentos", "Perfumería", "ACCESORIOS", "VARIOS"];

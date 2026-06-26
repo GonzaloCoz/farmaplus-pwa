@@ -44,6 +44,7 @@ export interface MasterCatalogItem {
     cost: number;
     salePrice: number;
     laboratory?: string;
+    rubro?: string;
 }
 
 export interface PreCountSession extends LocalSession {

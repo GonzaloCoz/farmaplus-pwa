@@ -902,7 +902,10 @@ export default function PreCount() {
 
             const header = data.rows[0];
             
-            // Intentar detectar índices dinámicamente o usar fallbacks de Plex25
+            // Inventario Cíclico (carga de laboratorios):
+            // Usar SOLO la columna C (índice 2) = Codebar como EAN único.
+            // La columna Q (CodigosBarra) con múltiples EANs separados por '-'
+            // se reserva EXCLUSIVAMENTE para inventarios nocturnos (colector físico).
             const findIdx = (names: string[], fallback: number) => {
                 const idx = header.findIndex(h => names.some(n => String(h).toUpperCase().includes(n.toUpperCase())));
                 return idx === -1 ? fallback : idx;
@@ -912,15 +915,15 @@ export default function PreCount() {
             const nameIdx = findIdx(['NOMBRE', 'DESCRIPCION', 'PRODUCTO'], 3);
             const stockIdx = findIdx(['STOCK', 'SISTEMA', 'CANT'], 4);
             const costIdx = findIdx(['COSTO', 'PRECIO', 'VALOR'], 10);
-            const eanIdx = findIdx(['EAN', 'BARCODE', 'BARRAS'], 16);
+            // Columna C (índice 2) = Codebar: EAN principal del producto para inventario cíclico
+            const codebarIdx = 2;
 
             const rows = data.rows.slice(1); // Saltar encabezado
-            // Expandir por EAN: cada EAN secundario apunta al mismo IDProducto
+            // Una sola entrada por producto usando el EAN de la columna C (Codebar)
             const catalog: MasterCatalogItem[] = [];
             rows.forEach((row) => {
-                const rawEans = String(row[eanIdx] || '').trim();
-                const eanList = rawEans.split('-').map((e: string) => e.trim()).filter((e: string) => e.length > 0);
-                if (eanList.length === 0 || !row[idIdx]) return;
+                const ean = String(row[codebarIdx] || '').trim();
+                if (!ean || !row[idIdx]) return;
 
                 const idProducto = String(row[idIdx]).trim();
                 const name = String(row[nameIdx] || 'Sin Nombre').trim();
@@ -928,18 +931,16 @@ export default function PreCount() {
                 const cost = Number(row[costIdx]) || 0;
                 const laboratory = String(row[14] || '').trim();
 
-                eanList.forEach((ean: string, idx: number) => {
-                    catalog.push({
-                        ean,
-                        eans: eanList,
-                        isPrimaryEan: idx === 0,
-                        id_producto: idProducto,
-                        name,
-                        systemStock,
-                        cost,
-                        salePrice: cost,
-                        laboratory
-                    });
+                catalog.push({
+                    ean,
+                    eans: [ean],
+                    isPrimaryEan: true,
+                    id_producto: idProducto,
+                    name,
+                    systemStock,
+                    cost,
+                    salePrice: cost,
+                    laboratory
                 });
             });
 
@@ -988,12 +989,14 @@ export default function PreCount() {
                         const json: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
                         const rows = json.slice(1);
 
-                        // Expandir por EAN: cada EAN secundario apunta al mismo IDProducto
+                        // Inventario Cíclico (carga de laboratorios):
+                        // Usar SOLO la columna C (índice 2) = Codebar como EAN único por producto.
+                        // La columna Q (índice 16, CodigosBarra) con múltiples EANs separados por '-'
+                        // se reserva EXCLUSIVAMENTE para inventarios nocturnos (colector físico).
                         const catalog: MasterCatalogItem[] = [];
                         rows.forEach((row) => {
-                            const rawEans = String(row[16] || '').trim(); // Columna Q
-                            const eanList = rawEans.split('-').map((e: string) => e.trim()).filter((e: string) => e.length > 0);
-                            if (eanList.length === 0 || !row[0]) return;
+                            const ean = String(row[2] || '').trim(); // Columna C = Codebar (EAN único)
+                            if (!ean || !row[0]) return;
 
                             const idProducto = String(row[0]).trim(); // Columna A
                             const name = String(row[3] || 'Sin Nombre').trim(); // Columna D
@@ -1001,18 +1004,16 @@ export default function PreCount() {
                             const cost = Number(row[10]) || 0; // Columna K
                             const laboratory = String(row[14] || '').trim();
 
-                            eanList.forEach((ean: string, idx: number) => {
-                                catalog.push({
-                                    ean,
-                                    eans: eanList,
-                                    isPrimaryEan: idx === 0,
-                                    id_producto: idProducto,
-                                    name,
-                                    systemStock,
-                                    cost,
-                                    salePrice: cost,
-                                    laboratory
-                                });
+                            catalog.push({
+                                ean,
+                                eans: [ean],
+                                isPrimaryEan: true,
+                                id_producto: idProducto,
+                                name,
+                                systemStock,
+                                cost,
+                                salePrice: cost,
+                                laboratory
                             });
                         });
 

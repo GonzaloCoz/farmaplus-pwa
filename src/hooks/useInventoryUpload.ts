@@ -132,7 +132,7 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                     costIndex = getIndex(['precio', 'price', 'precio_venta'], 10);
                 }
                 
-                const codigosBarraIndex = headers.findIndex(h => h === 'codigosbarra');
+                const codigosBarraIndex = -1; // Inventario Cíclico: ignorar columna Q (CodigosBarra)
                 const eanIndex = getIndex(['codebar', 'codigobarra', 'barras', 'código de barras', 'ean'], 2);
 
                 let addedCount = 0;
@@ -146,46 +146,43 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                     if (!name) continue;
                     
                     const id_producto = row[idProductoIndex] ? String(row[idProductoIndex]).trim() : '';
-                    const rawEan = (codigosBarraIndex !== -1 && row[codigosBarraIndex]) ? row[codigosBarraIndex] : row[eanIndex];
-                    if (!rawEan) continue;
-                    
-                    const eanList = String(rawEan).split('-').map(e => e.trim()).filter(e => e.length > 0);
-                    if (eanList.length === 0) continue;
+                    // Inventario Cíclico: usar SOLO la columna C (Codebar, índice 2) como EAN único.
+                    // NO usar columna Q (CodigosBarra) ni hacer split('-').
+                    const ean = String(row[eanIndex] || '').trim();
+                    if (!ean) continue;
 
                     let category = normalizeString(row[categoryIndex]?.toString() || 'Varios').toUpperCase();
                     const rawCost = row[costIndex];
                     const costValue = Math.round((Number(rawCost) || 0) * 100) / 100;
 
-                    for (const ean of eanList) {
-                        if (eanMap.has(ean)) {
-                            const index = eanMap.get(ean);
-                            const existingItem = { ...finalItems[index] };
-                            const newSystemQty = Number(row[qtyIndex]) || 0;
-                            finalItems[index] = {
-                                ...existingItem,
-                                name: name,
-                                systemQuantity: newSystemQty,
-                                countedQuantity: existingItem.status === 'pending' ? newSystemQty : existingItem.countedQuantity,
-                                cost: costValue,
-                                category: category,
-                                id_producto: id_producto
-                            };
-                            updatedCount++;
-                        } else {
-                            finalItems.push({
-                                id: crypto.randomUUID(),
-                                ean: ean,
-                                name: name,
-                                systemQuantity: Number(row[qtyIndex]) || 0,
-                                countedQuantity: Number(row[qtyIndex]) || 0,
-                                cost: costValue,
-                                status: 'pending',
-                                category: category,
-                                wasReadjusted: false,
-                                id_producto: id_producto
-                            });
-                            addedCount++;
-                        }
+                    if (eanMap.has(ean)) {
+                        const index = eanMap.get(ean);
+                        const existingItem = { ...finalItems[index] };
+                        const newSystemQty = Number(row[qtyIndex]) || 0;
+                        finalItems[index] = {
+                            ...existingItem,
+                            name: name,
+                            systemQuantity: newSystemQty,
+                            countedQuantity: existingItem.status === 'pending' ? newSystemQty : existingItem.countedQuantity,
+                            cost: costValue,
+                            category: category,
+                            id_producto: id_producto
+                        };
+                        updatedCount++;
+                    } else {
+                        finalItems.push({
+                            id: crypto.randomUUID(),
+                            ean: ean,
+                            name: name,
+                            systemQuantity: Number(row[qtyIndex]) || 0,
+                            countedQuantity: Number(row[qtyIndex]) || 0,
+                            cost: costValue,
+                            status: 'pending',
+                            category: category,
+                            wasReadjusted: false,
+                            id_producto: id_producto
+                        });
+                        addedCount++;
                     }
                 }
 
@@ -453,7 +450,7 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 costIndex = getIndex(['precio', 'price', 'precio_venta'], 10);
             }
             
-            const codigosBarraIndex = headers.findIndex(h => h === 'codigosbarra');
+            const codigosBarraIndex = -1; // Inventario Cíclico: ignorar columna Q (CodigosBarra)
             const eanIndex = getIndex(['codebar', 'codigobarra', 'barras', 'código de barras', 'ean'], 2);
 
             let addedCount = 0;
@@ -467,46 +464,43 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 if (!name) continue;
                 
                 const id_producto = row[idProductoIndex] ? String(row[idProductoIndex]).trim() : '';
-                const rawEan = (codigosBarraIndex !== -1 && row[codigosBarraIndex]) ? row[codigosBarraIndex] : row[eanIndex];
-                if (!rawEan) continue;
-                
-                const eanList = String(rawEan).split('-').map(e => e.trim()).filter(e => e.length > 0);
-                if (eanList.length === 0) continue;
+                // Inventario Cíclico: usar SOLO la columna C (Codebar, índice 2) como EAN único.
+                // NO usar columna Q (CodigosBarra) ni hacer split('-').
+                const ean = String(row[eanIndex] || '').trim();
+                if (!ean) continue;
 
                 let category = normalizeString(row[categoryIndex]?.toString() || 'Varios').toUpperCase();
                 const rawCost = row[costIndex];
                 const costValue = Math.round((Number(rawCost) || 0) * 100) / 100;
 
-                for (const ean of eanList) {
-                    if (eanMap.has(ean)) {
-                        const index = eanMap.get(ean);
-                        const existingItem = { ...finalItems[index] };
-                        const newSystemQty = Number(row[qtyIndex]) || 0;
-                        finalItems[index] = {
-                            ...existingItem,
-                            name: name,
-                            systemQuantity: newSystemQty,
-                            countedQuantity: existingItem.status === 'pending' ? newSystemQty : existingItem.countedQuantity,
-                            cost: costValue,
-                            category: category,
-                            id_producto: id_producto
-                        };
-                        updatedCount++;
-                    } else {
-                        finalItems.push({
-                            id: crypto.randomUUID(),
-                            ean: ean,
-                            name: name,
-                            systemQuantity: Number(row[qtyIndex]) || 0,
-                            countedQuantity: Number(row[qtyIndex]) || 0,
-                            cost: costValue,
-                            status: 'pending',
-                            category: category,
-                            wasReadjusted: false,
-                            id_producto: id_producto
-                        });
-                        addedCount++;
-                    }
+                if (eanMap.has(ean)) {
+                    const index = eanMap.get(ean);
+                    const existingItem = { ...finalItems[index] };
+                    const newSystemQty = Number(row[qtyIndex]) || 0;
+                    finalItems[index] = {
+                        ...existingItem,
+                        name: name,
+                        systemQuantity: newSystemQty,
+                        countedQuantity: existingItem.status === 'pending' ? newSystemQty : existingItem.countedQuantity,
+                        cost: costValue,
+                        category: category,
+                        id_producto: id_producto
+                    };
+                    updatedCount++;
+                } else {
+                    finalItems.push({
+                        id: crypto.randomUUID(),
+                        ean: ean,
+                        name: name,
+                        systemQuantity: Number(row[qtyIndex]) || 0,
+                        countedQuantity: Number(row[qtyIndex]) || 0,
+                        cost: costValue,
+                        status: 'pending',
+                        category: category,
+                        wasReadjusted: false,
+                        id_producto: id_producto
+                    });
+                    addedCount++;
                 }
             }
 

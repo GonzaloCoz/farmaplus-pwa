@@ -81,7 +81,8 @@ self.onmessage = async (e: MessageEvent) => {
             costIndex = getIndex(['precio', 'price', 'precio_venta'], 10);
         }
         
-        const codigosBarraIndex = headers.findIndex(h => h === 'codigosbarra');
+        // Inventario Cíclico: ignorar columna Q (CodigosBarra) - se reserva para inventarios nocturnos.
+        // Usar SOLO la columna C (codebar, índice 2) como EAN único por producto.
         const eanIndex = getIndex(['codebar', 'codigobarra', 'barras', 'código de barras', 'ean'], 2);
 
         let addedCount = 0;
@@ -96,41 +97,32 @@ self.onmessage = async (e: MessageEvent) => {
             
             const id_producto = row[idProductoIndex] ? String(row[idProductoIndex]).trim() : '';
 
-            // Intentar de codigosBarraIndex, si no usar el eanIndex
-            const rawEan = (codigosBarraIndex !== -1 && row[codigosBarraIndex]) ? row[codigosBarraIndex] : row[eanIndex];
-            if (!rawEan) continue;
-            
-            const eanList = String(rawEan).split('-').map(e => e.trim()).filter(e => e.length > 0);
-            if (eanList.length === 0) continue;
+            // Inventario Cíclico: EAN único desde columna C, sin split ni expansión.
+            const ean = String(row[eanIndex] || '').trim();
+            if (!ean) continue;
 
             const category = normalizeStringWorker(row[categoryIndex]?.toString() || 'Varios');
             const rawCost = row[costIndex];
             const costValue = Math.round((Number(rawCost) || 0) * 100) / 100;
 
-            for (const ean of eanList) {
-                if (eanMap.has(ean)) {
-                    const index = eanMap.get(ean);
-                    const existingItem = { ...finalItems[index] };
-                    const newSystemQty = Number(row[qtyIndex]) || 0;
+            if (eanMap.has(ean)) {
+                const index = eanMap.get(ean);
+                const existingItem = { ...finalItems[index] };
+                const newSystemQty = Number(row[qtyIndex]) || 0;
 
-                    // Si ya fue controlado o ajustado, mantenemos su estado y cantidad contada
-                    // Pero actualizamos los datos básicos del sistema que vienen del nuevo Excel
-                    // Si el producto aún está pendiente, actualizamos también la cantidad física contada.
-                    finalItems[index] = {
-                        ...existingItem,
-                        name: name,
-                        systemQuantity: newSystemQty,
-                        countedQuantity: existingItem.status === 'pending' ? newSystemQty : existingItem.countedQuantity,
-                        cost: costValue,
-                        category: category,
-                        id_producto: id_producto
-                    };
-                    
-                    updatedCount++;
-                    continue;
-                }
-
-                // Si es un EAN nuevo, lo agregamos como pendiente
+                finalItems[index] = {
+                    ...existingItem,
+                    name: name,
+                    systemQuantity: newSystemQty,
+                    countedQuantity: existingItem.status === 'pending' ? newSystemQty : existingItem.countedQuantity,
+                    cost: costValue,
+                    category: category,
+                    id_producto: id_producto
+                };
+                
+                updatedCount++;
+            } else {
+                // EAN nuevo: agregar como pendiente
                 finalItems.push({
                     id: self.crypto.randomUUID ? self.crypto.randomUUID() : Math.random().toString(36).substring(2),
                     ean: ean,

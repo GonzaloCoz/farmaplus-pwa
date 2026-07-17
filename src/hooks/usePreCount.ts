@@ -71,7 +71,7 @@ interface UsePreCountReturn {
     availableSessions: PreCountSession[];
     connectedDevices: ConnectedDevice[];
     receivedFiles: ReceivedFile[];
-    startSession: (sector: string, masterCatalog?: any[], syncPin?: string) => Promise<void>;
+    startSession: (sector: string, masterCatalog?: any[], syncPin?: string, profile?: 'sucursal' | 'sap') => Promise<void>;
     resumeSession: (session: PreCountSession) => Promise<void>;
     deleteSession: (id: string) => Promise<void>;
     addItem: (ean: string, productName: string, quantity: number, id_producto?: string, location_tag?: string) => Promise<void>;
@@ -506,7 +506,7 @@ export function usePreCount(): UsePreCountReturn {
     const totalUnits = useMemo(() => items.reduce((sum, item) => sum + item.quantity, 0), [items]);
 
     // Iniciar nueva sesión
-    const startSession = async (sector: string, masterCatalog?: any[], syncPin?: string) => {
+    const startSession = async (sector: string, masterCatalog?: any[], syncPin?: string, profile?: 'sucursal' | 'sap') => {
         if (!user) return;
         
         // PREVENCIÓN: Si ya tenemos una sesión activa con este mismo sector y el mismo PIN, no crear una nueva.
@@ -517,7 +517,7 @@ export function usePreCount(): UsePreCountReturn {
 
         setIsLoading(true);
         try {
-            const newSession = await createSession(sector, user.branchId, masterCatalog, syncPin);
+            const newSession = await createSession(sector, user.branchId, masterCatalog, syncPin, profile);
             setSession(newSession);
             localStorage.setItem('last_precount_session_id', newSession.id);
             sessionStorage.setItem('active_precount_session_id', newSession.id);

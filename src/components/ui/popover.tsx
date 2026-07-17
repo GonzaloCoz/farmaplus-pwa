@@ -17,12 +17,18 @@ const PopoverPortal = BasePopover.Portal;
 
 const PopoverContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentPropsWithoutRef<typeof BasePopover.Popup> & { align?: 'start' | 'center' | 'end'; sideOffset?: number; positionerClassName?: string; }
->(({ className, align = "center", sideOffset = 4, children, positionerClassName, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof BasePopover.Popup> & { 
+    align?: 'start' | 'center' | 'end'; 
+    side?: 'top' | 'right' | 'bottom' | 'left';
+    sideOffset?: number; 
+    positionerClassName?: string; 
+  }
+>(({ className, align = "center", side = "bottom", sideOffset = 4, children, positionerClassName, ...props }, ref) => (
   <BasePopover.Portal>
     <BasePopover.Positioner
       sideOffset={sideOffset}
       align={align}
+      side={side}
       className={cn(
         "z-50 outline-none",
         positionerClassName

@@ -1,4 +1,4 @@
-import { Dollar, Pulse as Activity, Chart as BarChart3, DangerCircle as AlertCircle, Widget as Package, Bolt as Zap } from '@solar-icons/react';
+import { CurrencyDollar as Dollar, Activity, BarChart01 as BarChart3, AlertCircle, LayoutGrid01 as Package, Zap } from '@untitledui/icons';
 
 export interface WidgetCategory {
     id: string;

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
-import { LoaderCircle } from "lucide-react";
+import { RefreshCw01 as LoaderCircle } from '@untitledui/icons';
 
 import { cn } from "@/lib/utils";
 

@@ -33,6 +33,7 @@ export const CyclicInventoryStatsSchema = z.object({
     negativeUnits: z.number().default(0),
     positiveUnits: z.number().default(0),
     netUnits: z.number().default(0),
+    round: z.number().optional().default(1),
 });
 
 export const BranchSummaryLiteSchema = z.object({
@@ -50,6 +51,7 @@ export const BranchSummaryLiteSchema = z.object({
     remainingDays: z.number().default(0),
     positiveDiffUnits: z.number().default(0),
     negativeDiffUnits: z.number().default(0),
+    absoluteDeviationValue: z.number().default(0),
     updatedAt: z.string().optional().nullable(),
 });
 

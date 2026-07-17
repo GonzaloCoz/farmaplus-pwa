@@ -1,4 +1,4 @@
-import { AltArrowLeft as ArrowLeft } from "@solar-icons/react";
+import { ChevronLeft as ArrowLeft } from '@untitledui/icons';
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";

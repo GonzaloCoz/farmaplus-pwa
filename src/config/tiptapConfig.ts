@@ -124,9 +124,9 @@ export const getTiptapExtensions = () => {
 
 export const TIPTAP_STYLES = `
     .ProseMirror { font-family: var(--font-sans); color: var(--foreground); }
-    .ProseMirror h1 { font-family: 'Cal Sans'; font-weight: 800; letter-spacing: -0.04em; font-size: 48px; margin-bottom: 0.5em; line-height: 1.1; color: var(--foreground); }
-    .ProseMirror h2 { font-family: 'Cal Sans'; font-weight: 800; letter-spacing: -0.02em; font-size: 32px; margin-top: 1.5em; margin-bottom: 0.8em; line-height: 1.2; color: var(--foreground); }
-    .ProseMirror h3 { font-family: 'Cal Sans'; font-weight: 800; letter-spacing: -0.01em; font-size: 24px; margin-top: 1.25em; margin-bottom: 0.6em; line-height: 1.3; color: var(--foreground); }
+    .ProseMirror h1 { font-family: 'Inter'; font-weight: 800; letter-spacing: -0.04em; font-size: 48px; margin-bottom: 0.5em; line-height: 1.1; color: var(--foreground); }
+    .ProseMirror h2 { font-family: 'Inter'; font-weight: 800; letter-spacing: -0.02em; font-size: 32px; margin-top: 1.5em; margin-bottom: 0.8em; line-height: 1.2; color: var(--foreground); }
+    .ProseMirror h3 { font-family: 'Inter'; font-weight: 800; letter-spacing: -0.01em; font-size: 24px; margin-top: 1.25em; margin-bottom: 0.6em; line-height: 1.3; color: var(--foreground); }
     .ProseMirror p { font-size: 18px; margin-bottom: 1.2em; opacity: 0.9; font-weight: 400; line-height: 1.6; }
     .ProseMirror img { margin: 2rem 0; border-radius: 1rem; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
     .ProseMirror blockquote { border-left: 4px solid #E2E8F0; padding-left: 1.5rem; font-style: italic; color: #64748B; }

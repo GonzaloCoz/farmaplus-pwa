@@ -1,8 +1,8 @@
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
 
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
+  return twMerge(clsx(inputs))
 }
 
 export const formatCurrency = (amount: number) => {
@@ -62,4 +62,3 @@ export function getStringSimilarity(str1: string, str2: string): number {
   
   return matches / Math.max(tokens1.length, tokens2.length);
 }
-

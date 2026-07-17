@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { Restart as Loader2, GalleryWide as ImageOff, Magnifer as SearchIcon } from '@solar-icons/react';
+import { RefreshCw01 as Loader2, Image01 as ImageOff, SearchLg as SearchIcon } from '@untitledui/icons';
 
 interface ProductPreviewProps {
     ean: string;

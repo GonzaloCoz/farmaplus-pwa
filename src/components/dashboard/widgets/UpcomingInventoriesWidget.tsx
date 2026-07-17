@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
-import { Plus } from "lucide-react";
-import { CalendarSearch as CalendarClock, AltArrowRight as ChevronRight, MenuDots as MoreHorizontal } from '@solar-icons/react';
+import { Plus } from '@untitledui/icons';
+import { Calendar as CalendarClock, ChevronRight, DotsHorizontal as MoreHorizontal } from '@untitledui/icons';
 import { WidgetSkeleton } from '../WidgetSkeleton';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/contexts/UserContext';

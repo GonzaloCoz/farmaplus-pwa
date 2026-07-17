@@ -1,7 +1,7 @@
 
 import React from "react";
 import { TrainingPost } from "@/services/trainingService";
-import { Calendar, UserCircle, Tag, ChatDots, Heart } from "@solar-icons/react";
+import { Calendar, User01 as UserCircle, Tag01 as Tag, MessageSquare01 as ChatDots, Heart } from '@untitledui/icons';
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { cn } from "@/lib/utils";

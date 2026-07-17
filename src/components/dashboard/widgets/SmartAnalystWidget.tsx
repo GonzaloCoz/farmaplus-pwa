@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getAllExpirationItems } from '@/services/expirationDB';
-import { Cpu as BrainCircuit, Danger as AlertTriangle, AltArrowRight as ArrowRight, CheckCircle } from '@solar-icons/react';
+import { CpuChip01 as BrainCircuit, AlertTriangle, ChevronRight as ArrowRight, CheckCircle } from '@untitledui/icons';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';

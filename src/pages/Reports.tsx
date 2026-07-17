@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Document as FileText, Magnifer as Search, Calendar, Layers, Eye, AltArrowLeft as ArrowLeft, Download, TrashBinMinimalistic as Trash2, MapPoint as MapPin, Gallery as ImageIcon, CheckCircle, User, ShieldCheck } from "@solar-icons/react";
+import { File01 as FileText, SearchLg as Search, Calendar, LayersTwo01 as Layers, Eye, ChevronLeft as ArrowLeft, Download01 as Download, Trash01 as Trash2, MarkerPin01 as MapPin, Image01 as ImageIcon, CheckCircle, User01 as User, ShieldTick as ShieldCheck } from '@untitledui/icons';
 import { notify } from "@/lib/notifications";
 import { useNavigate, Link } from "react-router-dom";
 import {

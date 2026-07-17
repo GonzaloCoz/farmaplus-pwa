@@ -6,27 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import {
-    AltArrowLeft as ArrowLeft,
-    Camera,
-    AddCircle as Plus,
-    CheckCircle,
-    ClockCircle as Clock,
-    TrashBinMinimalistic as Trash2,
-    Calendar,
-    Widget as Package,
-    Danger as AlertTriangle,
-    Document as FileText,
-    Bell,
-    BellBing as BellRing,
-    AltArrowRight as ArrowRight,
-    Play,
-    Restart as History,
-    Widget as Wifi,
-    CloseCircle as WifiOff,
-    Magnifer as Search,
-    Pen as Pencil
-} from '@solar-icons/react';
+import { ChevronLeft as ArrowLeft, Camera01 as Camera, PlusCircle as Plus, CheckCircle, Clock, Trash01 as Trash2, Calendar, LayoutGrid01 as Package, AlertTriangle, File01 as FileText, Bell01 as Bell, Bell01 as BellRing, ChevronRight as ArrowRight, Play, RefreshCw01 as History, LayoutGrid01 as Wifi, XClose as WifiOff, SearchLg as Search, Edit01 as Pencil } from '@untitledui/icons';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -57,15 +37,6 @@ type Step = 'config' | 'counting';
 export default function ExpirationControl() {
     const navigate = useNavigate();
     const { user } = useUser();
-
-    // Bloquear acceso para sucursales y zonales
-    if (user?.role === 'branch' || user?.role === 'mod') {
-        useEffect(() => {
-            notify.info("Próximamente", "La herramienta de Control de Vencimiento estará disponible muy pronto.", { id: 'blocked-feature' });
-            navigate('/');
-        }, [navigate]);
-        return null;
-    }
 
     const [step, setStep] = useState<Step>('config');
     const [sector, setSector] = useState('');
@@ -100,6 +71,20 @@ export default function ExpirationControl() {
 
     // const { isOnline } = useOfflineSync();
     const isOnline = true;
+
+    const isBlocked = user?.role === 'branch' || user?.role === 'mod';
+
+    // Bloquear acceso para sucursales y zonales
+    useEffect(() => {
+        if (isBlocked) {
+            notify.info("Próximamente", "La herramienta de Control de Vencimiento estará disponible muy pronto.", { id: 'blocked-feature' });
+            navigate('/');
+        }
+    }, [isBlocked, navigate]);
+
+    if (isBlocked) {
+        return null;
+    }
 
     // 1. Configurar Sesión
     const handleStartSession = async () => {
@@ -465,7 +450,7 @@ export default function ExpirationControl() {
 
                                                             {/* EAN */}
                                                             <div>
-                                                                <Badge variant="outline" className="text-[10px] h-5 font-mono text-muted-foreground border-border/50 px-1.5 font-normal">
+                                                                <Badge className="text-[10px] h-5 font-mono text-muted-foreground border border-border/50 px-1.5 font-normal">
                                                                     {item.ean}
                                                                 </Badge>
                                                             </div>
@@ -475,7 +460,7 @@ export default function ExpirationControl() {
                                                                 {item.batches.slice(0, 3).map((batch, idx) => (
                                                                     <div key={idx} className="inline-flex items-center gap-2 text-xs bg-secondary/50 rounded px-2 py-1 border border-secondary-foreground/10">
                                                                         <div className="flex items-center gap-1.5">
-                                                                            <Badge variant="outline" className="text-[10px] h-4 px-1 font-normal text-muted-foreground border-border/50">
+                                                                            <Badge className="text-[10px] h-4 px-1 font-normal text-muted-foreground border border-border/50">
                                                                                 {formatExpiryDate(batch.expirationDate)}
                                                                             </Badge>
                                                                             <span className="font-bold tabular-nums text-[10px]">x{batch.quantity}</span>
@@ -504,15 +489,14 @@ export default function ExpirationControl() {
                                                                     className="h-6 w-6 shadow-sm mr-1"
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
-                                                                        handleEditItem(item); // Needs implementation or reuse existing
+                                                                        handleEditItem(item);
                                                                     }}
                                                                 >
                                                                     <Pencil className="w-3 h-3" />
                                                                 </Button>
                                                                 <Button
-                                                                    variant="destructive"
                                                                     size="icon"
-                                                                    className="h-6 w-6 shadow-sm"
+                                                                    className="h-6 w-6 shadow-sm bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
                                                                         deleteItem(item.id);
@@ -644,7 +628,7 @@ export default function ExpirationControl() {
                     </div>
 
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsFinishModalOpen(false)}>Cancelar</Button>
+                        <Button variant="tertiary" onClick={() => setIsFinishModalOpen(false)}>Cancelar</Button>
                         <Button onClick={handleSaveAndFinish}>Guardar y Finalizar</Button>
                     </DialogFooter>
                 </DialogContent>

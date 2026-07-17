@@ -3,7 +3,7 @@ import { Frame, FrameHeader, FrameTitle, FrameDescription, FramePanel } from '@/
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { TrashBinMinimalistic as Trash, AddSquare as Add, Diskette as Save, Clipboard as Paste, InfoCircle as Info } from "@solar-icons/react";
+import { Trash01 as Trash, PlusSquare as Add, Save01 as Save, Clipboard as Paste, InfoCircle as Info } from '@untitledui/icons';
 import { cn } from '@/lib/utils';
 import { notify } from '@/lib/notifications';
 import { supabase } from '@/integrations/supabase/client';

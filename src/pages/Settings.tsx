@@ -1,14 +1,12 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 
-import { Smartphone, Cloud as Wifi, TrashBinMinimalistic as Trash2, InfoCircle as Info, Cloud, Database, Bell, Shield, User as UserIcon, UsersGroupTwoRounded as Users } from "@solar-icons/react";
+import { Bell01 as Bell, Shield01 as Shield, Users01 as Users, RefreshCw01 as RefreshCw, InfoCircle as Info, DownloadCloud01 as DownloadCloud } from '@untitledui/icons';
+import { sileo } from "@/components/ui/sileo";
 
-import { SyncStatusBottomSheet } from "@/components/SyncStatusBottomSheet";
 import { Input } from "@/components/ui/input";
 import * as XLSX from 'xlsx';
 
@@ -23,22 +21,17 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { notify } from "@/lib/notifications";
 import { hasPermission } from "@/config/permissions";
 import { supabase } from "@/integrations/supabase/client";
-import { BRANCH_NAMES } from "@/config/users";
 import { useTheme } from "@/hooks/useTheme";
-import { cyclicInventoryService } from "@/services/cyclicInventoryService";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, BookOpen, Users2, DownloadCloud, PenTool } from 'lucide-react';
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { BookOpen01 as BookOpen } from '@untitledui/icons';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAppVersion, CURRENT_APP_VERSION } from '@/hooks/useAppVersion';
@@ -46,35 +39,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-// AdminAudit removed - moved to Reports.tsx
-// ... other imports
-
-// Consolidated settings interface
-interface AppSettings {
-  haptics: boolean;
-  sounds: boolean;
-  autoSync: boolean;
-  scannerSensitivity: number;
-}
 
 export default function Settings() {
   const navigate = useNavigate();
-  const { user, logout } = useUser();
+  const { user, logout, allBranches } = useUser();
   const isAdmin = user?.role === 'admin';
   const { preferences, setPosition, setReminderType } = useNotificationPreferences();
   const { themeMode, setThemeMode } = useTheme();
   const queryClient = useQueryClient();
 
-  // Consolidated settings state
-  const [settings, setSettings] = useState<AppSettings>({
-    haptics: true,
-    sounds: false,
-    autoSync: true,
-    scannerSensitivity: 50
-  });
-
   const [isImportingLabs, setIsImportingLabs] = useState(false);
-  const [isPurging, setIsPurging] = useState(false);
   const [isUpdatingGoals, setIsUpdatingGoals] = useState(false);
   const isGcoz = user?.username.toLowerCase() === 'gcoz';
 
@@ -83,6 +57,7 @@ export default function Settings() {
   const [isPublishingVersion, setIsPublishingVersion] = useState(false);
   const [newVersionObj, setNewVersionObj] = useState({ version: '', notes: '' });
   const [selectedBranchImport, setSelectedBranchImport] = useState<string>("");
+  const [showChangelog, setShowChangelog] = useState(false);
 
   // Add auto-generated version prefix on load
   useEffect(() => {
@@ -91,13 +66,41 @@ export default function Settings() {
     setNewVersionObj(prev => ({ ...prev, version: `v1.2.x (Build ${dateStr})` }));
   }, []);
 
-  // Optimized update function
-  const updateSetting = useCallback(<K extends keyof AppSettings>(
-    key: K,
-    value: AppSettings[K]
-  ) => {
-    setSettings(prev => ({ ...prev, [key]: value }));
-  }, []);
+  const handleTriggerTestUpdate = () => {
+    sileo.info({
+      id: "app-updater-toast",
+      title: "Actualización disponible (Prueba)",
+      description: "Nueva versión v1.4.3.1 (Prueba) lista para aplicar.",
+      duration: null,
+      button: {
+        title: "Actualizar ahora",
+        onClick: () => {
+          const testPromise = new Promise(resolve => setTimeout(resolve, 2000));
+          sileo.promise(testPromise, {
+            loading: {
+              id: "app-updater-toast",
+              title: "Instalando versión (Prueba)",
+              description: "Descargando v1.4.3.1 (Prueba) y limpiando archivos...",
+            },
+            success: {
+              title: "Actualización exitosa (Prueba)",
+              description: "Se ha simulado la actualización correctamente.",
+              button: {
+                title: "Ver novedades",
+                onClick: () => {
+                  setShowChangelog(true);
+                }
+              }
+            },
+            error: {
+              title: "Error al actualizar",
+              description: "Fallo de prueba.",
+            }
+          });
+        }
+      }
+    });
+  };
 
   const handleImportLaboratories = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -120,8 +123,8 @@ export default function Settings() {
       let totalLabs = 0;
       const labAssignments: Array<{ branch: string; lab: string; category: string }> = [];
 
-      // Process each branch in BRANCH_NAMES
-      for (const branchName of BRANCH_NAMES) {
+      // Process each branch in allBranches
+      for (const branchName of allBranches) {
         const nBranch = branchName.toLowerCase().trim();
         let sheetName = sheetMap.get(nBranch);
 
@@ -498,18 +501,7 @@ export default function Settings() {
 
 
 
-  const handlePurgeAll = async () => {
-    setIsPurging(true);
-    try {
-      await cyclicInventoryService.purgeAllInventoryData();
-      notify.success("Sistema Limpiado", "Todos los datos de inventario han sido borrados.");
-    } catch (error) {
-      notify.error("Error al limpiar", "No se pudo realizar la purga masiva.");
-      console.error(error);
-    } finally {
-      setIsPurging(false);
-    }
-  };
+
 
   const handlePublishVersion = async () => {
     if (!newVersionObj.version.trim()) {
@@ -683,86 +675,8 @@ export default function Settings() {
             {/* Personalización */}
 
 
-            {/* Inventario y Escáner */}
-            {isAdmin && (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <Smartphone className="w-5 h-5 text-primary" />
-                    <CardTitle>Inventario y Escáner</CardTitle>
-                  </div>
-                  <CardDescription>Configuración del lector de código de barras y feedback.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label className="text-base">Vibración (Haptics)</Label>
-                      <p className="text-sm text-muted-foreground">
-                        Vibrar al escanear correctamente un producto.
-                      </p>
-                    </div>
-                    <Switch checked={settings.haptics} onCheckedChange={(val) => updateSetting('haptics', val)} />
-                  </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label className="text-base">Sonidos</Label>
-                      <p className="text-sm text-muted-foreground">
-                        Reproducir sonido de confirmación.
-                      </p>
-                    </div>
-                    <Switch checked={settings.sounds} onCheckedChange={(val) => updateSetting('sounds', val)} />
-                  </div>
 
-                  <div className="space-y-4 pt-2">
-                    <div className="flex justify-between">
-                      <Label>Sensibilidad del Escáner</Label>
-                      <span className="text-sm text-muted-foreground">{settings.scannerSensitivity}%</span>
-                    </div>
-                    <Slider
-                      value={[settings.scannerSensitivity]}
-                      onValueChange={(val) => updateSetting('scannerSensitivity', val[0])}
-                      max={100}
-                      step={10}
-                      className="w-full"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Sincronización */}
-            {isAdmin && (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <Wifi className="w-5 h-5 text-primary" />
-                    <CardTitle>Sincronización</CardTitle>
-                  </div>
-                  <CardDescription>Gestión de datos offline y subida.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label className="text-base">Sincronización Automática</Label>
-                      <p className="text-sm text-muted-foreground">
-                        Subir cambios automáticamente cuando haya conexión.
-                      </p>
-                    </div>
-                    <Switch checked={settings.autoSync} onCheckedChange={(val) => updateSetting('autoSync', val)} />
-                  </div>
-
-                  <div className="pt-2">
-                    <SyncStatusBottomSheet>
-                      <Button variant="outline" className="w-full justify-start">
-                        <Cloud className="mr-2 h-4 w-4" />
-                        Abrir Centro de Sincronización
-                      </Button>
-                    </SyncStatusBottomSheet>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
 
 
 
@@ -777,18 +691,27 @@ export default function Settings() {
                   <CardDescription>Gestión de usuarios y permisos del sistema.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {hasPermission(user, 'MANAGE_USERS') && (
-                    <div className="pt-2">
+                  <div className="pt-2 flex flex-col sm:flex-row gap-3">
+                    {hasPermission(user, 'MANAGE_USERS') && (
                       <Button
                         variant="outline"
-                        className="w-full justify-start"
+                        className="flex-1 justify-start"
                         onClick={() => navigate('/admin/users')}
                       >
                         <Users className="mr-2 h-4 w-4" />
                         Gestión de Usuarios
                       </Button>
-                    </div>
-                  )}
+                    )}
+                    
+                    <Button
+                      variant="outline"
+                      className="flex-1 justify-start text-amber-600 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
+                      onClick={handleTriggerTestUpdate}
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Probar Alerta de Actualización PWA
+                    </Button>
+                  </div>
 
                   {/* Herramientas de Datos */}
                   <div className="pt-4 border-t">
@@ -831,8 +754,8 @@ export default function Settings() {
                                 <SelectValue>Seleccionar sucursal...</SelectValue>
                               </SelectTrigger>
                               <SelectContent>
-                                {BRANCH_NAMES.map(name => (
-                                  <SelectItem key={name} value={name}>{name}</SelectItem>
+                                {allBranches.map((name, idx) => (
+                                  <SelectItem key={name} index={idx} value={name}>{name}</SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
@@ -924,57 +847,33 @@ export default function Settings() {
               </CardContent>
             </Card>
 
-            {isGcoz && (
-              <Card className="border-destructive/50 bg-destructive/5 mt-8">
-                <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="h-5 w-5 text-destructive" />
-                    <CardTitle className="text-destructive">Zona de Peligro (Solo gcoz)</CardTitle>
-                  </div>
-                  <CardDescription>Acciones destructivas permanentes para el sistema.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Alert variant="destructive" className="bg-background">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Atención - Acción Destructiva</AlertTitle>
-                    <AlertDescription>
-                      Esta acción borrará **TODOS** los inventarios, mediciones, ajustes y resúmenes de todas las sucursales del sistema.
-                      Esta operación es irreversible y está pensada para la limpieza final previo al lanzamiento.
-                    </AlertDescription>
-                  </Alert>
-
-                  <AlertDialog>
-                    <AlertDialogTrigger
-                      render={
-                        <Button variant="destructive" disabled={isPurging} className="w-full sm:w-auto">
-                          {isPurging ? 'Limpiando...' : 'Limpiar Todo el Sistema (Pre-Lanzamiento)'}
-                        </Button>
-                      }
-                    />
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>¿Estás absolutamente seguro?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Esta acción no se puede deshacer. Se eliminarán permanentemente todos los datos de
-                          inventario cíclico y ajustes de todas las sucursales.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={handlePurgeAll} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                          Sí, borrar todo el sistema
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </CardContent>
-              </Card>
-            )}
           </div>
         </TabsContent>
 
 
       </Tabs >
+
+      <Dialog open={showChangelog} onOpenChange={setShowChangelog}>
+        <DialogContent size="lg">
+          <DialogHeader>
+            <DialogTitle>Novedades de la actualización (Prueba)</DialogTitle>
+            <DialogDescription>
+              Se aplicaron los siguientes cambios y correcciones en esta versión de prueba:
+            </DialogDescription>
+          </DialogHeader>
+          <div className="px-6 py-2">
+            <div className="text-[13px] text-muted-foreground whitespace-pre-wrap leading-relaxed max-h-[220px] overflow-y-auto pr-1">
+              {"- Optimización del sistema de notificaciones con Sileo.\n- Soporte de transiciones fluidas de carga en actualizaciones.\n- Integración de log de cambios en toasts."}
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose render={<Button variant="ghost" onClick={() => setShowChangelog(false)} />}>
+              Entendido
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </PageLayout >
   );
 }

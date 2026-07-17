@@ -11,8 +11,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { BatchInfo } from "@/services/expirationDB";
-import { Plus } from "lucide-react";
-import { TrashBinMinimalistic as Trash2, Calendar, BellBing, Widget as Package, CloseCircle as X, Calculator as CalculatorIcon, ClockCircle as Clock, Pen as Pencil, Magnifer as Search } from "@solar-icons/react";
+import { Plus } from '@untitledui/icons';
+import { Trash01 as Trash2, Calendar, Bell01 as BellBing, LayoutGrid01 as Package, XClose as X, Calculator as CalculatorIcon, Clock, Edit01 as Pencil, SearchLg as Search } from '@untitledui/icons';
 import { motion, AnimatePresence } from "framer-motion";
 import { notify } from "@/lib/notifications";
 import { Badge } from "@/components/ui/badge";

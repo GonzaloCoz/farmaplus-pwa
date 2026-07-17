@@ -1,71 +1,23 @@
 import { useState, useMemo } from 'react';
-import {
-    type ColumnDef,
-    flexRender,
-    getCoreRowModel,
-    getPaginationRowModel,
-    getSortedRowModel,
-    type PaginationState,
-    type SortingState,
-    useReactTable,
-} from '@tanstack/react-table';
-import { CardHeader } from '@/components/ui/card';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Frame, FrameHeader, FrameTitle, FrameDescription, FramePanel, FrameFooter } from '@/components/ui/frame';
-import {
-    Pagination,
-    PaginationContent,
-    PaginationItem,
-    PaginationNext,
-    PaginationPrevious,
-} from '@/components/ui/pagination';
+import { Frame, FrameHeader, FrameTitle, FrameDescription, FramePanel } from '@/components/ui/frame';
 import {
     Select,
     SelectContent,
     SelectItem,
     SelectTrigger,
-    SelectValue,
 } from '@/components/ui/select';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
-import { Magnifer as Search, AltArrowUp as ChevronUp, AltArrowDown as ChevronDown, Download, GraphUp as TrendingUp } from '@solar-icons/react';
-import * as XLSX from 'xlsx';
 import { cn, normalizeString } from '@/lib/utils';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useUser } from '@/contexts/UserContext';
 import { useUserBranches } from '@/hooks/useUserBranches';
 import { useQuery } from '@tanstack/react-query';
-import { ZONALES, getBranchesByZonales, type Zonal } from '@/config/zonales';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import {
-    Combobox,
-    ComboboxEmpty,
-    ComboboxInput,
-    ComboboxItem,
-    ComboboxList,
-    ComboboxPopup,
-    ComboboxTrigger,
-} from '@/components/ui/combobox';
-import { Group, GroupSeparator, GroupText } from '@/components/ui/group';
-import { 
-    Search as SearchIcon, 
-    Filter as FilterIcon, 
-    X as XIcon, 
-    ChevronDown as ChevronDownIcon,
-    ChevronsUpDown as ChevronsUpDownIcon,
-    Download as DownloadIcon,
-    TrendingUp as TrendingUpIcon
-} from 'lucide-react';
+import { SearchLg as SearchIcon, Download01 as DownloadIcon, TrendUp01 as TrendingUpIcon } from '@untitledui/icons';
+import { Table as MotionTable, type TableColumn } from "@/components/motion/table";
+import * as XLSX from 'xlsx';
 
 interface BranchSummary {
     branchName: string;
@@ -81,6 +33,7 @@ interface BranchSummary {
     positiveDiffUnits: number;
     negativeDiffUnits: number;
     adjustmentsValue: number;
+    absoluteDeviationValue: number;
     status: 'controlado' | 'por_controlar' | 'pendiente';
 }
 
@@ -117,17 +70,17 @@ const getBranchAwards = (branchName: string): BranchAward[] => {
     return BRANCH_AWARDS[normalized] || [];
 };
 
-// Status dot color mapping (matching p-table-4 flights pattern)
+// Status dot color mapping
 const getStatusColor = (status: BranchSummary['status']) => {
     switch (status) {
         case 'controlado':
-            return 'bg-emerald-500';
+            return 'green';
         case 'por_controlar':
-            return 'bg-blue-500';
+            return 'blue';
         case 'pendiente':
-            return 'bg-amber-500';
+            return 'amber';
         default:
-            return 'bg-muted-foreground/64';
+            return 'gray';
     }
 };
 
@@ -144,70 +97,15 @@ const getStatusLabel = (status: BranchSummary['status']) => {
     }
 };
 
-function getInitials(name: string): string {
-    const parts = name.trim().split(/\s+/);
-    if (parts.length === 1) {
-        return parts[0]?.charAt(0).toUpperCase() ?? "";
-    }
-    const first = parts[0]?.charAt(0) ?? "";
-    const last = parts[parts.length - 1]?.charAt(0) ?? "";
-    return (first + last).toUpperCase();
-}
-
-function MemberAvatar({
-    name,
-    avatarUrl,
-    className,
-}: {
-    name: string;
-    avatarUrl?: string;
-    className?: string;
-}) {
-    return (
-        <Avatar className={cn("size-5", className)}>
-            {avatarUrl ? <AvatarImage alt={name} src={avatarUrl} /> : null}
-            <AvatarFallback className="text-[0.5rem] font-bold">
-                {getInitials(name)}
-            </AvatarFallback>
-        </Avatar>
-    );
-}
-
-// Column definitions (matching p-table-4 structure exactly)
-const columns: ColumnDef<BranchSummary>[] = [
+// Column definitions for beUI Motion Table
+const columns: TableColumn<BranchSummary>[] = [
     {
-        id: 'select',
-        size: 28,
-        enableSorting: false,
-        header: ({ table }) => {
-            const isAllSelected = table.getIsAllPageRowsSelected();
-            const isSomeSelected = table.getIsSomePageRowsSelected();
-            return (
-                <div className="flex items-center justify-center h-full" onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
-                        aria-label="Select all rows"
-                        checked={isAllSelected ? true : isSomeSelected ? "indeterminate" as const : false}
-                        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-                    />
-                </div>
-            );
-        },
-        cell: ({ row }) => (
-            <div className="flex items-center justify-center h-full" onClick={(e) => e.stopPropagation()}>
-                <Checkbox
-                    aria-label="Select row"
-                    checked={row.getIsSelected()}
-                    onCheckedChange={(value) => row.toggleSelected(!!value)}
-                />
-            </div>
-        ),
-    },
-    {
-        accessorKey: 'branchName',
+        key: 'branchName',
         header: 'Sucursal',
-        size: 180,
-        cell: ({ row }) => {
-            const branchName = row.getValue('branchName') as string;
+        width: '180px',
+        sortable: true,
+        cell: (row) => {
+            const branchName = row.branchName;
             const awards = getBranchAwards(branchName);
 
             return (
@@ -235,11 +133,12 @@ const columns: ColumnDef<BranchSummary>[] = [
         },
     },
     {
-        accessorKey: 'deploymentDate',
+        key: 'deploymentDate',
         header: 'Fecha Inicio',
-        size: 120,
-        cell: ({ row }) => {
-            const date = row.getValue('deploymentDate') as string;
+        width: '120px',
+        sortable: true,
+        cell: (row) => {
+            const date = row.deploymentDate;
             const shortDate = date && date.includes('/') ? date.split('/').slice(0, 2).join('/') : date;
             return (
                 <div className="font-light text-muted-foreground tabular-nums whitespace-nowrap">
@@ -249,12 +148,13 @@ const columns: ColumnDef<BranchSummary>[] = [
         },
     },
     {
-        accessorKey: 'remainingDays',
+        key: 'remainingDays',
         header: 'Días',
-        size: 100,
-        cell: ({ row }) => {
-            const remaining = row.original.remainingDays;
-            const assigned = row.original.assignedDays;
+        width: '100px',
+        sortable: true,
+        cell: (row) => {
+            const remaining = row.remainingDays;
+            const assigned = row.assignedDays;
             return (
                 <div className="tabular-nums">
                     <span className={cn("font-medium", remaining <= 5 && "text-destructive-foreground")}>
@@ -266,21 +166,34 @@ const columns: ColumnDef<BranchSummary>[] = [
         },
     },
     {
-        accessorKey: 'cyclicRound',
+        key: 'cyclicRound',
         header: 'Vuelta',
-        size: 60,
-        cell: ({ row }) => (
-            <div className="text-muted-foreground/70 font-light tabular-nums">
-                {row.getValue('cyclicRound')}ª
-            </div>
-        ),
+        width: '100px',
+        sortable: true,
+        cell: (row) => {
+            const specialRounds = Object.entries(row.rounds || {})
+                .filter(([key, val]) => key !== 'GENERAL' && val !== row.cyclicRound);
+            return (
+                <div className="flex flex-col text-left py-0.5">
+                    <span className="font-semibold text-foreground text-sm tabular-nums">
+                        {row.cyclicRound}ª
+                    </span>
+                    {specialRounds.length > 0 && (
+                        <span className="text-[10px] text-muted-foreground font-light leading-tight truncate max-w-[90px]">
+                            {specialRounds.map(([key, val]) => `${key === 'MEDICAMENTOS' ? 'Med' : 'Perf'}: ${val}ª`).join(', ')}
+                        </span>
+                    )}
+                </div>
+            );
+        },
     },
     {
-        accessorKey: 'progress',
+        key: 'progress',
         header: '% Avance',
-        size: 90,
-        cell: ({ row }) => {
-            const progress = row.getValue('progress') as number;
+        width: '90px',
+        sortable: true,
+        cell: (row) => {
+            const progress = row.progress;
             return (
                 <div className="font-medium tabular-nums">
                     {progress.toFixed(1)}%
@@ -289,69 +202,84 @@ const columns: ColumnDef<BranchSummary>[] = [
         },
     },
     {
-        accessorKey: 'inventoryUnits',
+        key: 'inventoryUnits',
         header: 'Unidades',
-        size: 90,
-        cell: ({ row }) => (
+        width: '90px',
+        sortable: true,
+        cell: (row) => (
             <div className="text-muted-foreground/80 font-light tabular-nums">
-                {(row.getValue('inventoryUnits') as number).toLocaleString('es-AR')}
+                {(row.inventoryUnits || 0).toLocaleString('es-AR')}
             </div>
         ),
     },
     {
-        accessorKey: 'positiveDiffUnits',
+        key: 'positiveDiffUnits',
         header: 'Sobrantes',
-        size: 90,
-        cell: ({ row }) => {
-            const pos = Number(row.original.positiveDiffUnits || 0);
+        width: '95px',
+        sortable: true,
+        cell: (row) => {
+            const pos = Number(row.positiveDiffUnits || 0);
             if (pos === 0) return <span className="text-muted-foreground/40 font-light ml-4">–</span>;
             return (
-                <Badge variant="outline" className="font-normal bg-background/50 border-border/40 px-1.5 h-5 gap-1.5 ml-1">
-                    <span aria-hidden="true" className="size-1.5 rounded-full bg-emerald-500" />
+                <Badge variant="dot" color="green" className="font-normal bg-background/50 border-border/40 px-1.5 h-5 gap-1.5 ml-1">
                     <span className="tabular-nums">+{pos.toLocaleString('es-AR')}</span>
                 </Badge>
             );
         },
     },
     {
-        accessorKey: 'negativeDiffUnits',
+        key: 'negativeDiffUnits',
         header: 'Faltantes',
-        size: 90,
-        cell: ({ row }) => {
-            const neg = Number(row.original.negativeDiffUnits || 0);
+        width: '95px',
+        sortable: true,
+        cell: (row) => {
+            const neg = Number(row.negativeDiffUnits || 0);
             if (neg === 0) return <span className="text-muted-foreground/40 font-light ml-4">–</span>;
             return (
-                <Badge variant="outline" className="font-normal bg-background/50 border-border/40 px-1.5 h-5 gap-1.5 ml-1">
-                    <span aria-hidden="true" className="size-1.5 rounded-full bg-red-500" />
+                <Badge variant="dot" color="red" className="font-normal bg-background/50 border-border/40 px-1.5 h-5 gap-1.5 ml-1">
                     <span className="tabular-nums">{neg.toLocaleString('es-AR')}</span>
                 </Badge>
             );
         },
     },
     {
-        accessorKey: 'differenceUnits',
+        key: 'deviationUnits',
+        header: 'Desvío en Unidades',
+        width: '130px',
+        sortable: true,
+        sortValue: (row) => Number(row.positiveDiffUnits || 0) + Number(row.negativeDiffUnits || 0),
+        cell: (row) => {
+            const dev = Number(row.positiveDiffUnits || 0) + Number(row.negativeDiffUnits || 0);
+            if (dev === 0) return <span className="text-muted-foreground/45 font-light ml-4">–</span>;
+            return (
+                <Badge variant="dot" color="amber" className="font-normal bg-background/50 border-border/40 px-1.5 h-5 gap-1.5">
+                    <span className="tabular-nums">{dev.toLocaleString('es-AR')}</span>
+                </Badge>
+            );
+        },
+    },
+    {
+        key: 'differenceUnits',
         header: 'Diferencia Neta',
-        size: 110,
-        cell: ({ row }) => {
-            const diff = row.getValue('differenceUnits') as number;
+        width: '110px',
+        sortable: true,
+        cell: (row) => {
+            const diff = row.differenceUnits || 0;
             if (diff === 0) return <span className="text-muted-foreground/45 font-light ml-4">–</span>;
             return (
-                <Badge variant="outline" className="font-normal bg-background/50 border-border/40 px-1.5 h-5 gap-1.5">
-                    <span
-                        aria-hidden="true"
-                        className={cn("size-1.5 rounded-full", diff > 0 ? "bg-emerald-500" : "bg-red-500")}
-                    />
+                <Badge variant="dot" color={diff > 0 ? 'green' : 'red'} className="font-normal bg-background/50 border-border/40 px-1.5 h-5 gap-1.5">
                     <span className="tabular-nums">{diff > 0 ? '+' : ''}{diff.toLocaleString('es-AR')}</span>
                 </Badge>
             );
         },
     },
     {
-        accessorKey: 'adjustmentsValue',
+        key: 'adjustmentsValue',
         header: 'Ajustes',
-        size: 140,
-        cell: ({ row }) => {
-            const value = row.getValue('adjustmentsValue') as number;
+        width: '140px',
+        sortable: true,
+        cell: (row) => {
+            const value = row.adjustmentsValue || 0;
             return (
                 <div className={cn(
                     "font-medium tabular-nums text-left",
@@ -363,17 +291,31 @@ const columns: ColumnDef<BranchSummary>[] = [
         },
     },
     {
-        accessorKey: 'status',
-        header: 'Estado',
-        size: 110,
-        cell: ({ row }) => {
-            const status = row.getValue('status') as BranchSummary['status'];
+        key: 'absoluteDeviationValue',
+        header: 'Desvío Absoluto',
+        width: '145px',
+        sortable: true,
+        cell: (row) => {
+            const value = row.absoluteDeviationValue || 0;
             return (
-                <Badge variant="outline" className="font-normal bg-background/50 border-border/40 px-1.5 h-5 gap-1.5 py-0">
-                    <span
-                        aria-hidden="true"
-                        className={cn("size-1.5 rounded-full", getStatusColor(status))}
-                    />
+                <div className={cn(
+                    "font-medium tabular-nums text-left",
+                    value === 0 ? "text-muted-foreground" : "text-amber-600 dark:text-amber-400"
+                )}>
+                    ${value.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                </div>
+            );
+        },
+    },
+    {
+        key: 'status',
+        header: 'Estado',
+        width: '110px',
+        sortable: true,
+        cell: (row) => {
+            const status = row.status;
+            return (
+                <Badge variant="dot" color={getStatusColor(status) as any} className="font-normal bg-background/50 border-border/40 px-1.5 h-5 gap-1.5 py-0">
                     {getStatusLabel(status)}
                 </Badge>
             );
@@ -389,22 +331,20 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
     const { selectBranch, clearBranchSelection, user } = useUser();
     const { availableBranches } = useUserBranches();
     const [searchTerm, setSearchTerm] = useState('');
-    const [selectedZonales, setSelectedZonales] = useState<Zonal[]>([]);
-    const pageSize = 10;
+    const [selectedZonal, setSelectedZonal] = useState<string>('all');
 
-    const [pagination, setPagination] = useState<PaginationState>({
-        pageIndex: 0,
-        pageSize: pageSize,
-    });
+    const [timeframeFilter, setTimeframeFilter] = useState<'all' | 'day' | 'week' | 'month'>('all');
+    const [cycleFilter, setCycleFilter] = useState<'current' | 'previous'>('current');
 
-    const [sorting, setSorting] = useState<SortingState>([
-        { id: 'progress', desc: true },
-    ]);
+    const isSingleBranchView = user?.role === 'branch' || (user?.branchName && user.branchName !== 'Casa Central');
 
     const { data: branchSummaries = [], isLoading: loading } = useQuery({
-        queryKey: ['branch-summaries-lite', availableBranches],
+        queryKey: ['branch-summaries-lite', availableBranches, timeframeFilter, cycleFilter],
         queryFn: async () => {
-            const data = await cyclicInventoryService.getBranchesSummaryLite();
+            const data = await cyclicInventoryService.getBranchesSummaryLite(
+                cycleFilter === 'previous' ? 'all' : timeframeFilter,
+                cycleFilter === 'previous'
+            );
             return data.filter(branch => {
                 if (!availableBranches || availableBranches.length === 0) return true;
                 const normalizedBranch = normalizeString(branch.branchName);
@@ -415,16 +355,32 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
         gcTime: 1000 * 60 * 30,
     });
 
+    const { data: zonales = [] } = useQuery({
+        queryKey: ['zonales'],
+        queryFn: () => cyclicInventoryService.getZonales(),
+        staleTime: 1000 * 60 * 10,
+    });
+
     const filteredData = useMemo(() => {
         let data = branchSummaries;
 
-        // Filter by Zonales
-        if (selectedZonales.length > 0) {
-            const allowedBranches = getBranchesByZonales(selectedZonales.map(z => z.id));
-            const normalizedAllowed = allowedBranches.map(b => normalizeString(b));
-            data = data.filter(branch => 
-                normalizedAllowed.includes(normalizeString(branch.branchName))
+        // If it's a single branch view, filter to show ONLY their own branch
+        if (isSingleBranchView && user?.branchName) {
+            const normalizedUserBranch = normalizeString(user.branchName);
+            return data.filter(branch => 
+                normalizeString(branch.branchName) === normalizedUserBranch
             );
+        }
+
+        // Filter by Zonal
+        if (selectedZonal && selectedZonal !== 'all') {
+            const zonal = zonales.find(z => z.id === selectedZonal);
+            if (zonal) {
+                const normalizedAllowed = zonal.branches.map(b => normalizeString(b));
+                data = data.filter(branch => 
+                    normalizedAllowed.includes(normalizeString(branch.branchName))
+                );
+            }
         }
 
         // Filter by search term
@@ -436,45 +392,11 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
         }
 
         return data;
-    }, [branchSummaries, searchTerm, selectedZonales]);
-
-    const renderZonalesTrigger = () => {
-        if (selectedZonales.length === 0) return "Todos";
-        const firstMember = selectedZonales[0];
-        const remainingCount = selectedZonales.length - 1;
-
-        return (
-            <div className="flex items-center gap-2">
-                <MemberAvatar
-                    avatarUrl={firstMember?.avatar}
-                    name={firstMember?.label ?? ""}
-                />
-                <span className="truncate max-w-[100px]">{firstMember?.label}</span>
-                {remainingCount > 0 && (
-                    <Badge className="tabular-nums h-4 px-1 text-[10px]" variant="secondary">
-                        +{remainingCount}
-                    </Badge>
-                )}
-            </div>
-        );
-    };
-
-    const table = useReactTable({
-        columns,
-        data: filteredData,
-        enableSortingRemoval: false,
-        getCoreRowModel: getCoreRowModel(),
-        getPaginationRowModel: getPaginationRowModel(),
-        getSortedRowModel: getSortedRowModel(),
-        onPaginationChange: setPagination,
-        onSortingChange: setSorting,
-        state: {
-            pagination,
-            sorting,
-        },
-    });
+    }, [branchSummaries, searchTerm, selectedZonal, zonales, user]);
 
     const handleRowClick = (branchName: string) => {
+        const canSwitch = user?.role === 'admin' || user?.role === 'mod';
+        if (!canSwitch) return;
         if (user?.branchName === branchName) {
             clearBranchSelection?.();
         } else if (selectBranch) {
@@ -489,8 +411,13 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
             'Fecha Inicio': branch.deploymentDate,
             'Días (Pte / Asig)': `${branch.remainingDays} / ${branch.assignedDays}`,
             'Progreso %': branch.progress,
+            'Unidades de Inventario': branch.inventoryUnits,
+            'Sobrantes (Unidades)': branch.positiveDiffUnits,
+            'Faltantes (Unidades)': branch.negativeDiffUnits,
+            'Desvío en Unidades': Number(branch.positiveDiffUnits || 0) + Number(branch.negativeDiffUnits || 0),
             'Diferencia Neta (Unidades)': branch.differenceUnits,
             'Valor de Ajustes': branch.adjustmentsValue,
+            'Desvío Absoluto': branch.absoluteDeviationValue,
             'Estado': branch.status,
         }));
         const ws = XLSX.utils.json_to_sheet(exportData);
@@ -499,281 +426,105 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
         XLSX.writeFile(wb, `monitor_sucursales_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
-    // Generate page range options for the Select
-    const pageRangeOptions = useMemo(() => {
-        return Array.from({ length: table.getPageCount() }, (_, i) => {
-            const start = i * pageSize + 1;
-            const end = Math.min((i + 1) * pageSize, table.getRowCount());
-            return { label: `${start}-${end}`, value: String(i + 1) };
-        });
-    }, [table.getPageCount(), table.getRowCount()]);
-
     return (
         <Frame className="w-full flex-1">
             {/* Header section with Title and Controls */}
             <FrameHeader className="gap-4">
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 w-full">
                     <div className="flex flex-col gap-0.5">
-                        <FrameTitle className="text-2xl flex items-center gap-2">
-                            <TrendingUpIcon className="size-6 text-primary" />
+                        <FrameTitle className="text-2xl">
                             Monitor de Sucursales
                         </FrameTitle>
                         <FrameDescription>
                             Estado en tiempo real de inventarios cíclicos.
                         </FrameDescription>
                     </div>
-                    <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-                        <div className="relative flex-1 min-w-[200px] md:w-48 lg:w-64">
-                            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                            <Input
-                                placeholder="Buscar sucursal..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="pl-10 h-9 bg-background/40 border-border/30 rounded-xl"
-                            />
-                        </div>
+                    {!isSingleBranchView && (
+                        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                            <div className="relative flex-1 min-w-[200px] md:w-48 lg:w-64">
+                                <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                                <Input
+                                    placeholder="Buscar sucursal..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="pl-10 h-9 bg-background/40 border-border/30 rounded-xl"
+                                />
+                            </div>
 
-                        <Group className="items-center">
-                            <GroupText
-                                className={cn(
-                                    buttonVariants({ size: "sm", variant: "outline" }),
-                                    "pointer-events-none h-9 px-3 gap-2 border-border/40"
-                                )}
+                            <Select value={selectedZonal} onValueChange={setSelectedZonal}>
+                                <SelectTrigger placeholder="Zonal" className="h-9 w-[130px] bg-background/40 border-border/30 rounded-xl shadow-none" />
+                                <SelectContent className="rounded-xl shadow-2xl border-border/40 min-w-[130px]">
+                                    <SelectItem index={0} value="all">Todos</SelectItem>
+                                    {zonales.map((zonal, idx) => (
+                                        <SelectItem key={zonal.id} index={idx + 1} value={zonal.id}>
+                                            {zonal.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            <Select 
+                                value={cycleFilter === 'previous' ? 'all' : timeframeFilter} 
+                                onValueChange={(val: any) => setTimeframeFilter(val)}
+                                disabled={cycleFilter === 'previous'}
                             >
-                                <FilterIcon className="size-3.5 opacity-60" />
-                                <span className="text-[13px] font-medium">Zonal</span>
-                            </GroupText>
-                            <GroupSeparator className="bg-border/40" />
-                            <Combobox
-                                autoHighlight
-                                items={ZONALES}
-                                multiple
-                                onValueChange={(value) => {
-                                    if (Array.isArray(value)) {
-                                        setSelectedZonales(value);
+                                <SelectTrigger placeholder="Período" className="h-9 w-[130px] bg-background/40 border-border/30 rounded-xl shadow-none" />
+                                <SelectContent className="rounded-xl shadow-2xl border-border/40 min-w-[130px]">
+                                    <SelectItem index={0} value="all">Ciclo Completo</SelectItem>
+                                    <SelectItem index={1} value="day">Hoy</SelectItem>
+                                    <SelectItem index={2} value="week">Esta Semana</SelectItem>
+                                    <SelectItem index={3} value="month">Este Mes</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            <Select 
+                                value={cycleFilter} 
+                                onValueChange={(val: any) => {
+                                    setCycleFilter(val);
+                                    if (val === 'previous') {
+                                        setTimeframeFilter('all');
                                     }
                                 }}
-                                value={selectedZonales}
                             >
-                                <ComboboxTrigger
-                                    render={
-                                        <Button
-                                            className={cn(
-                                                "h-9 min-w-[100px] lg:min-w-[120px] transition-all border-border/40 shadow-none",
-                                                selectedZonales.length === 0 ? "justify-between" : undefined
-                                            )}
-                                            size="sm"
-                                            variant="outline"
-                                        />
-                                    }
-                                >
-                                    {renderZonalesTrigger()}
-                                    {selectedZonales.length === 0 && (
-                                        <ChevronsUpDownIcon className="size-3.5 opacity-50 ml-1" />
-                                    )}
-                                </ComboboxTrigger>
-                                <ComboboxPopup aria-label="Select zonal" className="rounded-xl shadow-2xl border-border/40">
-                                    <div className="border-b border-border/40 p-2">
-                                        <ComboboxInput
-                                            className="rounded-lg ps-9"
-                                            placeholder="Buscar zonal..."
-                                            showTrigger={false}
-                                            startAddon={<SearchIcon className="size-4 opacity-50" />}
-                                        />
-                                    </div>
-                                    <ComboboxEmpty>No se encontraron zonales.</ComboboxEmpty>
-                                    <ComboboxList>
-                                        {(option: Zonal) => (
-                                            <ComboboxItem key={option.id} value={option}>
-                                                <div className="flex items-center gap-2">
-                                                    <MemberAvatar avatarUrl={option.avatar} name={option.label} />
-                                                    <span>{option.label}</span>
-                                                </div>
-                                            </ComboboxItem>
-                                        )}
-                                    </ComboboxList>
-                                </ComboboxPopup>
-                            </Combobox>
-                            <GroupSeparator className="bg-border/40" />
-                            <Button
-                                aria-label="Remove filter"
-                                onClick={() => setSelectedZonales([])}
-                                size="icon-sm"
-                                variant="outline"
-                                className="h-9 w-9 border-border/40 shadow-none"
-                                disabled={selectedZonales.length === 0}
-                            >
-                                <XIcon className="size-3.5 opacity-50" />
-                            </Button>
-                        </Group>
+                                <SelectTrigger placeholder="Ciclo" className="h-9 w-[130px] bg-background/40 border-border/30 rounded-xl shadow-none" />
+                                <SelectContent className="rounded-xl shadow-2xl border-border/40 min-w-[130px]">
+                                    <SelectItem index={0} value="current">Ciclo Actual</SelectItem>
+                                    <SelectItem index={1} value="previous">Ciclo Anterior</SelectItem>
+                                </SelectContent>
+                            </Select>
 
-                        <Button onClick={exportToExcel} variant="outline" size="sm" className="h-9 gap-2 shadow-sm border-border/40">
-                            <DownloadIcon className="size-4 opacity-60" aria-hidden="true" />
-                            <span className="hidden sm:inline">Exportar</span>
-                        </Button>
-                    </div>
+                            <Button onClick={exportToExcel} variant="tertiary" size="sm" className="h-9 gap-2 bg-background/40 border-border/30 rounded-xl shadow-none">
+                                <DownloadIcon className="size-4 opacity-60" aria-hidden="true" />
+                                <span className="hidden sm:inline">Exportar</span>
+                            </Button>
+                        </div>
+                    )}
                 </div>
             </FrameHeader>
 
-            {/* Unified Table - Browser-native Perfect Alignment */}
+            {/* Unified Motion Table Panel */}
             <div className="w-full flex-1 px-0 pb-1">
-                <FramePanel className="p-0 overflow-hidden border-border/10 bg-background/30 backdrop-blur-xs flex flex-col h-full">
-                    <Table className="table-fixed">
-                        <TableHeader className="bg-transparent">
-                            {table.getHeaderGroups().map((headerGroup) => (
-                                <TableRow className="hover:bg-transparent border-none" key={headerGroup.id}>
-                                    {headerGroup.headers.map((header) => {
-                                        const columnSize = header.column.getSize();
-                                        return (
-                                            <TableHead
-                                                key={header.id}
-                                                style={columnSize ? { width: `${columnSize}px` } : undefined}
-                                                className="h-10 border-none bg-transparent text-muted-foreground font-medium text-[13px]"
-                                            >
-                                                {header.isPlaceholder ? null : header.column.getCanSort() ? (
-                                                    <div
-                                                        className="flex h-full cursor-pointer select-none items-center justify-between gap-2"
-                                                        onClick={header.column.getToggleSortingHandler()}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter' || e.key === ' ') {
-                                                                e.preventDefault();
-                                                                header.column.getToggleSortingHandler()?.(e);
-                                                            }
-                                                        }}
-                                                        role="button"
-                                                        tabIndex={0}
-                                                    >
-                                                        {flexRender(header.column.columnDef.header, header.getContext())}
-                                                        {{
-                                                            asc: <ChevronUp aria-hidden="true" className="size-4 shrink-0 opacity-80" />,
-                                                            desc: <ChevronDown aria-hidden="true" className="size-4 shrink-0 opacity-80" />,
-                                                        }[header.column.getIsSorted() as string] ?? null}
-                                                    </div>
-                                                ) : (
-                                                    flexRender(header.column.columnDef.header, header.getContext())
-                                                )}
-                                            </TableHead>
-                                        );
-                                    })}
-                                </TableRow>
-                            ))}
-                        </TableHeader>
-                        <TableBody>
-                            {loading ? (
-                                Array.from({ length: 5 }).map((_, i) => (
-                                    <TableRow key={i}>
-                                        {columns.map((_, colIdx) => (
-                                            <TableCell key={colIdx}>
-                                                <div className="h-4 w-full max-w-[80px] rounded bg-muted animate-pulse" />
-                                            </TableCell>
-                                        ))}
-                                    </TableRow>
-                                ))
-                            ) : table.getRowModel().rows.length ? (
-                                table.getRowModel().rows.map((row) => (
-                                    <TableRow
-                                        key={row.id}
-                                        data-selected={row.getIsSelected() || undefined}
-                                        onClick={() => handleRowClick(row.original.branchName)}
-                                        className="cursor-pointer border-t border-border/15 transition-colors hover:bg-muted/30 first:border-t-0"
-                                    >
-                                        {row.getVisibleCells().map((cell) => (
-                                            <TableCell key={cell.id} className="py-3">
-                                                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                            </TableCell>
-                                        ))}
-                                    </TableRow>
-                                ))
-                            ) : (
-                                <TableRow>
-                                    <TableCell className="h-24 text-center" colSpan={columns.length}>
-                                        {searchTerm ? `No se encontraron sucursales para "${searchTerm}"` : 'Sin resultados.'}
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
+                <FramePanel className={cn(
+                    "p-0 overflow-hidden border-border/10 bg-background/30 backdrop-blur-xs flex flex-col",
+                    isSingleBranchView ? "h-auto min-h-[100px]" : "h-[500px]"
+                )}>
+                    <MotionTable
+                        data={filteredData}
+                        columns={columns}
+                        getRowId={(row) => row.branchName}
+                        height={isSingleBranchView ? 100 : 500}
+                        loading={loading}
+                        defaultSort={{ key: "progress", direction: "desc" }}
+                        onRowClick={(user?.role === 'admin' || user?.role === 'mod') ? (row) => handleRowClick(row.branchName) : undefined}
+                        className="border-none bg-transparent"
+                        emptyState={
+                            searchTerm 
+                                ? `No se encontraron sucursales para "${searchTerm}"`
+                                : 'Sin resultados.'
+                        }
+                    />
                 </FramePanel>
             </div>
-
-            {/* Footer with Pagination */}
-            <FrameFooter className="p-4 border-none mt-0">
-                <div className="flex items-center justify-between w-full gap-2 px-1">
-                    {/* Results range selector */}
-                    <div className="flex items-center gap-2 whitespace-nowrap">
-                        <p className="text-muted-foreground text-[13px]">Viendo</p>
-                        <Select
-                            value={String(pagination.pageIndex + 1)}
-                            onValueChange={(value) => {
-                                table.setPageIndex(Number(value) - 1);
-                            }}
-                        >
-                            <SelectTrigger 
-                                aria-label="Select result range"
-                                className="w-fit"
-                                size="sm"
-                            >
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="min-w-[5rem]">
-                                {pageRangeOptions.map((option) => (
-                                    <SelectItem 
-                                        key={option.value} 
-                                        value={option.value}
-                                    >
-                                        {option.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <p className="text-muted-foreground text-[13px]">
-                            de{' '}
-                            <strong className="font-semibold text-foreground">
-                                {table.getRowCount()}
-                            </strong>{' '}
-                            resultados
-                        </p>
-                    </div>
-
-                    {/* Pagination buttons */}
-                    <Pagination className="justify-end w-auto mx-0">
-                        <PaginationContent className="gap-2">
-                            <PaginationItem>
-                                <PaginationPrevious
-                                    className="sm:*:[svg]:hidden"
-                                    render={
-                                        <Button
-                                            disabled={!table.getCanPreviousPage()}
-                                            onClick={() => table.previousPage()}
-                                            size="sm"
-                                            variant="outline"
-                                            className="h-8 border-border/20 text-[13px] font-medium transition-all hover:bg-muted active:scale-95"
-                                        >
-                                            Anterior
-                                        </Button>
-                                    }
-                                />
-                            </PaginationItem>
-                            <PaginationItem>
-                                <PaginationNext
-                                    className="sm:*:[svg]:hidden"
-                                    render={
-                                        <Button
-                                            disabled={!table.getCanNextPage()}
-                                            onClick={() => table.nextPage()}
-                                            size="sm"
-                                            variant="outline"
-                                            className="h-8 border-border/20 text-[13px] font-medium transition-all hover:bg-muted active:scale-95"
-                                        >
-                                            Siguiente
-                                        </Button>
-                                    }
-                                />
-                            </PaginationItem>
-                        </PaginationContent>
-                    </Pagination>
-                </div>
-            </FrameFooter>
         </Frame>
     );
 }

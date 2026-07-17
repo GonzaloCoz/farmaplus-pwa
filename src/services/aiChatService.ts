@@ -8,7 +8,7 @@ export interface AIAction {
 }
 
 export interface ChatMessage {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   displayContent?: string;
 }
@@ -22,8 +22,7 @@ export interface StreamChatOptions {
   signal?: AbortSignal;
 }
 
-/** Tracks whether a warmup request is already in flight or completed */
-let warmupStatus: 'idle' | 'pending' | 'done' = 'idle';
+
 
 /**
  * Parses action buttons from the end of the AI response.
@@ -116,55 +115,6 @@ async function fetchWithRetry(
 }
 
 export const aiChatService = {
-  /**
-   * Sends a tiny warmup request to pre-load the Ollama model into memory.
-   * This prevents the first real user query from suffering a cold-start delay.
-   * Safe to call multiple times — only fires once.
-   */
-  warmup: async (): Promise<void> => {
-    if (warmupStatus !== 'idle') return;
-    warmupStatus = 'pending';
-
-    try {
-      const { functionUrl, headers } = await getEdgeFunctionConfig();
-
-      // Send a minimal single-token prompt that generates almost no output
-      // but forces Ollama to load the model into memory.
-      const warmupPayload = {
-        messages: [{ role: "user", content: "hola" }],
-        branchName: null,
-      };
-
-      const controller = new AbortController();
-      // Abort after 30s to avoid hanging forever
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
-
-      const response = await fetch(functionUrl, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(warmupPayload),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      // Consume & discard the body so the connection closes cleanly
-      if (response.body) {
-        const reader = response.body.getReader();
-        while (true) {
-          const { done } = await reader.read();
-          if (done) break;
-        }
-      }
-
-      warmupStatus = 'done';
-      console.log("[ai-chat] Warmup completed — model loaded.");
-    } catch (err) {
-      // Non-critical: if warmup fails, the first real request will just be slower
-      warmupStatus = 'idle'; // Allow retry on next mount
-      console.warn("[ai-chat] Warmup failed (non-critical):", err);
-    }
-  },
 
   streamChat: async ({
     messages,
@@ -204,8 +154,7 @@ export const aiChatService = {
         throw new Error("El servidor no devolvió un flujo de datos (response body is empty).");
       }
 
-      // Mark warmup as done — if the real request succeeded, the model is loaded
-      warmupStatus = 'done';
+
 
       // 3. Read the stream
       const reader = response.body.getReader();

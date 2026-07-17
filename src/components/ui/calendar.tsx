@@ -1,5 +1,5 @@
 import * as React from "react";
-import { AltArrowLeft as ChevronLeft, AltArrowRight as ChevronRight } from "@solar-icons/react";
+import { ChevronLeft, ChevronRight } from '@untitledui/icons';
 import { DayPicker } from "react-day-picker";
 import { es } from "date-fns/locale";
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { RiCalendarEventLine } from "@remixicon/react";
+import { Calendar as RiCalendarEventLine } from '@untitledui/icons';
 import { addDays, format, isToday } from "date-fns";
 import { es } from "date-fns/locale";
 import { useMemo } from "react";

@@ -1,6 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { CounterAnimation } from "./CounterAnimation";
+import { Badge } from "@/components/ui/badge";
 
 export type LaboratoryStatus = "controlado" | "por_controlar" | "pendiente";
 
@@ -85,16 +86,17 @@ export function LaboratoryCard({
                 >
                     {name}
                 </h3>
-                <div className={cn("flex items-center gap-1.5 text-xs font-semibold shrink-0", statusConfig.color)}>
-                    <span
-                        className={cn(
-                            "size-2 rounded-full",
-                            statusConfig.dotColor,
-                            status === "por_controlar" && "animate-pulse"
-                        )}
-                    />
-                    <span>{displayProgress}%</span>
-                </div>
+                <Badge
+                    variant="dot"
+                    size="sm"
+                    color={status === "controlado" ? "green" : status === "por_controlar" ? "blue" : "gray"}
+                    className={cn(
+                        "shrink-0 font-semibold",
+                        status === "por_controlar" && "[&>span:first-child]:animate-pulse"
+                    )}
+                >
+                    {displayProgress}%
+                </Badge>
             </div>
 
             {/* Diferencia neta */}

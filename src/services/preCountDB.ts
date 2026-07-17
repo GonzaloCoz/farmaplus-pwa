@@ -53,13 +53,14 @@ export interface PreCountSession extends LocalSession {
     errorCount?: number;
     sync_pin?: string;
     master_catalog?: MasterCatalogItem[];
+    profile?: 'sucursal' | 'sap';
 }
 
 export type PreCountItem = LocalItem;
 
 // --- Sesiones ---
 
-export async function createSession(sector: string, branch_id?: string, master_catalog?: MasterCatalogItem[], sync_pin?: string): Promise<PreCountSession> {
+export async function createSession(sector: string, branch_id?: string, master_catalog?: MasterCatalogItem[], sync_pin?: string, profile?: 'sucursal' | 'sap'): Promise<PreCountSession> {
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData.user?.id;
     const sessionId = uuidv4();
@@ -74,7 +75,8 @@ export async function createSession(sector: string, branch_id?: string, master_c
         branch_id: branch_id,
         synced: 0,
         sync_pin,
-        master_catalog: master_catalog || []
+        master_catalog: master_catalog || [],
+        profile: profile || 'sucursal'
     };
 
     // 1. Save to Local DB

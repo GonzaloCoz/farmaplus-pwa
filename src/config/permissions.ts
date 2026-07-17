@@ -30,11 +30,17 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     ],
     'branch': [
         // Basic permissions
+        'VIEW_BRANCH_MONITOR'
     ]
 };
 
 export function hasPermission(user: User | null, permission: Permission): boolean {
     if (!user) return false;
+
+    // AI Chat is enabled for all authenticated users
+    if (permission === 'USE_AI_CHAT') {
+        return true;
+    }
 
     // 1. Check if user has specific permission overrides
     if (user.permissions && user.permissions.length > 0) {
@@ -44,11 +50,6 @@ export function hasPermission(user: User | null, permission: Permission): boolea
     // 2. Fallback to role-based permissions
     // Special override for gcoz for MANAGE_USERS is less needed if we persist it, but kept for safety
     if (permission === 'MANAGE_USERS' && user.username.toLowerCase() === 'gcoz') {
-        return true;
-    }
-
-    // AI Chat is exclusively available for gcoz
-    if (permission === 'USE_AI_CHAT' && user.username.toLowerCase() === 'gcoz') {
         return true;
     }
 

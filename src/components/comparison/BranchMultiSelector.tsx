@@ -1,5 +1,5 @@
 import * as React from "react"
-import { CheckCircle as Check, AltArrowDown as ChevronsUpDown, CloseCircle as X } from "@solar-icons/react"
+import { CheckCircle as Check, ChevronDown as ChevronsUpDown, XClose as X } from '@untitledui/icons'
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"

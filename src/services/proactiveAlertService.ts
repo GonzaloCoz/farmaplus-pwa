@@ -25,10 +25,10 @@ export const proactiveAlertService = {
       const alerts: ProactiveAlert[] = [];
 
       // 1. Check for significant discrepancies in branch_laboratories
-      const { data: labs, error: labsError } = await supabase
-        .from('branch_laboratories')
-        .select('*')
-        .eq('branch_name', branchName);
+      const { data: labs, error: labsError } = await (supabase as any).rpc(
+        'get_all_cyclic_inventories',
+        { p_branch_name: branchName }
+      );
 
       if (labsError) {
         console.error("Error fetching branch laboratories for proactive alerts:", labsError);

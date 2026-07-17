@@ -8,11 +8,10 @@ import { useUser } from "@/contexts/UserContext";
 import { notify } from "@/lib/notifications";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus } from "lucide-react";
-import { CloseCircle as X, TrashBinMinimalistic as Trash2, Pen as Edit2, Diskette as Save } from "@solar-icons/react";
+import { Plus } from '@untitledui/icons';
+import { XClose as X, Trash01 as Trash2, Edit01 as Edit2, Save01 as Save } from '@untitledui/icons';
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
-import { BRANCH_NAMES } from "@/config/users";
 import { EventCalendar, CreateEventDialog, type CalendarEvent as UIEvent, type EventColor, safeParseDate } from "@/components/ui/event-calendar";
 import { format, isValid } from "date-fns";
 

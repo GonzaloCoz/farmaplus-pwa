@@ -7,6 +7,9 @@ import { cn } from "@/lib/utils";
 
 export function TopAppBar() {
     const [isScrolled, setIsScrolled] = useState(false);
+    const [isHidden, setIsHidden] = useState(() => {
+        return typeof window !== 'undefined' && localStorage.getItem('is_zebra_counting') === 'true';
+    });
 
     useEffect(() => {
         const handleScroll = (e: Event) => {
@@ -20,6 +23,16 @@ export function TopAppBar() {
         window.addEventListener("scroll", handleScroll, true);
         return () => window.removeEventListener("scroll", handleScroll, true);
     }, []);
+
+    useEffect(() => {
+        const handleStateChange = () => {
+            setIsHidden(localStorage.getItem('is_zebra_counting') === 'true');
+        };
+        window.addEventListener('zebraCountingStateChange', handleStateChange);
+        return () => window.removeEventListener('zebraCountingStateChange', handleStateChange);
+    }, []);
+
+    if (isHidden) return null;
 
     return (
         <header

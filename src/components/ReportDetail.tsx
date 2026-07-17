@@ -3,8 +3,8 @@ import { useParams, Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AltArrowLeft as ArrowLeft, Document as FileText, CourseUp as TrendingUp, CourseDown as TrendingDown, Widget as Package, CheckCircle, Target, Calendar, MapPoint as MapPin, Layers } from "@solar-icons/react";
-import { toast } from "sonner";
+import { ChevronLeft as ArrowLeft, File01 as FileText, TrendUp01 as TrendingUp, TrendDown01 as TrendingDown, LayoutGrid01 as Package, CheckCircle, Activity as Target, Calendar, MarkerPin01 as MapPin, LayersTwo01 as Layers } from '@untitledui/icons';
+import { notify } from "@/lib/notifications";
 
 // Interfaces de Reporte
 interface ProductData {
@@ -51,10 +51,10 @@ export default function ReportDetail() {
       if (foundReport) {
         setReport(foundReport);
       } else {
-        toast.error("No se pudo encontrar el reporte.");
+        notify.error("No se pudo encontrar el reporte.");
       }
     } catch (error) {
-      toast.error("Error al cargar los reportes.");
+      notify.error("Error al cargar los reportes.");
     }
   }, [reportId]);
 
@@ -66,7 +66,7 @@ export default function ReportDetail() {
         <p className="mt-1 text-sm text-muted-foreground">
           El reporte que buscas no existe o ha sido eliminado.
         </p>
-        <Button asChild variant="link" className="mt-4">
+        <Button asChild variant="ghost" className="mt-4">
           <Link to="/reports">Volver a Reportes</Link>
         </Button>
       </div>

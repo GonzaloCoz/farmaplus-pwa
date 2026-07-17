@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { Delete, Check, Plus, Minus } from 'lucide-react';
+import { Delete, Check, Plus, Minus } from '@untitledui/icons';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 import { useState, useEffect, useRef } from 'react';
 

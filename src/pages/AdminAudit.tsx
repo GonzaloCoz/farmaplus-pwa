@@ -5,7 +5,7 @@ import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@
 import { Frame, FramePanel } from "@/components/ui/frame";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { MapPoint as MapPin, Calendar, User, Magnifer as Search, Filter } from "@solar-icons/react";
+import { MarkerPin01 as MapPin, Calendar, User01 as User, SearchLg as Search, FilterLines as Filter } from '@untitledui/icons';
 import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";

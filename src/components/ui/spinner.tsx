@@ -1,4 +1,4 @@
-import { Loader2Icon } from "lucide-react";
+import { RefreshCw01 as Loader2Icon } from '@untitledui/icons';
 import type React from "react";
 import { cn } from "@/lib/utils";
 

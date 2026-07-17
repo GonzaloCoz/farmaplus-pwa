@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { GraphDown as TrendingDown, GraphUp as TrendingUp, Eye } from '@solar-icons/react';
+import { TrendDown01 as TrendingDown, TrendUp01 as TrendingUp, Eye } from '@untitledui/icons';
 
 interface TopProduct {
     name: string;

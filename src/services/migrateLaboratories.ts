@@ -1,6 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
 import * as XLSX from 'xlsx';
-import { BRANCH_NAMES } from '@/config/users';
 
 /**
  * Migration script to populate branch_laboratories table from lab_sucu.xlsx
@@ -60,8 +59,19 @@ export async function migrateLaboratoryAssignments() {
         let totalInserted = 0;
         let totalUpdated = 0;
 
-        // 2. Process each branch
-        for (const branchName of BRANCH_NAMES) {
+        // 2. Fetch all branches from Supabase
+        const { data: dbBranches, error: branchesError } = await supabase
+            .from('branches')
+            .select('name');
+        
+        if (branchesError || !dbBranches) {
+            console.error('[Migration] Error loading branches:', branchesError);
+            throw branchesError || new Error("Failed to load branches");
+        }
+        const branchNames = dbBranches.map(b => b.name);
+
+        // Process each branch
+        for (const branchName of branchNames) {
             const sheetName = sheetMap.get(branchName.toLowerCase().trim());
 
             if (!sheetName) {

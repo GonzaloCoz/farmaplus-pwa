@@ -1,5 +1,5 @@
 import { useSyncManager } from '@/hooks/useSyncManager';
-import { Restart as RefreshCw, CloseCircle as WifiOff, CloudCross as CloudOff, CheckCircle } from '@solar-icons/react';
+import { RefreshCw01 as RefreshCw, XClose as WifiOff, CloudOff, CheckCircle } from '@untitledui/icons';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';

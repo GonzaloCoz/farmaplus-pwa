@@ -31,6 +31,8 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
     const [isUploading, setIsUploading] = useState(false);
     const [showMismatchDialog, setShowMismatchDialog] = useState(false);
     const [mismatchData, setMismatchData] = useState<MismatchData | null>(null);
+    const [showImportModeDialog, setShowImportModeDialog] = useState(false);
+    const [pendingFile, setPendingFile] = useState<File | null>(null);
     
     const navigate = useNavigate();
     const { user } = useUser();
@@ -207,78 +209,48 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
         }
     };
 
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        // Verificar estado de bloqueo antes de permitir la carga (solo usuarios de sucursal)
-        if (user?.role === 'branch') {
-            try {
-                const config = await cyclicInventoryService.getBranchConfig(branchName);
-                const lockStatus = await cyclicInventoryService.isInventoryLocked(
-                    branchName,
-                    config.days,
-                    config.startDate
-                );
-
-                if (lockStatus.isLocked) {
-                    const reason = lockStatus.reason === 'manual'
-                        ? 'El inventario ha sido bloqueado manualmente'
-                        : 'El plazo de inventario ha vencido';
-                    notify.error('Inventario Bloqueado', `${reason}. No puedes cargar archivos en este momento.`);
-                    return;
-                }
-            } catch (error) {
-                console.error('Error checking lock status:', error);
-                // Continuar con la carga si la verificación de bloqueo falla
-            }
-        }
-
+    const executeUpload = async (file: File, mode: 'merge' | 'overwrite') => {
         setIsUploading(true);
+        let mergedCurrentItems: CyclicItem[] = [];
 
-        // IRONCLAD PRE-MERGE: Leer el estado actual de Supabase ANTES de abrir el reader.
-        // Debe ejecutarse aquí (en la función async handleFileUpload) y no dentro de reader.onload
-        // que es síncrono. Esto garantiza que los items ajustados/controlados de sesiones anteriores
-        // se preserven aunque el estado de React esté vacío (e.g., tras recargar la app).
-        let mergedCurrentItems: CyclicItem[] = [...currentItems];
-        try {
-            const dbItems = await cyclicInventoryService.getLabInventory(branchName, labName);
-            if (dbItems.length > 0) {
-                // Feature logic: If 100% adjusted and user uploads Excel, ask for re-adjustment
-                const allAdjusted = dbItems.every(i => i.status === 'adjusted');
-                if (allAdjusted) {
-                    const confirmReajuste = window.confirm("Este laboratorio ya fue finalizado al 100%.\n\n¿Deseas realizar un re-ajuste de algunos artículos?\nSi confirmas, podrás buscarlos en la pestaña 'Ajustados' y modificar su cantidad indicando el motivo.");
-                    if (!confirmReajuste) {
-                        setIsUploading(false);
-                        return;
+        if (mode === 'merge') {
+            mergedCurrentItems = [...currentItems];
+            try {
+                const dbItems = await cyclicInventoryService.getLabInventory(branchName, labName);
+                if (dbItems.length > 0) {
+                    const allAdjusted = dbItems.every(i => i.status === 'adjusted');
+                    if (allAdjusted) {
+                        const confirmReajuste = window.confirm("Este laboratorio ya fue finalizado al 100%.\n\n¿Deseas realizar un re-ajuste de algunos artículos?\nSi confirmas, podrás buscarlos en la pestaña 'Ajustados' y modificar su cantidad indicando el motivo.");
+                        if (!confirmReajuste) {
+                            setIsUploading(false);
+                            return;
+                        }
                     }
+
+                    const reactItemMap = new Map(currentItems.map(i => [String(i.ean).trim(), i]));
+                    const merged: CyclicItem[] = dbItems.map(dbItem => {
+                        const reactVersion = reactItemMap.get(String(dbItem.ean).trim());
+                        return reactVersion || dbItem;
+                    });
+                    currentItems.forEach(rItem => {
+                        const ean = String(rItem.ean).trim();
+                        if (!merged.find(m => String(m.ean).trim() === ean)) {
+                            merged.push(rItem);
+                        }
+                    });
+                    mergedCurrentItems = merged;
                 }
-
-                // React state toma prioridad (puede tener cambios no guardados recientes),
-                // pero la DB es el fallback para items que no están en el estado.
-                const reactItemMap = new Map(currentItems.map(i => [String(i.ean).trim(), i]));
-                const merged: CyclicItem[] = dbItems.map(dbItem => {
-                    const reactVersion = reactItemMap.get(String(dbItem.ean).trim());
-                    return reactVersion || dbItem;
-                });
-                // Agregar cualquier item del estado React que no esté en DB (cambios pendientes de sync)
-                currentItems.forEach(rItem => {
-                    const ean = String(rItem.ean).trim();
-                    if (!merged.find(m => String(m.ean).trim() === ean)) {
-                        merged.push(rItem);
-                    }
-                });
-                mergedCurrentItems = merged;
+            } catch (fetchError) {
+                console.warn('No se pudo leer el estado de DB antes de subir Excel. Usando estado de React.', fetchError);
             }
-        } catch (fetchError) {
-            console.warn('No se pudo leer el estado de DB antes de subir Excel. Usando estado de React.', fetchError);
+        } else {
+            mergedCurrentItems = [];
         }
 
         const reader = new FileReader();
 
         const isPdf = file.name.toLowerCase().endsWith('.pdf');
 
-        // PDF uploads are temporarily disabled due to worker compatibility issues
         if (isPdf) {
             notify.error("Formato no soportado", "La carga de archivos PDF está temporalmente deshabilitada. Por favor, utilizá un archivo Excel (.xlsx o .xls).");
             setIsUploading(false);
@@ -287,8 +259,6 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
 
         reader.onload = (evt) => {
             const fileContent = evt.target?.result;
-
-            // Optimización Empresarial: Uso de Web Workers para rendimiento de UI a 60FPS
             const worker = new ExcelWorker();
 
             worker.onmessage = async (eMsg) => {
@@ -308,7 +278,7 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                                 name,
                                 similarity: getStringSimilarity(fileLabName, name)
                             }))
-                            .filter(lab => lab.similarity >= 0.5) // Filtro de coincidencia
+                            .filter(lab => lab.similarity >= 0.5)
                             .sort((a, b) => b.similarity - a.similarity)
                             .slice(0, 5)
                             .map(lab => lab.name);
@@ -340,7 +310,6 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 if (success) {
                     onItemsUpdated(finalItems);
 
-                    // Guardar inmediatamente con limpieza de residuos
                     try {
                         await cyclicInventoryService.purgeAndSaveLabInventory(branchName, labName, finalItems);
                         console.log("Ironclad Sync completado con éxito (Worker).");
@@ -367,7 +336,6 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 worker.terminate();
             };
 
-            // Pasar la lista pre-mergeada (capturada por closure) al worker
             worker.postMessage({
                 fileData: fileContent,
                 labName,
@@ -378,6 +346,53 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
         };
 
         reader.readAsBinaryString(file);
+    };
+
+    const handleSelectImportMode = async (mode: 'merge' | 'overwrite') => {
+        setShowImportModeDialog(false);
+        if (pendingFile) {
+            await executeUpload(pendingFile, mode);
+            setPendingFile(null);
+        }
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (user?.role === 'branch') {
+            try {
+                const config = await cyclicInventoryService.getBranchConfig(branchName);
+                const lockStatus = await cyclicInventoryService.isInventoryLocked(
+                    branchName,
+                    config.days,
+                    config.startDate
+                );
+
+                if (lockStatus.isLocked) {
+                    const reason = lockStatus.reason === 'manual'
+                        ? 'El inventario ha sido bloqueado manualmente'
+                        : 'El plazo de inventario ha vencido';
+                    notify.error('Inventario Bloqueado', `${reason}. No puedes cargar archivos en este momento.`);
+                    return;
+                }
+            } catch (error) {
+                console.error('Error checking lock status:', error);
+            }
+        }
+
+        try {
+            const dbItems = await cyclicInventoryService.getLabInventory(branchName, labName);
+            if (dbItems.length > 0) {
+                setPendingFile(file);
+                setShowImportModeDialog(true);
+                return;
+            }
+        } catch (err) {
+            console.warn("Could not check lab items status, proceeding with default merge:", err);
+        }
+
+        await executeUpload(file, 'merge');
     };
 
     const handleElectronImport = async (data: { rows: any[][], filename: string }) => {
@@ -525,6 +540,9 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
         showMismatchDialog,
         setShowMismatchDialog,
         mismatchData,
-        handleResolveMismatch
+        handleResolveMismatch,
+        showImportModeDialog,
+        setShowImportModeDialog,
+        handleSelectImportMode
     };
 }

@@ -23,6 +23,7 @@ export interface LocalSession {
     synced: number; // 0 = false, 1 = true
     sync_pin?: string;
     master_catalog?: any[]; // Used for device validation & recon
+    profile?: 'sucursal' | 'sap';
 }
 
 export interface LocalLocationStatus {

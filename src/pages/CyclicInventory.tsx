@@ -5,24 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Group, GroupSeparator } from "@/components/ui/group";
 import { Card } from "@/components/ui/card";
-import {
-  Chart as BarChart3,
-  CheckCircle,
-  DangerCircle as AlertCircle,
-  Dollar,
-  GraphDown as TrendingDown,
-  GraphUp as TrendingUp,
-  Restart as Loader2,
-  Magnifer as Search,
-  Filter,
-  MenuDots as MoreVertical,
-  Widget as GridIcon,
-  List as ListIcon,
-  ClockCircle as Clock,
-  Download,
-  Document as DocumentIcon,
-  TrashBinMinimalistic as Trash,
-} from "@solar-icons/react";
+import { BarChart01 as BarChart3, CheckCircle, AlertCircle, CurrencyDollar as Dollar, TrendDown01 as TrendingDown, TrendUp01 as TrendingUp, RefreshCw01 as Loader2, SearchLg as Search, FilterLines as Filter, DotsHorizontal as MoreVertical, LayoutGrid01 as GridIcon, List as ListIcon, Clock, Download01 as Download, File01 as DocumentIcon, Trash01 as Trash } from '@untitledui/icons';
 import { LaboratoryCard, LaboratoryStatus } from "@/components/LaboratoryCard";
 import { CounterAnimation } from "@/components/CounterAnimation";
 import { MetricCarousel } from "@/components/MetricCarousel";
@@ -32,7 +15,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { cn, normalizeString } from "@/lib/utils";
 import { ReportExporter } from "@/lib/reportExporter";
-import { BookOpen, Users2, DownloadCloud, PenTool, Plus, Edit } from 'lucide-react';
+import { Elevated } from "@/lib/elevated";
+import { fontWeights } from "@/lib/font-weight";
+import { BookOpen01 as BookOpen, Users01 as Users2, DownloadCloud01 as DownloadCloud, PenTool01 as PenTool, Plus, Edit01 as Edit } from '@untitledui/icons';
 import {
   Dialog,
   DialogContent,
@@ -46,26 +31,24 @@ import {
 import { Form } from "@/components/ui/form";
 import { Field, FieldLabel } from "@/components/ui/field";
 import {
-  Menu,
-  MenuPopup,
+  DropdownMenu,
+  DropdownTrigger,
+  DropdownContent,
+  DropdownLabel,
+  DropdownSeparator,
   MenuItem,
-  MenuTrigger,
-  MenuCheckboxItem,
-  MenuSeparator,
-  MenuGroupLabel,
-  MenuGroup
-} from "@/components/ui/menu";
+} from "@/components/ui/dropdown";
 import {
   InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
+  InputField,
 } from "@/components/ui/input-group";
-import { Tabs, TabsList, TabsTab } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabItem, TabPanel, TabsTab } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getLaboratoriesForBranch } from "@/services/preCountDB";
 import { cyclicInventoryService, CyclicInventoryStats } from "@/services/cyclicInventoryService";
 import { useUser } from "@/contexts/UserContext";
 import { usePrefetchLabInventory } from "@/hooks/useInventoryQueries";
+import { useIcons } from "@/lib/icon-context";
 import { supabase } from "@/integrations/supabase/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectButton } from "@/components/ui/select";
 import {
@@ -78,7 +61,7 @@ import {
   ComboboxTrigger,
   ComboboxValue,
 } from "@/components/ui/combobox";
-import { SearchIcon } from "lucide-react";
+import { SearchLg as SearchIcon } from '@untitledui/icons';
 
 // Aliases for icons that are used under multiple names
 const RotateCcw = Loader2;
@@ -113,6 +96,7 @@ function renderCategoryValue(value: string[]) {
 export default function CyclicInventory() {
   const navigate = useNavigate();
   const { user } = useUser();
+  const icons = useIcons();
   const prefetchLab = usePrefetchLabInventory();
   const [searchTerm, setSearchTerm] = useState("");
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
@@ -145,138 +129,195 @@ export default function CyclicInventory() {
   const [selectedEditLab, setSelectedEditLab] = useState("");
   const [selectedEditLabObj, setSelectedEditLabObj] = useState<{ label: string, value: string } | null>(null);
 
-  useEffect(() => {
-    const loadLabs = async () => {
-      if (!user?.branchSheet) {
-        setIsLoading(false);
-        return;
+  const loadLabs = useCallback(async () => {
+    if (!user?.branchSheet) {
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+
+    try {
+      // 1. Obtener lista maestra de laboratorios (Autorizados para esta sucursal)
+      const allowedLabs = await getLaboratoriesForBranch(user.branchSheet);
+
+      // Obtener configuración de sucursal para obtener rondas
+      const config = await cyclicInventoryService.getBranchConfig(user.branchSheet);
+
+      // 2. Obtener estado actual del inventario desde Supabase (Filtrado por sucursal)
+      const inventoryStats = await cyclicInventoryService.getAllCyclicInventories(user.branchSheet);
+
+      // 2b. Obtener todos los items del inventario para calcular métricas extra (IRA, desvío, ajustes)
+      const { data: inventoriesData, error: invError } = await (supabase as any)
+        .from('inventories')
+        .select('laboratory, category, quantity, system_quantity, status, ean, round')
+        .eq('branch_name', normalizeString(user.branchSheet));
+
+      if (invError) {
+        console.error("Error al obtener items de inventario para estadísticas:", invError);
       }
-      setIsLoading(true);
 
-      try {
-        // 1. Obtener lista maestra de laboratorios (Autorizados para esta sucursal)
-        const allowedLabs = await getLaboratoriesForBranch(user.branchSheet);
+      const branchInv = inventoriesData || [];
+      const uniqueEans = Array.from(new Set(branchInv.map((i: any) => String(i.ean || '')))).filter(Boolean);
 
-        // 2. Obtener estado actual del inventario desde Supabase (Filtrado por sucursal)
-        const inventoryStats = await cyclicInventoryService.getAllCyclicInventories(user.branchSheet);
+      const costMap = new Map<string, number>();
+      if (uniqueEans.length > 0) {
+        const { data: productsData, error: prodError } = await supabase
+          .from('products')
+          .select('ean, cost')
+          .in('ean', uniqueEans);
 
-        // 2b. Obtener todos los items del inventario para calcular métricas extra (IRA, desvío, ajustes)
-        const { data: inventoriesData, error: invError } = await supabase
-          .from('inventories')
-          .select('laboratory, category, quantity, system_quantity, status, ean')
-          .eq('branch_name', normalizeString(user.branchSheet));
-
-        if (invError) {
-          console.error("Error al obtener items de inventario para estadísticas:", invError);
+        if (prodError) {
+          console.error("Error al obtener costos de productos para estadísticas:", prodError);
+        } else {
+          productsData?.forEach(p => costMap.set(p.ean, p.cost || 0));
         }
+      }
 
-        const branchInv = inventoriesData || [];
-        const uniqueEans = Array.from(new Set(branchInv.map(i => i.ean)));
+      // 3. Unir datos: Unión de Inventario Activo + Lista Maestra (para pendientes)
+      const mergedData: CyclicInventoryStats[] = [...inventoryStats];
 
-        const costMap = new Map<string, number>();
-        if (uniqueEans.length > 0) {
-          const { data: productsData, error: prodError } = await supabase
-            .from('products')
-            .select('ean, cost')
-            .in('ean', uniqueEans);
+      // Crear un Set de búsqueda para evitar duplicados (Clave: Nombre|Categoría)
+      // Normalizar categoría para una comparación robusta
+      const activeLabsSet = new Set(inventoryStats.map(s => `${s.labName.trim().toUpperCase()}|${normalizeString(s.category || '')}`));
 
-          if (prodError) {
-            console.error("Error al obtener costos de productos para estadísticas:", prodError);
-          } else {
-            productsData?.forEach(p => costMap.set(p.ean, p.cost || 0));
-          }
+      allowedLabs.forEach(labInfo => {
+        const labName = labInfo.name.trim().toUpperCase();
+        const category = normalizeString(labInfo.category);
+        const key = `${labName}|${category}`;
+
+        // Si esta combinación específica (Nombre+Categoría) no existe en el inventario activo, agregar como Pendiente
+        if (!activeLabsSet.has(key)) {
+          mergedData.push({
+            labName: labInfo.name,
+            category: normalizeString(labInfo.category), // Guardar categoría normalizada para ítems pendientes
+            status: 'pendiente',
+            totalItems: 0,
+            controlledItems: 0,
+            progress: 0,
+            negativeValue: 0,
+            positiveValue: 0,
+            netValue: 0,
+            differenceValue: 0,
+            totalSystemUnits: 0,
+            negativeUnits: 0,
+            positiveUnits: 0,
+            netUnits: 0
+          });
         }
+      });
 
-        // 3. Unir datos: Unión de Inventario Activo + Lista Maestra (para pendientes)
-        const mergedData: CyclicInventoryStats[] = [...inventoryStats];
+      // Enriquecer datos con métricas extras calculadas client-side
+      const enrichedData = mergedData.map(lab => {
+        const normLabName = normalizeString(lab.labName);
+        const normCategory = normalizeString(lab.category || '');
 
-        // Crear un Set de búsqueda para evitar duplicados (Clave: Nombre|Categoría)
-        // Normalizar categoría para una comparación robusta
-        const activeLabsSet = new Set(inventoryStats.map(s => `${s.labName.trim().toUpperCase()}|${normalizeString(s.category || '')}`));
+        // Obtener ronda activa para la categoría de este laboratorio
+        const catNorm = (lab.category || 'VARIOS').toUpperCase();
+        const activeRound = config.rounds?.[catNorm] || config.rounds?.GENERAL || 1;
 
-        allowedLabs.forEach(labInfo => {
-          const labName = labInfo.name.trim().toUpperCase();
-          const category = normalizeString(labInfo.category);
-          const key = `${labName}|${category}`;
+        // Filtrar items por laboratorio, categoría y ronda activa
+        const labItems = branchInv.filter(item =>
+          normalizeString(item.laboratory) === normLabName &&
+          normalizeString(item.category || '') === normCategory &&
+          (item.round || 1) === activeRound
+        );
 
-          // Si esta combinación específica (Nombre+Categoría) no existe en el inventario activo, agregar como Pendiente
-          if (!activeLabsSet.has(key)) {
-            mergedData.push({
-              labName: labInfo.name,
-              category: normalizeString(labInfo.category), // Guardar categoría normalizada para ítems pendientes
-              status: 'pendiente',
-              totalItems: 0,
-              controlledItems: 0,
-              progress: 0,
-              negativeValue: 0,
-              positiveValue: 0,
-              netValue: 0,
-              differenceValue: 0,
-              totalSystemUnits: 0,
-              negativeUnits: 0,
-              positiveUnits: 0,
-              netUnits: 0
-            });
+        const controlledItemsList = labItems.filter(i => i.status === 'controlled' || i.status === 'adjusted');
+        const adjustmentCount = controlledItemsList.filter(i => i.quantity !== i.system_quantity).length;
+
+        const controlledCount = controlledItemsList.length;
+        const totalItems = labItems.length;
+
+        // Calcular progreso real del laboratorio/categoría para la ronda activa
+        const progress = totalItems > 0
+          ? Math.min(100, Math.round((controlledCount / totalItems) * 100))
+          : 0;
+
+        const status: LaboratoryStatus = progress === 100 
+          ? 'controlado' 
+          : progress > 0 
+            ? 'por_controlar' 
+            : 'pendiente';
+
+        // Calcular desvíos y valores monetarios de la ronda activa
+        let negativeValue = 0;
+        let positiveValue = 0;
+        let negativeUnits = 0;
+        let positiveUnits = 0;
+
+        controlledItemsList.forEach(item => {
+          const diff = item.quantity - item.system_quantity;
+          const cost = costMap.get(item.ean) || 0;
+          if (diff < 0) {
+            negativeUnits += Math.abs(diff);
+            negativeValue += Math.abs(diff) * cost;
+          } else if (diff > 0) {
+            positiveUnits += diff;
+            positiveValue += diff * cost;
           }
         });
 
-        // Enriquecer datos con métricas extras calculadas client-side
-        const enrichedData = mergedData.map(lab => {
-          const normLabName = normalizeString(lab.labName);
-          const normCategory = normalizeString(lab.category || '');
+        // Redondear a 2 decimales
+        negativeValue = Math.round(negativeValue * 100) / 100;
+        positiveValue = Math.round(positiveValue * 100) / 100;
+        const netValue = Math.round((positiveValue - negativeValue) * 100) / 100;
+        const differenceValue = netValue; 
 
-          // Filtrar items por laboratorio y categoría
-          const labItems = branchInv.filter(item =>
-            normalizeString(item.laboratory) === normLabName &&
-            normalizeString(item.category || '') === normCategory
-          );
+        const systemValue = labItems.reduce((acc, item) => {
+          const cost = costMap.get(item.ean) || 0;
+          return acc + (item.system_quantity * cost);
+        }, 0);
 
-          const controlledItemsList = labItems.filter(i => i.status === 'controlled' || i.status === 'adjusted');
-          const adjustmentCount = controlledItemsList.filter(i => i.quantity !== i.system_quantity).length;
+        const totalSystemUnits = labItems.reduce((acc, item) => acc + item.system_quantity, 0);
 
-          const controlledCount = controlledItemsList.length;
-          const ira = controlledCount > 0
+        return {
+          ...lab,
+          status,
+          progress,
+          totalItems,
+          controlledItems: controlledCount,
+          negativeValue,
+          positiveValue,
+          netValue,
+          differenceValue,
+          totalSystemUnits,
+          negativeUnits,
+          positiveUnits,
+          netUnits: negativeUnits + positiveUnits,
+          adjustmentCount,
+          ira: controlledCount > 0
             ? ((controlledCount - adjustmentCount) / controlledCount) * 100
-            : 100;
+            : 100,
+          systemValue
+        };
+      });
 
-          const systemValue = labItems.reduce((acc, item) => {
-            const cost = costMap.get(item.ean) || 0;
-            return acc + (item.system_quantity * cost);
-          }, 0);
+      setLaboratories(enrichedData);
 
-          return {
-            ...lab,
-            adjustmentCount,
-            ira,
-            systemValue
-          };
-        });
+      // Contar ajustes históricos reales del ledger (con ID de PLEX)
+      try {
+        const { count, error: ledgerErr } = await supabase
+          .from('inventory_ledger' as any)
+          .select('id', { count: 'exact', head: true })
+          .eq('branch_name', normalizeString(user.branchSheet))
+          .or('adjustment_id_shortage.not.is.null,adjustment_id_surplus.not.is.null');
 
-        setLaboratories(enrichedData);
-
-        // Contar ajustes históricos reales del ledger (con ID de PLEX)
-        try {
-          const { count, error: ledgerErr } = await supabase
-            .from('inventory_ledger' as any)
-            .select('id', { count: 'exact', head: true })
-            .eq('branch_name', normalizeString(user.branchSheet))
-            .or('adjustment_id_shortage.not.is.null,adjustment_id_surplus.not.is.null');
-
-          if (!ledgerErr && count !== null) {
-            setTotalLedgerAdjustments(count);
-          }
-        } catch (ledgerCountErr) {
-          console.warn('Error al contar ajustes del ledger:', ledgerCountErr);
+        if (!ledgerErr && count !== null) {
+          setTotalLedgerAdjustments(count);
         }
-      } catch (error) {
-        console.error("Error loading laboratories:", error);
-      } finally {
-        setIsLoading(false);
+      } catch (ledgerCountErr) {
+        console.warn('Error al contar ajustes del ledger:', ledgerCountErr);
       }
-    };
-
-    loadLabs();
+    } catch (error) {
+      console.error("Error loading laboratories:", error);
+    } finally {
+      setIsLoading(false);
+    }
   }, [user]);
+
+  useEffect(() => {
+    loadLabs();
+  }, [loadLabs]);
 
   // Obtener estado de bloqueo
   useEffect(() => {
@@ -409,6 +450,36 @@ export default function CyclicInventory() {
   const positiveTrend = calculateTrend(totalPositiveUnits, totalSystemUnits);
   const absoluteTrend = calculateTrend(Math.abs(totalNegativeUnits) + totalPositiveUnits, totalSystemUnits);
   const progressPercentage = totalLabs > 0 ? Math.round((controlledLabs / totalLabs) * 100) : 0;
+
+  const handleStartMicroRound = async () => {
+    if (!user?.branchSheet) return;
+    const categoryName = categoriesMap[categoryFilter as CategoryKey] || categoryFilter;
+    const confirmed = window.confirm(
+      `¿Estás seguro de que deseas iniciar una nueva vuelta interna para el rubro ${categoryName}? Esto reiniciará el avance de este rubro a 0% para que puedan volver a auditarlo, pero los datos actuales se guardarán en el historial.`
+    );
+    if (!confirmed) return;
+
+    try {
+      setIsLoading(true);
+      // 1. Fetch current config to find active round
+      const config = await cyclicInventoryService.getBranchConfig(user.branchSheet);
+      const currentRound = config.rounds?.[categoryFilter.toUpperCase()] || 1;
+      const nextRound = currentRound + 1;
+
+      // 2. Call service to reset category round
+      await cyclicInventoryService.resetCategoryRound(user.branchSheet, categoryFilter, nextRound);
+
+      notify.success("Microvuelta Iniciada", `Se inició la Vuelta ${nextRound}ª para el rubro ${categoryName} con éxito.`);
+      
+      // 3. Reload labs list
+      await loadLabs();
+    } catch (error) {
+      console.error("Error starting micro round:", error);
+      notify.error("Error", "No se pudo iniciar la nueva vuelta interna.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const filteredAndSortedLabs = useMemo(() => {
     let result = [...groupedLaboratories];
@@ -775,10 +846,10 @@ export default function CyclicInventory() {
         {/* Top Breadcrumb and Financial Summary Section */}
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
           <div className="space-y-1">
-            <span className="text-[10px] font-bold text-muted-foreground tracking-wider">
+            <span className="text-[11px] text-muted-foreground" style={{ fontVariationSettings: fontWeights.normal }}>
               Rubro seleccionado
             </span>
-            <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+            <div className="flex items-center gap-1.5 text-sm text-foreground" style={{ fontVariationSettings: fontWeights.semibold }}>
               <span>Inventario Cíclico</span>
               <span className="text-muted-foreground/50">›</span>
               <span className="text-primary font-bold">
@@ -791,15 +862,15 @@ export default function CyclicInventory() {
           <div className="flex flex-wrap items-center gap-6 text-sm">
             {/* Diferencia Neta */}
             <div className="flex flex-col gap-0.5">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Diferencia Neta</span>
+              <span className="text-[11px] text-muted-foreground" style={{ fontVariationSettings: fontWeights.normal }}>Diferencia Neta</span>
               <div className="flex items-baseline gap-2">
                 <CounterAnimation 
-                  value={Math.abs(totalDifference)} 
-                  prefix={totalDifference < 0 ? "-$" : totalDifference > 0 ? "+$" : "$"}
-                  className={cn(
+                   value={Math.abs(totalDifference)} 
+                   prefix={totalDifference < 0 ? "-$" : totalDifference > 0 ? "+$" : "$"}
+                   className={cn(
                     "font-bold tracking-tight text-base",
                     totalDifference < 0 ? "text-red-500 dark:text-red-400" : totalDifference > 0 ? "text-emerald-500" : "text-foreground"
-                  )}
+                   )}
                 />
                 <span className={cn("text-[10px] font-bold", totalDifference < 0 ? "text-red-500/80" : totalDifference > 0 ? "text-emerald-500/80" : "text-muted-foreground")}>
                   {totalDifference < 0 ? "↓" : totalDifference > 0 ? "↑" : ""}{netTrend.value}%
@@ -811,7 +882,7 @@ export default function CyclicInventory() {
 
             {/* Valor Absoluto */}
             <div className="flex flex-col gap-0.5">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Valor Absoluto</span>
+              <span className="text-[11px] text-muted-foreground" style={{ fontVariationSettings: fontWeights.normal }}>Valor Absoluto</span>
               <div className="flex items-baseline gap-2">
                 <CounterAnimation 
                   value={totalAbsoluteDifference} 
@@ -828,7 +899,7 @@ export default function CyclicInventory() {
 
             {/* Negativo Total */}
             <div className="flex flex-col gap-0.5">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Faltante Total</span>
+              <span className="text-[11px] text-muted-foreground" style={{ fontVariationSettings: fontWeights.normal }}>Faltante Total</span>
               <div className="flex items-baseline gap-2">
                 <CounterAnimation 
                   value={Math.abs(totalNegative)} 
@@ -845,7 +916,7 @@ export default function CyclicInventory() {
 
             {/* Positivo Total */}
             <div className="flex flex-col gap-0.5">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Sobrante Total</span>
+              <span className="text-[11px] text-muted-foreground" style={{ fontVariationSettings: fontWeights.normal }}>Sobrante Total</span>
               <div className="flex items-baseline gap-2">
                 <CounterAnimation 
                   value={totalPositive} 
@@ -861,15 +932,9 @@ export default function CyclicInventory() {
         </div>
 
         {/* Central Progress Panel (Visual structure similar to reference image) */}
-        <div className="border bg-muted/20 dark:bg-muted/10 rounded-2xl p-5 flex flex-col gap-4 relative">
+        <Elevated offset={1} className="rounded-2xl p-5 flex flex-col gap-4 relative">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              {/* Custom signal/progress bars icon */}
-              <div className="flex items-end gap-0.5 h-4 w-4 text-emerald-500">
-                <div className="w-0.5 h-1.5 bg-current rounded-full" />
-                <div className="w-0.5 h-2.5 bg-current rounded-full" />
-                <div className="w-0.5 h-3.5 bg-current rounded-full" />
-              </div>
               <span className="text-sm font-medium text-muted-foreground">
                 Avance: <span className="font-bold text-foreground tabular-nums text-base">{progressPercentage}%</span>
               </span>
@@ -877,13 +942,23 @@ export default function CyclicInventory() {
 
             {/* Controlled/Total Badge */}
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-xs font-semibold px-2.5 py-1">
+              {progressPercentage === 100 && totalLabs > 0 && (
+                <Button
+                  size="sm"
+                  onClick={handleStartMicroRound}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold px-3 h-8 shadow-sm gap-1.5 flex items-center transition-colors mr-1"
+                >
+                  <Loader2 className="size-3.5" />
+                  Iniciar nueva vuelta
+                </Button>
+              )}
+              <Badge variant="solid" color="green" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-xs font-semibold px-2.5 py-1">
                 {controlledLabs} / {totalLabs} Controlados
               </Badge>
-              <Badge variant="outline" className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 text-xs font-semibold px-2.5 py-1">
+              <Badge variant="solid" color="blue" className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 text-xs font-semibold px-2.5 py-1">
                 {inProgressLabs} En Proceso
               </Badge>
-              <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 text-xs font-semibold px-2.5 py-1">
+              <Badge variant="solid" color="amber" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 text-xs font-semibold px-2.5 py-1">
                 {pendingLabs} Pendientes
               </Badge>
               {/* Ocultado por pedido del usuario temporalmente 
@@ -901,7 +976,7 @@ export default function CyclicInventory() {
                 initial={{ width: 0 }}
                 animate={{ width: `${progressPercentage}%` }}
                 transition={{ duration: 1, ease: "easeOut" }}
-                className="h-full bg-emerald-500 rounded-full"
+                className="h-full bg-foreground rounded-full"
               />
             </div>
             {/* Ticks */}
@@ -913,305 +988,318 @@ export default function CyclicInventory() {
               <span>100%</span>
             </div>
           </div>
-        </div>
+        </Elevated>
       </Card>
 
       {/* Filtros y Búsqueda */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between transition-all gap-4 mb-4">
-        {/* Filtros de Categoría */}
-        <Group aria-label="Filtros de categoría" className="shrink-0">
-          {CATEGORIES.map((cat, index) => (
-            <React.Fragment key={cat}>
-              {index > 0 && <GroupSeparator />}
-              <Button
-                variant={categoryFilter === cat ? "secondary" : "outline"}
-                size="lg"
-                onClick={() => setCategoryFilter(cat)}
-                className={cn(
-                  "whitespace-nowrap font-semibold transition-all px-6",
-                  categoryFilter === cat
-                    ? "opacity-100"
-                    : "opacity-80 hover:opacity-100"
-                )}
-              >
-                {cat === "MEDICAMENTOS" ? "Medicamentos" :
-                  cat === "PERFUMERIA" ? "Perfumería" :
-                    cat === "ACCESORIOS" ? "Accesorios" : "Varios"}
-              </Button>
-            </React.Fragment>
-          ))}
-        </Group>
+      <Tabs value={categoryFilter} onValueChange={(v) => setCategoryFilter(v as FilterCategory)} className="w-full">
+        <div className="flex flex-col md:flex-row md:items-center justify-between transition-all gap-4 mb-4">
+          {/* Filtros de Categoría */}
+          <TabsList className="bg-popover border border-input shadow-sm p-1 rounded-xl h-10 w-fit inline-flex">
+            <TabItem value="MEDICAMENTOS" label="Medicamentos" />
+            <TabItem value="PERFUMERIA" label="Perfumería" />
+            <TabItem value="ACCESORIOS" label="Accesorios" />
+            <TabItem value="VARIOS" label="Varios" />
+          </TabsList>
 
         {/* Toolbar de Acciones */}
         <div className="flex items-center gap-3 flex-1 justify-end">
           {/* Barra de búsqueda fija como InputGroup */}
-          <div className="flex-1 max-w-[240px] md:max-w-xs transition-all">
-            <InputGroup className="h-10 w-full bg-popover border-input shadow-xs">
-              <InputGroupAddon className="bg-transparent border-none">
-                <Search className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
-              </InputGroupAddon>
-              <InputGroupInput
-                aria-label="Search"
-                placeholder="Buscar por nombre..."
-                type="search"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="bg-transparent border-none focus-visible:ring-0 text-sm h-full"
-              />
-            </InputGroup>
-          </div>
+          <InputGroup className="max-w-[240px] md:max-w-xs w-full">
+            <InputField
+              index={0}
+              placeholder="Buscar por nombre..."
+              icon={icons.search}
+              value={searchTerm}
+              onChange={setSearchTerm}
+              alwaysShowBorder={true}
+            />
+          </InputGroup>
 
-          <Group aria-label="Acciones de tabla" className="shrink-0">
-            {/* Botón Alerta / Info */}
-            <Button variant="outline" size="icon" className="group">
-              <AlertCircle className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-            </Button>
-            <GroupSeparator />
-            <Menu>
-              <MenuTrigger render={
-                <Button variant="outline" size="icon" className="group">
-                  <Filter className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+          <div className="flex items-center gap-1.5 shrink-0">
+            <DropdownMenu>
+              <DropdownTrigger render={
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="bg-surface-5 shadow-surface-5 rounded-lg group"
+                >
+                  <Filter className="text-muted-foreground group-hover:text-foreground transition-colors" />
                 </Button>
               } />
-              <MenuPopup align="end" className="w-52 p-2">
-                <MenuGroup>
-                  <MenuGroupLabel>Ordenar por</MenuGroupLabel>
-                  <MenuItem onClick={() => setSortBy("name-asc")}>
-                    <Search className="w-4 h-4 text-muted-foreground" />
-                    <span>Nombre (A-Z)</span>
-                  </MenuItem>
-                  <MenuItem onClick={() => setSortBy("name-desc")}>
-                    <Search className="w-4 h-4 text-muted-foreground" />
-                    <span>Nombre (Z-A)</span>
-                  </MenuItem>
-                  <MenuItem onClick={() => setSortBy("value-desc")}>
-                    <TrendingUp className="w-4 h-4 text-success" />
-                    <span>Mayor Diferencia</span>
-                  </MenuItem>
-                  <MenuItem onClick={() => setSortBy("value-asc")}>
-                    <TrendingDown className="w-4 h-4 text-destructive" />
-                    <span>Menor Diferencia</span>
-                  </MenuItem>
-                </MenuGroup>
+              <DropdownContent align="end" className="w-52">
+                <DropdownLabel>Ordenar por</DropdownLabel>
+                <MenuItem
+                  index={0}
+                  icon={Search}
+                  label="Nombre (A-Z)"
+                  onSelect={() => setSortBy("name-asc")}
+                  checked={sortBy === "name-asc"}
+                />
+                <MenuItem
+                  index={1}
+                  icon={Search}
+                  label="Nombre (Z-A)"
+                  onSelect={() => setSortBy("name-desc")}
+                  checked={sortBy === "name-desc"}
+                />
+                <MenuItem
+                  index={2}
+                  icon={TrendingUp}
+                  label="Mayor Diferencia"
+                  onSelect={() => setSortBy("value-desc")}
+                  checked={sortBy === "value-desc"}
+                />
+                <MenuItem
+                  index={3}
+                  icon={TrendingDown}
+                  label="Menor Diferencia"
+                  onSelect={() => setSortBy("value-asc")}
+                  checked={sortBy === "value-asc"}
+                />
+                <DropdownSeparator />
+                <DropdownLabel>Filtrar por Estado</DropdownLabel>
+                <MenuItem
+                  index={4}
+                  icon={ListIcon}
+                  label="Todas"
+                  onSelect={() => setStatusFilter("all")}
+                  checked={statusFilter === "all"}
+                />
+                <MenuItem
+                  index={5}
+                  icon={CheckCircle}
+                  label="Controlados"
+                  onSelect={() => setStatusFilter("controlado")}
+                  checked={statusFilter === "controlado"}
+                />
+                <MenuItem
+                  index={6}
+                  icon={Clock}
+                  label="En Proceso"
+                  onSelect={() => setStatusFilter("por_controlar")}
+                  checked={statusFilter === "por_controlar"}
+                />
+                <MenuItem
+                  index={7}
+                  icon={AlertCircle}
+                  label="Pendientes"
+                  onSelect={() => setStatusFilter("pendiente")}
+                  checked={statusFilter === "pendiente"}
+                />
+              </DropdownContent>
+            </DropdownMenu>
 
-                <MenuSeparator className="my-2" />
-
-                <MenuGroup>
-                  <MenuGroupLabel>Filtrar por Estado</MenuGroupLabel>
-                  <MenuCheckboxItem checked={statusFilter === "all"} onCheckedChange={() => setStatusFilter("all")}>
-                    <div className="flex items-center gap-3">
-                      <ListIcon className="w-4 h-4 text-muted-foreground" />
-                      <span>Todas</span>
-                    </div>
-                  </MenuCheckboxItem>
-                  <MenuCheckboxItem checked={statusFilter === "controlado"} onCheckedChange={() => setStatusFilter("controlado")}>
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-4 h-4 text-success" />
-                      <span>Controlados</span>
-                    </div>
-                  </MenuCheckboxItem>
-                  <MenuCheckboxItem checked={statusFilter === "por_controlar"} onCheckedChange={() => setStatusFilter("por_controlar")}>
-                    <div className="flex items-center gap-3">
-                      <Clock className="w-4 h-4 text-purple-500" />
-                      <span>En Proceso</span>
-                    </div>
-                  </MenuCheckboxItem>
-                  <MenuCheckboxItem checked={statusFilter === "pendiente"} onCheckedChange={() => setStatusFilter("pendiente")}>
-                    <div className="flex items-center gap-3">
-                      <AlertCircle className="w-4 h-4 text-red-500" />
-                      <span>Pendientes</span>
-                    </div>
-                  </MenuCheckboxItem>
-                </MenuGroup>
-              </MenuPopup>
-            </Menu>
-            <GroupSeparator />
-            <Menu>
-              <MenuTrigger render={
-                <Button variant="outline" size="icon" className="group" disabled={isProcessingMassAction}>
-                  <MoreVertical className="w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+            <DropdownMenu>
+              <DropdownTrigger render={
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="bg-surface-5 shadow-surface-5 rounded-lg group" 
+                  disabled={isProcessingMassAction}
+                >
+                  <MoreVertical className="text-muted-foreground group-hover:text-foreground transition-colors" />
                 </Button>
               } />
-              <MenuPopup align="end" className="w-64 p-2">
-                <MenuGroup>
-                  <MenuGroupLabel>Reportes (Sucursal)</MenuGroupLabel>
-                  <MenuItem onClick={() => ReportExporter.exportSummaryToPDF(filteredAndSortedLabs, user?.branchSheet || "Sucursal")}>
-                    <DocumentIcon className="w-4 h-4 text-muted-foreground" />
-                    <span>Descargar Reporte PDF</span>
-                  </MenuItem>
-                  <MenuItem onClick={() => ReportExporter.exportSummaryToExcel(filteredAndSortedLabs, user?.branchSheet || "Sucursal")}>
-                    <Download className="w-4 h-4 text-muted-foreground" />
-                    <span>Descargar Planilla Excel</span>
-                  </MenuItem>
-                </MenuGroup>
-
+              <DropdownContent align="end" className="w-64">
+                <DropdownLabel>Reportes (Sucursal)</DropdownLabel>
+                <MenuItem
+                  index={0}
+                  icon={DocumentIcon}
+                  label="Descargar Reporte PDF"
+                  onSelect={() => ReportExporter.exportSummaryToPDF(filteredAndSortedLabs, user?.branchSheet || "Sucursal")}
+                />
+                <MenuItem
+                  index={1}
+                  icon={Download}
+                  label="Descargar Planilla Excel"
+                  onSelect={() => ReportExporter.exportSummaryToExcel(filteredAndSortedLabs, user?.branchSheet || "Sucursal")}
+                />
+                <DropdownSeparator />
+                <DropdownLabel>Vista</DropdownLabel>
+                <MenuItem
+                  index={2}
+                  icon={GridIcon}
+                  label="Cuadrícula"
+                  onSelect={() => setViewMode("grid")}
+                  checked={viewMode === "grid"}
+                />
+                <MenuItem
+                  index={3}
+                  icon={ListIcon}
+                  label="Lista"
+                  onSelect={() => setViewMode("list")}
+                  checked={viewMode === "list"}
+                />
                 {user?.role === 'admin' && (
                   <>
-                    <MenuSeparator className="my-2" />
-                    <MenuGroup>
-                      <MenuGroupLabel>Administración</MenuGroupLabel>
-                      <MenuItem onClick={handleOpenAddDialog} className="text-foreground focus:text-foreground">
-                        <Plus className="w-4 h-4 text-muted-foreground" />
-                        <span>Agregar laboratorio</span>
-                      </MenuItem>
-                      <MenuItem onClick={handleOpenEditDialog} className="text-foreground focus:text-foreground">
-                        <Edit className="w-4 h-4 text-muted-foreground" />
-                        <span>Editar laboratorio</span>
-                      </MenuItem>
-                      <MenuItem onClick={handleMassSync} className="text-primary focus:text-primary">
-                        <RotateCcw className="w-4 h-4" />
-                        <span>Sincronizar todo (Forzar)</span>
-                      </MenuItem>
-                      <MenuItem onClick={prepareMassReset} variant="destructive" className="text-destructive focus:text-destructive">
-                        <Trash className="w-4 h-4" />
-                        <span>Reiniciar sucursal</span>
-                      </MenuItem>
-                    </MenuGroup>
+                    <DropdownSeparator />
+                    <DropdownLabel>Administración</DropdownLabel>
+                    <MenuItem
+                      index={4}
+                      icon={Plus}
+                      label="Agregar laboratorio"
+                      onSelect={handleOpenAddDialog}
+                    />
+                    <MenuItem
+                      index={5}
+                      icon={Edit}
+                      label="Editar laboratorio"
+                      onSelect={handleOpenEditDialog}
+                    />
+                    <MenuItem
+                      index={6}
+                      icon={RotateCcw}
+                      label="Sincronizar todo (Forzar)"
+                      onSelect={handleMassSync}
+                      className="text-primary focus:text-primary"
+                    />
+                    <MenuItem
+                      index={7}
+                      icon={Trash}
+                      label="Reiniciar sucursal"
+                      onSelect={prepareMassReset}
+                      className="text-destructive focus:text-destructive"
+                    />
                   </>
                 )}
-              </MenuPopup>
-            </Menu>
-          </Group>
-
-          <Tabs
-            value={viewMode}
-            onValueChange={(val) => setViewMode(val as 'grid' | 'list')}
-            className="items-center shrink-0"
-          >
-            <TabsList className="bg-popover border border-input shadow-sm p-1 rounded-xl h-10 w-fit inline-flex">
-              <TabsTab aria-label="Vista Cuadrícula" value="grid" className="h-full rounded-[8px] px-3 data-[selected]:bg-accent data-[selected]:text-accent-foreground data-[selected]:shadow-sm text-muted-foreground transition-all">
-                <GridIcon className="w-4 h-4" aria-hidden="true" />
-              </TabsTab>
-              <TabsTab aria-label="Vista Lista" value="list" className="h-full rounded-[8px] px-3 data-[selected]:bg-accent data-[selected]:text-accent-foreground data-[selected]:shadow-sm text-muted-foreground transition-all">
-                <ListIcon className="w-4 h-4" aria-hidden="true" />
-              </TabsTab>
-            </TabsList>
-          </Tabs>
+              </DropdownContent>
+            </DropdownMenu>
+          </div>
         </div>
       </div>
 
       {/* Contenido Principal */}
-      {viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {renderedLabs.map((lab) => (
-            <LaboratoryCard
-              key={lab.labName}
-              name={lab.labName}
-              negativeValue={lab.negativeValue}
-              positiveValue={lab.positiveValue}
-              differenceValue={lab.differenceValue}
-              status={lab.status}
-              progress={lab.progress}
-              onClick={() => navigate(`/cyclic-inventory/${encodeURIComponent(lab.labName)}`)}
-              onMouseEnter={() => prefetchLab(user?.branchSheet || "", lab.labName)}
-            />
-          ))}
-        </div>
-      ) : (
-        <Frame>
-          <FramePanel className="p-0 overflow-hidden">
-            <Table>
-              <TableHeader className="bg-transparent">
-                <TableRow className="hover:bg-transparent border-none">
-                  <TableHead className="pl-6">Laboratorio</TableHead>
-                  <TableHead className="text-center">Estado</TableHead>
-                  <TableHead className="text-right">Valor (-)</TableHead>
-                  <TableHead className="text-center">Un. (-)</TableHead>
-                  <TableHead className="text-right">Valor (+)</TableHead>
-                  <TableHead className="text-center">Un. (+)</TableHead>
-                  <TableHead className="text-right">Dif. Neta</TableHead>
-                  <TableHead className="text-center">Ajustes</TableHead>
-                  <TableHead className="text-center w-[140px] pr-6">Avance</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody className="bg-background rounded-l-xl rounded-r-xl overflow-hidden shadow-xs/5">
-                {renderedLabs.map((lab) => (
-                  <TableRow
-                    key={lab.labName}
-                    className="cursor-pointer border-t border-border/40 first:border-none"
-                    onClick={() => navigate(`/cyclic-inventory/${encodeURIComponent(lab.labName)}`)}
-                  >
-                    <TableCell className="pl-6 whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]">
-                      <span className="font-semibold text-foreground/90">{lab.labName}</span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <div className="flex justify-center">
-                        <div className={cn(
-                          "size-1.5 rounded-full shadow-sm",
-                          lab.status === 'controlado' ? "bg-emerald-500" :
-                            lab.status === 'por_controlar' ? "bg-blue-500" :
-                              "bg-amber-500"
-                        )} />
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className="font-medium text-destructive/80 tabular-nums">
-                        {lab.negativeValue !== 0 ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(lab.negativeValue) : "–"}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span className="font-medium text-destructive/80 tabular-nums">
-                        {(() => {
-                          const units = lab.negativeUnits !== 0 ? Math.abs(lab.negativeUnits) : (lab.netUnits < 0 ? Math.abs(lab.netUnits) : 0);
-                          return units !== 0 ? units : "–";
-                        })()}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className="font-medium text-emerald-600 dark:text-emerald-400 tabular-nums">
-                        {lab.positiveValue !== 0 ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(lab.positiveValue) : "–"}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span className="font-medium text-emerald-600 dark:text-emerald-400 tabular-nums">
-                        {(() => {
-                          const units = lab.positiveUnits !== 0 ? lab.positiveUnits : (lab.netUnits > 0 ? lab.netUnits : 0);
-                          return units !== 0 ? units : "–";
-                        })()}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className={cn(
-                        "font-mono font-medium tabular-nums",
-                        lab.differenceValue > 0 ? "text-emerald-600 dark:text-emerald-400" :
-                          lab.differenceValue < 0 ? "text-red-600 dark:text-red-400" :
-                            "text-muted-foreground"
-                      )}>
-                        {lab.differenceValue !== 0 ? (lab.differenceValue > 0 ? "+" : "") + new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(lab.differenceValue) : "–"}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <span className="font-medium text-foreground tabular-nums">
-                        {lab.status !== 'pendiente' ? (lab.adjustmentCount ?? 0) : "–"}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-center pr-6">
-                      <div className="flex flex-col gap-0.5 w-full max-w-[100px] mx-auto">
-                        <div className="flex items-center justify-between text-[11px] font-medium tabular-nums">
-                          <span className={lab.progress > 0 ? "text-foreground" : "text-muted-foreground"}>{lab.progress}%</span>
-                        </div>
-                        <div className="h-1 bg-muted/40 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-foreground/70"
-                            style={{ width: `${lab.progress}%` }}
-                          />
-                        </div>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </FramePanel>
-        </Frame>
-      )}
+      {CATEGORIES.map((cat) => (
+        <TabPanel key={cat} value={cat} className="focus-visible:outline-none">
+          {categoryFilter === cat && (
+            <>
+              {viewMode === 'grid' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {renderedLabs.map((lab) => (
+                    <LaboratoryCard
+                      key={lab.labName}
+                      name={lab.labName}
+                      negativeValue={lab.negativeValue}
+                      positiveValue={lab.positiveValue}
+                      differenceValue={lab.differenceValue}
+                      status={lab.status}
+                      progress={lab.progress}
+                      onClick={() => navigate(`/cyclic-inventory/${encodeURIComponent(lab.labName)}`)}
+                      onMouseEnter={() => prefetchLab(user?.branchSheet || "", lab.labName)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <Frame>
+                  <FramePanel className="p-0 overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-transparent">
+                        <TableRow className="hover:bg-transparent border-none">
+                          <TableHead className="pl-6">Laboratorio</TableHead>
+                          <TableHead className="text-center">Estado</TableHead>
+                          <TableHead className="text-right">Valor (-)</TableHead>
+                          <TableHead className="text-center">Un. (-)</TableHead>
+                          <TableHead className="text-right">Valor (+)</TableHead>
+                          <TableHead className="text-center">Un. (+)</TableHead>
+                          <TableHead className="text-right">Dif. Neta</TableHead>
+                          <TableHead className="text-center">Ajustes</TableHead>
+                          <TableHead className="text-center w-[140px] pr-6">Avance</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody className="bg-background rounded-l-xl rounded-r-xl overflow-hidden shadow-xs/5">
+                        {renderedLabs.map((lab) => (
+                          <TableRow
+                            key={lab.labName}
+                            className="cursor-pointer border-t border-border/40 first:border-none"
+                            onClick={() => navigate(`/cyclic-inventory/${encodeURIComponent(lab.labName)}`)}
+                          >
+                            <TableCell className="pl-6 whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]">
+                              <span className="font-semibold text-foreground/90">{lab.labName}</span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <div className="flex justify-center">
+                                <div className={cn(
+                                  "size-1.5 rounded-full shadow-sm",
+                                  lab.status === 'controlado' ? "bg-emerald-500" :
+                                    lab.status === 'por_controlar' ? "bg-blue-500" :
+                                      "bg-amber-500"
+                                )} />
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className="font-medium text-destructive/80 tabular-nums">
+                                {lab.negativeValue !== 0 ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(lab.negativeValue) : "–"}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="font-medium text-destructive/80 tabular-nums">
+                                {(() => {
+                                  const units = lab.negativeUnits !== 0 ? Math.abs(lab.negativeUnits) : (lab.netUnits < 0 ? Math.abs(lab.netUnits) : 0);
+                                  return units !== 0 ? units : "–";
+                                })()}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className="font-medium text-emerald-600 dark:text-emerald-400 tabular-nums">
+                                {lab.positiveValue !== 0 ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(lab.positiveValue) : "–"}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="font-medium text-emerald-600 dark:text-emerald-400 tabular-nums">
+                                {(() => {
+                                  const units = lab.positiveUnits !== 0 ? lab.positiveUnits : (lab.netUnits > 0 ? lab.netUnits : 0);
+                                  return units !== 0 ? units : "–";
+                                })()}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className={cn(
+                                "font-mono font-medium tabular-nums",
+                                lab.differenceValue > 0 ? "text-emerald-600 dark:text-emerald-400" :
+                                  lab.differenceValue < 0 ? "text-red-600 dark:text-red-400" :
+                                    "text-muted-foreground"
+                              )}>
+                                {lab.differenceValue !== 0 ? (lab.differenceValue > 0 ? "+" : "") + new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(lab.differenceValue) : "–"}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="font-medium text-foreground tabular-nums">
+                                {lab.status !== 'pendiente' ? (lab.adjustmentCount ?? 0) : "–"}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-center pr-6">
+                              <div className="flex flex-col gap-0.5 w-full max-w-[100px] mx-auto">
+                                <div className="flex items-center justify-between text-[11px] font-medium tabular-nums">
+                                  <span className={lab.progress > 0 ? "text-foreground" : "text-muted-foreground"}>{lab.progress}%</span>
+                                </div>
+                                <div className="h-1 bg-muted/40 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-foreground/70"
+                                    style={{ width: `${lab.progress}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </FramePanel>
+                </Frame>
+              )}
 
-      {/* Target for infinite scroll chunk loading */}
-      {visibleCount < filteredAndSortedLabs.length && (
-        <div ref={observerTargetRef} className="h-10 flex items-center justify-center py-8">
-          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-        </div>
-      )}
+              {/* Target for infinite scroll chunk loading */}
+              {visibleCount < filteredAndSortedLabs.length && (
+                <div ref={observerTargetRef} className="h-10 flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                </div>
+              )}
+            </>
+          )}
+        </TabPanel>
+      ))}
+    </Tabs>
 
       {/* Mass Reset Confirmation Dialog */}
       <Dialog open={showMassResetDialog} onOpenChange={setShowMassResetDialog}>
@@ -1241,11 +1329,12 @@ export default function CyclicInventory() {
           </div>
 
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setShowMassResetDialog(false)}>
+            <Button variant="tertiary" onClick={() => setShowMassResetDialog(false)}>
               Cancelar
             </Button>
             <Button
-              variant="destructive"
+              variant="primary"
+              className="bg-red-600 hover:bg-red-700 text-white"
               onClick={handleMassReset}
               disabled={massResetInput !== massResetChallenge}
             >
@@ -1361,17 +1450,17 @@ export default function CyclicInventory() {
                   >
                     <SelectValue>{renderCategoryValue}</SelectValue>
                   </SelectTrigger>
-                  <SelectContent alignItemWithTrigger={false}>
-                    <SelectItem value="MEDICAMENTOS">Medicamentos</SelectItem>
-                    <SelectItem value="PERFUMERIA">Perfumería</SelectItem>
-                    <SelectItem value="ACCESORIOS">Accesorios</SelectItem>
-                    <SelectItem value="VARIOS">Varios</SelectItem>
+                  <SelectContent>
+                    <SelectItem value="MEDICAMENTOS" index={0}>Medicamentos</SelectItem>
+                    <SelectItem value="PERFUMERIA" index={1}>Perfumería</SelectItem>
+                    <SelectItem value="ACCESORIOS" index={2}>Accesorios</SelectItem>
+                    <SelectItem value="VARIOS" index={3}>Varios</SelectItem>
                   </SelectContent>
                 </Select>
               </Field>
             </DialogPanel>
             <DialogFooter>
-              <DialogClose render={<Button variant="outline" className="h-10 rounded-xl" />} onClick={() => setShowAddLabDialog(false)}>
+              <DialogClose render={<Button variant="tertiary" className="h-10 rounded-xl" />} onClick={() => setShowAddLabDialog(false)}>
                 Cancelar
               </DialogClose>
               <Button

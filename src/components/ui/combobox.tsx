@@ -1,7 +1,7 @@
 "use client";
 
 import { Combobox as ComboboxPrimitive } from "@base-ui-components/react/combobox";
-import { ChevronsUpDownIcon, XIcon } from "lucide-react";
+import { ChevronSelectorVertical as ChevronsUpDownIcon, XClose as XIcon } from '@untitledui/icons';
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -317,7 +317,7 @@ export function ComboboxList({
   ...props
 }: ComboboxPrimitive.List.Props): React.ReactElement {
   return (
-    <ScrollArea scrollbarGutter scrollFade className="flex flex-col flex-1 overflow-hidden">
+    <ScrollArea className="flex flex-col flex-1 overflow-hidden">
       <ScrollAreaViewport className="max-h-60 overflow-y-auto outline-none">
         <ComboboxPrimitive.List
           className={cn(

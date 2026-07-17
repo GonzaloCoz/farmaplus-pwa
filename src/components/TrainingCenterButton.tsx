@@ -1,7 +1,9 @@
 import React from "react";
-import { NotebookBookmark } from "@solar-icons/react";
+import { BookOpen01 as NotebookBookmark } from '@untitledui/icons';
 import { cn } from "@/lib/utils";
 import { useWindowManager } from "@/contexts/WindowManagerContext";
+import { surfaceClasses } from "@/lib/surface-classes";
+import { Button } from "@/components/ui/button";
 
 interface TrainingCenterButtonProps {
     className?: string;
@@ -18,16 +20,19 @@ export function TrainingCenterButton({
     };
 
     return (
-        <button
+        <Button
+            variant="ghost"
+            size="icon"
             onClick={handleOpenForo}
             className={cn(
-                "inline-flex h-8 w-8 items-center justify-center rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
+                "shrink-0 cursor-pointer",
+                surfaceClasses(3),
                 className
             )}
             style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
             title="Centro de Capacitación"
         >
-            <NotebookBookmark className="w-[18px] h-[18px] text-secondary-foreground" />
-        </button>
+            <NotebookBookmark className="w-5 h-5 text-current" />
+        </Button>
     );
 }

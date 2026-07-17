@@ -27,8 +27,8 @@ import {
 } from "@/components/ui/pagination";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { notify } from "@/lib/notifications";
-import { Plus, Check, ChevronUpIcon, ChevronDownIcon } from "lucide-react";
-import { Restart as Loader2, Diskette as Save, TrashBinMinimalistic as Trash2, Calendar } from "@solar-icons/react";
+import { Plus, Check, ChevronUp as ChevronUpIcon, ChevronDown as ChevronDownIcon } from '@untitledui/icons';
+import { RefreshCw01 as Loader2, Save01 as Save, Trash01 as Trash2, Calendar } from '@untitledui/icons';
 import { PageHeader } from "@/components/layout/PageHeader";
 import { useUser } from "@/contexts/UserContext";
 import { Checkbox } from "@/components/ui/checkbox";

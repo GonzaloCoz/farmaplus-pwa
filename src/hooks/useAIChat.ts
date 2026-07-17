@@ -80,7 +80,7 @@ export function useAIChat() {
   }, [isGenerating]);
 
   const sendMessage = useCallback(
-    async (query: string, branchName?: string | null) => {
+    async (query: string, branchName?: string | null, contextText?: string) => {
       if (!query.trim()) return;
 
       abortChat();
@@ -96,12 +96,20 @@ export function useAIChat() {
       rawStreamRef.current = "";
 
       const userMessage: ChatMessage = { role: "user", content: query };
-      const updatedMessages = [...messages, userMessage];
-      setMessages(updatedMessages);
+      setMessages((prev) => [...prev, userMessage]);
+
+      // Always prepend the latest context text as system instructions so the stateless model never forgets it
+      let payloadMessages = [...messages, userMessage];
+      if (contextText) {
+        payloadMessages = [
+          { role: "system", content: `CONTEXTO DE LA SUCURSAL ACTUAL:\n${contextText}` },
+          ...payloadMessages
+        ];
+      }
 
       try {
         await aiChatService.streamChat({
-          messages: updatedMessages,
+          messages: payloadMessages,
           branchName,
           signal: controller.signal,
           onChunk: (chunk) => {

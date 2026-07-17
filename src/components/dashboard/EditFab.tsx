@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus } from "lucide-react";
-import { Pen as Edit3, CheckCircle as Check, Widget as Grid3x3, Restart as RotateCcw } from '@solar-icons/react';
+import { Plus } from '@untitledui/icons';
+import { Edit01 as Edit3, CheckCircle as Check, LayoutGrid01 as Grid3x3, RefreshCw01 as RotateCcw } from '@untitledui/icons';
 import { cn } from '@/lib/utils';
 
 interface EditFabProps {

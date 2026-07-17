@@ -15,7 +15,7 @@ import { ChartBackground } from "@/components/evilcharts/ui/background";
 import { useMotionValueEvent, useSpring } from "motion/react";
 import { CounterAnimation } from "@/components/CounterAnimation";
 import * as React from "react";
-import { Loader2 } from "lucide-react";
+import { RefreshCw01 as Loader2 } from '@untitledui/icons';
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "@/contexts/UserContext";
@@ -404,11 +404,11 @@ export function TrendsChartWidget({ type = "positive" }: TrendsChartWidgetProps)
       `}} />
 
       {/* ── Header – padding y alineación premium ── */}
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 px-5 pt-4 pb-0 text-foreground">
+      <CardHeader className="flex flex-col @sm:flex-row @sm:items-center justify-between space-y-0 px-5 pt-4 pb-0 text-foreground gap-1.5 @sm:gap-2">
         {/* Título con tooltip explicativo */}
         <BaseTooltip>
           <TooltipTrigger render={
-            <CardTitle className="text-lg font-medium tracking-tight cursor-help">
+            <CardTitle className="text-lg font-medium tracking-tight cursor-help whitespace-nowrap">
               {labelText}
             </CardTitle>
           } />
@@ -421,23 +421,23 @@ export function TrendsChartWidget({ type = "positive" }: TrendsChartWidgetProps)
           </TooltipContent>
         </BaseTooltip>
 
-        {/* Mes (Completo) + valor + porcentaje en la misma línea */}
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-muted-foreground capitalize">
+        {/* Mes (Completo) + valor + porcentaje en la misma línea (adaptable) */}
+        <div className="flex items-center gap-2 @sm:gap-3 flex-wrap justify-start @sm:justify-end">
+          <span className="text-xs @sm:text-sm font-medium text-muted-foreground capitalize">
             {selectedData.month}
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 @sm:gap-2">
             <CounterAnimation
               value={selectedData.value}
               decimals={0}
               prefix="$"
-              className="text-lg font-medium tracking-tight text-foreground tabular-nums"
+              className="text-base @sm:text-lg font-medium tracking-tight text-foreground tabular-nums"
             />
             {selectedData.changePercentage !== null && (
               <BaseTooltip>
                 <TooltipTrigger render={
                   <span 
-                    className="text-xs font-bold px-1.5 py-0.5 rounded-md tabular-nums transition-colors duration-200 cursor-help"
+                    className="text-[10px] @sm:text-xs font-bold px-1.5 py-0.5 rounded-md tabular-nums transition-colors duration-200 cursor-help"
                     style={{ color: percentColors.text, backgroundColor: percentColors.bg }}
                   >
                     {selectedData.changePercentage >= 0 ? "+" : ""}

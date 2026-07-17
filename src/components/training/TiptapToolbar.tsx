@@ -1,21 +1,7 @@
 "use client";
 
 import React, { useRef } from "react";
-import {
-  TextBold,
-  TextItalic,
-  TextUnderline,
-  TextCross,
-  Link as LinkIcon,
-  AlignLeft,
-  AlignHorizontalCenter,
-  AlignRight,
-  Gallery,
-  Videocamera,
-  EmojiFunnySquare,
-  AltArrowDown,
-  Text
-} from "@solar-icons/react";
+import { Bold01 as TextBold, Italic01 as TextItalic, Underline01 as TextUnderline, TypeStrikethrough01 as TextCross, Link01 as LinkIcon, AlignLeft, AlignCenter as AlignHorizontalCenter, AlignRight, Image01 as Gallery, VideoRecorder as Videocamera, FaceIdSquare as EmojiFunnySquare, ChevronDown as AltArrowDown, Type01 as Text } from '@untitledui/icons';
 import {
   Select,
   SelectItem,
@@ -44,13 +30,12 @@ interface TiptapToolbarProps {
 
 const headingItems = [
   { label: "Normal", value: "paragraph", style: { fontSize: '14px', fontWeight: 400 } },
-  { label: "Título 1", value: "h1", style: { fontSize: '24px', fontWeight: 700, fontFamily: '"Cal Sans UI"' } },
-  { label: "Título 2", value: "h2", style: { fontSize: '20px', fontWeight: 700, fontFamily: '"Cal Sans UI"' } },
-  { label: "Título 3", value: "h3", style: { fontSize: '18px', fontWeight: 600, fontFamily: '"Cal Sans UI"' } },
+  { label: "Título 1", value: "h1", style: { fontSize: '24px', fontWeight: 700, fontFamily: '"Inter"' } },
+  { label: "Título 2", value: "h2", style: { fontSize: '20px', fontWeight: 700, fontFamily: '"Inter"' } },
+  { label: "Título 3", value: "h3", style: { fontSize: '18px', fontWeight: 600, fontFamily: '"Inter"' } },
 ];
 
 const fontFamilies = [
-  { label: "Cal Sans", value: '"Cal Sans UI"' },
   { label: "Inter", value: "Inter" },
   { label: "Serif", value: "ui-serif" },
   { label: "Mono", value: "monospace" },
@@ -112,7 +97,7 @@ export function TiptapToolbar({ editor, className }: TiptapToolbarProps) {
     : editor.isActive('heading', { level: 3 }) ? 'h3' 
     : 'paragraph';
 
-  const currentFont = editor.getAttributes('textStyle').fontFamily || '"Cal Sans UI"';
+  const currentFont = editor.getAttributes('textStyle').fontFamily || '"Inter"';
   const currentWeight = editor.getAttributes('textStyle').fontWeight || "400";
   const currentSize = editor.getAttributes('textStyle').fontSize || "14px";
 
@@ -133,8 +118,8 @@ export function TiptapToolbar({ editor, className }: TiptapToolbarProps) {
             <AltArrowDown size={14} className="shrink-0 opacity-50" />
           </SelectTrigger>
           <SelectPopup className="min-w-[160px] rounded-xl shadow-lg p-1">
-            {headingItems.map(({ label, value, style }) => (
-              <SelectItem key={value} value={value} className="text-xs py-2 rounded-lg" style={style}>
+            {headingItems.map(({ label, value, style }, idx) => (
+              <SelectItem key={value} value={value} index={idx} className="text-xs py-2 rounded-lg" style={style}>
                 {label}
               </SelectItem>
             ))}
@@ -147,8 +132,8 @@ export function TiptapToolbar({ editor, className }: TiptapToolbarProps) {
              <Text size={18} />
           </SelectTrigger>
           <SelectPopup className="min-w-[150px] rounded-xl shadow-lg p-1">
-            {fontFamilies.map(({ label, value }) => (
-              <SelectItem key={value} value={value} className="text-sm py-2 rounded-lg" style={{ fontFamily: value }}>
+            {fontFamilies.map(({ label, value }, idx) => (
+              <SelectItem key={value} value={value} index={idx} className="text-sm py-2 rounded-lg" style={{ fontFamily: value }}>
                 {label}
               </SelectItem>
             ))}
@@ -162,8 +147,8 @@ export function TiptapToolbar({ editor, className }: TiptapToolbarProps) {
              <AltArrowDown size={14} className="shrink-0 opacity-50" />
           </SelectTrigger>
           <SelectPopup className="min-w-[120px] rounded-xl shadow-lg p-1">
-            {fontWeightItems.map(({ label, value }) => (
-              <SelectItem key={value} value={value} className="text-xs py-2 rounded-lg" style={{ fontWeight: value }}>
+            {fontWeightItems.map(({ label, value }, idx) => (
+              <SelectItem key={value} value={value} index={idx} className="text-xs py-2 rounded-lg" style={{ fontWeight: value }}>
                 {label}
               </SelectItem>
             ))}
@@ -177,8 +162,8 @@ export function TiptapToolbar({ editor, className }: TiptapToolbarProps) {
              <AltArrowDown size={14} className="shrink-0 opacity-50" />
           </SelectTrigger>
           <SelectPopup className="min-w-[100px] rounded-xl shadow-sm">
-            {fontSizes.map(({ label, value }) => (
-              <SelectItem key={value} value={value} className="text-xs">{label}</SelectItem>
+            {fontSizes.map(({ label, value }, idx) => (
+              <SelectItem key={value} value={value} index={idx} className="text-xs">{label}</SelectItem>
             ))}
           </SelectPopup>
         </Select>

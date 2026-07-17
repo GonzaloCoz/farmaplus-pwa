@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  RiArrowLeftSLine,
-  RiArrowRightSLine,
-  RiCalendarEventLine,
-} from "@remixicon/react";
+import { ChevronLeft as RiArrowLeftSLine, ChevronRight as RiArrowRightSLine, Calendar as RiCalendarEventLine } from '@untitledui/icons';
 import { addDays, addMonths, format, isToday, subDays, subMonths } from "date-fns";
 import { es } from "date-fns/locale";
 import * as React from "react";

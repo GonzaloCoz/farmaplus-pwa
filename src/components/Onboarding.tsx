@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { driver } from 'driver.js';
 import "driver.js/dist/driver.css";
 import { Button } from '@/components/ui/button';
-import { QuestionCircle as HelpCircle } from '@solar-icons/react';
+import { HelpCircle } from '@untitledui/icons';
 
 export function Onboarding() {
     const startTour = () => {
@@ -53,14 +53,18 @@ export function Onboarding() {
 
     // Check if first time
     useEffect(() => {
+        let timer: ReturnType<typeof setTimeout> | null = null;
         const hasSeenTour = localStorage.getItem('has_seen_inventory_tour');
         if (!hasSeenTour) {
             // Small delay to ensure elements are rendered
-            setTimeout(() => {
+            timer = setTimeout(() => {
                 startTour();
                 localStorage.setItem('has_seen_inventory_tour', 'true');
             }, 1000);
         }
+        return () => {
+            if (timer) clearTimeout(timer);
+        };
     }, []);
 
     return (

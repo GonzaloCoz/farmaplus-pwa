@@ -1,224 +1,249 @@
-import * as React from "react";
-import { Dialog as BaseDialog } from "@base-ui-components/react/dialog";
-import { CloseCircle as X } from "@solar-icons/react";
-import { ScrollArea } from "@/components/ui/scroll-area";
+"use client";
+
+import {
+  forwardRef,
+  type ReactNode,
+  type HTMLAttributes,
+} from "react";
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useIcon } from "@/lib/icon-context";
+import { spring } from "@/lib/springs";
+import { useShape } from "@/lib/shape-context";
+import { SurfaceProvider, useSurface } from "@/lib/surface-context";
+import { surfaceClasses } from "@/lib/surface-classes";
+import { Button } from "@/components/ui/button";
 
-/**
- * Root Dialog component.
- */
-const Dialog = BaseDialog.Root;
+const DIALOG_OFFSET = 4;
 
-/**
- * Trigger button that opens the dialog.
- */
-const DialogTrigger = React.forwardRef<
-  HTMLButtonElement,
-  React.ComponentPropsWithoutRef<typeof BaseDialog.Trigger> & { render?: React.ReactElement }
->(({ render, ...props }, ref) => (
-  <BaseDialog.Trigger ref={ref} render={render} {...props} />
-));
-DialogTrigger.displayName = "DialogTrigger";
-
-/**
- * Portal for rendering out of DOM hierarchy.
- */
-const DialogPortal = BaseDialog.Portal;
-
-/**
- * Create handle for detached triggers.
- */
-const DialogCreateHandle = BaseDialog.createHandle;
-
-/**
- * Backdrop / Overlay component.
- */
-const DialogOverlay = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentPropsWithoutRef<typeof BaseDialog.Backdrop>
->(({ className, ...props }, ref) => (
-  <BaseDialog.Backdrop
-    ref={ref}
-    className={cn(
-      "fixed inset-0 z-50 bg-black/40 backdrop-blur-sm data-[open]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[open]:fade-in-0",
-      className
-    )}
-    {...props}
-  />
-));
-DialogOverlay.displayName = "DialogOverlay";
-const DialogBackdrop = DialogOverlay;
-
-/**
- * Viewport for positioning.
- */
-const DialogViewport = BaseDialog.Viewport;
-
-/**
- * Main Popup container.
- */
-interface DialogPopupProps extends React.ComponentPropsWithoutRef<typeof BaseDialog.Popup> {
-  showCloseButton?: boolean;
-  bottomStickOnMobile?: boolean;
-  closeProps?: React.ComponentPropsWithoutRef<typeof BaseDialog.Close>;
+interface DialogProps {
+  open?: boolean;
+  defaultOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  modal?: boolean;
+  children?: ReactNode;
 }
 
-const DialogPopup = React.forwardRef<HTMLDivElement, DialogPopupProps>(
-  ({ className, children, showCloseButton = true, bottomStickOnMobile = true, closeProps, ...props }, ref) => (
-    <BaseDialog.Portal>
-      <DialogOverlay />
-      <BaseDialog.Popup
-        ref={ref}
-        className={cn(
-          "fixed left-[50%] top-[50%] z-50 flex w-full max-w-lg translate-x-[-50%] translate-y-[-50%] flex-col gap-0 border bg-background shadow-sm transition-all duration-300",
-          "data-[open]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[open]:fade-in-0 data-[closed]:zoom-out-95 data-[open]:zoom-in-95 data-[closed]:slide-out-to-left-1/2 data-[closed]:slide-out-to-top-[48%] data-[open]:slide-in-from-left-1/2 data-[open]:slide-in-from-top-[48%]",
-          "rounded-xl border-border/40 overflow-hidden",
-          bottomStickOnMobile && "max-sm:top-auto max-sm:bottom-4 max-sm:translate-y-0 max-sm:max-w-[calc(100%-2rem)]",
-          className
-        )}
-        {...props}
-      >
-        {children}
-        {showCloseButton && (
-          <BaseDialog.Close
-            {...closeProps}
-            className={cn(
-              "absolute right-4 top-4 rounded-full p-1.5 opacity-70 transition-all hover:opacity-100 hover:bg-muted/80 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[open]:bg-accent data-[open]:text-muted-foreground",
-              closeProps?.className
-            )}
-          >
-            <X className="h-5 w-5" />
-            <span className="sr-only">Close</span>
-          </BaseDialog.Close>
-        )}
-      </BaseDialog.Popup>
-    </BaseDialog.Portal>
-  )
-);
-DialogPopup.displayName = "DialogPopup";
-const DialogContent = DialogPopup;
-
-/**
- * Header container for title/description.
- */
-const DialogHeader = ({
-  className,
-  render,
+function Dialog({
   children,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement> & { render?: React.ReactElement }) => {
+  open,
+  defaultOpen,
+  onOpenChange,
+  modal,
+}: DialogProps) {
+  // Base UI's Root handles controlled/uncontrolled state internally. We only
+  // narrow the (open, eventDetails) callback to (open) for our public prop.
   return (
-    <div className={cn("flex flex-col space-y-1.5 p-6 pb-4", className)} {...props}>
-      {render ? React.cloneElement(render, props) : children}
-    </div>
+    <DialogPrimitive.Root
+      open={open}
+      defaultOpen={defaultOpen}
+      onOpenChange={(next) => onOpenChange?.(next)}
+      modal={modal}
+    >
+      {children}
+    </DialogPrimitive.Root>
   );
-};
-DialogHeader.displayName = "DialogHeader";
+}
 
-/**
- * Title component.
- */
-const DialogTitle = React.forwardRef<
+const DialogTrigger = DialogPrimitive.Trigger;
+const DialogClose = DialogPrimitive.Close;
+
+interface DialogContentProps extends HTMLAttributes<HTMLDivElement> {
+  size?: "sm" | "lg";
+  /** Portal target. When set, the overlay and panel render inside this element
+   *  (positioned `absolute`) instead of covering the viewport (`fixed`). Pair
+   *  with a `position: relative; overflow: hidden` container — and usually
+   *  `<Dialog modal={false}>` — to scope a dialog to a bounded region, e.g. a
+   *  docs preview. Defaults to the document body / full-viewport behaviour. */
+  container?: HTMLElement | null;
+  /** Whether to show the absolute-positioned top-right close X button. Defaults to true. */
+  showCloseButton?: boolean;
+}
+
+const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
+  ({ className, children, size = "sm", container, showCloseButton = true, ...props }, ref) => {
+    const XIcon = useIcon("x");
+    const shape = useShape();
+    const substrate = useSurface();
+    const dialogLevel = Math.min(substrate + DIALOG_OFFSET, 8);
+
+    // No `if (!open) return null` here — Base UI's `<DialogPrimitive.Popup>`
+    // handles mount/unmount itself, and waits for the framer-motion opacity
+    // tween below to finish (via `element.getAnimations()`) before unmounting.
+    // Returning null early would short-circuit the closing animation.
+    return (
+      <DialogPrimitive.Portal container={container ?? undefined}>
+        <DialogPrimitive.Backdrop
+          render={(backdropProps, state) => {
+            const exiting = state.transitionStatus === "ending";
+            const {
+              style: _style,
+              onDrag: _onDrag,
+              onDragStart: _onDragStart,
+              onDragEnd: _onDragEnd,
+              onAnimationStart: _onAnimationStart,
+              onAnimationEnd: _onAnimationEnd,
+              onAnimationIteration: _onAnimationIteration,
+              ...rest
+            } = backdropProps as React.HTMLAttributes<HTMLDivElement>;
+            return (
+              <motion.div
+                {...rest}
+                className={cn(
+                  container ? "absolute" : "fixed",
+                  "inset-0 z-50 bg-black/40 dark:bg-black/80"
+                )}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: exiting ? 0 : 1 }}
+                transition={exiting ? spring.slow.exit : spring.slow}
+              />
+            );
+          }}
+        />
+        <DialogPrimitive.Popup
+          ref={ref}
+          render={(popupProps, state) => {
+            const exiting = state.transitionStatus === "ending";
+            const {
+              style: baseStyle,
+              onDrag: _onDrag,
+              onDragStart: _onDragStart,
+              onDragEnd: _onDragEnd,
+              onAnimationStart: _onAnimationStart,
+              onAnimationEnd: _onAnimationEnd,
+              onAnimationIteration: _onAnimationIteration,
+              ...rest
+            } = popupProps as React.HTMLAttributes<HTMLDivElement>;
+            return (
+              <motion.div
+                // Base UI's props first (data attrs, refs, role, etc.)…
+                {...rest}
+                // …then the consumer's `<DialogContent>` props (className,
+                // event handlers, data-*, etc.) land on the visible motion.div
+                // — matching the Radix flavour, which spreads `...props` onto
+                // the Content primitive that becomes the motion.div via asChild.
+                {...(props as Omit<
+                  React.HTMLAttributes<HTMLDivElement>,
+                  | "onDrag"
+                  | "onDragStart"
+                  | "onDragEnd"
+                  | "onAnimationStart"
+                  | "onAnimationEnd"
+                  | "onAnimationIteration"
+                >)}
+                className={cn(
+                  container ? "absolute" : "fixed",
+                  "left-1/2 top-1/2 z-50 w-[calc(100%-2rem)]",
+                  surfaceClasses(dialogLevel),
+                  "p-6 focus:outline-none",
+                  size === "sm" && "max-w-[400px]",
+                  size === "lg" && "max-w-[540px]",
+                  shape.container,
+                  className
+                )}
+                style={{
+                  ...(baseStyle as React.CSSProperties | undefined),
+                  ...(props.style as React.CSSProperties | undefined),
+                }}
+                initial={{ opacity: 0, scale: 0.97, x: "-50%", y: "-50%" }}
+                animate={{
+                  opacity: exiting ? 0 : 1,
+                  scale: exiting ? 0.97 : 1,
+                  x: "-50%",
+                  y: "-50%",
+                }}
+                transition={exiting ? spring.slow.exit : spring.slow}
+              >
+                <SurfaceProvider value={dialogLevel}>
+                  {children}
+                  {showCloseButton && (
+                    <DialogPrimitive.Close
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="absolute right-3 top-3"
+                        >
+                          <XIcon />
+                          <span className="sr-only">Close</span>
+                        </Button>
+                      }
+                    />
+                  )}
+                </SurfaceProvider>
+              </motion.div>
+            );
+          }}
+        />
+      </DialogPrimitive.Portal>
+    );
+  }
+);
+DialogContent.displayName = "DialogContent";
+
+function DialogHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn("flex flex-col gap-1.5 mb-4", className)}
+      {...props}
+    />
+  );
+}
+
+function DialogFooter({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn("flex justify-end gap-2 mt-6", className)}
+      {...props}
+    />
+  );
+}
+
+const DialogTitle = forwardRef<
   HTMLHeadingElement,
-  React.ComponentPropsWithoutRef<typeof BaseDialog.Title>
+  HTMLAttributes<HTMLHeadingElement>
 >(({ className, ...props }, ref) => (
-  <BaseDialog.Title
+  <DialogPrimitive.Title
     ref={ref}
-    className={cn("text-lg font-black tracking-tight", className)}
+    className={cn("text-[16px] text-foreground leading-tight", className)}
+    style={{ fontVariationSettings: "'wght' 700" }}
     {...props}
   />
 ));
 DialogTitle.displayName = "DialogTitle";
 
-/**
- * Description component.
- */
-const DialogDescription = React.forwardRef<
+const DialogDescription = forwardRef<
   HTMLParagraphElement,
-  React.ComponentPropsWithoutRef<typeof BaseDialog.Description>
+  HTMLAttributes<HTMLParagraphElement>
 >(({ className, ...props }, ref) => (
-  <BaseDialog.Description
+  <DialogPrimitive.Description
     ref={ref}
-    className={cn("text-sm text-muted-foreground font-medium", className)}
+    className={cn("text-[13px] text-muted-foreground", className)}
     {...props}
   />
 ));
 DialogDescription.displayName = "DialogDescription";
 
-/**
- * Scrollable Panel content.
- */
-interface DialogPanelProps extends React.HTMLAttributes<HTMLDivElement> {
-  scrollFade?: boolean;
-}
+const DialogPopup = DialogContent;
 
-const DialogPanel = React.forwardRef<HTMLDivElement, DialogPanelProps>(
-  ({ className, children, scrollFade = true, ...props }, ref) => {
-    return (
-      <div className="relative flex-1 overflow-hidden">
-        {scrollFade && (
-          <div className="absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-background to-transparent pointer-events-none" />
-        )}
-        <ScrollArea className={cn("max-h-[60vh] px-6 py-2 pb-6", className)} ref={ref}>
-          {children}
-        </ScrollArea>
-        {scrollFade && (
-          <div className="absolute inset-x-0 bottom-0 z-10 h-4 bg-gradient-to-t from-background to-transparent pointer-events-none" />
-        )}
-      </div>
-    );
-  }
-);
+const DialogPanel = forwardRef<
+  HTMLDivElement,
+  HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div ref={ref} className={className} {...props} />
+));
 DialogPanel.displayName = "DialogPanel";
-
-/**
- * Footer for action buttons.
- */
-interface DialogFooterProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: "default" | "bare";
-  render?: React.ReactElement;
-}
-
-const DialogFooter = ({
-  className,
-  variant = "default",
-  render,
-  children,
-  ...props
-}: DialogFooterProps) => (
-  <div
-    className={cn(
-      "flex items-center justify-end p-4 px-6 gap-2",
-      variant === "default" && "border-t border-border/40 bg-muted/5",
-      className
-    )}
-    {...props}
-  >
-    {render ? React.cloneElement(render, props) : children}
-  </div>
-);
-DialogFooter.displayName = "DialogFooter";
-
-/**
- * Close component.
- */
-const DialogClose = BaseDialog.Close;
 
 export {
   Dialog,
-  DialogPortal,
-  DialogOverlay,
-  DialogBackdrop,
-  DialogClose,
   DialogTrigger,
-  DialogPopup,
   DialogContent,
   DialogHeader,
   DialogFooter,
   DialogTitle,
   DialogDescription,
+  DialogClose,
+  DialogPopup,
   DialogPanel,
-  DialogCreateHandle,
-  DialogViewport,
 };
-

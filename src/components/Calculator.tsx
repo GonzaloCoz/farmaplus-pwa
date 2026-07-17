@@ -1,12 +1,91 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Backspace as Delete, CloseCircle as X } from '@solar-icons/react';
+import { Delete, XClose as X } from '@untitledui/icons';
 import { cn } from '@/lib/utils';
 
 interface CalculatorProps {
     onResult: (result: number) => void;
     onClose: () => void;
     initialValue?: string;
+}
+
+function safeEvaluate(expr: string): number {
+    const cleanExpr = expr.replace(/\s+/g, '');
+    const tokens: (string | number)[] = [];
+    let numberBuffer = '';
+    
+    for (let i = 0; i < cleanExpr.length; i++) {
+        const char = cleanExpr[i];
+        if (/[0-9.]/.test(char)) {
+            numberBuffer += char;
+        } else if (['+', '-', '*', '/'].includes(char)) {
+            if (numberBuffer) {
+                tokens.push(parseFloat(numberBuffer));
+                numberBuffer = '';
+            }
+            if (char === '-' && (tokens.length === 0 || typeof tokens[tokens.length - 1] === 'string')) {
+                numberBuffer = '-';
+            } else {
+                tokens.push(char);
+            }
+        } else {
+            throw new Error('Invalid character');
+        }
+    }
+    if (numberBuffer) {
+        if (numberBuffer === '-') throw new Error('Invalid expression');
+        tokens.push(parseFloat(numberBuffer));
+    }
+
+    if (tokens.length === 0) return 0;
+    if (typeof tokens[tokens.length - 1] === 'string') {
+        throw new Error('Incomplete expression');
+    }
+
+    const intermediateTokens: (string | number)[] = [];
+    for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i];
+        if (token === '*' || token === '/') {
+            const prev = intermediateTokens.pop();
+            const next = tokens[++i];
+            if (typeof prev !== 'number' || typeof next !== 'number') {
+                throw new Error('Invalid operands');
+            }
+            if (token === '*') {
+                intermediateTokens.push(prev * next);
+            } else {
+                if (next === 0) throw new Error('Division by zero');
+                intermediateTokens.push(prev / next);
+            }
+        } else {
+            intermediateTokens.push(token);
+        }
+    }
+
+    if (intermediateTokens.length === 0) return 0;
+    let result = intermediateTokens[0];
+    if (typeof result !== 'number') throw new Error('Invalid expression');
+
+    for (let i = 1; i < intermediateTokens.length; i += 2) {
+        const op = intermediateTokens[i];
+        const next = intermediateTokens[i + 1];
+        if (typeof op !== 'string' || typeof next !== 'number') {
+            throw new Error('Invalid expression');
+        }
+        if (op === '+') {
+            result += next;
+        } else if (op === '-') {
+            result -= next;
+        } else {
+            throw new Error('Invalid operator');
+        }
+    }
+
+    if (isNaN(result) || !isFinite(result)) {
+        throw new Error('Calculation error');
+    }
+
+    return result;
 }
 
 export function Calculator({ onResult, onClose, initialValue = '' }: CalculatorProps) {
@@ -29,16 +108,12 @@ export function Calculator({ onResult, onClose, initialValue = '' }: CalculatorP
 
     const handleEqual = () => {
         try {
-            // Note: Using eval is generally unsafe, but for a local calculator with restricted input (only numbers and operators), it's acceptable.
-            // Alternatively, we could write a simple parser.
             const fullExpr = expression + display;
-            // Sanitize input just in case
             if (!/^[0-9+\-*/. ]+$/.test(fullExpr)) {
                 setDisplay('Error');
                 return;
             }
-            // eslint-disable-next-line no-new-func
-            const result = new Function('return ' + fullExpr)();
+            const result = safeEvaluate(fullExpr);
             setDisplay(String(result));
             setExpression('');
             onResult(Number(result));

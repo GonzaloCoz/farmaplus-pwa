@@ -7,7 +7,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 const normalizeStringWorker = (str: string): string => {
     if (!str) return '';
     return str
-        .toLowerCase()
+        .toUpperCase()
         .trim()
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "");

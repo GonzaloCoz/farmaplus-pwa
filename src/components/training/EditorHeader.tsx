@@ -1,12 +1,5 @@
 import React from "react";
-import { 
-  ArrowLeft, 
-  ExternalLink, 
-  Link as LinkIcon, 
-  Trash2, 
-  Save,
-  ArrowRight as ArrowRightIcon
-} from "lucide-react";
+import { ArrowLeft, LinkExternal01 as ExternalLink, Link01 as LinkIcon, Trash01 as Trash2, Save01 as Save, ArrowRight as ArrowRightIcon } from '@untitledui/icons';
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";

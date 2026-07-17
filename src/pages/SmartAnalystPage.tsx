@@ -7,19 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-    AltArrowLeft as ArrowLeft,
-    Magnifer as Search,
-    Danger as AlertTriangle,
-    CheckCircle,
-    Restart as RefreshCw,
-    Widget as PackageX,
-    TrashBinMinimalistic as Trash2,
-    Calendar,
-    Filter,
-    ArrowRightUp as ArrowUpRight,
-    Document as FileText
-} from '@solar-icons/react';
+import { ChevronLeft as ArrowLeft, SearchLg as Search, AlertTriangle, CheckCircle, RefreshCw01 as RefreshCw, LayoutGrid01 as PackageX, Trash01 as Trash2, Calendar, FilterLines as Filter, ArrowUpRight, File01 as FileText } from '@untitledui/icons';
 import { FabMenu } from '@/components/FabMenu';
 import { ExportOptionsModal, ExportOptions } from '@/components/modals/ExportOptionsModal';
 import { generateExport } from '@/services/ExportService';
@@ -40,7 +28,6 @@ interface AnalyzedBatch extends BatchInfo {
 }
 
 import { TransferModal } from '@/components/modals/TransferModal';
-import { BRANCH_NAMES } from '@/config/users';
 import { useUser } from '@/contexts/UserContext';
 import { useUserBranches } from '@/hooks/useUserBranches';
 

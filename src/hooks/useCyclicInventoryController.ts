@@ -317,6 +317,7 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         .reduce((acc, i) => acc + ((i.countedQuantity - i.systemQuantity) * i.cost), 0) * 100) / 100;
 
     const handleSaveInventory = async () => {
+        if (isSaving) return;
         const controlledItems = items.filter(i => i.status === 'controlled');
         const shortages = controlledItems.filter(i => i.countedQuantity < i.systemQuantity);
         const surpluses = controlledItems.filter(i => i.countedQuantity > i.systemQuantity);

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { CloseCircle as X, Download } from "@solar-icons/react";
+import { XClose as X, Download01 as Download } from '@untitledui/icons';
 import { useInstallPWA } from "@/contexts/InstallPWAContext";
 
 export function InstallPrompt() {

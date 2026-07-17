@@ -3,7 +3,6 @@ import { motion } from "framer-motion";
 import { FixedSizeList as List } from "react-window";
 import type { ListChildComponentProps } from "react-window";
 import AutoSizer from "react-virtualized-auto-sizer";
-import { ProductImageHover } from "@/components/ProductImageHover";
 import { cn } from "@/lib/utils";
 import { CounterAnimation } from "@/components/CounterAnimation";
 import { Card } from "@/components/ui/card";
@@ -11,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Upload, Document as FileSpreadsheet, DangerCircle as AlertCircle, Download, CheckCircle, Diskette as Save, Widget as Package, Magnifer as Search, Filter, AltArrowDown as ChevronDown, List as ListFilter, ArrowRightUp as ArrowUpRight, ArrowRightDown as ArrowDownRight, MenuDots as MoreHorizontal, TransferVertical as ArrowLeftRight, SortByTime as ArrowUpDown, CheckCircle as Check, Pen as Pencil, Wallet, Target, Calculator, GraphDown as TrendingDown, GraphUp as TrendingUp } from "@solar-icons/react";
+import { Upload01 as Upload, File01 as FileSpreadsheet, AlertCircle, Download01 as Download, CheckCircle, Save01 as Save, LayoutGrid01 as Package, SearchLg as Search, FilterLines as Filter, ChevronDown, List as ListFilter, ArrowUpRight, ArrowDownRight, DotsHorizontal as MoreHorizontal, ArrowsTriangle as ArrowLeftRight, Clock as ArrowUpDown, CheckCircle as Check, Edit01 as Pencil, CurrencyDollar as Wallet, Activity as Target, Calculator, TrendDown01 as TrendingDown, TrendUp01 as TrendingUp } from '@untitledui/icons';
 import { Badge } from "@/components/ui/badge";
 import * as XLSX from "xlsx";
 import { notify } from "@/lib/notifications";
@@ -24,12 +23,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-  DropdownMenuLabel,
-} from "@/components/ui/menu";
+  DropdownTrigger,
+  DropdownContent,
+  DropdownLabel,
+  DropdownSeparator,
+  MenuItem,
+} from "@/components/ui/dropdown";
 import { useUser } from "@/contexts/UserContext";
 import { useNavigate } from "react-router-dom";
 
@@ -90,9 +89,7 @@ const Row = ({ index, style, data }: ListChildComponentProps) => {
             {item.diffQty < 0 ? <TrendingDown className="w-5 h-5" /> : <TrendingUp className="w-5 h-5" />}
           </div>
           <div className="min-w-0">
-            <ProductImageHover ean={item.codebar} name={item.name}>
-              <p className="font-semibold text-sm text-foreground truncate" title={item.name}>{item.name}</p>
-            </ProductImageHover>
+            <p className="font-semibold text-sm text-foreground truncate" title={item.name}>{item.name}</p>
             <div className="flex items-center gap-2 mt-0.5">
               <Badge variant="outline" className="text-[10px] h-5 font-mono text-muted-foreground border-border/60 font-normal hidden sm:inline-flex">
                 {item.codebar}
@@ -916,39 +913,39 @@ export default function StockImport() {
               </div>
 
               <DropdownMenu>
-                <DropdownMenuTrigger render={
+                <DropdownTrigger render={
                   <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl border-muted-foreground/20">
                     <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
                   </Button>
                 } />
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuLabel>Ordenar por</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setSortConfig({ field: 'quantity', direction: 'desc' })}>
-                    <div className="flex items-center justify-between w-full">
-                      <span>Mayor Cantidad (+)</span>
-                      {sortConfig.field === 'quantity' && sortConfig.direction === 'desc' && <Check className="w-4 h-4" />}
-                    </div>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSortConfig({ field: 'quantity', direction: 'asc' })}>
-                    <div className="flex items-center justify-between w-full">
-                      <span>Mayor Cantidad (-)</span>
-                      {sortConfig.field === 'quantity' && sortConfig.direction === 'asc' && <Check className="w-4 h-4" />}
-                    </div>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSortConfig({ field: 'value', direction: 'desc' })}>
-                    <div className="flex items-center justify-between w-full">
-                      <span>Mayor Importe (+)</span>
-                      {sortConfig.field === 'value' && sortConfig.direction === 'desc' && <Check className="w-4 h-4" />}
-                    </div>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSortConfig({ field: 'value', direction: 'asc' })}>
-                    <div className="flex items-center justify-between w-full">
-                      <span>Mayor Importe (-)</span>
-                      {sortConfig.field === 'value' && sortConfig.direction === 'asc' && <Check className="w-4 h-4" />}
-                    </div>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
+                <DropdownContent align="end" className="w-48">
+                  <DropdownLabel>Ordenar por</DropdownLabel>
+                  <DropdownSeparator />
+                  <MenuItem
+                    index={0}
+                    label="Mayor Cantidad (+)"
+                    onSelect={() => setSortConfig({ field: 'quantity', direction: 'desc' })}
+                    checked={sortConfig.field === 'quantity' && sortConfig.direction === 'desc'}
+                  />
+                  <MenuItem
+                    index={1}
+                    label="Mayor Cantidad (-)"
+                    onSelect={() => setSortConfig({ field: 'quantity', direction: 'asc' })}
+                    checked={sortConfig.field === 'quantity' && sortConfig.direction === 'asc'}
+                  />
+                  <MenuItem
+                    index={2}
+                    label="Mayor Importe (+)"
+                    onSelect={() => setSortConfig({ field: 'value', direction: 'desc' })}
+                    checked={sortConfig.field === 'value' && sortConfig.direction === 'desc'}
+                  />
+                  <MenuItem
+                    index={3}
+                    label="Mayor Importe (-)"
+                    onSelect={() => setSortConfig({ field: 'value', direction: 'asc' })}
+                    checked={sortConfig.field === 'value' && sortConfig.direction === 'asc'}
+                  />
+                </DropdownContent>
               </DropdownMenu>
             </div>
           </div>

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Slot } from "@/components/ui/slot";
-import { AltArrowRight as ChevronRight, MenuDots as MoreHorizontal } from "@solar-icons/react";
+import { ChevronRight, DotsHorizontal as MoreHorizontal } from '@untitledui/icons';
 
 import { cn } from "@/lib/utils";
 

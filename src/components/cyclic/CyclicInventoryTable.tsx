@@ -2,7 +2,7 @@ import { CyclicItem } from '@/components/CyclicInventoryList';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { Check, Danger as AlertTriangle, Refresh } from '@solar-icons/react';
+import { Check, AlertTriangle, RefreshCw01 as Refresh } from '@untitledui/icons';
 
 interface CyclicInventoryTableProps {
     items: CyclicItem[];
@@ -15,7 +15,7 @@ export function CyclicInventoryTable({ items, onUpdateQuantity, onCheck, showDif
     if (items.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground opacity-50">
-                <RefreshCw className="h-10 w-10 mb-2" />
+                <Refresh className="h-10 w-10 mb-2" />
                 <p>No hay items para mostrar</p>
             </div>
         );
@@ -40,7 +40,7 @@ export function CyclicInventoryTable({ items, onUpdateQuantity, onCheck, showDif
                             <div className="flex items-center gap-2">
                                 <span className="font-mono text-xs text-muted-foreground bg-muted px-1.5 rounded">{item.ean}</span>
                                 {item.wasReadjusted && (
-                                    <Badge variant="secondary" className="h-4 text-[9px] px-1 bg-purple-100 text-purple-700">Modif.</Badge>
+                                    <Badge className="h-4 text-[9px] px-1 bg-purple-100 text-purple-700">Modif.</Badge>
                                 )}
                             </div>
                             <h4 className="font-semibold text-sm truncate leading-tight mt-1">{item.name}</h4>

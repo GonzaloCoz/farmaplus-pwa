@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Loader2, Search, XCircle as X, ScanBarcode as Barcode } from 'lucide-react';
+import { RefreshCw01 as Loader2, SearchLg as Search, XCircle as X, Scan as Barcode } from '@untitledui/icons';
 import { Product, searchProducts } from '@/services/preCountDB';
 import { db } from '@/services/db';
 import { useDebounce } from '@/hooks/useDebounce';

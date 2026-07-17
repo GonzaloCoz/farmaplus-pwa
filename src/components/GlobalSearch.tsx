@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
-import { Magnifer as Search, AltArrowUp as ArrowUp, AltArrowDown as ArrowDown, CheckCircle as Check, ClockCircle as Clock, CloseCircle as X } from "@solar-icons/react";
+import { SearchLg as Search, ChevronUp as ArrowUp, ChevronDown as ArrowDown, CheckCircle as Check, Clock, XClose as X } from '@untitledui/icons';
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 
@@ -56,13 +56,17 @@ export function GlobalSearch() {
   }, []);
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
     if (open) {
-      setTimeout(() => inputRef.current?.focus(), 50);
+      timer = setTimeout(() => inputRef.current?.focus(), 50);
     } else {
       setQuery("");
       setActiveIndex(0);
       setResults(STATIC_INDEX);
     }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, [open]);
 
   const addToRecent = (item: ResultItem) => {

@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { CheckCircle as Check } from "@solar-icons/react";
+import { CheckCircle as Check } from '@untitledui/icons';
 
 export interface SegmentOption {
     value: string;

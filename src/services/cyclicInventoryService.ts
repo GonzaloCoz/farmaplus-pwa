@@ -3,7 +3,7 @@ import { LaboratoryStatus } from "@/components/LaboratoryCard";
 import { supabase } from "@/integrations/supabase/client";
 import { getAllBranchLabCounts } from './preCountDB';
 import { getProductCountByLab } from './productService';
-import { BRANCH_NAMES } from "@/config/users";
+import { Zonal } from "@/config/zonales";
 import { normalizeString } from "@/lib/utils";
 import {
     CyclicItemSchema,
@@ -35,6 +35,7 @@ export interface CyclicInventoryStats {
     adjustmentCount?: number;
     ira?: number;
     systemValue?: number;
+    round?: number;
 }
 
 export interface CyclicItem {
@@ -165,13 +166,29 @@ export const cyclicInventoryService = {
             // Validar que el userId sea un UUID válido para evitar error 400
             const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(userId);
 
+            // Obtener la ronda correspondiente al laboratorio/categoría actual
+            let round = 1;
+            try {
+                const config = await cyclicInventoryService.getBranchConfig(branchName);
+                const controlledItems = items.filter(i => i.status === 'controlled');
+                const cat = controlledItems[0]?.category || 'GENERAL';
+                const normCat = cat.toUpperCase();
+                round = config.rounds?.[normCat] || config.rounds?.GENERAL || 1;
+            } catch (err) {
+                console.warn("No se pudo obtener la ronda del config, usando default 1:", err);
+            }
+
+            const plexId = shortageId && surplusId
+                ? `${shortageId}, ${surplusId}`
+                : (shortageId || surplusId || '');
+
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { error } = await (supabase as any).rpc('finalize_cyclic_inventory', {
                 p_branch_name: normalizeString(branchName),
                 p_laboratory: normalizeString(labName),
-                p_shortage_id: shortageId,
-                p_surplus_id: surplusId,
-                p_user_id: isValidUUID ? userId : null // Pass null if invalid, SQL handles it
+                p_plex_id: plexId,
+                p_user_id: isValidUUID ? userId : null,
+                p_round: round
             });
 
             if (error) {
@@ -319,11 +336,26 @@ export const cyclicInventoryService = {
      * Evita el 100% falso cuando hay pendientes descartados al finalizar.
      * Requiere que exista la función SQL recompute_lab_progress en Supabase.
      */
-    recomputeLabProgress: async (branchName: string, labName: string): Promise<void> => {
+    recomputeLabProgress: async (branchName: string, labName: string, round?: number): Promise<void> => {
         try {
+            let activeRound = round;
+            if (!activeRound) {
+                try {
+                    const config = await cyclicInventoryService.getBranchConfig(branchName);
+                    const dbItems = await cyclicInventoryService.getLabInventory(branchName, labName);
+                    const cat = dbItems[0]?.category || 'GENERAL';
+                    const normCat = cat.toUpperCase();
+                    activeRound = config.rounds?.[normCat] || config.rounds?.GENERAL || 1;
+                } catch (err) {
+                    console.warn("No se pudo obtener la ronda del config para recompute, usando default 1:", err);
+                    activeRound = 1;
+                }
+            }
+
             const { error } = await (supabase as any).rpc('recompute_lab_progress', {
                 p_branch_name: normalizeString(branchName),
-                p_laboratory: normalizeString(labName)
+                p_laboratory: normalizeString(labName),
+                p_round: activeRound
             });
             if (error) console.error('[Progress] Error in recompute_lab_progress:', error);
         } catch (e) {
@@ -454,9 +486,15 @@ export const cyclicInventoryService = {
             }
             // -------------------------------------------------------------------------
 
+            // Obtener el config de la sucursal para resolver las rondas activas por categoría
+            const config = await cyclicInventoryService.getBranchConfig(branchName);
+
             // Iterate each category and upsert its own stats
             const upsertPromises = Object.entries(grouped).map(async ([category, catItems]) => {
                 const stats = cyclicInventoryService.calculateStats(catItems);
+
+                const normCat = category.toUpperCase();
+                const round = config.rounds?.[normCat] || config.rounds?.GENERAL || 1;
 
                 // Count items by status
                 const controlledItems = catItems.filter(i => i.status === 'controlled').length;
@@ -466,13 +504,14 @@ export const cyclicInventoryService = {
                 // Category-specific counts (for accurate data)
                 const totalInventoryItems = catItems.length;
 
-                // Upsert to metadata table with composite key (Branch + Lab + Category)
+                // Upsert to metadata table with composite key (Branch + Lab + Category + Round)
                 return supabase
                     .from('branch_laboratories')
                     .upsert({
                         branch_name: cleanBranch,
                         laboratory: cleanLab,
                         category: category,
+                        round: round,
                         total_items: totalInventoryItems, // Correct Category Count
                         controlled_items: controlledItems + adjustedItems, // Correct Category Processed
                         adjusted_items: adjustedItems,
@@ -487,7 +526,7 @@ export const cyclicInventoryService = {
                         positive_units: stats.positiveUnits,
                         status: globalProgress >= 100 ? 'completed' : globalProgress > 0 ? 'in_progress' : 'pending'
                     }, {
-                        onConflict: 'branch_name,laboratory,category'
+                        onConflict: 'branch_name,laboratory,category,round'
                     });
             });
 
@@ -611,12 +650,16 @@ export const cyclicInventoryService = {
         // reset/finalized should still appear in the list as "pendiente". The source of
         // truth for the master lab list is branch_laboratories, which is now reset (not deleted)
         // when a lab is cleared. This fixes the bug where labs disappeared after reset/finalize.
-        let query = supabase
-            .from('branch_laboratories')
-            .select(`*`);
+        let query;
 
         if (branchName) {
-            query = query.eq('branch_name', normalizeString(branchName));
+            query = (supabase as any).rpc('get_all_cyclic_inventories', {
+                p_branch_name: branchName
+            });
+        } else {
+            query = supabase
+                .from('branch_laboratories')
+                .select(`*`);
         }
 
         const { data, error } = await query;
@@ -648,7 +691,8 @@ export const cyclicInventoryService = {
                     totalSystemUnits: row.total_system_units,
                     negativeUnits: row.negative_units || 0,
                     positiveUnits: row.positive_units || 0,
-                    netUnits: row.net_units
+                    netUnits: row.net_units,
+                    round: row.round || 1
                 };
 
                 // Enterprise Validation
@@ -663,59 +707,59 @@ export const cyclicInventoryService = {
 
     // Get Super-Lite summary for ALL branches (Admin View)
     // This is the fastest method, as it uses the pre-calculated branch_summaries table.
-    getBranchesSummaryLite: async (): Promise<any[]> => {
+    getBranchesSummaryLite: async (timeframe: string = 'all', showPrevious: boolean = false): Promise<any[]> => {
         try {
-            // 1. Fetch pre-calculated summaries
+            const { data: dbBranches, error: branchesError } = await supabase
+                .from('branches')
+                .select('name');
+            
+            if (branchesError || !dbBranches) {
+                console.error("[Monitor] Error fetching branches list:", branchesError);
+                throw branchesError || new Error("No branches found");
+            }
+            const branchNames = dbBranches.map(b => b.name);
+
+            // 1. Fetch dynamic summaries
             const { data: summaries, error: sumError } = await (supabase as any)
-                .from('branch_summaries')
-                .select('*');
+                .rpc('get_branch_monitor_summaries', {
+                    p_timeframe: timeframe,
+                    p_show_previous: showPrevious
+                });
 
             if (sumError) {
-                console.error("[Monitor] Error fetching branch_summaries:", sumError);
+                console.error("[Monitor] Error calling get_branch_monitor_summaries RPC:", sumError);
                 throw sumError;
             }
 
-
-
-            /* 
-            // 2. Fetch Goals (REMOVED - Use total_labs_count from master list)
-            let labCounts: Record<string, number> = {};
-            const { data: goalsData, error: goalsError } = await supabase
-                .from('branch_goals')
-                .select('branch_name, total_labs_goal');
-
-            if (!goalsError && goalsData) {
-                goalsData.forEach(g => {
-                    labCounts[g.branch_name] = g.total_labs_goal;
-                });
-            } else {
-                labCounts = await getAllBranchLabCounts();
-            }
-            */
-
-            // 3. Fetch Configs for Start Date and Days
+            // 3. Fetch Configs for Start Date, Days, and Rounds
             const { data: configData } = await supabase
                 .from('inventories')
                 .select('branch_name, ean, quantity')
-                .eq('laboratory', '_CONFIG_')
-                .in('ean', ['CONFIG_START_DATE', 'CONFIG_DAYS']);
+                .eq('laboratory', '_CONFIG_');
 
-            const branchConfigs: Record<string, { startDate: string | null, days: number }> = {};
+            const branchConfigs: Record<string, { startDate: string | null, days: number, rounds: Record<string, number> }> = {};
             if (configData) {
                 configData.forEach(c => {
                     const normalized = normalizeString(c.branch_name || '');
                     if (!branchConfigs[normalized]) {
-                        branchConfigs[normalized] = { startDate: null, days: 0 };
+                        branchConfigs[normalized] = { startDate: null, days: 0, rounds: { GENERAL: 1 } };
                     }
                     if (c.ean === 'CONFIG_START_DATE') {
                         branchConfigs[normalized].startDate = new Date(c.quantity * 1000).toISOString();
                     } else if (c.ean === 'CONFIG_DAYS') {
                         branchConfigs[normalized].days = c.quantity;
+                    } else if (c.ean && c.ean.startsWith('CONFIG_ROUND')) {
+                        if (c.ean === 'CONFIG_ROUND') {
+                            branchConfigs[normalized].rounds.GENERAL = c.quantity;
+                        } else {
+                            const cat = c.ean.replace('CONFIG_ROUND_', '').toUpperCase();
+                            branchConfigs[normalized].rounds[cat] = c.quantity;
+                        }
                     }
                 });
             }
 
-                        const finalResult = BRANCH_NAMES.map(branchName => {
+            const finalResult = branchNames.map(branchName => {
                 const normalizedSearch = normalizeString(branchName);
                 const rawSummary = summaries?.find(s =>
                     normalizeString(s.branch_name || '') === normalizedSearch
@@ -737,6 +781,7 @@ export const cyclicInventoryService = {
                         weightedProgressSum: rawSummary.weighted_progress_sum,
                         positiveDiffUnits: rawSummary.positive_diff_units || 0,
                         negativeDiffUnits: rawSummary.negative_diff_units || 0,
+                        absoluteDeviationValue: rawSummary.absolute_deviation_value || 0,
                         updatedAt: rawSummary.updated_at
                     });
                     if (result.success) {
@@ -783,7 +828,7 @@ export const cyclicInventoryService = {
                 }
 
                 // Dynamic date calculation
-                const config = branchConfigs[normalizeString(branchName)] || { startDate: null, days: 0 };
+                const config = branchConfigs[normalizeString(branchName)] || { startDate: null, days: 0, rounds: {} };
                 const startDateIso = config.startDate;
                 const assignedDays = config.days;
                 const deploymentDate = startDateIso
@@ -809,7 +854,8 @@ export const cyclicInventoryService = {
                     deploymentDate,
                     assignedDays: Number(assignedDays) || 0,
                     remainingDays: Number(remainingDays) || 0,
-                    cyclicRound: 1,
+                    cyclicRound: config.rounds?.GENERAL || 1,
+                    rounds: config.rounds || {},
                     monthlyGoal: totalLabsMaster, // Using Total Labs Count instead of Goal
                     elapsedDays,
                     progress: progress,
@@ -818,6 +864,7 @@ export const cyclicInventoryService = {
                     positiveDiffUnits: Number(rawSummary?.positive_diff_units || 0),
                     negativeDiffUnits: Number(rawSummary?.negative_diff_units || 0),
                     adjustmentsValue: Math.round((summary?.adjustmentsValue || 0) * 100) / 100,
+                    absoluteDeviationValue: Math.round((summary?.absoluteDeviationValue || rawSummary?.absolute_deviation_value || 0) * 100) / 100,
                     status: status,
                     lastUpdated: summary?.updatedAt
                 };
@@ -837,7 +884,7 @@ export const cyclicInventoryService = {
 
 
     // Configuration System
-    getBranchConfig: async (branchName: string): Promise<{ days: number, startDate: string | null }> => {
+    getBranchConfig: async (branchName: string): Promise<{ days: number, startDate: string | null, rounds?: Record<string, number> }> => {
         const cleanBranch = normalizeString(branchName);
         const { data, error } = await supabase
             .from('inventories')
@@ -845,7 +892,7 @@ export const cyclicInventoryService = {
             .eq('branch_name', cleanBranch)
             .eq('laboratory', '_CONFIG_');
 
-        if (error || !data || data.length === 0) return { days: 0, startDate: null };
+        if (error || !data || data.length === 0) return { days: 0, startDate: null, rounds: {} };
 
         const configData = data as any[];
         const daysRecord = configData.find(r => r.ean === 'CONFIG_DAYS');
@@ -858,7 +905,44 @@ export const cyclicInventoryService = {
             startDate = new Date(startDateRecord.quantity * 1000).toISOString();
         }
 
-        return { days, startDate };
+        const rounds: Record<string, number> = {};
+        // Default rounds to 1
+        rounds['GENERAL'] = 1;
+        rounds['MEDICAMENTOS'] = 1;
+        rounds['PERFUMERIA'] = 1;
+        rounds['ACCESORIOS'] = 1;
+        rounds['VARIOS'] = 1;
+
+        configData.forEach(r => {
+            if (r.ean && r.ean.startsWith('CONFIG_ROUND')) {
+                if (r.ean === 'CONFIG_ROUND') {
+                    rounds['GENERAL'] = Number(r.quantity || 1);
+                } else {
+                    const categoryName = r.ean.replace('CONFIG_ROUND_', '').toUpperCase();
+                    rounds[categoryName] = Number(r.quantity || 1);
+                }
+            }
+        });
+
+        return { days, startDate, rounds };
+    },
+
+    resetCategoryRound: async (branchName: string, category: string, nextRound: number): Promise<void> => {
+        try {
+            const { error } = await (supabase as any).rpc('reset_category_round', {
+                p_branch_name: branchName,
+                p_category: category,
+                p_next_round: nextRound
+            });
+
+            if (error) {
+                console.error("Error calling reset_category_round RPC:", error);
+                throw error;
+            }
+        } catch (error) {
+            console.error("Error in resetCategoryRound:", error);
+            throw error;
+        }
     },
 
     saveBranchConfig: async (branchName: string, days: number, startDate?: string): Promise<void> => {
@@ -1006,7 +1090,12 @@ export const cyclicInventoryService = {
                         (data.adjustment_id_surplus && item.surplusId?.includes(data.adjustment_id_surplus)))
                 );
 
-                if (adjustedItems.length > 0) {
+                // Filter items that were physically counted (adjusted or controlled)
+                const countedItems = data.items_snapshot.filter(item =>
+                    item.status === 'adjusted' || item.status === 'controlled'
+                );
+
+                if (countedItems.length > 0) {
                     const { data: ledgerHeader, error: ledgerError } = await supabase
                         .from('inventory_ledger')
                         .insert({
@@ -1026,7 +1115,7 @@ export const cyclicInventoryService = {
                         .single();
 
                     if (!ledgerError && ledgerHeader) {
-                        const ledgerItems = adjustedItems.map(item => ({
+                        const ledgerItems = countedItems.map(item => ({
                             ledger_id: ledgerHeader.id,
                             ean: item.ean,
                             product_name: item.name,
@@ -1100,7 +1189,12 @@ export const cyclicInventoryService = {
         // Try to fetch from professional SAP-style Ledger first
         const { data: ledgerData, error: ledgerError } = await supabase
             .from('inventory_ledger')
-            .select('*')
+            .select(`
+                *,
+                inventory_ledger_items (
+                    counted_quantity
+                )
+            `)
             .eq('branch_name', normalizeString(branchName))
             .eq('laboratory', normalizeString(labName))
             .order('created_at', { ascending: false })
@@ -1108,12 +1202,17 @@ export const cyclicInventoryService = {
 
         if (!ledgerError && ledgerData && ledgerData.length > 0) {
             // Normalize ledger field names to match the UI's expected schema
-            return ledgerData.map((row: any) => ({
-                ...row,
-                shortage_value: row.shortage_value ?? row.total_shortage_value ?? 0,
-                surplus_value: row.surplus_value ?? row.total_surplus_value ?? 0,
-                total_units_adjusted: row.total_units_adjusted ?? row.total_items_adjusted ?? 0,
-            }));
+            return ledgerData.map((row: any) => {
+                const items = row.inventory_ledger_items || [];
+                const total_stock_counted = items.reduce((sum: number, item: any) => sum + (item.counted_quantity || 0), 0);
+                return {
+                    ...row,
+                    shortage_value: row.shortage_value ?? row.total_shortage_value ?? 0,
+                    surplus_value: row.surplus_value ?? row.total_surplus_value ?? 0,
+                    total_units_adjusted: row.total_units_adjusted ?? row.total_items_adjusted ?? 0,
+                    total_stock_counted
+                };
+            });
         }
 
         // Fallback to legacy inventory_adjustments for old data
@@ -1559,6 +1658,41 @@ export const cyclicInventoryService = {
         } catch (error) {
             console.error("Error in hideLaboratory:", error);
             throw error;
+        }
+    },
+
+    getZonales: async (): Promise<Zonal[]> => {
+        try {
+            const { data, error } = await (supabase as any)
+                .from('profiles')
+                .select(`
+                    id,
+                    full_name,
+                    username,
+                    zonal_branches (
+                        branches (
+                            name
+                        )
+                    )
+                `)
+                .eq('role', 'mod')
+                .eq('active', true);
+
+            if (error) {
+                console.error("[CyclicService] Error fetching zonales:", error);
+                return [];
+            }
+
+            return (data || []).map((profile: any) => ({
+                id: profile.username || profile.id,
+                label: profile.full_name || profile.username || 'Coordinador Zonal',
+                branches: (profile.zonal_branches || [])
+                    .map((zb: any) => zb.branches?.name)
+                    .filter(Boolean)
+            }));
+        } catch (error) {
+            console.error("[CyclicService] getZonales exception:", error);
+            return [];
         }
     }
 };

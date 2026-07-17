@@ -1,6 +1,6 @@
 import * as React from "react";
 import { OTPInput, OTPInputContext } from "input-otp";
-import { MinusCircle as Dot } from "@solar-icons/react";
+import { Minus as Dot } from '@untitledui/icons';
 
 import { cn } from "@/lib/utils";
 

@@ -20,6 +20,8 @@
   },
   "registries": {
     "@coss": "https://coss.com/ui/r/{name}.json",
-    "@evilcharts": "https://evilcharts.com/r/{name}.json"
+    "@evilcharts": "https://evilcharts.com/r/{name}.json",
+    "@bklit": "https://ui.bklit.com/r/{name}.json",
+    "@beui": "https://beui.dev/r/{name}.json"
   }
 }

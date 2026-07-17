@@ -1,5 +1,5 @@
 import { motion, PanInfo, useAnimation } from 'framer-motion';
-import { TrashBinMinimalistic as Trash2 } from '@solar-icons/react';
+import { Trash01 as Trash2 } from '@untitledui/icons';
 import { ReactNode, useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';

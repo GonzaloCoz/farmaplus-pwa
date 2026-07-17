@@ -1,14 +1,8 @@
 import { NavLink } from "react-router-dom";
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import {
-    Widget as LayoutGrid,
-    Upload,
-    Document as FileText,
-    Box as Package,
-    Chart as BarChart3,
-} from "@solar-icons/react";
+import { LayoutGrid01 as LayoutGrid, Upload01 as Upload, File01 as FileText, Box as Package, BarChart01 as BarChart3 } from '@untitledui/icons';
 import { useUser } from "@/contexts/UserContext";
 import { ZebraIcon } from "@/components/icons/ZebraIcon";
 
@@ -21,6 +15,17 @@ const navItems = [
 
 export function BottomNavBar() {
     const { user } = useUser();
+    const [isHidden, setIsHidden] = useState(() => {
+        return typeof window !== 'undefined' && localStorage.getItem('is_zebra_counting') === 'true';
+    });
+
+    useEffect(() => {
+        const handleStateChange = () => {
+            setIsHidden(localStorage.getItem('is_zebra_counting') === 'true');
+        };
+        window.addEventListener('zebraCountingStateChange', handleStateChange);
+        return () => window.removeEventListener('zebraCountingStateChange', handleStateChange);
+    }, []);
 
     // Filtrar items según el rol del usuario
     const filteredNavItems = useMemo(() => {
@@ -29,6 +34,8 @@ export function BottomNavBar() {
             return user?.role ? (item.roles as readonly string[]).includes(user.role) : false;
         });
     }, [user?.role]);
+
+    if (isHidden) return null;
     return (
         <nav 
             style={{ paddingBottom: 'var(--safe-bottom)' }}

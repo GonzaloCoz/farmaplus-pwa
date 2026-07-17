@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -25,55 +25,8 @@ import {
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import {
-    ScanBarcode as Barcode,
-    Search,
-    Trash2,
-    Save,
-    Upload,
-    ArrowLeft,
-    Layers,
-    Plus,
-    History,
-    Play,
-    Calendar,
-    ArrowRight,
-    CheckCircle2 as CheckCircle,
-    Wifi,
-    XCircle,
-    FileText,
-    RotateCcw,
-    ZapOff,
-    Laptop,
-    Monitor,
-    Smartphone,
-    AlertTriangle as Danger,
-    Info,
-    Infinity,
-    Keyboard,
-    Download,
-    ChevronDown,
-    Zap,
-    Package,
-    MapPin,
-    X,
-    Pencil,
-    FileSpreadsheet,
-    AlertCircle,
-    AlertTriangle,
-    LayoutGrid,
-    Hash,
-    Printer,
-    Check,
-    Maximize,
-    Settings,
-    Minimize,
-    Filter,
-    ArrowUp,
-    ArrowDown,
-    LogOut,
-    RefreshCcw
-} from 'lucide-react';
+import { Elevated } from '@/lib/elevated';
+import { Scan as Barcode, SearchLg as Search, Trash01 as Trash2, Save01 as Save, Upload01 as Upload, ArrowLeft, LayersTwo01 as Layers, Plus, ClockRewind as History, Play, Calendar, ArrowRight, CheckCircle, Wifi, XCircle, File01 as FileText, RefreshCcw01 as RotateCcw, ShieldOff as ZapOff, Laptop01 as Laptop, Monitor01 as Monitor, Phone as Smartphone, AlertTriangle as Danger, InfoCircle as Info, Activity as Infinity, Keyboard01 as Keyboard, Download01 as Download, ChevronDown, Zap, Package, MarkerPin01 as MapPin, XClose as X, Pencil01 as Pencil, FileCheck01 as FileSpreadsheet, AlertCircle, AlertTriangle, LayoutGrid01 as LayoutGrid, Hash01 as Hash, Printer, Check, Maximize01 as Maximize, Settings01 as Settings, Minimize01 as Minimize, FilterLines as Filter, ArrowUp, ArrowDown, LogOut01 as LogOut, RefreshCcw01 as RefreshCcw } from '@untitledui/icons';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { SmartProductSearch } from '@/components/SmartProductSearch';
@@ -91,16 +44,15 @@ import {
     DrawerTrigger,
 } from '@/components/ui/drawer';
 import {
-    Menu,
-    MenuCheckboxItem,
-    MenuGroup,
-    MenuGroupLabel,
+    DropdownMenu,
+    DropdownTrigger,
+    DropdownContent,
+    DropdownLabel,
+    DropdownSeparator,
     MenuItem,
-    MenuPopup,
-    MenuSeparator,
-    MenuTrigger,
-} from "@/components/ui/menu";
+} from "@/components/ui/dropdown";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { Table, type TableColumn } from "@/components/motion/table";
 import { MasterCatalogItem, getSessionByPin, PreCountSession, getDeviceId, getProductByEAN } from '@/services/preCountDB';
 import { Product } from '@/services/preCountDB';
 import { notify } from '@/lib/notifications';
@@ -344,74 +296,74 @@ function SettingsMenu({
     }
 
     return (
-        <Menu>
-            <MenuTrigger render={trigger} />
-            <MenuPopup align="end" className="w-56">
-                <MenuGroup>
-                    <MenuGroupLabel>Modo de lectura</MenuGroupLabel>
-                    <MenuCheckboxItem
-                        checked={highSpeedMode && !isManualMode}
-                        onCheckedChange={() => { setHighSpeedMode(true); setIsManualMode(false); }}
-                    >
-                        Alta velocidad (+1)
-                    </MenuCheckboxItem>
-                    <MenuCheckboxItem
-                        checked={!highSpeedMode && !isManualMode}
-                        onCheckedChange={() => { setHighSpeedMode(false); setIsManualMode(false); }}
-                    >
-                        Ingreso de cantidad
-                    </MenuCheckboxItem>
-                    <MenuCheckboxItem
-                        checked={isManualMode}
-                        onCheckedChange={() => setIsManualMode(!isManualMode)}
-                    >
-                        Teclado manual
-                    </MenuCheckboxItem>
-                </MenuGroup>
-                <MenuSeparator />
-                <MenuGroup>
-                    <MenuGroupLabel>Interfaz</MenuGroupLabel>
-                    <MenuCheckboxItem
-                        checked={isZenMode}
-                        onCheckedChange={() => setIsZenMode(!isZenMode)}
-                    >
-                        Modo zen (Expandido)
-                    </MenuCheckboxItem>
-                    <MenuCheckboxItem
-                        checked={theme === 'dark'}
-                        onCheckedChange={toggleTheme}
-                    >
-                        Modo oscuro
-                    </MenuCheckboxItem>
-                </MenuGroup>
-                <MenuSeparator />
-                <MenuGroup>
-                    <MenuGroupLabel>Acciones</MenuGroupLabel>
-                    <MenuItem onClick={handleExportTXT}>
-                        <Download className="size-4 mr-2" />
-                        Exportar TXT
-                    </MenuItem>
-                </MenuGroup>
-                <MenuSeparator />
-                <MenuGroup>
-                    <MenuGroupLabel>Peligro</MenuGroupLabel>
-                    <MenuItem variant="destructive" onClick={handleFinishClick}>
-                        <CheckCircle className="size-4 mr-2" />
-                        Finalizar sesión
-                    </MenuItem>
-                    {Capacitor.isNativePlatform() && (
-                        <MenuItem variant="destructive" onClick={async () => {
+        <DropdownMenu>
+            <DropdownTrigger render={trigger} />
+            <DropdownContent align="end" className="w-56">
+                <DropdownLabel>Modo de lectura</DropdownLabel>
+                <MenuItem
+                    index={0}
+                    label="Alta velocidad (+1)"
+                    checked={highSpeedMode && !isManualMode}
+                    onSelect={() => { setHighSpeedMode(true); setIsManualMode(false); }}
+                />
+                <MenuItem
+                    index={1}
+                    label="Ingreso de cantidad"
+                    checked={!highSpeedMode && !isManualMode}
+                    onSelect={() => { setHighSpeedMode(false); setIsManualMode(false); }}
+                />
+                <MenuItem
+                    index={2}
+                    label="Teclado manual"
+                    checked={isManualMode}
+                    onSelect={() => setIsManualMode(!isManualMode)}
+                />
+                <DropdownSeparator />
+                <DropdownLabel>Interfaz</DropdownLabel>
+                <MenuItem
+                    index={3}
+                    label="Modo zen (Expandido)"
+                    checked={isZenMode}
+                    onSelect={() => setIsZenMode(!isZenMode)}
+                />
+                <MenuItem
+                    index={4}
+                    label="Modo oscuro"
+                    checked={theme === 'dark'}
+                    onSelect={toggleTheme}
+                />
+                <DropdownSeparator />
+                <DropdownLabel>Acciones</DropdownLabel>
+                <MenuItem
+                    index={5}
+                    icon={Download}
+                    label="Exportar TXT"
+                    onSelect={handleExportTXT}
+                />
+                <DropdownSeparator />
+                <DropdownLabel>Peligro</DropdownLabel>
+                <MenuItem
+                    index={6}
+                    icon={CheckCircle}
+                    label="Finalizar sesión"
+                    onSelect={handleFinishClick}
+                    className="text-destructive focus:text-destructive"
+                />
+                {Capacitor.isNativePlatform() && (
+                    <MenuItem
+                        index={7}
+                        icon={LogOut}
+                        label="Cerrar sesión"
+                        onSelect={async () => {
                             if (confirm("¿Estás seguro de que deseas cerrar sesión?")) {
                                 await logout();
                             }
-                        }}>
-                            <LogOut className="size-4 mr-2" />
-                            Cerrar sesión
-                        </MenuItem>
-                    )}
-                </MenuGroup>
-            </MenuPopup>
-        </Menu>
+                        }}
+                        className="text-destructive focus:text-destructive"
+                    />
+                )}
+            </DropdownContent>
+        </DropdownMenu>
     );
 }
 
@@ -494,6 +446,209 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTab, TabsPanel } from "@/components/ui/tabs";
 import { toast } from "sonner";
 
+interface EditableCatalogPreviewProps {
+    catalog: MasterCatalogItem[];
+    onChange: (updatedCatalog: MasterCatalogItem[]) => void;
+    profile: 'sucursal' | 'sap';
+}
+
+export function EditableCatalogPreview({ catalog, onChange, profile }: EditableCatalogPreviewProps) {
+    const [editable, setEditable] = useState(false);
+
+    const [keys, setKeys] = useState<string[]>([]);
+    const [labels, setLabels] = useState<Record<string, string>>({});
+    const [nextColId, setNextColId] = useState(1);
+
+    useEffect(() => {
+        if (catalog && catalog.length > 0) {
+            const standardKeys = profile === 'sap' 
+                ? ['id_producto', 'ean', 'name', 'systemStock']
+                : ['id_producto', 'ean', 'name', 'systemStock', 'cost', 'laboratory', 'rubro'];
+            
+            const standardLabels = profile === 'sap'
+                ? {
+                    id_producto: 'MATERIAL',
+                    ean: 'EAN',
+                    name: 'DESCRIPCION',
+                    systemStock: 'STOCK SAP'
+                  }
+                : {
+                    id_producto: 'MATERIAL',
+                    ean: 'EAN',
+                    name: 'DESCRIPCION',
+                    systemStock: 'STOCK SISTEMA',
+                    cost: 'COSTO',
+                    laboratory: 'LABORATORIO',
+                    rubro: 'RUBRO'
+                  };
+
+            setKeys(standardKeys);
+            setLabels(standardLabels);
+        }
+    }, [profile, catalog === null]);
+
+    const [rows, setRows] = useState<any[]>([]);
+
+    useEffect(() => {
+        if (catalog) {
+            setRows(catalog.map((item, idx) => ({
+                id: `r-${idx}-${item.id_producto || ''}-${item.ean || ''}`,
+                ...item
+            })));
+        }
+    }, [catalog]);
+
+    const onCellEdit = useCallback((rowId: string, key: string, value: string) => {
+        setRows((prev) => {
+            const updated = prev.map((row) => {
+                if (row.id === rowId) {
+                    const typedValue = (key === 'systemStock' || key === 'cost' || key === 'salePrice') ? Number(value) || 0 : value;
+                    return { ...row, [key]: typedValue };
+                }
+                return row;
+            });
+            const nextCatalog = updated.map(({ id, ...item }) => item);
+            onChange(nextCatalog);
+            return updated;
+        });
+    }, [onChange]);
+
+    const onInsertRow = useCallback((index: number, position: 'before' | 'after') => {
+        const at = position === 'after' ? index + 1 : index;
+        setRows((prev) => {
+            const next = [...prev];
+            const newRow = {
+                id: `r-new-${Date.now()}`,
+                id_producto: 'NUEVO',
+                ean: '',
+                name: 'Nuevo Producto',
+                systemStock: 0,
+                cost: 0,
+                salePrice: 0,
+                laboratory: profile === 'sap' ? 'SAP' : 'Varios',
+                rubro: profile === 'sap' ? 'Depósito' : 'Varios',
+                eans: [],
+                isPrimaryEan: true
+            };
+            next.splice(at, 0, newRow);
+            const nextCatalog = next.map(({ id, ...item }) => item);
+            onChange(nextCatalog);
+            return next;
+        });
+    }, [onChange, profile]);
+
+    const onDeleteRow = useCallback((rowId: string) => {
+        setRows((prev) => {
+            const next = prev.filter((row) => row.id !== rowId);
+            const nextCatalog = next.map(({ id, ...item }) => item);
+            onChange(nextCatalog);
+            return next;
+        });
+    }, [onChange]);
+
+    const onInsertColumn = useCallback((index: number, position: 'before' | 'after') => {
+        const key = `custom_field_${nextColId}`;
+        const at = position === 'after' ? index + 1 : index;
+        setLabels((prev) => ({ ...prev, [key]: `Columna ${nextColId}` }));
+        setKeys((prev) => {
+            const next = [...prev];
+            next.splice(at, 0, key);
+            return next;
+        });
+        setRows((prev) => {
+            const next = prev.map((row) => ({ ...row, [key]: '' }));
+            const nextCatalog = next.map(({ id, ...item }) => item);
+            onChange(nextCatalog);
+            return next;
+        });
+        setNextColId((n) => n + 1);
+    }, [nextColId, onChange]);
+
+    const onColumnRename = useCallback((key: string, value: string) => {
+        setLabels((prev) => ({ ...prev, [key]: value }));
+    }, []);
+
+    const onDeleteColumn = useCallback((key: string) => {
+        setKeys((prev) => prev.filter((k) => k !== key));
+        setRows((prev) => {
+            const next = prev.map((row) => {
+                const updated = { ...row };
+                delete updated[key];
+                return updated;
+            });
+            const nextCatalog = next.map(({ id, ...item }) => item);
+            onChange(nextCatalog);
+            return next;
+        });
+    }, [onChange]);
+
+    const columns = useMemo<TableColumn<any>[]>(
+        () =>
+            keys.map((key, i) => ({
+                key,
+                header: labels[key] ?? key,
+                editable,
+                width: i === 0 ? "140px" : i === 2 ? "260px" : "120px",
+            })),
+        [keys, labels, editable]
+    );
+
+    const bodyHeight = Math.min(Math.max(rows.length, 1), 14) * 48;
+
+    return (
+        <div className="flex-1 flex flex-col min-h-0 w-full h-full bg-transparent overflow-hidden">
+            <div className="px-6 py-4 border-b border-border/10 flex items-center justify-between bg-muted/5">
+                <div className="space-y-1">
+                    <h3 className="text-sm font-bold tracking-tight text-foreground flex items-center gap-2">
+                        <FileSpreadsheet className="size-4 text-primary" />
+                        Vista Previa y Edición de Planilla
+                    </h3>
+                    <p className="text-[11px] text-muted-foreground">
+                        {editable
+                            ? "Hacé clic en una celda para editar. Usá las manijas de fila y columna para agregar/eliminar."
+                            : "Solo lectura."}
+                    </p>
+                </div>
+                <div className="flex items-center gap-2.5 px-3 py-1 bg-muted/20 rounded-full border border-border/10">
+                    <span className="text-xs font-bold text-foreground select-none">Editar</span>
+                    <Switch
+                        checked={editable}
+                        onCheckedChange={setEditable}
+                        className="scale-90"
+                    />
+                </div>
+            </div>
+            
+            <div className="flex-1 overflow-auto p-4 custom-scrollbar flex flex-col">
+                <Elevated offset={1} className="border border-border/40 rounded-xl overflow-hidden">
+                    <Table
+                        data={rows}
+                        columns={columns}
+                        getRowId={(row) => row.id}
+                        rowHeight={48}
+                        height={bodyHeight}
+                        onCellEdit={editable ? onCellEdit : undefined}
+                        onColumnRename={editable ? onColumnRename : undefined}
+                        onInsertRow={editable ? onInsertRow : undefined}
+                        onDeleteRow={editable ? onDeleteRow : undefined}
+                        onInsertColumn={editable ? onInsertColumn : undefined}
+                        onDeleteColumn={editable ? onDeleteColumn : undefined}
+                        emptyState={
+                            <button
+                                type="button"
+                                onClick={() => onInsertRow(0, "before")}
+                                className="rounded-full border border-border px-3 py-1.5 font-bold text-foreground text-xs transition-colors hover:bg-muted"
+                            >
+                                Insertar primer fila
+                            </button>
+                        }
+                    />
+                </Elevated>
+            </div>
+        </div>
+    );
+}
+
 type Step = 'config' | 'admin_config' | 'admin_summary' | 'admin_sync' | 'qr_generator' | 'counting';
 
 export default function PreCount() {
@@ -521,6 +676,7 @@ export default function PreCount() {
     const [finishPassword, setFinishPassword] = useState('');
     const [finishPasswordError, setFinishPasswordError] = useState('');
     const [inventoryName, setInventoryName] = useState('');
+    const [inventoryProfile, setInventoryProfile] = useState<'sucursal' | 'sap'>('sucursal');
     const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
     const [parsedStock, setParsedStock] = useState<{ total: number; filename: string; size: number } | null>(null);
     const [masterCatalog, setMasterCatalog] = useState<MasterCatalogItem[] | null>(null);
@@ -748,6 +904,18 @@ export default function PreCount() {
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, [step]);
 
+    // Zebra counting layout management (hides top and bottom bars)
+    useEffect(() => {
+        const isZebraCounting = accessMode === 'zebra' && step === 'counting';
+        localStorage.setItem('is_zebra_counting', isZebraCounting ? 'true' : 'false');
+        window.dispatchEvent(new Event('zebraCountingStateChange'));
+        
+        return () => {
+            localStorage.setItem('is_zebra_counting', 'false');
+            window.dispatchEvent(new Event('zebraCountingStateChange'));
+        };
+    }, [accessMode, step]);
+
 
     const [activeLocation, setActiveLocation] = useState<string | null>(null);
     const [showLocationSummary, setShowLocationSummary] = useState(false);
@@ -949,7 +1117,7 @@ export default function PreCount() {
                 worker.terminate();
             };
 
-            worker.postMessage({ rows: data.rows });
+            worker.postMessage({ rows: data.rows, profile: inventoryProfile });
 
         } catch (err) {
             console.error("Error en handleElectronImport:", err);
@@ -1017,7 +1185,7 @@ export default function PreCount() {
                         worker.terminate();
                     };
 
-                    worker.postMessage({ fileData: fileContent });
+                    worker.postMessage({ fileData: fileContent, profile: inventoryProfile });
                 };
                 reader.readAsBinaryString(file);
             }
@@ -1053,7 +1221,7 @@ export default function PreCount() {
             return;
         }
 
-        await startSession(sectorName.trim(), masterCatalog || undefined, syncPin || undefined);
+        await startSession(sectorName.trim(), masterCatalog || undefined, syncPin || undefined, inventoryProfile);
         setStep('counting');
     };
 
@@ -1562,6 +1730,7 @@ export default function PreCount() {
             });
 
             // 2. Cross with Master Catalog
+            const isSapProfile = session?.profile === 'sap';
             const results: any[] = [];
             const processedEans = new Set<string>();
 
@@ -1582,24 +1751,36 @@ export default function PreCount() {
                 const allEans = master.eans && master.eans.length > 0 ? master.eans : [master.ean];
                 const counted = allEans.reduce((sum, ean) => sum + (groupedItems[ean] || 0), 0);
                 allEans.forEach(ean => processedEans.add(ean));
-                const diffQty = counted - master.systemStock;
-                const diffValue = diffQty * master.cost;
 
                 totalPhysical += counted;
                 totalSystem += master.systemStock;
-                totalDiffVal += diffValue;
 
-                results.push({
-                    'Código (EAN)': master.ean,
-                    'Producto': master.name,
-                    'Cant. Física (Colector)': counted,
-                    'Cant. Sistema (Excel)': master.systemStock,
-                    'Diferencia (U)': diffQty,
-                    'Costo Unitario': master.cost,
-                    'Diferencia Val ($)': diffValue,
-                    'Estado': diffQty > 0 ? 'Sobrante' : diffQty < 0 ? 'Faltante' : 'OK',
-                    'Ubicación': Array.from(itemLocations[master.ean] || []).join(', ')
-                });
+                if (isSapProfile) {
+                    // ponytail: keep exact SAP columns layout
+                    results.push({
+                        'MATERIAL': master.id_producto,
+                        'EAN': master.ean,
+                        'DESCRIPCION': master.name,
+                        'STOCK SAP': master.systemStock,
+                        'STOCK FISICO': counted
+                    });
+                } else {
+                    const diffQty = counted - master.systemStock;
+                    const diffValue = diffQty * master.cost;
+                    totalDiffVal += diffValue;
+
+                    results.push({
+                        'Código (EAN)': master.ean,
+                        'Producto': master.name,
+                        'Cant. Física (Colector)': counted,
+                        'Cant. Sistema (Excel)': master.systemStock,
+                        'Diferencia (U)': diffQty,
+                        'Costo Unitario': master.cost,
+                        'Diferencia Val ($)': diffValue,
+                        'Estado': diffQty > 0 ? 'Sobrante' : diffQty < 0 ? 'Faltante' : 'OK',
+                        'Ubicación': Array.from(itemLocations[master.ean] || []).join(', ')
+                    });
+                }
             });
 
             // 3. Add products scanned that are NOT in master catalog (Nuevos)
@@ -1610,36 +1791,47 @@ export default function PreCount() {
                     const counted = groupedItems[ean];
 
                     totalPhysical += counted;
-                    // No system stock or cost known for new items
 
-                    results.push({
-                        'Código (EAN)': ean,
-                        'Producto': name,
-                        'Cant. Física (Colector)': counted,
-                        'Cant. Sistema (Excel)': 0,
-                        'Diferencia (U)': counted,
-                        'Costo Unitario': 0,
-                        'Diferencia Val ($)': 0,
-                        'Estado': 'Sobrante (NUEVO)',
-                        'Ubicación': Array.from(itemLocations[ean] || []).join(', ')
-                    });
+                    if (isSapProfile) {
+                        results.push({
+                            'MATERIAL': foundItem?.id_producto || 'NUEVO',
+                            'EAN': ean,
+                            'DESCRIPCION': name,
+                            'STOCK SAP': 0,
+                            'STOCK FISICO': counted
+                        });
+                    } else {
+                        results.push({
+                            'Código (EAN)': ean,
+                            'Producto': name,
+                            'Cant. Física (Colector)': counted,
+                            'Cant. Sistema (Excel)': 0,
+                            'Diferencia (U)': counted,
+                            'Costo Unitario': 0,
+                            'Diferencia Val ($)': 0,
+                            'Estado': 'Sobrante (NUEVO)',
+                            'Ubicación': Array.from(itemLocations[ean] || []).join(', ')
+                        });
+                    }
                 }
             });
 
-            // Sort results so Faltantes are at the top, followed by Sobrantes, then OK
-            results.sort((a, b) => a['Diferencia Val ($)'] - b['Diferencia Val ($)']);
+            if (!isSapProfile) {
+                // Sort results so Faltantes are at the top, followed by Sobrantes, then OK
+                results.sort((a, b) => a['Diferencia Val ($)'] - b['Diferencia Val ($)']);
 
-            // Append a summary row
-            results.push({
-                'Código (EAN)': 'TOTALES',
-                'Producto': '',
-                'Cant. Física (Colector)': totalPhysical,
-                'Cant. Sistema (Excel)': totalSystem,
-                'Diferencia (U)': totalPhysical - totalSystem,
-                'Costo Unitario': '',
-                'Diferencia Val ($)': totalDiffVal,
-                'Estado': ''
-            });
+                // Append a summary row
+                results.push({
+                    'Código (EAN)': 'TOTALES',
+                    'Producto': '',
+                    'Cant. Física (Colector)': totalPhysical,
+                    'Cant. Sistema (Excel)': totalSystem,
+                    'Diferencia (U)': totalPhysical - totalSystem,
+                    'Costo Unitario': '',
+                    'Diferencia Val ($)': totalDiffVal,
+                    'Estado': ''
+                });
+            }
 
             // 4. Create and download Excel
             const ws = XLSX.utils.json_to_sheet(results);
@@ -2043,6 +2235,28 @@ export default function PreCount() {
                 </FrameHeader>
                 <FramePanel className="p-6 space-y-6">
                     <div className="space-y-4">
+                        <div className="flex items-center justify-between pb-3 border-b border-border/10">
+                            <span className="text-[13px] font-bold text-foreground">Perfil de Carga</span>
+                            <div className="flex items-center gap-3">
+                                <span className={cn("text-xs font-semibold select-none", inventoryProfile === 'sucursal' ? "text-primary font-bold" : "text-muted-foreground")}>
+                                    Sucursal
+                                </span>
+                                <Switch
+                                    checked={inventoryProfile === 'sap'}
+                                    onCheckedChange={(checked) => {
+                                        setInventoryProfile(checked ? 'sap' : 'sucursal');
+                                        setUploadedFiles([]);
+                                        setMasterCatalog(null);
+                                        setParsedStock(null);
+                                        setLoadStatus(null);
+                                    }}
+                                />
+                                <span className={cn("text-xs font-semibold select-none", inventoryProfile === 'sap' ? "text-primary font-bold" : "text-muted-foreground")}>
+                                    SAP
+                                </span>
+                            </div>
+                        </div>
+
                         <Field className="w-full">
                             <FieldLabel className="text-[13px] font-bold">
                                 Nombre del Inventario <span className="text-destructive">*</span>
@@ -2596,9 +2810,22 @@ export default function PreCount() {
                                 </Card>
                             </div>
 
-                            {/* Right Column: Empty State or Connected Devices during config */}
-                            <div className="hidden lg:flex lg:col-span-8 lg:col-start-5 flex-col min-h-0 bg-card border border-border/40 rounded-xl overflow-hidden shadow-sm">
-                                {(step === 'admin_sync' || step === 'qr_generator') ? (
+                            {/* Right Column: Empty State, Table Preview or Connected Devices during config */}
+                            <Elevated
+                                offset={1}
+                                className="hidden lg:flex lg:col-span-8 lg:col-start-5 flex-col min-h-0 border border-border/40 rounded-xl overflow-hidden"
+                            >
+                                {masterCatalog && masterCatalog.length > 0 ? (
+                                    <EditableCatalogPreview
+                                        catalog={masterCatalog}
+                                        onChange={(updatedCatalog) => {
+                                            setMasterCatalog(updatedCatalog);
+                                            const primaryCount = updatedCatalog.filter((item: MasterCatalogItem) => item.isPrimaryEan).length;
+                                            setParsedStock((prev) => prev ? { ...prev, total: primaryCount } : null);
+                                        }}
+                                        profile={inventoryProfile}
+                                    />
+                                ) : (step === 'admin_sync' || step === 'qr_generator') ? (
                                     <ConnectedDevicesList devices={connectedDevices} />
                                 ) : (
                                     <div className="h-full flex flex-col items-center justify-center gap-6 text-center px-12 animate-in fade-in duration-700">
@@ -2613,7 +2840,7 @@ export default function PreCount() {
                                         </div>
                                     </div>
                                 )}
-                            </div>
+                            </Elevated>
                         </motion.div>
                     ) : (
                         <motion.div
@@ -2896,10 +3123,6 @@ export default function PreCount() {
                                                                 <Laptop className="size-4 text-primary" />
                                                                 <CardFrameTitle>Conexión de Dispositivos</CardFrameTitle>
                                                             </div>
-                                                            <CardFrameAction className="col-start-auto flex items-center gap-2">
-                                                                <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20 font-bold text-[10px]">Online</Badge>
-                                                                <Badge variant="outline" className="bg-orange-500/5 text-orange-600 border-orange-500/20 font-bold text-[10px]">Admin</Badge>
-                                                            </CardFrameAction>
                                                         </CardFrameHeader>
                                                         <Card>
                                                             <CardPanel className="flex flex-col items-center justify-center space-y-6 text-center py-10">
@@ -2925,24 +3148,6 @@ export default function PreCount() {
                                                                 <p className="max-w-[280px] text-[11px] leading-relaxed text-muted-foreground/50">
                                                                     Esta pantalla se actualizará automáticamente cuando se detecte una conexión entrante desde los dispositivos móviles.
                                                                 </p>
-                                                            </CardPanel>
-                                                        </Card>
-                                                    </CardFrame>
-                                                    <CardFrame className="w-full mt-4">
-                                                        <CardFrameHeader className="flex-row items-center justify-between py-3">
-                                                            <div className="flex items-center gap-2">
-                                                                <Wifi className="size-4 text-primary" />
-                                                                <CardFrameTitle>Terminales activas en la sesión</CardFrameTitle>
-                                                            </div>
-                                                            <CardFrameAction className="col-start-auto flex items-center gap-2">
-                                                                <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 font-bold text-[10px]">
-                                                                    {connectedDevices.length} dispositivos
-                                                                </Badge>
-                                                            </CardFrameAction>
-                                                        </CardFrameHeader>
-                                                        <Card>
-                                                            <CardPanel className="p-0 max-h-[300px] overflow-auto">
-                                                                <ConnectedDevicesList devices={connectedDevices} />
                                                             </CardPanel>
                                                         </Card>
                                                     </CardFrame>
@@ -3391,34 +3596,6 @@ export default function PreCount() {
                                                                             )}
                                                                         </AnimatePresence>
                                                                     </div>
-
-                                                                    {/* Spacer to push action buttons to bottom - Oculto en móvil */}
-                                                                    <div className="hidden lg:block flex-1" />
-
-                                                                    {/* Action Buttons Footer - Oculto en móvil */}
-                                                                    {items.length > 0 && (
-                                                                        <div className="p-3 border-t border-border/40 bg-card/50">
-                                                                            <div className="flex items-center gap-2">
-                                                                                <Button
-                                                                                    variant="outline"
-                                                                                    size="sm"
-                                                                                    className="flex-1 h-10 text-xs font-bold gap-2 rounded-xl border-border/40 bg-background hover:bg-muted/50"
-                                                                                    onClick={handleExportTXT}
-                                                                                >
-                                                                                    <Upload className="w-4 h-4" />
-                                                                                    Exportar TXT
-                                                                                </Button>
-                                                                                <Button
-                                                                                    size="sm"
-                                                                                    className="flex-[1.5] h-10 text-sm font-bold gap-2 rounded-xl bg-black dark:bg-white text-white dark:text-black hover:bg-black/90 dark:hover:bg-white/90 border border-border/20 shadow-none"
-                                                                                    onClick={handleFinishClick}
-                                                                                >
-                                                                                    <CheckCircle className="w-4 h-4" />
-                                                                                    Finalizar mi Sesión
-                                                                                </Button>
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
                                                                 </Card>
                                                             </div>
 
@@ -3492,7 +3669,7 @@ export default function PreCount() {
                                 )}
                             </Field>
                         </div>
-                        <DialogFooter variant="bare">
+                        <DialogFooter>
                             <DialogClose render={<Button type="button" variant="ghost" />}>
                                 Cancelar
                             </DialogClose>

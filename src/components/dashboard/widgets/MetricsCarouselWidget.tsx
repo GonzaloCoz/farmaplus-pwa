@@ -1,5 +1,5 @@
 import { MetricCarousel } from '@/components/MetricCarousel';
-import { Pulse as Activity, AltArrowDown as ArrowDown, AltArrowUp as ArrowUp, ArrowRightUp as ArrowUpRight } from '@solar-icons/react';
+import { Activity, ChevronDown as ArrowDown, ChevronUp as ArrowUp, ArrowUpRight } from '@untitledui/icons';
 
 interface MetricsCarouselWidgetProps {
     metrics: {

@@ -5,18 +5,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { trainingService, TrainingPost, TrainingComment } from "@/services/trainingService";
 import { useUser } from "@/contexts/UserContext";
 import { useWindowManager } from "@/contexts/WindowManagerContext";
-import { 
-    AltArrowLeft as ChevronLeft, 
-    Calendar, 
-    UserCircle, 
-    Heart, 
-    ChatDots,
-    Tag,
-    Share,
-    Bookmark,
-    Pen,
-    TrashBinTrash
-} from "@solar-icons/react";
+import { ChevronLeft, Calendar, User01 as UserCircle, Heart, MessageSquare01 as ChatDots, Tag01 as Tag, Share01 as Share, Bookmark, Edit01 as Pen, Trash01 as TrashBinTrash } from '@untitledui/icons';
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";

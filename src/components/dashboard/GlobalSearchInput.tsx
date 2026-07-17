@@ -1,4 +1,4 @@
-import { Search, Mic, Command } from "lucide-react";
+import { SearchLg as Search, Microphone01 as Mic, Command } from '@untitledui/icons';
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 import {

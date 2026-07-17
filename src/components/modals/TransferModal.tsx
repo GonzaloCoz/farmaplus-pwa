@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { BatchInfo } from '@/services/expirationDB';
-import { Calendar, Widget as Package, Hashtag as Hash, Buildings as Building2, Delivery as Truck } from '@solar-icons/react';
+import { Calendar, LayoutGrid01 as Package, Hash01 as Hash, Building01 as Building2, Truck01 as Truck } from '@untitledui/icons';
 
 interface TransferModalProps {
     isOpen: boolean;

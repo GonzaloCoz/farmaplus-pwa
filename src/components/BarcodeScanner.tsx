@@ -3,9 +3,9 @@ import { cn } from '@/lib/utils';
 import { Html5Qrcode } from 'html5-qrcode';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Camera, CloseCircle as X, CheckCircle, DangerCircle as AlertCircle, Layers, TrashBinMinimalistic as Trash2 } from "@solar-icons/react";
+import { Camera01 as Camera, XClose as X, CheckCircle, AlertCircle, LayersTwo01 as Layers, Trash01 as Trash2 } from '@untitledui/icons';
 import { motion, AnimatePresence } from 'framer-motion';
-import { toast } from 'sonner';
+import { notify } from '@/lib/notifications';
 import { useHaptic } from '@/hooks/useHaptic';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -100,7 +100,7 @@ export function BarcodeScanner({ open, onOpenChange, onScan, onBatchScan, varian
         } catch (error) {
             console.error('Error starting scanner:', error);
             setError('Error al iniciar la cámara.');
-            toast.error('Error al iniciar la cámara');
+            notify.error('Error al iniciar la cámara');
         }
     };
 
@@ -231,7 +231,7 @@ export function BarcodeScanner({ open, onOpenChange, onScan, onBatchScan, varian
                     <div className="bg-background/90 p-4 rounded-xl shadow-lg border border-destructive/20">
                         <AlertCircle className="w-8 h-8 mx-auto mb-2 text-destructive" />
                         <p className="text-sm font-medium text-destructive">{error}</p>
-                        <Button onClick={() => initScanner()} variant="outline" size="sm" className="mt-4 w-full">
+                        <Button onClick={() => initScanner()} variant="tertiary" size="sm" className="mt-4 w-full">
                             Reintentar
                         </Button>
                     </div>
@@ -271,7 +271,8 @@ export function BarcodeScanner({ open, onOpenChange, onScan, onBatchScan, varian
                         <Switch
                             id="batch-mode"
                             checked={batchMode}
-                            onCheckedChange={setBatchMode}
+                            onToggle={() => setBatchMode(!batchMode)}
+                            label=""
                         />
                     </div>
 
@@ -310,7 +311,7 @@ export function BarcodeScanner({ open, onOpenChange, onScan, onBatchScan, varian
                     {error && (
                         <div className="p-4 bg-destructive/10 text-destructive rounded-lg text-sm">
                             {error}
-                            <Button onClick={() => initScanner()} variant="outline" size="sm" className="mt-2 w-full">
+                            <Button onClick={() => initScanner()} variant="tertiary" size="sm" className="mt-2 w-full">
                                 Reintentar
                             </Button>
                         </div>
@@ -318,7 +319,7 @@ export function BarcodeScanner({ open, onOpenChange, onScan, onBatchScan, varian
                 </div>
 
                 <DialogFooter className="p-4 pt-2 border-t bg-muted/20 flex-row gap-2 sm:justify-end">
-                    <Button variant="outline" onClick={handleClose} className="flex-1 sm:flex-none">
+                    <Button variant="tertiary" onClick={handleClose} className="flex-1 sm:flex-none">
                         Cancelar
                     </Button>
                     {batchMode && (

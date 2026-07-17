@@ -384,7 +384,7 @@ import { WindowManagerProvider } from "./contexts/WindowManagerContext";
 import { useAndroidBackButton } from "./hooks/useAndroidBackButton";
 
 // Toggle to temporarily pause/suspend the entire application UI
-const MAINTENANCE_MODE = false;
+const MAINTENANCE_MODE = true;
 
 // Playable Chrome T-Rex Dino Game
 const ChromeDinoGame = () => {
@@ -713,31 +713,11 @@ const App = () => {
 
   if (MAINTENANCE_MODE) {
     return (
-      <div className="min-h-screen bg-[#f7f7f7] dark:bg-[#202124] text-[#535353] dark:text-[#e8eaed] font-sans flex flex-col justify-center items-center p-6 select-none md:p-12 transition-colors duration-200">
-        <div className="max-w-[600px] w-full text-left flex flex-col">
-          {/* Dino Game inside canvas */}
-          <div className="mb-12 w-full">
-            <ChromeDinoGame />
-          </div>
-          
-          <h1 className="text-xl md:text-2xl font-medium mb-5 font-sans tracking-wide">
-            Servidor en mantenimiento
-          </h1>
-          
-          <div className="text-sm opacity-85 leading-relaxed font-sans mb-8">
-            <p className="mb-3">Actualmente estamos trabajando en la reparación del servidor y el restablecimiento de la conexión con la página.</p>
-            <p className="mb-3">Mientras tanto, puedes:</p>
-            <ul className="list-disc pl-5 space-y-2">
-              <li>Esperar unos minutos. Te avisaremos en cuanto el sistema se encuentre online nuevamente.</li>
-              <li>Jugar un rato con el Dino T-Rex para hacer más corta la espera.</li>
-            </ul>
-          </div>
-          
-          <div className="text-xs opacity-50 font-mono tracking-wider">
-            ERR_PLATFORM_TEMPORARILY_PAUSED_FOR_MAINTENANCE
-          </div>
-        </div>
-      </div>
+      <iframe 
+        src="/camlboy/index.html" 
+        title="Mantenimiento - Farmaplus" 
+        className="fixed inset-0 w-full h-full border-none z-50 bg-[#0b0f19]"
+      />
     );
   }
 

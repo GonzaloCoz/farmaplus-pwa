@@ -1,13 +1,13 @@
 import { useState } from "react";
+import { useUser } from "@/contexts/UserContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BRANCH_NAMES } from "@/config/users";
 import { calendarService, CalendarEvent } from "@/services/calendarService";
 import { notify } from "@/lib/notifications";
-import { Restart as Loader2 } from "@solar-icons/react";
+import { RefreshCw01 as Loader2 } from '@untitledui/icons';
 
 interface AddEventDialogProps {
     open: boolean;
@@ -16,6 +16,7 @@ interface AddEventDialogProps {
 }
 
 export function AddEventDialog({ open, onOpenChange, onEventAdded }: AddEventDialogProps) {
+    const { allBranches } = useUser();
     const [isLoading, setIsLoading] = useState(false);
     const [title, setTitle] = useState("");
     const [branch, setBranch] = useState("");
@@ -74,8 +75,8 @@ export function AddEventDialog({ open, onOpenChange, onEventAdded }: AddEventDia
                                 <SelectValue>Seleccionar sucursal</SelectValue>
                             </SelectTrigger>
                             <SelectContent className="max-h-[200px]">
-                                {BRANCH_NAMES.map((b) => (
-                                    <SelectItem key={b} value={b}>{b}</SelectItem>
+                                {allBranches.map((b, idx) => (
+                                    <SelectItem key={b} index={idx} value={b}>{b}</SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
@@ -88,9 +89,9 @@ export function AddEventDialog({ open, onOpenChange, onEventAdded }: AddEventDia
                                 <SelectValue>Seleccionar sector</SelectValue>
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="Farmacia">Farmacia</SelectItem>
-                                <SelectItem value="Perfumería">Perfumería</SelectItem>
-                                <SelectItem value="General">General</SelectItem>
+                                <SelectItem index={0} value="Farmacia">Farmacia</SelectItem>
+                                <SelectItem index={1} value="Perfumería">Perfumería</SelectItem>
+                                <SelectItem index={2} value="General">General</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -117,7 +118,7 @@ export function AddEventDialog({ open, onOpenChange, onEventAdded }: AddEventDia
                     </div>
 
                     <DialogFooter className="pt-4">
-                        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                        <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
                             Cancelar
                         </Button>
                         <Button type="submit" disabled={isLoading}>

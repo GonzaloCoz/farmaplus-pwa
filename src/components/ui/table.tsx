@@ -1,164 +1,225 @@
-import * as React from "react";
+"use client";
+
+import {
+  useRef,
+  useEffect,
+  useMemo,
+  createContext,
+  useContext,
+  forwardRef,
+  type ReactNode,
+  type HTMLAttributes,
+  type TdHTMLAttributes,
+  type ThHTMLAttributes,
+} from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { spring } from "@/lib/springs";
+import { fontWeights } from "@/lib/font-weight";
+import { useProximityHover } from "@/hooks/use-proximity-hover";
 
-interface TableProps extends React.HTMLAttributes<HTMLTableElement> {
-  variant?: "default" | "card";
+// ── Context ──────────────────────────────────────────────
+
+interface TableContextValue {
+  registerItem: (index: number, element: HTMLElement | null) => void;
+  activeIndex: number | null;
 }
 
-function TableContainer({
-  className,
-  variant,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement> & { variant?: "default" | "card" }) {
-  return (
-    <div
-      className={cn("relative w-full overflow-x-auto", className)}
-      data-slot="table-container"
-      data-variant={variant}
-      {...props}
-    />
-  );
+const TableContext = createContext<TableContextValue | null>(null);
+
+// ── Table ────────────────────────────────────────────────
+
+interface TableProps extends HTMLAttributes<HTMLTableElement> {
+  children: ReactNode;
 }
 
-const Table = React.forwardRef<HTMLTableElement, TableProps>(
-  ({ className, variant, ...props }, ref) => (
-    <TableContainer variant={variant} className={className}>
-      <table
-        ref={ref}
-        className={cn(
-          "w-full caption-bottom text-sm",
-          variant === "card"
-            ? "in-data-[variant=card]:border-separate in-data-[variant=card]:border-spacing-0 table-fixed"
-            : "border-separate border-spacing-0",
-        )}
-        data-slot="table"
-        {...props}
-      />
-    </TableContainer>
-  ),
+const Table = forwardRef<HTMLTableElement, TableProps>(
+  ({ children, className, ...props }, ref) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    const {
+      activeIndex,
+      itemRects,
+      sessionRef,
+      handlers,
+      registerItem,
+      measureItems,
+    } = useProximityHover(containerRef);
+
+    useEffect(() => {
+      measureItems();
+    }, [measureItems, children]);
+
+    const activeRect = activeIndex !== null ? itemRects[activeIndex] : null;
+
+    const contextValue = useMemo(
+      () => ({ registerItem, activeIndex }),
+      [registerItem, activeIndex]
+    );
+
+    return (
+      <TableContext.Provider value={contextValue}>
+        <div
+          ref={containerRef}
+          className="relative"
+          onMouseEnter={handlers.onMouseEnter}
+          onMouseMove={handlers.onMouseMove}
+          onMouseLeave={handlers.onMouseLeave}
+        >
+          {/* Hover background */}
+          <AnimatePresence>
+            {activeRect && (
+              <motion.div
+                key={sessionRef.current}
+                className="absolute bg-hover pointer-events-none"
+                initial={{
+                  opacity: 0,
+                  top: activeRect.top,
+                  left: activeRect.left,
+                  width: activeRect.width,
+                  height: activeRect.height,
+                }}
+                animate={{
+                  opacity: 1,
+                  top: activeRect.top,
+                  left: activeRect.left,
+                  width: activeRect.width,
+                  height: activeRect.height,
+                }}
+                exit={{ opacity: 0, transition: spring.fast.exit }}
+                transition={{
+                  ...spring.fast,
+                  opacity: { duration: 0.08 },
+                }}
+              />
+            )}
+          </AnimatePresence>
+
+          <table
+            ref={ref}
+            className={cn("w-full text-[13px] border-collapse", className)}
+            {...props}
+          >
+            {children}
+          </table>
+        </div>
+      </TableContext.Provider>
+    );
+  }
 );
+
 Table.displayName = "Table";
 
-const TableHeader = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
-  ({ className, ...props }, ref) => (
-    <thead
-      ref={ref}
-      className={cn("[&_tr]:border-b", className)}
-      data-slot="table-header"
-      {...props}
-    />
-  ),
-);
+// ── TableHeader ──────────────────────────────────────────
+
+const TableHeader = forwardRef<
+  HTMLTableSectionElement,
+  HTMLAttributes<HTMLTableSectionElement>
+>(({ className, ...props }, ref) => (
+  <thead ref={ref} className={cn("", className)} {...props} />
+));
+
 TableHeader.displayName = "TableHeader";
 
-const TableBody = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
-  ({ className, ...props }, ref) => (
-    <tbody
-      ref={ref}
-      className={cn(
-        "relative",
-        // Card variant styles — exact copy from Coss UI registry
-        "in-data-[variant=card]:rounded-xl in-data-[variant=card]:shadow-xs/5",
-        "before:pointer-events-none before:absolute before:inset-px not-in-data-[variant=card]:before:hidden before:rounded-[calc(var(--radius-xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/8%)]",
-        "[&_tr:last-child]:border-0",
-        // Card variant: border on individual cells, bg-card, rounded corners on extremes
-        "in-data-[variant=card]:*:[tr]:border-0",
-        "in-data-[variant=card]:*:[tr]:*:[td]:border-b",
-        "in-data-[variant=card]:*:[tr]:*:[td]:bg-card",
-        "in-data-[variant=card]:*:[tr]:first:*:[td]:first:rounded-ss-xl",
-        "in-data-[variant=card]:*:[tr]:*:[td]:first:border-s",
-        "in-data-[variant=card]:*:[tr]:first:*:[td]:border-t",
-        "in-data-[variant=card]:*:[tr]:last:*:[td]:last:rounded-ee-xl",
-        "in-data-[variant=card]:*:[tr]:*:[td]:last:border-e",
-        "in-data-[variant=card]:*:[tr]:first:*:[td]:last:rounded-se-xl",
-        "in-data-[variant=card]:*:[tr]:last:*:[td]:first:rounded-es-xl",
-        // Card variant hover and selection
-        "in-data-[variant=card]:*:[tr]:hover:*:[td]:bg-[color-mix(in_srgb,var(--card),var(--color-black)_2%)]",
-        "in-data-[variant=card]:*:[tr]:data-[state=selected]:*:[td]:bg-[color-mix(in_srgb,var(--card),var(--color-black)_4%)]",
-        "dark:in-data-[variant=card]:*:[tr]:data-[state=selected]:*:[td]:bg-[color-mix(in_srgb,var(--card),var(--color-white)_4%)]",
-        "dark:in-data-[variant=card]:*:[tr]:hover:*:[td]:bg-[color-mix(in_srgb,var(--card),var(--color-white)_2%)]",
-        className,
-      )}
-      data-slot="table-body"
-      {...props}
-    />
-  ),
-);
+// ── TableBody ────────────────────────────────────────────
+
+const TableBody = forwardRef<
+  HTMLTableSectionElement,
+  HTMLAttributes<HTMLTableSectionElement>
+>(({ className, ...props }, ref) => (
+  <tbody ref={ref} className={cn("", className)} {...props} />
+));
+
 TableBody.displayName = "TableBody";
 
-const TableFooter = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
-  ({ className, ...props }, ref) => (
-    <tfoot
-      ref={ref}
-      className={cn("border-t border-input bg-muted/50 font-medium [&>tr]:last:border-b-0", className)}
-      data-slot="table-footer"
-      {...props}
-    />
-  ),
-);
-TableFooter.displayName = "TableFooter";
+// ── TableRow ─────────────────────────────────────────────
 
-const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTMLTableRowElement>>(
-  ({ className, ...props }, ref) => (
-    <tr
-      ref={ref}
-      className={cn(
-        "relative border-b",
-        "not-in-data-[variant=card]:hover:bg-[color-mix(in_srgb,var(--background),var(--color-black)_2%)]",
-        "not-in-data-[variant=card]:data-[state=selected]:bg-[color-mix(in_srgb,var(--background),var(--color-black)_4%)]",
-        "dark:not-in-data-[variant=card]:data-[state=selected]:bg-[color-mix(in_srgb,var(--background),var(--color-white)_4%)]",
-        "dark:not-in-data-[variant=card]:hover:bg-[color-mix(in_srgb,var(--background),var(--color-white)_2%)]",
-        className,
-      )}
-      data-slot="table-row"
-      {...props}
-    />
-  ),
+interface TableRowProps extends HTMLAttributes<HTMLTableRowElement> {
+  index?: number;
+}
+
+const TableRow = forwardRef<HTMLTableRowElement, TableRowProps>(
+  ({ index, className, style, ...props }, ref) => {
+    const internalRef = useRef<HTMLTableRowElement>(null);
+    const ctx = useContext(TableContext);
+
+    useEffect(() => {
+      if (index === undefined || !ctx) return;
+      ctx.registerItem(index, internalRef.current);
+      return () => ctx.registerItem(index, null);
+    }, [index, ctx]);
+
+    const isBodyRow = index !== undefined;
+    const activeIdx = ctx?.activeIndex ?? null;
+    const hideBorder = activeIdx !== null && (
+      (isBodyRow && (index === activeIdx || index === activeIdx - 1)) ||
+      (!isBodyRow && activeIdx === 0)
+    );
+
+    return (
+      <tr
+        ref={(node) => {
+          (internalRef as React.MutableRefObject<HTMLTableRowElement | null>).current = node;
+          if (typeof ref === "function") ref(node);
+          else if (ref) (ref as React.MutableRefObject<HTMLTableRowElement | null>).current = node;
+        }}
+        data-proximity-index={index}
+        className={cn(
+          "group/row relative z-10 border-b transition-[border-color] duration-80",
+          hideBorder ? "border-transparent" : "border-accent/40",
+          isBodyRow && activeIdx === index && "is-active",
+          className
+        )}
+        style={{
+          ...style,
+          fontVariationSettings: isBodyRow
+            ? fontWeights.normal
+            : fontWeights.semibold,
+        }}
+        {...props}
+      />
+    );
+  }
 );
+
 TableRow.displayName = "TableRow";
 
-const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<HTMLTableCellElement>>(
-  ({ className, ...props }, ref) => (
-    <th
-      ref={ref}
-      className={cn(
-        "h-12 whitespace-nowrap px-2.5 text-left align-middle font-medium text-muted-foreground leading-none has-[[role=checkbox]]:w-px last:has-[[role=checkbox]]:ps-0 first:has-[[role=checkbox]]:pe-0",
-        "in-data-[variant=card]:first:rounded-ss-2xl in-data-[variant=card]:last:rounded-se-2xl",
-        "in-data-[variant=card]:first:ps-[calc(--spacing(2.5)-1px)] in-data-[variant=card]:last:pe-[calc(--spacing(2.5)-1px)]",
-        className,
-      )}
-      data-slot="table-head"
-      {...props}
-    />
-  ),
-);
+// ── TableHead ────────────────────────────────────────────
+
+const TableHead = forwardRef<
+  HTMLTableCellElement,
+  ThHTMLAttributes<HTMLTableCellElement>
+>(({ className, ...props }, ref) => (
+  <th
+    ref={ref}
+    className={cn(
+      "px-3 py-2 text-left text-foreground",
+      className
+    )}
+    {...props}
+  />
+));
+
 TableHead.displayName = "TableHead";
 
-const TableCell = React.forwardRef<HTMLTableCellElement, React.TdHTMLAttributes<HTMLTableCellElement>>(
-  ({ className, ...props }, ref) => (
-    <td
-      ref={ref}
-      className={cn(
-        "whitespace-nowrap bg-clip-padding p-2.5 in-data-[slot=table-footer]:py-3.5 align-middle leading-none in-data-[variant=card]:first:ps-[calc(--spacing(2.5)-1px)] in-data-[variant=card]:last:pe-[calc(--spacing(2.5)-1px)] has-[[role=checkbox]]:w-px last:has-[[role=checkbox]]:ps-0 first:has-[[role=checkbox]]:pe-0",
-        className,
-      )}
-      data-slot="table-cell"
-      {...props}
-    />
-  ),
-);
+// ── TableCell ────────────────────────────────────────────
+
+const TableCell = forwardRef<
+  HTMLTableCellElement,
+  TdHTMLAttributes<HTMLTableCellElement>
+>(({ className, ...props }, ref) => (
+  <td
+    ref={ref}
+    className={cn(
+      "px-3 py-2 text-muted-foreground transition-colors duration-80 group-[.is-active]/row:text-foreground",
+      className
+    )}
+    {...props}
+  />
+));
+
 TableCell.displayName = "TableCell";
 
-const TableCaption = React.forwardRef<HTMLTableCaptionElement, React.HTMLAttributes<HTMLTableCaptionElement>>(
-  ({ className, ...props }, ref) => (
-    <caption
-      ref={ref}
-      className={cn("mt-4 text-sm text-muted-foreground", className)}
-      data-slot="table-caption"
-      {...props}
-    />
-  ),
-);
-TableCaption.displayName = "TableCaption";
+// ── Exports ──────────────────────────────────────────────
 
-export { Table, TableContainer, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, TableCaption };
+export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell };

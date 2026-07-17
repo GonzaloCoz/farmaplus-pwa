@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { useUser } from '@/contexts/UserContext';
-import { BRANCH_NAMES } from '@/config/users';
 
 /**
  * Hook to get filtered branches based on user role
@@ -9,14 +8,14 @@ import { BRANCH_NAMES } from '@/config/users';
  * - Branch: Only their branch
  */
 export function useUserBranches() {
-    const { user } = useUser();
+    const { user, allBranches } = useUser();
 
     const availableBranches = useMemo(() => {
         if (!user) return [];
 
         // Admin sees all branches
         if (user.role?.toLowerCase() === 'admin') {
-            return BRANCH_NAMES;
+            return allBranches;
         }
 
         // Mod sees only assigned branches

@@ -180,6 +180,7 @@ export function useDashboardMetrics() {
     }, [inventories]);
 
     return {
+        inventories,
         metrics,
         globalProgress,
         assignedDays: (config as any)?.days || 0,

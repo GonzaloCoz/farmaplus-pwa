@@ -2,15 +2,7 @@
 
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { 
-  RiHistoryLine, 
-  RiFileTextLine, 
-  RiUserLine, 
-  RiArrowRightUpLine,
-  RiArrowLeftDownLine,
-  RiInformationLine,
-  RiEditLine
-} from "@remixicon/react";
+import { ClockRewind as RiHistoryLine, File01 as RiFileTextLine, User01 as RiUserLine, ArrowUpRight as RiArrowRightUpLine, ArrowDownLeft as RiArrowLeftDownLine, InfoCircle as RiInformationLine, Edit01 as RiEditLine } from '@untitledui/icons';
 
 import {
   Dialog,

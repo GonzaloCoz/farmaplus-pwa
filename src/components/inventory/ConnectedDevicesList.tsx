@@ -1,5 +1,5 @@
 import React from 'react';
-import { Monitor, Smartphone, Wifi, Clock } from 'lucide-react';
+import { Monitor01 as Monitor, Phone as Smartphone, Wifi, Clock } from '@untitledui/icons';
 import { ConnectedDevice } from '@/hooks/usePreCount';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';

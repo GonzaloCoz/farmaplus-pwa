@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { CloseCircle as X, CheckCircle, DangerCircle as AlertCircle, InfoCircle as Info, Danger as AlertTriangle } from "@solar-icons/react";
+import { XClose as X, CheckCircle, AlertCircle, InfoCircle as Info, AlertTriangle } from '@untitledui/icons';
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 

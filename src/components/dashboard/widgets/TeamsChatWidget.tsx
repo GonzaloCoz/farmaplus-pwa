@@ -4,13 +4,7 @@ import { useUser } from "@/contexts/UserContext";
 import { getTeamsRecipient } from "@/config/teamsConfig";
 import { cn } from "@/lib/utils";
 import { hasPermission } from "@/config/permissions";
-import {
-  HelpCircle as CircleQuestionMarkIcon,
-  Sparkles as SparklesIcon,
-  X,
-  CornerDownLeft as CornerDownLeftIcon,
-  Lock as LockIcon
-} from "lucide-react";
+import { HelpCircle as CircleQuestionMarkIcon, Stars01 as SparklesIcon, XClose as X, CornerDownLeft as CornerDownLeftIcon, Lock01 as LockIcon } from '@untitledui/icons';
 
 import { Button } from "@/components/ui/button";
 import { ScrollArea, ScrollAreaViewport, ScrollAreaScrollbar } from "@/components/ui/scroll-area";
@@ -19,6 +13,11 @@ import { TextSwap } from "@/components/ui/text-swap";
 import { useAIChat } from "@/hooks/useAIChat";
 import { aiChatService } from "@/services/aiChatService";
 import { useProactiveAlerts } from "@/hooks/useProactiveAlerts";
+import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
+import { ThinkingIndicator } from "@/components/ui/thinking-indicator";
+import { ChatMessage } from "@/components/ui/chat-message";
+import { Copy } from "lucide-react";
+import { fontWeights } from "@/lib/font-weight";
 
 const DEFAULT_WELCOME_MESSAGE = `Hola. Soy tu **Asistente de Inventarios y Teams** de Farmaplus.
 Puedo responder tus dudas sobre auditoría de stock, control de vencimientos, diferencias y el proceso general de inventarios cíclicos.
@@ -54,13 +53,45 @@ export const TeamsChatWidget = memo(function TeamsChatWidget() {
   const { alert, dismissAlert } = useProactiveAlerts(user?.branchName);
   const [showAlertBanner, setShowAlertBanner] = useState(false);
 
-  // Pre-load the Ollama model into memory as soon as the chat widget mounts.
-  // This eliminates the cold-start delay on the user's first message.
-  useEffect(() => {
-    if (isAIEnabled) {
-      aiChatService.warmup();
-    }
-  }, [isAIEnabled]);
+  const getAssistantActions = useCallback((content: string) => (
+    <button 
+      onClick={() => navigator.clipboard.writeText(content)}
+      className="p-1 hover:bg-muted rounded-md transition-colors text-muted-foreground hover:text-foreground inline-flex items-center justify-center border-none bg-transparent cursor-pointer"
+      title="Copiar respuesta"
+      aria-label="Copy"
+    >
+      <Copy className="size-3" strokeWidth={1.5} />
+    </button>
+  ), []);
+
+  // Get current branch metrics and inventories from react-query cache
+  const { inventories = [], globalProgress = 0, metrics = { totalStock: 0, negativeStock: 0, positiveStock: 0, negativeUnits: 0, positiveUnits: 0 } } = useDashboardMetrics();
+
+  // Build a concise context text summary
+  const contextText = useMemo(() => {
+    if (!user?.branchName || !inventories.length) return "";
+
+    const totalLabs = inventories.length;
+    const completedLabs = inventories.filter((i: any) => i.status === 'controlado').length;
+    const inProgressLabs = inventories.filter((i: any) => i.status === 'por_controlar').length;
+    const pendingLabs = inventories.filter((i: any) => i.status === 'pendiente').length;
+
+    const activeList = inventories
+      .filter((i: any) => i.status === 'por_controlar')
+      .map((i: any) => `${i.laboratory} (${i.progressPercentage || 0}%)`)
+      .slice(0, 3)
+      .join(", ");
+
+    return `Sucursal: ${user.branchName}
+- Avance general: ${globalProgress}%
+- Laboratorios: Total: ${totalLabs}, Completados: ${completedLabs}, En Progreso: ${inProgressLabs}, Pendientes: ${pendingLabs}
+${activeList ? `- Laboratorios activos: ${activeList}` : ""}
+- Diferencia neta: $${metrics.totalStock?.toFixed(2) || "0.00"}
+- Diferencia negativa: $${metrics.negativeStock?.toFixed(2) || "0.00"} (unidades: ${metrics.negativeUnits || 0})
+- Diferencia positiva: $${metrics.positiveStock?.toFixed(2) || "0.00"} (unidades: ${metrics.positiveUnits || 0})`;
+  }, [inventories, globalProgress, metrics, user?.branchName]);
+
+
 
   const handleTriggerProactive = useCallback(() => {
     if (!alert) return;
@@ -94,24 +125,7 @@ export const TeamsChatWidget = memo(function TeamsChatWidget() {
     }
   }, [alert, messages.length, isGenerating, handleTriggerProactive]);
 
-  const [thinkingIndex, setThinkingIndex] = useState(0);
-  const THINKING_STATES = useMemo(() => [
-    "Pensando...",
-    "Consultando la base de datos...",
-    "Analizando inventarios...",
-    "Generando respuesta..."
-  ], []);
 
-  useEffect(() => {
-    if (isGenerating && !streamedText) {
-      const interval = setInterval(() => {
-        setThinkingIndex((prev) => (prev + 1) % THINKING_STATES.length);
-      }, 1250);
-      return () => clearInterval(interval);
-    } else {
-      setThinkingIndex(0);
-    }
-  }, [isGenerating, streamedText, THINKING_STATES.length]);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -146,11 +160,12 @@ export const TeamsChatWidget = memo(function TeamsChatWidget() {
 
   const handleSend = useCallback(() => {
     if (!query.trim() || isGenerating) return;
-    sendMessage(query, user?.branchName);
+    console.log("[ai-chat] sending query with contextText:", contextText);
+    sendMessage(query, user?.branchName, contextText);
     setQuery("");
-  }, [query, isGenerating, sendMessage, user?.branchName]);
+  }, [query, isGenerating, sendMessage, user?.branchName, contextText]);
 
-  const renderResponseText = (text: string) => {
+  const renderResponseText = (text: string, isStreaming = false) => {
     return text.split("\n").map((line, index) => {
       if (line.trim() === "") return null;
       
@@ -169,7 +184,10 @@ export const TeamsChatWidget = memo(function TeamsChatWidget() {
       // Handle simple list items
       if (line.trim().startsWith("- ") || line.trim().startsWith("* ")) {
         return (
-          <li key={index} className="ml-4 list-disc text-sm text-foreground/90 font-medium leading-relaxed my-0.5">
+          <li key={index} className={cn(
+            "ml-4 list-disc text-sm text-foreground/90 font-medium leading-relaxed my-0.5",
+            !isStreaming && "text-pretty"
+          )}>
             {content}
           </li>
         );
@@ -178,14 +196,20 @@ export const TeamsChatWidget = memo(function TeamsChatWidget() {
       // Handle numbered list items
       if (/^\d+\.\s/.test(line.trim())) {
         return (
-          <li key={index} className="ml-4 list-decimal text-sm text-foreground/90 font-medium leading-relaxed my-0.5">
+          <li key={index} className={cn(
+            "ml-4 list-decimal text-sm text-foreground/90 font-medium leading-relaxed my-0.5",
+            !isStreaming && "text-pretty"
+          )}>
             {content}
           </li>
         );
       }
 
       return (
-        <p key={index} className="leading-relaxed text-sm text-foreground/90 font-medium py-1">
+        <p key={index} className={cn(
+          "leading-relaxed text-sm text-foreground/90 font-medium py-1",
+          !isStreaming && "text-pretty"
+        )}>
           {content}
         </p>
       );
@@ -230,8 +254,8 @@ export const TeamsChatWidget = memo(function TeamsChatWidget() {
     <div className="h-full w-full flex flex-col overflow-hidden relative">
       {/* Top Search Bar */}
       <div className="flex items-center gap-3 border-b border-border/40 px-4 py-3 bg-muted/10 dark:bg-zinc-900/10 shrink-0">
-        <div className="text-blue-500 shrink-0">
-          <SparklesIcon className={cn("size-4", isGenerating && "animate-pulse")} />
+        <div className="text-muted-foreground/45 shrink-0">
+          <ThinkingIndicator showIcon={true} showText={false} iconSize={24} className="p-0 text-muted-foreground/45" />
         </div>
         <input
           disabled={isGenerating}
@@ -275,7 +299,7 @@ export const TeamsChatWidget = memo(function TeamsChatWidget() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Button
-              size="xs"
+              size="sm"
               variant="ghost"
               className={cn(
                 "h-6 px-2 text-[10px] font-bold rounded-md hover:bg-black/5 dark:hover:bg-white/5",
@@ -304,7 +328,6 @@ export const TeamsChatWidget = memo(function TeamsChatWidget() {
           <ScrollAreaViewport 
             ref={viewportRef as any}
             className="h-full w-full outline-none"
-            scrollFade
           >
             <div className="p-5 flex flex-col gap-4">
               {showWelcome && (
@@ -337,60 +360,40 @@ export const TeamsChatWidget = memo(function TeamsChatWidget() {
 
               {/* Chat History */}
               {messages.map((msg, index) => (
-                <div 
-                  key={index} 
-                  className={cn(
-                    "flex flex-col gap-1 w-full animate-in fade-in duration-200",
-                    msg.role === "user" ? "items-end" : "items-start"
-                  )}
+                <ChatMessage
+                  key={index}
+                  from={msg.role === "user" ? "user" : "assistant"}
+                  actions={msg.role === "assistant" ? getAssistantActions(msg.content) : undefined}
                 >
-                  <span className={cn(
-                    "text-xs font-semibold px-1 mb-1",
-                    msg.role === "user" ? "text-muted-foreground" : "text-blue-500 flex items-center gap-1.5"
-                  )}>
-                    {msg.role === "user" ? (
-                      "Tú"
-                    ) : (
-                      <>
-                        <SparklesIcon className="size-3.5" /> Asistente de Inventarios
-                      </>
-                    )}
-                  </span>
-                  
-                  <div className={cn(
-                    "text-sm rounded-2xl px-4 py-2.5 max-w-[85%] border leading-relaxed",
-                    msg.role === "user" 
-                      ? "bg-primary/10 dark:bg-zinc-800 text-foreground border-primary/10" 
-                      : "bg-muted/10 dark:bg-zinc-900/10 text-muted-foreground border-border/20 space-y-2"
-                  )}>
-                    {msg.role === "user" ? (
-                      msg.displayContent || msg.content
-                    ) : (
-                      renderResponseText(msg.content)
-                    )}
-                  </div>
-                </div>
+                  {msg.role === "user" ? (
+                    msg.displayContent || msg.content
+                  ) : (
+                    renderResponseText(msg.content, false)
+                  )}
+                </ChatMessage>
               ))}
 
               {/* Generating Block */}
               {isGenerating && (
-                <div className="flex flex-col gap-1 items-start w-full animate-in fade-in duration-200">
-                  <span className="text-xs font-semibold text-blue-500 px-1 flex items-center gap-1.5 mb-1">
-                    <SparklesIcon className="size-3.5 animate-pulse" />
-                    <TextSwap text={!streamedText ? THINKING_STATES[thinkingIndex] : "Asistente de Inventarios (Escribiendo...)"} />
-                  </span>
-
+                <div className="w-full flex flex-col gap-1 items-start">
                   {!streamedText ? (
-                    <div className="flex flex-col gap-2 w-full max-w-[85%] pt-1">
-                      <Skeleton className="h-4 w-full" />
-                      <Skeleton className="h-4 w-[92%]" />
-                      <Skeleton className="h-4 w-[60%]" />
+                    <div className="flex flex-col gap-2 w-full max-w-[85%] pt-1 px-1">
+                      <ThinkingIndicator className="px-0 py-1 text-muted-foreground" />
+                      <div className="flex flex-col gap-2 w-full mt-1.5 opacity-40">
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-[92%]" />
+                        <Skeleton className="h-4 w-[60%]" />
+                      </div>
                     </div>
                   ) : (
-                    <div className="text-sm rounded-2xl px-4 py-2.5 max-w-[85%] border bg-muted/10 dark:bg-zinc-900/10 text-muted-foreground border-border/20 space-y-2 relative">
-                      {renderResponseText(streamedText)}
+                    <ChatMessage
+                      from="assistant"
+                      actions={getAssistantActions(streamedText)}
+                      className="w-full"
+                    >
+                      {renderResponseText(streamedText, true)}
                       <span className="inline-block w-1.5 h-3.5 bg-blue-500 animate-pulse ml-1 align-middle" />
-                    </div>
+                    </ChatMessage>
                   )}
                 </div>
               )}

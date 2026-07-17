@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Smartphone, Laptop, CheckCircle, DocumentText, Logout, ArrowLeft, Refresh, Magnifer as Search, GraphUp as TrendingUp, GraphDown as TrendingDown, Widget as Package } from "@solar-icons/react";
+import { Phone as Smartphone, Laptop01 as Laptop, CheckCircle, File01 as DocumentText, LogOut01 as Logout, ArrowLeft, RefreshCw01 as Refresh, SearchLg as Search, TrendUp01 as TrendingUp, TrendDown01 as TrendingDown, LayoutGrid01 as Package } from '@untitledui/icons';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { notify } from "@/lib/notifications";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { ProductImageHover } from "@/components/ProductImageHover";
 
 interface RecountItem {
   id: string;
@@ -291,11 +290,9 @@ export default function StockRecountMobile() {
                                   <div className={cn("absolute left-0 top-0 bottom-0 w-1", diff > 0 ? "bg-green-500" : "bg-red-500")} />
 
                                   <div className="flex gap-4">
-                                      <ProductImageHover ean={item.ean} name={item.product_name}>
                                          <div className="w-12 h-12 rounded-lg bg-white/5 flex items-center justify-center text-white/20 active:bg-white/10 transition-colors">
                                             <Package className="w-6 h-6" />
                                          </div>
-                                      </ProductImageHover>
                                       <div className="flex-1 min-w-0">
                                          <h3 className="font-bold text-sm leading-tight text-white mb-1">{item.product_name}</h3>
                                          <div className="flex items-center gap-2">

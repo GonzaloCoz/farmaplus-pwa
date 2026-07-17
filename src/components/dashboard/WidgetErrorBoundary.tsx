@@ -1,6 +1,6 @@
 
 import { Component, ErrorInfo, ReactNode } from "react";
-import { Danger as AlertCircle, Restart as RefreshCw } from "@solar-icons/react";
+import { AlertTriangle as AlertCircle, RefreshCw01 as RefreshCw } from '@untitledui/icons';
 import { Button } from "@/components/ui/button";
 
 interface Props {

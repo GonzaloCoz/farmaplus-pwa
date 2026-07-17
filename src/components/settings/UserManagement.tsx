@@ -8,8 +8,8 @@ import { Input } from "@/components/ui/input";
 import { notify } from "@/lib/notifications";
 import { useUser } from "@/contexts/UserContext";
 import { permissionsService } from "@/services/permissionsService";
-import { Plus } from "lucide-react";
-import { UsersGroupTwoRounded as Users, Shield, Restart as RefreshCw, Magnifer as Search, AltArrowDown as ChevronDown, AltArrowUp as ChevronUp, Pen as Edit2, TrashBinMinimalistic as Trash2, User as UserIcon, Letter as Mail, Lock } from "@solar-icons/react";
+import { Plus } from '@untitledui/icons';
+import { Users01 as Users, Shield01 as Shield, RefreshCw01 as RefreshCw, SearchLg as Search, ChevronDown, ChevronUp, Edit01 as Edit2, Trash01 as Trash2, User01 as UserIcon, Mail01 as Mail, Lock01 as Lock } from '@untitledui/icons';
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import React from "react";
@@ -45,6 +45,14 @@ export function UserManagement() {
     // Permissions Reference State
     const [allPermissions, setAllPermissions] = useState<PermissionItem[]>([]);
 
+    // Load data
+    useEffect(() => {
+        if (user?.username === 'gcoz') {
+            fetchProfiles();
+            loadAllPermissions();
+        }
+    }, [user]);
+
     // Access Control
     if (user?.username !== 'gcoz') {
         return (
@@ -57,12 +65,6 @@ export function UserManagement() {
             </Card>
         );
     }
-
-    // Load data
-    useEffect(() => {
-        fetchProfiles();
-        loadAllPermissions();
-    }, []);
 
     const loadAllPermissions = async () => {
         try {
@@ -301,20 +303,18 @@ export function UserManagement() {
                                                     </div>
                                                 </td>
                                                 <td className="px-4 py-5">
-                                                    <div className="flex flex-col items-center gap-2">
-                                                        <Switch
-                                                            checked={profile.active}
-                                                            disabled={updatingUserId === profile.id}
-                                                            onCheckedChange={() => toggleUserStatus(profile.id, profile.active)}
-                                                            className="data-[checked]:bg-emerald-500 scale-110"
-                                                        />
-                                                        <Badge variant="outline" className={cn(
-                                                            "px-2 py-0 border-none font-black text-[10px] uppercase",
-                                                            profile.active ? "text-emerald-500" : "text-red-500"
-                                                        )}>
-                                                            {profile.active ? 'Activo' : 'Inactivo'}
-                                                        </Badge>
-                                                    </div>
+                                                     <div className="flex flex-col items-center gap-2">
+                                                         <Switch
+                                                             label=""
+                                                             checked={profile.active}
+                                                             disabled={updatingUserId === profile.id}
+                                                             onToggle={() => toggleUserStatus(profile.id, profile.active)}
+                                                             className="data-[checked]:bg-emerald-500 scale-110"
+                                                         />
+                                                         <Badge color={profile.active ? "green" : "red"} className="px-2 py-0 font-black text-[10px] uppercase">
+                                                             {profile.active ? 'Activo' : 'Inactivo'}
+                                                         </Badge>
+                                                     </div>
                                                 </td>
                                                 <td className="pl-4 pr-8 py-5 text-right">
                                                     <div className="flex justify-end gap-2">
@@ -378,7 +378,7 @@ export function UserManagement() {
                                                                                 {['admin', 'mod', 'branch'].map((r) => (
                                                                                     <Button
                                                                                         key={r}
-                                                                                        variant={profile.role === r ? "default" : "ghost"}
+                                                                                        variant={profile.role === r ? "primary" : "ghost"}
                                                                                         size="sm"
                                                                                         className={cn(
                                                                                             "rounded-xl font-bold uppercase text-[10px] h-9 px-6 transition-all",
@@ -409,12 +409,13 @@ export function UserManagement() {
                                                                                             <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">{perm.category}</span>
                                                                                         </div>
                                                                                         <div className="flex items-center gap-3">
-                                                                                            <Badge variant="secondary" className="text-[9px] font-black uppercase tracking-wider bg-primary/5 text-primary/80 border-none px-2">
+                                                                                            <Badge className="text-[9px] font-black uppercase tracking-wider bg-primary/5 text-primary/80 border-none px-2">
                                                                                                 Por Usuario
                                                                                             </Badge>
                                                                                             <Switch
+                                                                                                label=""
                                                                                                 checked={isEnabled}
-                                                                                                onCheckedChange={() => toggleUserPermission(profile.id, perm.code, profile.permissions)}
+                                                                                                onToggle={() => toggleUserPermission(profile.id, perm.code, profile.permissions)}
                                                                                                 className="data-[checked]:bg-primary"
                                                                                             />
                                                                                         </div>

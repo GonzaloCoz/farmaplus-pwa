@@ -8,17 +8,8 @@ import { AnimatedProgressBar } from "@/components/AnimatedProgressBar";
 import { SegmentedButton, SegmentOption } from "@/components/SegmentedButton";
 import { AnimatedTabs, Tab } from "@/components/AnimatedTabs";
 import { BottomSheet } from "@/components/BottomSheet";
-import { Plus } from "lucide-react";
-import {
-    Bell,
-    Heart,
-    Star,
-    Filter,
-    Settings,
-    User,
-    Home,
-    Bag2 as ShoppingCart,
-} from "@solar-icons/react";
+import { Plus } from '@untitledui/icons';
+import { Bell01 as Bell, Heart, Star01 as Star, FilterLines as Filter, Settings01 as Settings, User01 as User, Home01 as Home, ShoppingBag01 as ShoppingCart } from '@untitledui/icons';
 import { staggerContainerVariants, staggerItemVariants } from "@/utils/AnimationConfig";
 
 const filterOptions: SegmentOption[] = [

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Magnifer as Search, Widget as Package } from '@solar-icons/react';
+import { SearchLg as Search, LayoutGrid01 as Package } from '@untitledui/icons';
 import { Input } from '@/components/ui/input';
 import { motion, AnimatePresence } from 'framer-motion';
 import { searchProducts, Product } from '@/services/preCountDB';

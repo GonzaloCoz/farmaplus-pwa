@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
-import { AltArrowRight as ArrowRight, ClockCircle as Clock, Laptop, Smartphone } from '@solar-icons/react';
+import { ChevronRight as ArrowRight, Clock, Laptop01 as Laptop, Phone as Smartphone } from '@untitledui/icons';
 import { ZebraIcon } from '@/components/icons/ZebraIcon';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { useIsMobile } from '@/hooks/use-mobile';

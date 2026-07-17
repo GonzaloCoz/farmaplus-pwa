@@ -1,37 +1,18 @@
-import { useState, useEffect } from 'react';
-import { arrayMove } from '@dnd-kit/sortable';
-import type { Widget, DashboardLayout, WidgetSize, WidgetSpan } from '@/types/dashboard';
-import {
-    Dollar,
-    Chart as BarChart3,
-    DangerCircle as AlertCircleIcon,
-    CalendarSearch as CalendarClock,
-    Buildings as Building2,
-    GraphUp as TrendingUp,
-    Danger as AlertTriangle,
-    UsersGroupTwoRounded as Users,
-    ClockCircle as Clock,
-    Cup as Trophy,
-    Restart as History,
-    PieChart,
-    Target,
-    TransmissionSquare as Wifi,
-    Bolt as Zap,
-    Calendar,
-    Cloud as Brain
-} from '@solar-icons/react';
+import React from 'react';
+import type { Widget } from '@/types/dashboard';
+import { Calendar, AlertCircle as AlertCircleIcon, Calendar as CalendarClock, Building01 as Building2, RefreshCw01 as History, PieChart01 as PieChart, Cloud01 as Brain } from '@untitledui/icons';
 
 const DEFAULT_WIDGETS: Widget[] = [
     {
-        id: 'smart-analyst',
-        type: 'smart-analyst',
-        title: 'Analista Inteligente',
-        description: 'Análisis automático de inventario',
-        icon: Brain,
+        id: 'countdown',
+        type: 'countdown',
+        title: 'Contador de Días',
+        description: 'Días restantes para finalizar conteo cíclico',
+        icon: Calendar,
         visible: true,
         order: 0,
         size: 'small',
-        span: 2,
+        span: 1,
         row: 'top'
     },
     {
@@ -39,7 +20,7 @@ const DEFAULT_WIDGETS: Widget[] = [
         type: 'metrics-carousel',
         title: 'Sobrantes de Inventario',
         description: 'Evolución mensual de diferencias positivas',
-        icon: Dollar,
+        icon: History,
         visible: true,
         order: 1,
         size: 'small',
@@ -61,25 +42,25 @@ const DEFAULT_WIDGETS: Widget[] = [
         mandatory: true
     },
     {
-        id: 'inventory-summary',
-        type: 'inventory-summary',
-        title: 'Resumen de Inventario',
-        description: 'Progreso de productos en stock',
-        icon: BarChart3,
-        visible: false,
-        order: 10,
-        size: 'large',
-        span: 1,
-        row: 'middle'
+        id: 'smart-analyst',
+        type: 'smart-analyst',
+        title: 'Analista Inteligente',
+        description: 'Análisis automático de inventario',
+        icon: Brain,
+        visible: true,
+        order: 3,
+        size: 'small',
+        span: 2,
+        row: 'top'
     },
     {
-        id: 'inventory-alerts',
-        type: 'inventory-alerts',
-        title: 'Alertas de Inventario',
-        description: 'Notificaciones importantes',
-        icon: AlertCircleIcon,
+        id: 'category-progress',
+        type: 'category-progress',
+        title: 'Progreso por Rubros',
+        description: 'Avance de inventario por categoría',
+        icon: PieChart,
         visible: true,
-        order: 6,
+        order: 4,
         size: 'large',
         span: 1,
         row: 'middle'
@@ -97,6 +78,18 @@ const DEFAULT_WIDGETS: Widget[] = [
         row: 'middle'
     },
     {
+        id: 'inventory-alerts',
+        type: 'inventory-alerts',
+        title: 'Alertas de Inventario',
+        description: 'Notificaciones importantes',
+        icon: AlertCircleIcon,
+        visible: true,
+        order: 6,
+        size: 'large',
+        span: 1,
+        row: 'middle'
+    },
+    {
         id: 'branches-table',
         type: 'branches-table',
         title: 'Tabla de Sucursales',
@@ -107,305 +100,19 @@ const DEFAULT_WIDGETS: Widget[] = [
         size: 'full',
         span: 1,
         row: 'bottom'
-    },
-    // New widgets - available in gallery
-    {
-        id: 'inventory-progress',
-        type: 'inventory-progress',
-        title: 'Progreso de Inventarios',
-        description: 'Porcentaje de inventarios completados',
-        icon: TrendingUp,
-        visible: false,
-        order: 6,
-        size: 'small',
-        span: 1,
-        row: 'top'
-    },
-    {
-        id: 'critical-products',
-        type: 'critical-products',
-        title: 'Productos Críticos',
-        description: 'Productos con stock bajo o agotados',
-        icon: AlertTriangle,
-        visible: false,
-        order: 7,
-        size: 'small',
-        span: 1,
-        row: 'top'
-    },
-    {
-        id: 'total-stock-value',
-        type: 'total-stock-value',
-        title: 'Valor Total de Stock',
-        description: 'Valor monetario total del inventario',
-        icon: Dollar,
-        visible: false,
-        order: 8,
-        size: 'small',
-        span: 1,
-        row: 'top'
-    },
-    {
-        id: 'active-users',
-        type: 'active-users',
-        title: 'Usuarios Activos',
-        description: 'Usuarios trabajando en tiempo real',
-        icon: Users,
-        visible: false,
-        order: 9,
-        size: 'small',
-        span: 1,
-        row: 'top'
-    },
-    {
-        id: 'pending-inventories',
-        type: 'pending-inventories',
-        title: 'Inventarios Pendientes',
-        description: 'Inventarios sin completar',
-        icon: Clock,
-        visible: false,
-        order: 10,
-        size: 'small',
-        span: 1,
-        row: 'top'
-    },
-    {
-        id: 'top-products',
-        type: 'top-products',
-        title: 'Top Productos con Diferencias',
-        description: 'Productos con mayores discrepancias',
-        icon: Trophy,
-        visible: false,
-        order: 12,
-        size: 'large',
-        span: 1,
-        row: 'middle'
-    },
-    {
-        id: 'activity-timeline',
-        type: 'activity-timeline',
-        title: 'Actividad Reciente',
-        description: 'Timeline de últimas acciones',
-        icon: History,
-        visible: false,
-        order: 13,
-        size: 'large',
-        span: 1,
-        row: 'middle'
-    },
-    {
-        id: 'category-distribution',
-        type: 'category-distribution',
-        title: 'Distribución por Categoría',
-        description: 'Porcentaje de productos por categoría',
-        icon: PieChart,
-        visible: false,
-        order: 14,
-        size: 'large',
-        span: 1,
-        row: 'middle'
-    },
-    {
-        id: 'monthly-goals',
-        type: 'monthly-goals',
-        title: 'Objetivos del Mes',
-        description: 'Progreso hacia metas mensuales',
-        icon: Target,
-        visible: false,
-        order: 15,
-        size: 'large',
-        span: 1,
-        row: 'middle'
-    },
-    {
-        id: 'sync-status',
-        type: 'sync-status',
-        title: 'Estado de Sincronización',
-        description: 'Conexión y datos pendientes',
-        icon: Wifi,
-        visible: false,
-        order: 16,
-        size: 'large',
-        span: 1,
-        row: 'middle'
-    },
-    {
-        id: 'quick-actions',
-        type: 'quick-actions',
-        title: 'Acciones Rápidas',
-        description: 'Tareas frecuentes',
-        icon: Zap,
-        visible: false,
-        order: 17,
-        size: 'large',
-        span: 1,
-        row: 'middle'
-    },
-    {
-        id: 'countdown',
-        type: 'countdown',
-        title: 'Contador de Días',
-        description: 'Días restantes para finalizar conteo cíclico',
-        icon: Calendar,
-        visible: true,
-        order: 3,
-        size: 'small',
-        span: 1,
-        row: 'top'
-    },
-    {
-        id: 'category-progress',
-        type: 'category-progress',
-        title: 'Progreso por Rubros',
-        description: 'Avance de inventario por categoría',
-        icon: PieChart,
-        visible: true,
-        order: 4,
-        size: 'large',
-        span: 1,
-        row: 'middle'
     }
 ];
 
 export function useDashboardLayout(userId?: string) {
-    const storageKey = `dashboard - layout - v7 - ${userId || 'default'} `; // v7 para forzar reset con nuevo grid
-
-    const [widgets, setWidgets] = useState<Widget[]>(() => {
-        try {
-            const saved = localStorage.getItem(storageKey);
-            if (saved) {
-                const layout: DashboardLayout = JSON.parse(saved);
-                // Merge saved state (visibility, order) with default config (icons, titles)
-                // This is crucial because functions (icons) are not preserved in JSON
-                const mergedWidgets = DEFAULT_WIDGETS.map(defaultWidget => {
-                    const savedWidget = layout.widgets.find(w => w.id === defaultWidget.id);
-                    if (savedWidget) {
-                        return {
-                            ...defaultWidget,
-                            visible: savedWidget.visible,
-                            order: savedWidget.order,
-                            // Ensure mandatory widgets are always visible
-                            ...(defaultWidget.mandatory ? { visible: true } : {})
-                        };
-                    }
-                    return defaultWidget;
-                });
-
-                // Sort by order
-                return mergedWidgets.sort((a, b) => a.order - b.order);
-            }
-        } catch (error) {
-            console.error('Error loading dashboard layout:', error);
-        }
-        return DEFAULT_WIDGETS;
-    });
-
-    const [isEditMode, setIsEditMode] = useState(false);
-
-    // Guardar en localStorage cuando cambien los widgets
-    // We only need to save the serializable parts (id, visible, order)
-    useEffect(() => {
-        const serializableWidgets = widgets.map(({ id, visible, order }) => ({
-            id,
-            visible,
-            order
-        }));
-
-        const layout = {
-            widgets: serializableWidgets,
-            lastUpdated: Date.now()
-        };
-        localStorage.setItem(storageKey, JSON.stringify(layout));
-    }, [widgets, storageKey]);
-
-    // Reordenar widgets (drag and drop)
-    const reorderWidgets = (activeId: string, overId: string) => {
-        setWidgets((items) => {
-            const oldIndex = items.findIndex((item) => item.id === activeId);
-            const newIndex = items.findIndex((item) => item.id === overId);
-
-            const reordered = arrayMove(items, oldIndex, newIndex);
-            return reordered.map((item, index) => ({ ...item, order: index }));
-        });
-    };
-
-    // Mostrar/ocultar widget
-    const toggleWidgetVisibility = (widgetId: string) => {
-        setWidgets((items) =>
-            items.map((item) =>
-                item.id === widgetId && !item.mandatory
-                    ? { ...item, visible: !item.visible }
-                    : item
-            )
-        );
-    };
-
-    // Resetear a layout por defecto
-    const resetLayout = () => {
-        setWidgets(DEFAULT_WIDGETS);
-        setIsEditMode(false);
-    };
-
-    // Actualizar tamaño de widget
-    const updateWidgetSize = (widgetId: string, newSize: WidgetSize) => {
-        setWidgets((items) =>
-            items.map((item) =>
-                item.id === widgetId ? { ...item, size: newSize } : item
-            )
-        );
-    };
-
-    // Actualizar span de widget (expansión horizontal)
-    const updateWidgetSpan = (widgetId: string, newSpan: WidgetSpan) => {
-        setWidgets((items) =>
-            items.map((item) =>
-                item.id === widgetId ? { ...item, span: newSpan } : item
-            )
-        );
-    };
-
-    // Aplicar preset de layout
-    const applyPreset = (widgetIds: string[]) => {
-        setWidgets((items) =>
-            items.map((item) => ({
-                ...item,
-                visible: item.mandatory || widgetIds.includes(item.id),
-            }))
-        );
-    };
-
-    // Self-healing: Ensure widgets are valid (have titles and icons)
-    // This handles cases where HMR or bad localStorage data corrupts the state
-    useEffect(() => {
-        const isValid = widgets.every(w => w.title && w.icon);
-        if (!isValid) {
-            console.warn('Detected corrupted widget state, resetting to defaults');
-            setWidgets(DEFAULT_WIDGETS);
-        }
-    }, [widgets]);
-
-    // Obtener widgets visibles ordenados
-    const visibleWidgets = widgets
-        .filter((w) => w.visible)
-        .sort((a, b) => a.order - b.order);
-
-    // Obtener widgets ocultos
-    const hiddenWidgets = widgets
-        .filter((w) => !w.visible)
-        .sort((a, b) => (a.title || '').localeCompare(b.title || ''));
-
     return {
-        widgets,
-        visibleWidgets,
-        hiddenWidgets,
-        isEditMode,
-        setIsEditMode,
-        reorderWidgets,
-        toggleWidgetVisibility,
-        updateWidgetSize,
-        updateWidgetSpan,
-        applyPreset,
-        resetLayout
+        visibleWidgets: DEFAULT_WIDGETS,
+        hiddenWidgets: [] as Widget[],
+        isEditMode: false,
+        setIsEditMode: (value: boolean) => {},
+        reorderWidgets: (activeId: string, overId: string) => {},
+        toggleWidgetVisibility: (widgetId: string) => {},
+        updateWidgetSize: (widgetId: string, newSize: any) => {},
+        applyPreset: (widgetIds: string[]) => {},
+        resetLayout: () => {}
     };
 }
-

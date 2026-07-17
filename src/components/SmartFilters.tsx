@@ -5,7 +5,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Filter, Calendar as CalendarIcon, Tag, AltArrowLeft as ChevronLeft, CheckCircle as Check, CloseCircle as X } from "@solar-icons/react";
+import { FilterLines as Filter, Calendar as CalendarIcon, Tag01 as Tag, ChevronLeft, CheckCircle as Check, XClose as X } from '@untitledui/icons';
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -59,7 +59,7 @@ export function SmartFilters({ onFilterChange, activeFilters }: SmartFiltersProp
         setView('grid');
     };
 
-    const StatusView = () => (
+    const renderStatusView = () => (
         <div className="space-y-2">
             <div className="flex items-center justify-between mb-2">
                 <Button variant="ghost" size="sm" onClick={() => setView('grid')} className="h-8 px-2 -ml-2">
@@ -92,7 +92,7 @@ export function SmartFilters({ onFilterChange, activeFilters }: SmartFiltersProp
         </div>
     );
 
-    const DateView = () => (
+    const renderDateView = () => (
         <div className="space-y-2">
             <div className="flex items-center justify-between mb-2">
                 <Button variant="ghost" size="sm" onClick={() => setView('grid')} className="h-8 px-2 -ml-2">
@@ -111,30 +111,30 @@ export function SmartFilters({ onFilterChange, activeFilters }: SmartFiltersProp
         </div>
     );
 
-    const GridView = () => (
+    const renderGridView = () => (
         <div className="grid grid-cols-2 gap-2 p-1">
             <Button
-                variant="outline"
+                variant="tertiary"
                 className="h-24 flex flex-col items-center justify-center gap-2 hover:bg-primary/5 hover:border-primary/50 transition-all border-dashed"
                 onClick={() => setView('date')}
             >
                 <CalendarIcon className="w-8 h-8 text-muted-foreground" />
                 <span className="text-xs font-medium">Fecha</span>
                 {activeFilters.date && (
-                    <Badge variant="secondary" className="text-[10px] h-5 px-1">
+                    <Badge className="text-[10px] h-5 px-1">
                         1 activo
                     </Badge>
                 )}
             </Button>
             <Button
-                variant="outline"
+                variant="tertiary"
                 className="h-24 flex flex-col items-center justify-center gap-2 hover:bg-primary/5 hover:border-primary/50 transition-all border-dashed"
                 onClick={() => setView('status')}
             >
                 <Tag className="w-8 h-8 text-muted-foreground" />
                 <span className="text-xs font-medium">Estado</span>
                 {activeFilters.status.length > 0 && (
-                    <Badge variant="secondary" className="text-[10px] h-5 px-1">
+                    <Badge className="text-[10px] h-5 px-1">
                         {activeFilters.status.length} activos
                     </Badge>
                 )}
@@ -149,11 +149,11 @@ export function SmartFilters({ onFilterChange, activeFilters }: SmartFiltersProp
                 if (!isOpen) setView('grid'); // Reset view on close
             }}>
                 <PopoverTrigger render={
-                    <Button variant="outline" size="sm" className="h-9 border-dashed">
+                    <Button variant="tertiary" size="sm" className="h-9 border-dashed">
                         <Filter className="w-4 h-4 mr-2" />
                         Filtros
                         {hasActiveFilters && (
-                            <Badge variant="secondary" className="ml-2 h-5 w-5 p-0 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px]">
+                            <Badge className="ml-2 h-5 w-5 p-0 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px]">
                                 {(activeFilters.status.length) + (activeFilters.date ? 1 : 0)}
                             </Badge>
                         )}
@@ -175,9 +175,9 @@ export function SmartFilters({ onFilterChange, activeFilters }: SmartFiltersProp
                         </div>
                     )}
 
-                    {view === 'grid' && <GridView />}
-                    {view === 'status' && <StatusView />}
-                    {view === 'date' && <DateView />}
+                    {view === 'grid' && renderGridView()}
+                    {view === 'status' && renderStatusView()}
+                    {view === 'date' && renderDateView()}
                 </PopoverContent>
             </Popover>
 

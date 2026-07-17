@@ -1,13 +1,5 @@
 import React from "react";
-import { 
-  CheckCircle2, 
-  FileEdit, 
-  Trash2, 
-  EyeOff,
-  Plus,
-  Calendar,
-  UserCircle
-} from "lucide-react";
+import { CheckCircle as CheckCircle2, Edit01 as FileEdit, Trash01 as Trash2, EyeOff, Plus, Calendar, User01 as UserCircle } from '@untitledui/icons';
 import { cn } from "@/lib/utils";
 import { 
   ScrollArea,

@@ -1,4 +1,4 @@
-import { HamburgerMenu as Menu } from "@solar-icons/react";
+import { Menu01 as Menu } from '@untitledui/icons';
 import { useSidebar } from "@/components/SidebarProvider";
 
 export function SidebarTrigger() {

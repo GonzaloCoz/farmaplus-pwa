@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Checkbox } from "@base-ui-components/react/checkbox";
-import { Check, Minus } from "lucide-react";
+import { Check, Minus } from '@untitledui/icons';
 
 import { cn } from "@/lib/utils";
 

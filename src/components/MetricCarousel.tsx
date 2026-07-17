@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AltArrowLeft as ChevronLeft, AltArrowRight as ChevronRight, InfoCircle as Info, CloseCircle as X } from "@solar-icons/react";
+import { ChevronLeft, ChevronRight, InfoCircle as Info, XClose as X } from '@untitledui/icons';
 import { motion, AnimatePresence } from "framer-motion";
 import { CounterAnimation } from "./CounterAnimation";
 

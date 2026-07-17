@@ -1,13 +1,13 @@
 import { cn } from '@/lib/utils';
 import { WidgetSpan } from '@/types/dashboard';
-import { Minimize, Maximize } from '@solar-icons/react';
+import { Minimize01 as Minimize, Maximize01 as Maximize } from '@untitledui/icons';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from '@/components/ui/menu';
+    DropdownTrigger,
+    DropdownContent,
+    MenuItem,
+} from '@/components/ui/dropdown';
 
 interface WidgetSpanSelectorProps {
     currentSpan: WidgetSpan;
@@ -39,7 +39,7 @@ export function WidgetSpanSelector({
 
     return (
         <DropdownMenu>
-            <DropdownMenuTrigger render={
+            <DropdownTrigger render={
                 <Button
                     variant="ghost"
                     size="icon"
@@ -49,30 +49,21 @@ export function WidgetSpanSelector({
                     <CurrentIcon className="h-4 w-4" />
                 </Button>
             } />
-            <DropdownMenuContent align="end">
-                {availableSpans.map((span) => {
+            <DropdownContent align="end">
+                {availableSpans.map((span, index) => {
                     const config = SPAN_CONFIG[span];
-                    const Icon = config.icon;
                     return (
-                        <DropdownMenuItem
+                        <MenuItem
                             key={span}
-                            onClick={() => onChange(span)}
-                            className={cn(
-                                'flex items-center gap-2',
-                                currentSpan === span && 'bg-accent'
-                            )}
-                        >
-                            <Icon className="h-4 w-4" />
-                            <div className="flex flex-col">
-                                <span className="text-sm font-medium">{config.label}</span>
-                                <span className="text-xs text-muted-foreground">
-                                    {config.description}
-                                </span>
-                            </div>
-                        </DropdownMenuItem>
+                            index={index}
+                            icon={config.icon}
+                            label={config.label}
+                            onSelect={() => onChange(span)}
+                            checked={currentSpan === span}
+                        />
                     );
                 })}
-            </DropdownMenuContent>
+            </DropdownContent>
         </DropdownMenu>
     );
 }

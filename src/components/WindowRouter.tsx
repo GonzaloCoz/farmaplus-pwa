@@ -23,6 +23,8 @@ const InventoryReminder = lazy(() => import("@/pages/InventoryReminder"));
 const TrainingCenter = lazy(() => import("../pages/TrainingCenter"));
 const PostDetail = lazy(() => import("../pages/PostDetail"));
 const AdminEditor = lazy(() => import("../pages/AdminEditor"));
+const ComponentsShowcase = lazy(() => import("@/pages/ComponentsShowcase"));
+const Sandbox = lazy(() => import("@/pages/Sandbox"));
 
 export function WindowRouter({ currentPath }: { initialPath: string, currentPath: string, onPathChange: (path: string) => void }) {
     return (
@@ -30,6 +32,8 @@ export function WindowRouter({ currentPath }: { initialPath: string, currentPath
             <PageTransition key={currentPath}>
                 <Routes location={currentPath}>
                     <Route path="/" element={<Dashboard />} />
+                    <Route path="/showcase" element={<ComponentsShowcase />} />
+                    <Route path="/sandbox" element={<Sandbox />} />
                     <Route path="/stock" element={<Stock />} />
                     <Route path="/stock/pre-count" element={<PreCount />} />
                     <Route path="/stock/import" element={<StockImport />} />

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { ClockCircle as Clock, Restart as RefreshCw, DangerCircle as AlertCircle, CheckCircle, CloseCircle as XCircle } from '@solar-icons/react';
+import { Clock, RefreshCw01 as RefreshCw, AlertCircle, CheckCircle, XClose as XCircle } from '@untitledui/icons';
 import { cn } from '@/lib/utils';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, PendingAction } from '@/services/db';

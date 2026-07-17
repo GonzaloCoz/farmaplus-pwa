@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AltArrowUp as ChevronUp, InfoCircle as Info, MenuDots as MoreHorizontal, DownloadSquare } from '@solar-icons/react';
+import { ChevronUp, InfoCircle as Info, DotsHorizontal as MoreHorizontal, Download01 as DownloadSquare } from '@untitledui/icons';
 import { WidgetSkeleton } from '../WidgetSkeleton';
 import { cn, normalizeString } from '@/lib/utils';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
@@ -11,6 +11,21 @@ import { hasPermission } from '@/config/permissions';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as htmlToImage from 'html-to-image';
 import { useDashboardMetrics } from '@/hooks/useDashboardMetrics';
+import { BarChart } from '@/components/charts/bar-chart';
+import { Grid } from '@/components/charts/grid';
+import { Bar } from '@/components/charts/bar';
+import { BarXAxis } from '@/components/charts/bar-x-axis';
+import { ChartTooltip } from '@/components/charts/tooltip/chart-tooltip';
+import { BarDepthBack, BarDepthFront, BarDepthProvider } from '@/components/charts/bar-depth';
+import { useChart } from '@/components/charts/chart-context';
+
+function HoverListener({ onChange }: { onChange: (index: number | null) => void }) {
+    const { hoveredBarIndex } = useChart();
+    useEffect(() => {
+        onChange(hoveredBarIndex);
+    }, [hoveredBarIndex, onChange]);
+    return null;
+}
 
 interface CategoryData {
     name: string;
@@ -27,6 +42,7 @@ export function CategoryProgressWidget() {
     const [categories, setCategories] = useState<CategoryData[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+    const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
     useEffect(() => {
         const loadData = async () => {
@@ -43,6 +59,9 @@ export function CategoryProgressWidget() {
 
                 // 2. Get Configuration & Historical Closures
                 const config = await cyclicInventoryService.getBranchConfig(branchName);
+
+                console.log('[DEBUG] CategoryProgressWidget inventories:', inventories);
+                console.log('[DEBUG] CategoryProgressWidget config:', config);
 
                 // Calculate Days Elapsed
                 let daysElapsed = 0;
@@ -84,10 +103,14 @@ export function CategoryProgressWidget() {
 
                 // Aggregate Data
                 inventories.forEach(inv => {
-                    // Include all laboratories regardless of item count to reflect true denominator
+                    const catNorm = (inv.category || 'VARIOS').toUpperCase();
+                    const activeRound = config.rounds?.[catNorm] || config.rounds?.GENERAL || 1;
+
+                    // Filtrar por la ronda activa de esta categoría
+                    if ((inv.round || 1) !== activeRound) return;
+
                     let catKey = 'Varios';
-                    const labCat = (inv.category || '').trim().toUpperCase()
-                        .normalize("NFD").replace(/[\u0300-\u036f]/g, ""); 
+                    const labCat = catNorm.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); 
 
                     if (labCat === 'MEDICAMENTOS') catKey = 'Medicamentos';
                     else if (labCat === 'PERFUMERIA') catKey = 'Perfumería';
@@ -160,6 +183,32 @@ export function CategoryProgressWidget() {
         };
     }, [categories, selectedCategory]);
 
+    const displayedStats = useMemo(() => {
+        if (hoveredIndex !== null) {
+            const hoveredCat = categories[hoveredIndex];
+            if (hoveredCat) {
+                return {
+                    percentage: hoveredCat.percentage,
+                    label: `Avance en ${hoveredCat.name}`
+                };
+            }
+        }
+        
+        // Base state
+        if (selectedCategory) {
+            const cat = categories.find(c => c.name === selectedCategory);
+            return {
+                percentage: cat?.percentage ?? 0,
+                label: `Avance en ${selectedCategory}`
+            };
+        }
+        
+        return {
+            percentage: activeStats?.percentage ?? 0,
+            label: 'Avance total acumulado'
+        };
+    }, [categories, selectedCategory, hoveredIndex, activeStats]);
+
     const exportToCanva = async () => {
         if (!canvaRef.current) return;
         
@@ -195,7 +244,7 @@ export function CategoryProgressWidget() {
 
     return (
         <>
-            <div className="h-full flex flex-col overflow-hidden">
+            <div className="h-full flex flex-col">
             <CardHeader className="pb-0 pt-4 px-5 flex flex-row items-center justify-between space-y-0 text-foreground">
                 <CardTitle className="text-lg font-medium tracking-tight">
                     {selectedCategory ? `Rubro: ${selectedCategory}` : 'Progreso de Inventario'}
@@ -222,131 +271,83 @@ export function CategoryProgressWidget() {
                 </div>
             </CardHeader>
 
-            <CardContent className="flex-1 p-5 pt-4 flex flex-col gap-6">
+            <CardContent className="flex-1 px-5 pt-2 pb-2 flex flex-col gap-3 min-h-0">
                 {/* Metrics Header */}
                 <div className="flex flex-col">
                     <div className="flex items-baseline gap-2">
                         <AnimatePresence mode="wait">
                             <motion.span
-                                key={activeStats?.percentage}
+                                key={displayedStats.percentage}
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 className="text-6xl font-bold tracking-tighter"
                             >
-                                {activeStats?.percentage}%
+                                {displayedStats.percentage}%
                             </motion.span>
                         </AnimatePresence>
                     </div>
                     <p className="text-sm text-muted-foreground font-medium mt-1">
-                        {selectedCategory ? `Avance en ${selectedCategory}` : 'Avance total acumulado'}
+                        {displayedStats.label}
                     </p>
                 </div>
 
-                {/* Bars Chart */}
-                <div className="flex-1 flex flex-col justify-end">
-                    <div className="flex items-end justify-between gap-3 h-48 mb-2 px-1">
-                        {categories.map((cat) => {
-                            const isSelected = selectedCategory === cat.name;
-                            const hasPrevious = cat.previousPercentage > 0;
-
-                            // Calculate relative height based on total items (Volume)
-                            const maxTotal = Math.max(...categories.map(c => c.totalItems));
-                            // Ensure clickable and visible even if small (min 20%)
-                            const relativeHeight = maxTotal > 0
-                                ? Math.max(20, (cat.totalItems / maxTotal) * 100)
-                                : 20;
-
-                            return (
-                                <div
-                                    key={cat.name}
-                                    className="flex-1 flex flex-col items-center gap-2 group cursor-pointer h-full justify-end"
-                                    onClick={() => setSelectedCategory(selectedCategory === cat.name ? null : cat.name)}
-                                >
-                                    {/* Total Items Count Label (New) */}
-                                    <span className={cn(
-                                        "text-[10px] font-bold transition-colors mb-1",
-                                        isSelected ? "text-primary" : "text-muted-foreground/70"
-                                    )}>
-                                        {cat.totalItems}
-                                    </span>
-
-                                    {/* Bar Container (Height = Volume relative to largest category) */}
-                                    <motion.div
-                                        className={cn(
-                                            "w-full rounded-lg overflow-hidden flex flex-col justify-end relative transition-all duration-300 bg-secondary dark:bg-muted/20",
-                                            isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "hover:bg-secondary/80 dark:hover:bg-muted/30"
-                                        )}
-                                        initial={{ height: 0 }}
-                                        animate={{ height: `${relativeHeight}%` }}
-                                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                    >
-                                        {/* Tooltip on Hover */}
-                                        <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-foreground text-background text-[10px] font-bold px-2 py-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-20 shadow-lg pointer-events-none">
-                                            {cat.percentage}% ({cat.controlledItems}/{cat.totalItems})
+                {/* Bars Chart - Bklit BarChart */}
+                <div className="flex-1 min-h-0 light">
+                    <BarDepthProvider
+                        segmentsAccessor={(d) => [
+                            { value: d["controlled"] as number, color: "var(--chart-1)" },
+                            { value: d["pending"] as number, color: "var(--chart-3)" },
+                        ]}
+                    >
+                        <BarChart
+                            margin={{ top: 24, right: 8, bottom: 40, left: 8 }}
+                            data={categories.map((cat) => ({
+                                name: cat.name,
+                                controlled: cat.controlledItems,
+                                pending: cat.totalItems - cat.controlledItems,
+                            }))}
+                            xDataKey="name"
+                            aspectRatio="auto"
+                            className="h-full w-full"
+                            stacked
+                        >
+                            <Grid horizontal />
+                            <BarDepthBack dataKey="controlled" />
+                            <Bar dataKey="controlled" fill="var(--chart-1)" perspective />
+                            <Bar dataKey="pending" fill="var(--chart-3)" perspective />
+                            <BarDepthFront dataKey="controlled" />
+                            <BarXAxis />
+                            <HoverListener onChange={setHoveredIndex} />
+                            <ChartTooltip
+                                showCrosshair={false}
+                                showDots={false}
+                                content={({ point }) => (
+                                    <div className="light bg-white text-gray-900 rounded-lg shadow-lg border border-gray-200 px-3 py-2 text-xs min-w-[150px]">
+                                        <div className="font-semibold mb-1">{String(point.name)}</div>
+                                        <div className="flex flex-col gap-1">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="w-2 h-2 rounded-full bg-gray-800 inline-block" />
+                                                    <span className="text-gray-500">Hechos</span>
+                                                </div>
+                                                <span className="font-bold">{String(point.controlled)}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="w-2 h-2 rounded-full bg-gray-400 inline-block" />
+                                                    <span className="text-gray-500">Pendientes</span>
+                                                </div>
+                                                <span className="font-bold">{String(point.pending)}</span>
+                                            </div>
                                         </div>
-
-                                        {/* Solid Part (Current Progress % of THIS bar's volume) */}
-                                        <motion.div
-                                            className={cn(
-                                                "w-full absolute bottom-0 left-0 right-0 z-10 transition-colors duration-300",
-                                                isSelected ? "bg-primary" : "bg-muted-foreground/40 group-hover:bg-muted-foreground/50"
-                                            )}
-                                            initial={{ height: 0 }}
-                                            animate={{ height: `${cat.percentage}%` }}
-                                            transition={{ duration: 0.5, delay: 0.1 }}
-                                        />
-
-                                        {/* Hatched/Patterned Part (Previous Closure) */}
-                                        {hasPrevious && (
-                                            <div
-                                                className="absolute bottom-0 left-0 right-0 z-20 opacity-30 pointer-events-none"
-                                                style={{
-                                                    height: `${cat.previousPercentage}%`,
-                                                    backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 4px, currentColor 4px, currentColor 8px)`,
-                                                    color: isSelected ? 'white' : 'inherit'
-                                                }}
-                                            />
-                                        )}
-
-                                        {/* Indicator Dot (At the top of the progress) */}
-                                        {cat.percentage > 0 && (
-                                            <motion.div
-                                                className="absolute left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-white rounded-full z-30 shadow-sm"
-                                                style={{ bottom: `calc(${cat.percentage}% - 3px)` }}
-                                            />
-                                        )}
-                                    </motion.div>
-
-                                    <span className={cn(
-                                        "text-[10px] font-bold uppercase tracking-wider transition-colors",
-                                        isSelected ? "text-foreground" : "text-muted-foreground"
-                                    )}>
-                                        {cat.name.substring(0, 3)}
-                                    </span>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                {/* Footer Details */}
-                <div className="pt-2 border-t border-border/40 flex justify-between items-center h-10">
-                    <div className="flex gap-4">
-                        <div className="flex flex-col">
-                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none">Hechos</span>
-                            <span className="text-sm font-bold">{activeStats?.controlledItems}</span>
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none">Pendientes</span>
-                            <span className="text-sm font-bold">{(activeStats?.totalItems || 0) - (activeStats?.controlledItems || 0)}</span>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground bg-muted/30 px-2 py-1 rounded-full border border-border/50">
-                        <Info className="h-3 w-3" />
-                        Refresca cada 30 min
-                    </div>
+                                    </div>
+                                )}
+                            />
+                        </BarChart>
+                    </BarDepthProvider>
                 </div>
             </CardContent>
+
         </div>
 
         {/* Off-screen Canva Template */}

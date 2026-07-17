@@ -9,14 +9,7 @@ import {
     DrawerClose,
 } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
-import { 
-    CloudUpload as CloudUploadIcon, 
-    CheckCircle2 as CloudCheckIcon, 
-    RotateCcw,
-    AlertTriangle,
-    ArrowRight,
-    ArrowLeft
-} from 'lucide-react';
+import { UploadCloud01 as CloudUploadIcon, CheckCircle as CloudCheckIcon, RefreshCcw01 as RotateCcw, AlertTriangle, ArrowRight, ArrowLeft } from '@untitledui/icons';
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -46,14 +39,18 @@ export function LocationClosingDrawer({
 
     // Reset state when drawer closes/opens
     useEffect(() => {
+        let timer: ReturnType<typeof setTimeout> | null = null;
         if (!isOpen) {
-            setTimeout(() => {
+            timer = setTimeout(() => {
                 setStep(1);
                 setProgress(0);
                 setIsHolding(false);
                 setStatus('idle');
             }, 300);
         }
+        return () => {
+            if (timer) clearTimeout(timer);
+        };
     }, [isOpen]);
 
     const startHolding = () => {

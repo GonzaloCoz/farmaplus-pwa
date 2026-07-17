@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { CloseCircle as X } from "@solar-icons/react";
+import { XClose as X } from '@untitledui/icons';
 import { cn } from "@/lib/utils";
 
 export type ChipVariant = "filter" | "input" | "suggestion" | "assist";

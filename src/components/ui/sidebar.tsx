@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Slot } from "@/components/ui/slot";
 import { VariantProps, cva } from "class-variance-authority";
-import { HamburgerMenu as PanelLeft } from "@solar-icons/react";
+import { Menu01 as PanelLeft } from '@untitledui/icons';
 
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Bell, Settings, User, AltArrowRight as ChevronRight, Moon, Sun, TrashBinMinimalistic as Trash2, BellBing as BellRing, CheckCircle as Check, ChatLine as MessageSquare, Restart as RefreshIcon, CloseCircle as XIcon, InfoCircle, Danger as ErrorIcon, DangerCircle as WarningIcon, AltArrowDown as ChevronDown, AltArrowUp as ChevronUp } from "@solar-icons/react";
+import { Bell01 as Bell, Settings01 as Settings, User01 as User, ChevronRight, Moon01 as Moon, Sun, Trash01 as Trash2, Bell01 as BellRing, CheckCircle as Check, MessageSquare01 as MessageSquare, RefreshCw01 as RefreshIcon, XClose as XIcon, InfoCircle, AlertTriangle as ErrorIcon, AlertCircle as WarningIcon, ChevronDown, ChevronUp } from '@untitledui/icons';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogPopup, DialogPanel } from "@/components/ui/dialog";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
@@ -8,6 +8,7 @@ import { notify } from "@/lib/notifications";
 import { notificationService as pushNotificationService } from "@/services/PushNotificationService";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { notificationService } from "@/services/notifications.service";
+import { surfaceClasses } from "@/lib/surface-classes";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -162,13 +163,15 @@ export function NotificationsMenu() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <div className="inline-block relative">
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={() => setOpen(true)}
           aria-label="Notificaciones"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+          className={cn("shrink-0 cursor-pointer", surfaceClasses(3))}
           style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
         >
-          <Bell className={`w-[18px] h-[18px] ${unreadCount > 0 ? 'text-accent' : 'text-secondary-foreground'}`} />
+          <Bell className={`w-5 h-5 ${unreadCount > 0 ? 'text-accent' : 'text-current'}`} />
           {unreadCount > 0 && (
             <span
               className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-accent text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-background shadow-sm"
@@ -178,7 +181,7 @@ export function NotificationsMenu() {
               {unreadCount}
             </span>
           )}
-        </button>
+        </Button>
       </div>
 
       <DialogPopup className="w-[400px] p-0 gap-0">
@@ -333,7 +336,7 @@ export function NotificationsMenu() {
         </DialogPanel>
 
         {/* ── Footer ── */}
-        <DialogFooter variant="default" className="justify-between">
+        <DialogFooter className="justify-between">
           <button
             onClick={handleMarkAllRead}
             disabled={unreadCount === 0}
@@ -373,14 +376,10 @@ export function NotificationsMenu() {
             <div className="grid gap-2">
               <Label htmlFor="branch">Sucursal Destino</Label>
               <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-                <SelectTrigger id="branch">
-                  <SelectValue>
-                    {selectedBranch || "Seleccionar sucursal..."}
-                  </SelectValue>
-                </SelectTrigger>
+                <SelectTrigger id="branch" placeholder="Seleccionar sucursal..." />
                 <SelectContent>
-                  {branches.map((b) => (
-                    <SelectItem key={b} value={b}>{b}</SelectItem>
+                  {branches.map((b, idx) => (
+                    <SelectItem key={b} value={b} index={idx}>{b}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

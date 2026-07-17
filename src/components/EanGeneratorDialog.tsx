@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { notify } from "@/lib/notifications";
 import { useBarcodeHistory } from "@/hooks/use-barcode-history";
 import { BarcodeDisplay } from "@/components/BarcodeDisplay";
-import { Copy, Printer, Widget as Barcode } from "@solar-icons/react";
+import { Copy01 as Copy, Printer, LayoutGrid01 as Barcode } from '@untitledui/icons';
 import { getProductByEAN } from '@/services/productService';
 
 interface EanGeneratorDialogProps {

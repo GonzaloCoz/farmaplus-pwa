@@ -3,19 +3,14 @@ import React, { useEffect, useState, useMemo } from "react";
 import { trainingService, TrainingPost, TrainingCategory } from "@/services/trainingService";
 import { useUser } from "@/contexts/UserContext";
 import { useWindowManager } from "@/contexts/WindowManagerContext";
-import { Magnifer as Search, AddCircle as Plus } from "@solar-icons/react";
-import { ArrowRight as ArrowRightIcon } from "lucide-react";
+import { SearchLg as Search, PlusCircle as Plus } from '@untitledui/icons';
+import { ArrowRight as ArrowRightIcon } from '@untitledui/icons';
 import { PostCard } from "@/components/training/PostCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/menu";
+
 
 type SortOption = "newest" | "oldest" | "title-asc" | "title-desc";
 
@@ -85,7 +80,7 @@ export default function TrainingCenter() {
         <div className="flex flex-col min-h-screen bg-transparent pb-20">
             {/* Hero / Intro Section — cal.com blog style */}
             <div className="px-6 md:px-10 lg:px-16 pt-10 md:pt-16 pb-6 md:pb-6 max-w-5xl">
-                <Badge variant="outline" className="mb-4 bg-background/50 rounded-full text-xs font-semibold px-3 py-1 text-muted-foreground border-border/40 backdrop-blur-sm pointer-events-none">
+                <Badge variant="solid" className="mb-4 bg-background/50 rounded-full text-xs font-semibold px-3 py-1 text-muted-foreground border-border/40 backdrop-blur-sm pointer-events-none">
                     Centro de Capacitación
                 </Badge>
                 <p className="text-[clamp(1.25rem,3vw,1.75rem)] font-medium text-muted-foreground leading-[1.5] tracking-tight">
@@ -102,7 +97,7 @@ export default function TrainingCenter() {
                     {/* Category Pills & Search */}
                     <div className="flex items-center gap-3 overflow-x-auto no-scrollbar flex-1 min-w-0">
                         <Button
-                            variant={!selectedCategory ? "default" : "outline"}
+                            variant={!selectedCategory ? "secondary" : "tertiary"}
                             size="sm"
                             onClick={() => setSelectedCategory(null)}
                             className={cn(
@@ -115,7 +110,7 @@ export default function TrainingCenter() {
                         {categories.map(cat => (
                             <Button
                                 key={cat.id}
-                                variant={selectedCategory === cat.id ? "default" : "outline"}
+                                variant={selectedCategory === cat.id ? "secondary" : "tertiary"}
                                 size="sm"
                                 onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)}
                                 className={cn(

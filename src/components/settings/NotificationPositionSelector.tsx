@@ -1,4 +1,4 @@
-import { BellBing as Bell } from '@solar-icons/react';
+import { Bell01 as Bell } from '@untitledui/icons';
 import { cn } from '@/lib/utils';
 import { NotificationPosition } from '@/contexts/NotificationPreferencesContext';
 

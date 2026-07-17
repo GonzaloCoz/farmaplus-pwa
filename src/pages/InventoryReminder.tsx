@@ -2,16 +2,7 @@
 import { useState, useEffect } from "react";
 import { useUser } from "@/contexts/UserContext";
 import { calendarService, CalendarEvent } from "@/services/calendarService";
-import { 
-    CalendarSearch as CalendarIcon, 
-    MapPoint as MapPin, 
-    Buildings,
-    Mirror as PerfumeryIcon,
-    MedicalKit as PharmacyIcon,
-    ClockCircle as Clock,
-    Danger as DangerIcon,
-    InfoCircle as InfoIcon
-} from "@solar-icons/react";
+import { Calendar as CalendarIcon, MarkerPin01 as MapPin, Building01 as Buildings, Eye as PerfumeryIcon, MedicalCross as PharmacyIcon, Clock, AlertTriangle as DangerIcon, InfoCircle as InfoIcon } from '@untitledui/icons';
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { Card } from "@/components/ui/card";
@@ -81,7 +72,7 @@ export default function InventoryReminder() {
                     <div className="flex flex-col md:flex-row items-center md:items-start gap-8">
                         <div className="relative shrink-0">
                             <div className="h-24 w-24 rounded-[2rem] bg-black dark:bg-white text-white dark:text-black flex items-center justify-center relative z-10 shadow-md">
-                                <CalendarIcon className="w-12 h-12" weight="BoldDuotone" />
+                                <CalendarIcon className="w-12 h-12" />
                             </div>
                         </div>
 
@@ -107,7 +98,7 @@ export default function InventoryReminder() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="flex items-center gap-5 p-6 rounded-[2rem] border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 group hover:border-black dark:hover:border-white transition-colors duration-500">
                             <div className="h-12 w-12 rounded-lg bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shrink-0 shadow-lg">
-                                <CalendarIcon className="w-6 h-6" weight="BoldDuotone" />
+                                <CalendarIcon className="w-6 h-6" />
                             </div>
                             <div className="space-y-1">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Fecha Asignada</p>
@@ -120,9 +111,9 @@ export default function InventoryReminder() {
                         <div className="flex items-center gap-5 p-6 rounded-[2rem] border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 group hover:border-black dark:hover:border-white transition-colors duration-500">
                             <div className="h-12 w-12 rounded-lg bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shrink-0 shadow-lg">
                                 {event.sector?.toLowerCase().includes('perfumeria') ? (
-                                    <PerfumeryIcon className="w-6 h-6" weight="BoldDuotone" />
+                                    <PerfumeryIcon className="w-6 h-6" />
                                 ) : (
-                                    <PharmacyIcon className="w-6 h-6" weight="BoldDuotone" />
+                                    <PharmacyIcon className="w-6 h-6" />
                                 )}
                             </div>
                             <div className="space-y-1">
@@ -135,7 +126,7 @@ export default function InventoryReminder() {
 
                         <div className="flex items-center gap-5 p-6 rounded-[2rem] border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/50 group hover:border-black dark:hover:border-white transition-colors duration-500">
                             <div className="h-12 w-12 rounded-lg bg-black dark:bg-white text-white dark:text-black flex items-center justify-center shrink-0 shadow-lg">
-                                <Buildings className="w-6 h-6" weight="BoldDuotone" />
+                                <Buildings className="w-6 h-6" />
                             </div>
                             <div className="space-y-1">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Sucursal Destino</p>
@@ -231,7 +222,7 @@ export default function InventoryReminder() {
                             </div>
                             <div className="p-8 rounded-[2.5rem] border-2 border-dashed border-zinc-100 dark:border-zinc-900 flex flex-col md:flex-row items-center gap-8">
                                 <div className="h-16 w-16 rounded-xl bg-black dark:bg-white flex items-center justify-center shrink-0">
-                                    <Clock className="w-8 h-8 text-white dark:text-black" weight="BoldDuotone" />
+                                    <Clock className="w-8 h-8 text-white dark:text-black" />
                                 </div>
                                 <div className="text-center md:text-left">
                                     <h4 className="text-lg font-black text-black dark:text-white mb-1">Horarios de cierre</h4>

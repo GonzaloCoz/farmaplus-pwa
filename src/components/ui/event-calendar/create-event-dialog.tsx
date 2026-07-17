@@ -3,13 +3,7 @@
 import { useState, useEffect } from "react";
 import { format, addHours, setHours, setMinutes, isValid } from "date-fns";
 import { es } from "date-fns/locale";
-import { 
-  RiMapPinLine, 
-  RiText, 
-  RiTimeLine, 
-  RiCalendarLine,
-  RiCheckboxCircleLine
-} from "@remixicon/react";
+import { MarkerPin01 as RiMapPinLine, Type01 as RiText, Clock as RiTimeLine, Calendar as RiCalendarLine, CheckCircle as RiCheckboxCircleLine } from '@untitledui/icons';
 
 import { 
   type CalendarEvent, 

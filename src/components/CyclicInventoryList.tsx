@@ -1,54 +1,22 @@
-import { useState, memo, useCallback, CSSProperties } from 'react';
-import { ProductImageHover } from '@/components/ProductImageHover';
+import { useState, memo, useCallback, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-import {
-    CheckCircle,
-    Box as Package,
-    Magnifer as Search,
-    Calculator as CalculatorIcon,
-    Danger as AlertTriangle,
-    JarOfPills,
-    Perfume,
-    Stethoscope,
-    Pills3
-} from '@solar-icons/react';
+import { CheckCircle, AlertTriangle } from '@untitledui/icons';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { notify } from '@/lib/notifications';
-import { Calculator } from './Calculator';
-import { FixedSizeList as List } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
-import { Field, FieldLabel, FieldError } from '@/components/ui/field';
-import { Form } from '@/components/ui/form';
-import CheckedIcon from '@/components/icons/CheckedIcon';
+import { Table, type TableColumn } from '@/components/motion/table';
 import {
     Dialog,
-    DialogPopup,
+    DialogContent,
     DialogHeader,
     DialogTitle,
+    DialogDescription,
     DialogFooter,
     DialogClose,
 } from '@/components/ui/dialog';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
-import {
-    Frame,
-    FrameHeader,
-    FrameTitle,
-    FrameDescription,
-    FramePanel,
-    FrameFooter,
-} from '@/components/ui/frame';
-
+import { Frame, FramePanel, FrameFooter } from '@/components/ui/frame';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 
 export interface CyclicItem {
     id: string;
@@ -66,6 +34,127 @@ export interface CyclicItem {
     readjustmentReason?: string;
 }
 
+interface PopoverRowCellProps {
+    item: CyclicItem;
+    isExcelUploaded: boolean;
+    onUpdateQuantity: (id: string, quantity: number, reason?: string) => void;
+}
+
+const PopoverRowCell = memo(function PopoverRowCell({
+    item,
+    isExcelUploaded,
+    onUpdateQuantity
+}: PopoverRowCellProps) {
+    const [open, setOpen] = useState(false);
+    const [qty, setQty] = useState(item.countedQuantity.toString());
+
+    // Sync input value when item countedQuantity changes or popover opens
+    useEffect(() => {
+        if (open) {
+            setQty(item.countedQuantity.toString());
+        }
+    }, [open, item.countedQuantity]);
+
+    const handleSave = () => {
+        // Business rule check
+        if (item.status === 'adjusted' && !isExcelUploaded) {
+            notify.error(
+                "Acción bloqueada", 
+                "Para realizar un re-ajuste de productos ya finalizados, primero debes cargar el Excel de sistema actualizado."
+            );
+            return;
+        }
+
+        const parsedQty = parseFloat(qty);
+        if (isNaN(parsedQty) || parsedQty < 0) {
+            notify.error("Cantidad Inválida", "Por favor ingresá un número válido mayor o igual a 0.");
+            return;
+        }
+
+        onUpdateQuantity(item.id, parsedQty);
+        setOpen(false);
+        notify.success("Stock Guardado", `${item.name}: ${parsedQty} unidades.`);
+    };
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger render={
+                <div className="flex items-center min-w-0 cursor-pointer group/cell py-1 select-none">
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                            <div className="font-medium text-[14px] truncate max-w-[200px] sm:max-w-xs md:max-w-md group-hover/cell:text-primary transition-colors">
+                                {item.name}
+                            </div>
+                        {item.wasReadjusted && (
+                            <span className="text-[10px] text-muted-foreground/60 font-medium whitespace-nowrap">
+                                Ajuste Anterior
+                            </span>
+                        )}
+                    </div>
+                </div>
+            } />
+            <PopoverContent 
+                side="bottom" 
+                align="start" 
+                className="w-80 p-4 rounded-2xl bg-surface-5 border border-border/40 shadow-xl z-50"
+            >
+                <div className="space-y-4">
+                    <div>
+                        <p className="text-base font-semibold text-foreground truncate">
+                            {item.name}
+                        </p>
+                        <p className="text-sm text-muted-foreground mt-0.5">
+                            EAN: {item.ean}
+                        </p>
+                    </div>
+
+                    <div className="flex flex-col gap-2.5">
+                        <label className="flex items-center justify-between gap-3 text-sm font-medium text-foreground">
+                            <span className="text-muted-foreground">Stock Sistema</span>
+                            <span className="font-semibold text-foreground bg-muted/40 px-3 py-1 rounded-lg w-32 text-right">
+                                {item.systemQuantity} u.
+                            </span>
+                        </label>
+                        <label className="flex items-center justify-between gap-3 text-sm font-medium text-foreground">
+                            <span className="text-muted-foreground">Cantidad Física</span>
+                            <input
+                                type="number"
+                                value={qty}
+                                onChange={(e) => setQty(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        handleSave();
+                                    }
+                                }}
+                                autoFocus
+                                className="h-8 w-32 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary/20 text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                placeholder="0"
+                                min="0"
+                            />
+                        </label>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2 border-t border-border/20">
+                        <Button 
+                            variant="ghost"
+                            onClick={() => setOpen(false)}
+                            className="h-8 text-sm font-medium hover:bg-muted/50 rounded-lg"
+                        >
+                            Cancelar
+                        </Button>
+                        <Button 
+                            variant="default"
+                            onClick={handleSave}
+                            className="h-8 text-sm font-semibold rounded-lg"
+                        >
+                            Guardar
+                        </Button>
+                    </div>
+                </div>
+            </PopoverContent>
+        </Popover>
+    );
+});
+
 interface CyclicInventoryListProps {
     items: CyclicItem[];
     onUpdateQuantity: (id: string, quantity: number, reason?: string) => void;
@@ -75,10 +164,9 @@ interface CyclicInventoryListProps {
     readOnly?: boolean;
     isPending?: boolean;
     isExcelUploaded?: boolean;
-    // IDs de ajuste del último cierre (para mostrar en la pestaña de Ajustados)
     lastAdjustmentIds?: {
-        shortage: string; // ID Plex para Faltantes
-        surplus: string;  // ID Plex para Sobrantes
+        shortage: string;
+        surplus: string;
     };
 }
 
@@ -95,43 +183,13 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
 }: CyclicInventoryListProps) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editQuantity, setEditQuantity] = useState('');
-    const [showCalculator, setShowCalculator] = useState(false);
     const [editReason, setEditReason] = useState('');
-    const [copiedId, setCopiedId] = useState<string | null>(null);
 
-    // Multi-select state
-    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    // Multi-select state (BEUI Table uses string[])
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [showBulkConfirm, setShowBulkConfirm] = useState(false);
 
-    const toggleSelect = useCallback((id: string) => {
-        setSelectedIds(prev => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-        });
-    }, []);
-
-    const toggleSelectAll = useCallback(() => {
-        setSelectedIds(prev => {
-            if (prev.size === items.length) return new Set();
-            return new Set(items.map(i => i.id));
-        });
-    }, [items]);
-
-    const handleBulkConfirm = useCallback(() => {
-        if (onBulkCheck && selectedIds.size > 0) {
-            onBulkCheck(Array.from(selectedIds));
-            setSelectedIds(new Set());
-            setShowBulkConfirm(false);
-        }
-    }, [onBulkCheck, selectedIds]);
-
-    // Grid layout constants for consistency (Matching Monitor de Sucursales feel)
-    const GRID_TEMPLATE_PENDING = '56px 80px minmax(200px, 3fr) minmax(130px, 1.2fr) minmax(90px, 0.8fr) minmax(100px, 1fr)';
-    const GRID_TEMPLATE_CONTROLLED = '56px 80px minmax(200px, 2.5fr) minmax(130px, 1.2fr) minmax(90px, 0.8fr) minmax(100px, 0.8fr) minmax(80px, 0.6fr) minmax(100px, 0.8fr) minmax(100px, 1fr)';
-
-    const handleStartEdit = (item: any) => {
+    const handleStartEdit = useCallback((item: CyclicItem) => {
         // REGLA DE NEGOCIO: Bloqueo de Re-ajuste si no hay Excel nuevo
         if (item.status === 'adjusted' && !isExcelUploaded) {
             notify.error(
@@ -144,138 +202,85 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
         setEditingId(item.id);
         setEditQuantity(item.countedQuantity.toString());
         setEditReason(item.readjustmentReason || '');
-        setShowCalculator(false);
-    };
+    }, [isExcelUploaded]);
 
-    const handleSaveEdit = () => {
-        if (editingId) {
-            const qty = parseInt(editQuantity, 10);
-            if (!isNaN(qty) && qty >= 0) {
-                const item = items.find(i => i.id === editingId);
-                // Si estaba ajustado, el motivo es obligatorio
-                if (item?.status === 'adjusted' && !editReason.trim()) {
-                    // Import notify dynamically to avoid circular dependencies if any, or just use the local state.
-                    // Wait, we need to import notify if not imported. I'll just use simple alert fallback or add notify import.
-                    return; 
-                }
-                onUpdateQuantity(editingId, qty, editReason.trim());
-                setEditingId(null);
-                setEditReason('');
-            }
+    const handleBulkConfirm = useCallback(() => {
+        if (onBulkCheck && selectedIds.length > 0) {
+            onBulkCheck(selectedIds);
+            setSelectedIds([]);
+            setShowBulkConfirm(false);
         }
-    };
+    }, [onBulkCheck, selectedIds]);
 
-    const handleCancelEdit = () => {
-        setEditingId(null);
-        setEditQuantity('');
-        setEditReason('');
-        setShowCalculator(false);
-    };
-
-    const handleCalculatorResult = (result: number) => {
-        setEditQuantity(Math.floor(result).toString());
-    };
-
-    const copyToClipboard = (text: string, id: string) => {
-        navigator.clipboard.writeText(text);
-        setCopiedId(id);
-        setTimeout(() => setCopiedId(null), 2000);
-    };
-
-    // Row component for react-window
-    const Row = ({ index, style }: { index: number; style: CSSProperties }) => {
-        const item = items[index];
-        const diff = item.countedQuantity - item.systemQuantity;
-        const hasDiff = diff !== 0;
-        const isSelected = selectedIds.has(item.id);
-
-        const diffValue = diff * item.cost;
-
-        return (
-            <div style={style} className="px-0">
-                <div
-                    className={cn(
-                        "h-full items-center border-t border-border/15 hover:bg-muted/30 transition-colors group cursor-pointer",
-                        isSelected && "bg-primary/5 hover:bg-primary/10",
-                        index === 0 && "border-t-0"
-                    )}
-                    style={{
-                        display: 'grid',
-                        gridTemplateColumns: isPending ? GRID_TEMPLATE_PENDING : GRID_TEMPLATE_CONTROLLED,
-                        gap: '0'
-                    }}
-                    onClick={() => {
-                        if (selectedIds.size > 0 && isSelected) {
-                            setShowBulkConfirm(true);
-                        } else {
-                            handleStartEdit(item);
-                        }
-                    }}
-                >
-                    {/* CHECKBOX - TableCell style */}
+    // Table Column Definitions
+    const columns = useMemo(() => {
+        const baseCols: TableColumn<CyclicItem>[] = [
+            {
+                key: 'updatedAt',
+                header: 'Fecha',
+                width: '100px',
+                cell: (item) => (
+                    <span className="text-[13px] font-medium text-muted-foreground whitespace-nowrap">
+                        {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() : '--/--'}
+                    </span>
+                )
+            },
+            {
+                key: 'name',
+                header: 'Producto',
+                width: '320px',
+                cell: (item) => (
+                    <PopoverRowCell
+                        item={item}
+                        isExcelUploaded={isExcelUploaded}
+                        onUpdateQuantity={onUpdateQuantity}
+                    />
+                )
+            },
+            {
+                key: 'category',
+                header: 'Rubro',
+                width: '120px',
+                cell: (item) => (
+                    <span className="text-[13px] font-medium text-muted-foreground whitespace-nowrap uppercase">
+                        {item.category || 'Varios'}
+                    </span>
+                )
+            },
+            {
+                key: 'ean',
+                header: 'Ean',
+                width: '140px',
+                cell: (item) => (
                     <div 
-                        className="flex items-center justify-center pl-5 pr-4 py-3 h-full"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => toggleSelect(item.id)}
-                            aria-label={`Seleccionar ${item.name}`}
-                            className="size-4"
-                        />
-                    </div>
-
-                    {/* FECHA */}
-                    <div className="flex flex-col justify-center px-4 py-3 min-w-0 font-cal">
-                        <span className="text-[13px] font-medium font-mono text-muted-foreground whitespace-nowrap">
-                            {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() : '--/--'}
-                        </span>
-                    </div>
-
-                    {/* PRODUCTO */}
-                    <div className="flex items-center px-4 py-3 min-w-0">
-                        <div className="flex flex-col gap-0.5 min-w-0">
-                            <ProductImageHover ean={item.ean} name={item.name}>
-                                <div className="font-medium text-[14px]">
-                                    {item.name}
-                                </div>
-                            </ProductImageHover>
-                            {item.wasReadjusted && (
-                                <span className="text-[10px] text-muted-foreground/60 font-medium whitespace-nowrap">
-                                    Ajuste Anterior
-                                </span>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* EAN */}
-                    <div 
-                        className="px-4 py-3 flex flex-col justify-center font-mono tabular-nums cursor-copy select-none"
+                        className="flex items-center gap-1.5 group/ean cursor-copy select-none text-[13px] text-muted-foreground/80 leading-tight hover:text-primary hover:underline transition-colors"
                         onClick={(e) => {
                             e.stopPropagation();
-                            copyToClipboard(item.ean, item.id);
+                            navigator.clipboard.writeText(item.ean);
                             notify.success("Código Copiado", `El EAN ${item.ean} se copió al portapapeles.`);
                         }}
                     >
-                        <div className="flex items-center gap-1.5 group/ean">
-                            <span className="text-[13px] text-muted-foreground/80 leading-tight group-hover/ean:text-primary group-hover/ean:underline transition-colors">
-                                {item.ean}
-                            </span>
-                            {copiedId === item.id ? (
-                                <CheckedIcon size={14} color="#10b981" strokeWidth={2.5} />
-                            ) : null}
-                        </div>
+                        <span>{item.ean}</span>
                     </div>
-
-                    {/* PRECIO */}
-                    <div className="px-4 py-3 flex flex-col justify-center tabular-nums">
-                        <span className="text-[13px] font-medium text-foreground leading-tight">
-                            ${item.cost.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                    </div>
-
-                    {/* FÍSICO / SISTEMA */}
-                    <div className="flex items-center px-4 py-3 self-center font-cal">
+                )
+            },
+            {
+                key: 'cost',
+                header: 'Precio',
+                width: '110px',
+                cell: (item) => (
+                    <span className="text-[13px] font-medium text-foreground tabular-nums">
+                        ${item.cost.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                )
+            },
+            {
+                key: 'countedQuantity',
+                header: 'Físico / Sistema',
+                width: '140px',
+                cell: (item) => {
+                    const hasDiff = item.countedQuantity - item.systemQuantity !== 0;
+                    return (
                         <div className="flex items-center justify-start gap-1.5 text-[14px] tabular-nums">
                             {isPending ? (
                                 <span className="text-muted-foreground/10">—</span>
@@ -287,288 +292,141 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                             <span className="text-muted-foreground/30 px-0.5">/</span>
                             <span className="text-muted-foreground/30 font-medium">{item.systemQuantity}</span>
                         </div>
-                    </div>
+                    );
+                }
+            }
+        ];
 
-                    {/* ID */}
-                    {!isPending && (
-                        <div className="px-4 py-3 flex items-center">
-                            {item.status === 'adjusted' && (item.shortageId || item.surplusId) ? (
-                                <Badge variant="outline" className="font-mono">
-                                    {(item.shortageId || item.surplusId)?.split(',')[0]}
-                                </Badge>
-                            ) : (
-                                <span className="text-muted-foreground/10">—</span>
-                            )}
-                        </div>
-                    )}
-
-                    {/* DIFERENCIA */}
-                    {!isPending && (
-                        <div className="flex justify-start px-4 py-3 self-center">
-                            {diff === 0 ? (
-                                <span className="text-muted-foreground/30 text-[13px] pl-4 font-cal">–</span>
-                            ) : (
-                                <Badge variant="outline">
-                                    <span
-                                        aria-hidden="true"
-                                        className={cn("size-1.5 rounded-full", diff > 0 ? "bg-emerald-500" : "bg-red-500")}
-                                    />
-                                    {diff > 0 ? '+' : ''}{diff}
-                                </Badge>
-                            )}
-                        </div>
-                    )}
-
-                    {/* TOTAL ($) */}
-                    {!isPending && (
-                        <div className="flex items-center pl-4 pr-5 py-3 self-center first:pl-5 last:pr-5">
+        if (!isPending) {
+            baseCols.push(
+                {
+                    key: 'id',
+                    header: 'Id',
+                    width: '100px',
+                    cell: (item) => {
+                        const val = item.shortageId || item.surplusId;
+                        return val ? (
+                            <Badge variant="outline">
+                                {val.split(',')[0]}
+                            </Badge>
+                        ) : (
+                            <span className="text-muted-foreground/10">—</span>
+                        );
+                    }
+                },
+                {
+                    key: 'difference',
+                    header: 'Diferencia',
+                    width: '120px',
+                    cell: (item) => {
+                        const diff = item.countedQuantity - item.systemQuantity;
+                        return diff === 0 ? (
+                            <span className="text-muted-foreground/30 text-[13px] pl-4">–</span>
+                        ) : (
+                            <Badge variant="outline">
+                                <span
+                                    aria-hidden="true"
+                                    className={cn("size-1.5 rounded-full", diff > 0 ? "bg-emerald-500" : "bg-red-500")}
+                                />
+                                {diff > 0 ? '+' : ''}{diff}
+                            </Badge>
+                        );
+                    }
+                },
+                {
+                    key: 'totalValue',
+                    header: 'Total ($)',
+                    width: '130px',
+                    cell: (item) => {
+                        const diff = item.countedQuantity - item.systemQuantity;
+                        const diffValue = diff * item.cost;
+                        return (
                             <p className={cn(
-                                "text-[14px] font-medium tabular-nums font-cal",
+                                "text-[14px] font-medium tabular-nums",
                                 diffValue === 0 ? "text-muted-foreground" : diffValue > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
                             )}>
                                 {diffValue < 0 && '-'}${Math.abs(diffValue).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                             </p>
-                        </div>
-                    )}
-                </div>
-            </div>
-        );
-    };
+                        );
+                    }
+                }
+            );
+        }
 
-    if (items.length === 0) {
-        return (
-            <div className="text-center py-12 text-muted-foreground bg-muted/20 rounded-xl border border-dashed">
-                <Package className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                <p>No se encontraron productos</p>
-            </div>
-        );
-    }
+        return baseCols;
+    }, [isPending]);
 
     return (
-        <Frame className="w-full flex-1 relative font-cal">
-            {/* Floating selection bar - Now inside Frame */}
-            <div className="px-0 pb-1">
-                <FramePanel className="p-0 overflow-hidden border-input bg-popover shadow-xs/5 dark:bg-input/20 flex flex-col h-[650px] w-full">
-                    {/* Header Browser-native Perfect Alignment */}
-                    <div
-                        className="h-11 border-b border-input/30 bg-transparent text-[13px] font-semibold text-foreground items-center sticky top-0 z-10"
-                        style={{
-                            display: 'grid',
-                            gridTemplateColumns: isPending ? GRID_TEMPLATE_PENDING : GRID_TEMPLATE_CONTROLLED,
-                            gap: '0'
-                        }}
+        <>
+            <div className="w-full flex-1 relative bg-surface-5 shadow-surface-5 rounded-2xl border border-border/40 overflow-hidden flex flex-col h-[650px]">
+            <Table
+                data={items}
+                columns={columns}
+                getRowId={(row) => row.id}
+                selectable={true}
+                selectedRowIds={selectedIds}
+                onSelectionChange={setSelectedIds}
+                height={600}
+                rowHeight={56}
+                onRowClick={handleStartEdit}
+                className="border-none"
+            />
+
+            <AnimatePresence>
+                {selectedIds.length > 0 && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden border-t border-input/40 bg-muted/5"
                     >
-                        <div className="flex items-center justify-center pl-5 pr-4 h-full">
-                            <Checkbox
-                                checked={selectedIds.size === 0 ? false : (selectedIds.size === items.length ? true : 'indeterminate')}
-                                onCheckedChange={toggleSelectAll}
-                                aria-label="Seleccionar todos"
-                                className="size-4 translate-y-[2px]"
-                            />
-                        </div>
-                        <div className="px-4">Fecha</div>
-                        <div className="px-4">Producto</div>
-                        <div className="px-4">Ean</div>
-                        <div className="px-4 text-left">Precio</div>
-                        <div className="px-4 text-left">Físico / Sistema</div>
-                        {!isPending && (
-                            <>
-                                <div className="px-4">Id</div>
-                                <div className="px-4">Diferencia</div>
-                                <div className="px-4 pr-5 text-left">Total ($)</div>
-                            </>
-                        )}
-                    </div>
-
-                    <div className="flex-1 w-full bg-transparent">
-                        <AutoSizer>
-                            {({ height, width }) => (
-                                <List
-                                    height={height}
-                                    itemCount={items.length}
-                                    itemSize={82}
-                                    width={width}
-                                    className="no-scrollbar"
+                        <div className="flex items-center justify-between px-6 py-3 h-14">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-muted-foreground">
+                                    {selectedIds.length} {selectedIds.length === 1 ? 'producto seleccionado' : 'productos seleccionados'}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedIds([])}
+                                    className="relative z-10 flex h-8 items-center justify-center px-3 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground bg-transparent hover:bg-hover active:scale-[0.98] transition-all duration-80 outline-none cursor-pointer"
                                 >
-                                    {Row}
-                                </List>
-                            )}
-                        </AutoSizer>
-                    </div>
+                                    Deseleccionar
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowBulkConfirm(true)}
+                                    className="relative z-10 flex h-8 items-center justify-center gap-1.5 px-3 rounded-lg text-[13px] font-semibold text-background bg-foreground hover:bg-foreground/90 active:scale-[0.98] transition-all duration-80 outline-none cursor-pointer shadow-sm"
+                                >
+                                    <CheckCircle className="size-3.5" />
+                                    Confirmar sin diferencia
+                                </button>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
 
-                    <AnimatePresence>
-                        {selectedIds.size > 0 && (
-                            <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: 'auto', opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                className="overflow-hidden border-t border-input/40 bg-muted/5 font-cal"
-                            >
-                                <FrameFooter className="flex items-center justify-between px-6 py-3 h-14">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm font-medium text-muted-foreground">
-                                            {selectedIds.size} {selectedIds.size === 1 ? 'producto seleccionado' : 'productos seleccionados'}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => setSelectedIds(new Set())}
-                                            className="text-xs font-medium hover:bg-muted/50"
-                                        >
-                                            Deseleccionar
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            onClick={() => setShowBulkConfirm(true)}
-                                            className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold gap-2 px-4 shadow-sm"
-                                        >
-                                            <CheckCircle className="size-3.5" />
-                                            Confirmar sin diferencia
-                                        </Button>
-                                    </div>
-                                </FrameFooter>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </FramePanel>
-            </div>
-
-            <Dialog open={editingId !== null} onOpenChange={(open) => !open && handleCancelEdit()}>
-                <DialogPopup className="sm:max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>Editar Cantidad</DialogTitle>
-                    </DialogHeader>
-                    {editingId && (() => {
-                        const currentItem = items.find(i => i.id === editingId);
-                        if (!currentItem) return null;
-                        return (
-                            <Form
-                                className="contents"
-                                onSubmit={(e) => {
-                                    e.preventDefault();
-                                    if (currentItem.status === 'adjusted' && !editReason.trim()) return;
-                                    handleSaveEdit();
-                                }}
-                            >
-                                <div className="px-6 py-4 flex flex-col gap-6">
-                                    <div className="p-3 bg-muted/30 rounded-xl border border-border/60">
-                                        <span className="font-mono text-xs text-muted-foreground">{currentItem.ean}</span>
-                                        <h4 className="font-semibold text-sm leading-tight mt-1">{currentItem.name}</h4>
-                                    </div>
-                                    <div className="flex gap-3 items-end">
-                                        <Field className="flex-1">
-                                            <FieldLabel>Nueva Cantidad Física</FieldLabel>
-                                            <Input
-                                                type="number"
-                                                min="0"
-                                                value={editQuantity}
-                                                onChange={(e) => setEditQuantity(e.target.value)}
-                                                placeholder="Ej. 10"
-                                                autoFocus
-                                            />
-                                        </Field>
-                                        <Button
-                                            type="button"
-                                            variant={showCalculator ? "secondary" : "outline"}
-                                            size="icon"
-                                            onClick={() => setShowCalculator(!showCalculator)}
-                                            title="Calculadora"
-                                            className="h-10 w-10 shrink-0"
-                                        >
-                                            <CalculatorIcon className="w-5 h-5" />
-                                        </Button>
-                                    </div>
-
-                                    {currentItem.status === 'adjusted' && (
-                                        <Field>
-                                            <FieldLabel className="text-destructive">
-                                                Motivo de Re-ajuste <span className="text-destructive/80">*</span>
-                                            </FieldLabel>
-                                            <Input
-                                                value={editReason}
-                                                onChange={(e) => setEditReason(e.target.value)}
-                                                placeholder="Ej. Se encontraron 2 más en depósito..."
-                                                className="border-warning focus-visible:ring-warning"
-                                            />
-                                            {editReason.trim().length === 0 ? (
-                                                <FieldError className="text-warning flex items-center gap-1 mt-1">
-                                                    <AlertTriangle className="w-3 h-3" /> Requerido para modificar ítems ya ajustados.
-                                                </FieldError>
-                                            ) : null}
-                                        </Field>
-                                    )}
-
-                                    <AnimatePresence>
-                                        {showCalculator && (
-                                            <motion.div
-                                                initial={{ height: 0, opacity: 0 }}
-                                                animate={{ height: 'auto', opacity: 1 }}
-                                                exit={{ height: 0, opacity: 0 }}
-                                                className="overflow-hidden"
-                                            >
-                                                <Calculator
-                                                    onResult={handleCalculatorResult}
-                                                    onClose={() => setShowCalculator(false)}
-                                                />
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
-                                </div>
-                                <DialogFooter>
-                                    <DialogClose render={<Button type="button" variant="ghost" />}>
-                                        Cancelar
-                                    </DialogClose>
-                                    <Button type="submit">
-                                        Guardar
-                                    </Button>
-                                </DialogFooter>
-                            </Form>
-                        );
-                    })()}
-                </DialogPopup>
-            </Dialog>
-
-            {/* Bulk Confirmation Dialog */}
             <Dialog open={showBulkConfirm} onOpenChange={(open) => !open && setShowBulkConfirm(false)}>
-                <DialogPopup className="sm:max-w-lg">
+                <DialogContent size="lg">
                     <DialogHeader>
-                        <DialogTitle>Confirmar productos sin diferencia</DialogTitle>
+                        <DialogTitle>Confirmar acción</DialogTitle>
+                        <DialogDescription>
+                            ¿Confirmar que los siguientes {selectedIds.length} productos no presentan diferencia con el sistema?
+                        </DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <p className="text-sm text-muted-foreground">
-                            ¿Confirmar que los siguientes <span className="font-bold text-foreground">{selectedIds.size} productos</span> no presentan diferencia con el sistema?
-                        </p>
-                        <div className="max-h-[300px] overflow-y-auto space-y-1.5 pr-2">
-                            {items.filter(i => selectedIds.has(i.id)).map(item => (
-                                <div key={item.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 border border-border/50">
-                                    <CheckCircle className="w-4 h-4 text-success shrink-0" />
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-medium truncate">{item.name}</p>
-                                        <p className="text-[10px] text-muted-foreground font-mono">{item.ean} · Sist: {item.systemQuantity}</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="p-3 rounded-lg bg-success/10 border border-success/20">
-                            <p className="text-xs text-success font-medium flex items-center gap-1.5">
-                                <CheckCircle className="w-3.5 h-3.5" />
-                                Todos pasarán a "Controlados" con cantidad física igual al sistema
-                            </p>
-                        </div>
-                    </div>
                     <DialogFooter>
-                        <DialogClose render={<Button variant="outline" />}>
+                        <DialogClose render={<Button variant="ghost" />}>
                             Cancelar
                         </DialogClose>
-                        <Button className="bg-success hover:bg-success/90 text-white gap-1.5" onClick={handleBulkConfirm}>
-                            <CheckCircle className="w-4 h-4" />
-                            Guardar ({selectedIds.size})
+                        <Button onClick={handleBulkConfirm}>
+                            Guardar
                         </Button>
                     </DialogFooter>
-                </DialogPopup>
+                </DialogContent>
             </Dialog>
-        </Frame>
+        </>
     );
 });

@@ -26,7 +26,7 @@ import {
     ComboboxPopup, 
     ComboboxValue 
 } from "@/components/ui/combobox";
-import { SearchIcon, Plus, FileEdit } from "lucide-react";
+import { SearchLg as SearchIcon, Plus, Edit01 as FileEdit } from '@untitledui/icons';
 import { PageTransition } from "../components/PageTransition";
 import { Button } from "@/components/ui/button";
 import { TrainingCategory } from "../services/trainingService";

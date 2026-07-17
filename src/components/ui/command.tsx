@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Command as CommandPrimitive } from "cmdk";
-import { Magnifer as Search } from "@solar-icons/react";
+import { SearchLg as Search } from '@untitledui/icons';
 import { Dialog, DialogPopup, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 

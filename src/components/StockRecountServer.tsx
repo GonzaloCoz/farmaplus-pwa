@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Laptop, Smartphone, Play, StopCircle, UsersGroupTwoRounded, DocumentText, Refresh, GraphUp as TrendingUp, GraphDown as TrendingDown, Magnifer as Search, Filter, AltArrowDown as ChevronDown } from "@solar-icons/react";
+import { Laptop01 as Laptop, Phone as Smartphone, Play, StopSquare as StopCircle, Users01 as UsersGroupTwoRounded, File01 as DocumentText, RefreshCw01 as Refresh, TrendUp01 as TrendingUp, TrendDown01 as TrendingDown, SearchLg as Search, FilterLines as Filter, ChevronDown } from '@untitledui/icons';
 import { motion, AnimatePresence } from "framer-motion";
 import { notify } from "@/lib/notifications";
 import * as XLSX from "xlsx";

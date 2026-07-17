@@ -1,11 +1,4 @@
-import {
-    ArrowDownIcon,
-    ArrowLeftIcon,
-    ArrowUpIcon,
-    CornerDownLeftIcon,
-    SearchIcon,
-    SparklesIcon,
-} from "lucide-react";
+import { ArrowDown as ArrowDownIcon, ArrowLeft as ArrowLeftIcon, ArrowUp as ArrowUpIcon, ArrowDownLeft as CornerDownLeftIcon, SearchLg as SearchIcon, Stars01 as SparklesIcon } from '@untitledui/icons';
 import { useNavigate } from "react-router-dom";
 import {
     Fragment,
@@ -38,8 +31,9 @@ import { ScrollArea, ScrollAreaViewport, ScrollAreaScrollbar } from "@/component
 import { Skeleton } from "@/components/ui/skeleton";
 import { aiChatService, parseActions, type AIAction } from "@/services/aiChatService";
 import { normalizeString } from "@/lib/utils";
-import { BRANCH_NAMES, ZONAL_USERS, BRANCH_USERS } from "@/config/users";
 import { Spinner } from "@/components/ui/spinner";
+import { supabase } from "@/integrations/supabase/client";
+import { useUser } from "@/contexts/UserContext";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -104,8 +98,21 @@ interface SuperSearchProps {
 
 export function SuperSearch({ open, onOpenChange }: SuperSearchProps) {
     const navigate = useNavigate();
+    const { allBranches } = useUser();
     const [searchQuery, setSearchQuery] = useState("");
     const [aiState, setAIState] = useState<AIState>(initialAIState);
+    const [profiles, setProfiles] = useState<any[]>([]);
+
+    useEffect(() => {
+        if (open) {
+            supabase
+                .from("profiles")
+                .select("username, full_name, role")
+                .then(({ data }) => {
+                    if (data) setProfiles(data);
+                });
+        }
+    }, [open]);
 
     const aiInputRef = useRef<HTMLInputElement>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
@@ -131,9 +138,13 @@ export function SuperSearch({ open, onOpenChange }: SuperSearchProps) {
 
     // Focus AI input when entering AI mode
     useEffect(() => {
+        let timer: ReturnType<typeof setTimeout> | null = null;
         if (aiState.mode && !aiState.isGenerating) {
-            setTimeout(() => aiInputRef.current?.focus(), 50);
+            timer = setTimeout(() => aiInputRef.current?.focus(), 50);
         }
+        return () => {
+            if (timer) clearTimeout(timer);
+        };
     }, [aiState.mode, aiState.isGenerating]);
 
     // Escape in AI mode → back to search
@@ -168,7 +179,7 @@ export function SuperSearch({ open, onOpenChange }: SuperSearchProps) {
             : PAGES;
 
         const branchItems: CommandItem[] = searchQuery.trim()
-            ? BRANCH_NAMES
+            ? allBranches
                 .filter(b => contains(b, searchQuery))
                 .slice(0, 8)
                 .map(name => ({
@@ -180,17 +191,16 @@ export function SuperSearch({ open, onOpenChange }: SuperSearchProps) {
                 }))
             : [];
 
-        const allUsers = [...ZONAL_USERS, ...BRANCH_USERS];
         const userItems: CommandItem[] = searchQuery.trim()
-            ? allUsers
+            ? profiles
                 .filter(u =>
-                    contains(u.name, searchQuery) ||
-                    contains(u.username, searchQuery)
+                    contains(u.full_name || "", searchQuery) ||
+                    contains(u.username || "", searchQuery)
                 )
                 .slice(0, 6)
                 .map(u => ({
                     value: `user-${u.username}`,
-                    label: u.name,
+                    label: u.full_name || u.username,
                     shortcut: `@${u.username}${u.role === "mod" ? " · Admin" : ""}`,
                     path: `/admin/users?search=${encodeURIComponent(u.username)}`,
                     keywords: ["usuario", "user"],
@@ -222,7 +232,7 @@ export function SuperSearch({ open, onOpenChange }: SuperSearchProps) {
         }
 
         return groups;
-    }, [searchQuery]);
+    }, [searchQuery, allBranches, profiles]);
 
     const hasResults = commandGroups.some(g => g.items.length > 0);
 

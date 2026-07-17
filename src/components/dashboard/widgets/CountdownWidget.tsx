@@ -1,7 +1,12 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, DangerCircle as AlertCircle, CheckCircle, Stopwatch as Timer, Lock, LockUnlocked as Unlock } from '@solar-icons/react';
+import { CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Calendar, AlertCircle, CheckCircle, Clock as Timer, Lock01 as Lock, LockUnlocked01 as Unlock } from '@untitledui/icons';
 import { cn } from '@/lib/utils';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { Gauge } from '@/components/charts/gauge';
+import { Tooltip } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownTrigger, DropdownContent, MenuItem } from '@/components/ui/dropdown';
+import { DotsHorizontal } from '@untitledui/icons';
 
 interface CountdownWidgetProps {
     assignedDays: number;
@@ -26,17 +31,20 @@ export function CountdownWidget({
     onToggleLock,
     canManageLock = false
 }: CountdownWidgetProps) {
+    const [timeframe, setTimeframe] = useState<'cycle' | 'month' | 'week'>('cycle');
 
     const stats = useMemo(() => {
         if (!startDate || assignedDays === 0) {
             return {
                 daysRemaining: 0,
                 daysElapsed: 0,
-                timeProgress: 0,
-                status: 'pending',
-                expectedProgress: 0,
-                isDelayed: false,
-                segments: [0, 0, 0]
+                activeAssigned: 0,
+                activeRemaining: 0,
+                activeProgress: 0,
+                activeTarget: 0,
+                deltaPercent: 0,
+                status: 'pending' as const,
+                footerText: 'PLAZO DE INVENTARIO SIN CONFIGURAR'
             };
         }
 
@@ -45,187 +53,248 @@ export function CountdownWidget({
         const diffTime = today.getTime() - start.getTime();
         const daysElapsed = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
         const daysRemaining = Math.max(0, assignedDays - daysElapsed);
-        const timeProgress = Math.min(100, (daysElapsed / assignedDays) * 100);
 
-        // Expected progress is roughly equal to time progress
-        const expectedProgress = Math.round(timeProgress);
-        const isDelayed = totalProgress < expectedProgress - 5; // 5% tolerance
-        const isWayAhead = totalProgress > expectedProgress + 15;
+        let activeAssigned = assignedDays;
+        let activeRemaining = daysRemaining;
+        let activeProgress = totalProgress;
+        
+        // Expected progress is the percentage of time elapsed
+        const totalExpected = Math.min(100, Math.round((daysElapsed / assignedDays) * 100));
+        let activeTarget = totalExpected;
 
-        let status: 'on-track' | 'behind' | 'ahead' | 'pending' = 'on-track';
+        if (timeframe === 'month') {
+            const monthsInCycle = Math.max(1, Math.round(assignedDays / 30));
+            const currentMonthIdx = Math.min(monthsInCycle - 1, Math.floor(daysElapsed / 30));
+            const segmentSize = 100 / monthsInCycle;
+            
+            // Progress for current month (0 - 100)
+            const monthStartProgress = currentMonthIdx * segmentSize;
+            const monthEndProgress = (currentMonthIdx + 1) * segmentSize;
+            
+            if (totalProgress >= monthEndProgress) activeProgress = 100;
+            else if (totalProgress <= monthStartProgress) activeProgress = 0;
+            else activeProgress = Math.round(((totalProgress - monthStartProgress) / segmentSize) * 100);
+            
+            // Target for current month (0 - 100)
+            const daysElapsedInCurrentMonth = Math.min(30, daysElapsed - (currentMonthIdx * 30));
+            activeTarget = Math.round((daysElapsedInCurrentMonth / 30) * 100);
+            
+            activeAssigned = 30;
+            activeRemaining = Math.max(0, 30 - daysElapsedInCurrentMonth);
+        } else if (timeframe === 'week') {
+            const weeksInCycle = Math.max(1, Math.round(assignedDays / 7));
+            const currentWeekIdx = Math.min(weeksInCycle - 1, Math.floor(daysElapsed / 7));
+            const weekSegmentSize = 100 / weeksInCycle;
+            
+            // Progress for current week (0 - 100)
+            const weekStartProgress = currentWeekIdx * weekSegmentSize;
+            const weekEndProgress = (currentWeekIdx + 1) * weekSegmentSize;
+            
+            if (totalProgress >= weekEndProgress) activeProgress = 100;
+            else if (totalProgress <= weekStartProgress) activeProgress = 0;
+            else activeProgress = Math.round(((totalProgress - weekStartProgress) / weekSegmentSize) * 100);
+            
+            // Target for current week (0 - 100)
+            const daysElapsedInCurrentWeek = Math.min(7, daysElapsed - (currentWeekIdx * 7));
+            activeTarget = Math.round((daysElapsedInCurrentWeek / 7) * 100);
+            
+            activeAssigned = 7;
+            activeRemaining = Math.max(0, 7 - daysElapsedInCurrentWeek);
+        }
+
+        const deltaPercent = activeProgress - activeTarget;
+        const isDelayed = activeProgress < activeTarget - 5;
+        const isWayAhead = activeProgress > activeTarget + 10;
+
+        let status: 'on-track' | 'behind' | 'ahead' = 'on-track';
         if (isDelayed) status = 'behind';
         else if (isWayAhead) status = 'ahead';
 
-        // Calculate 3 segments (months usually)
-        const numSegments = 3;
-        const segmentSize = 100 / numSegments;
-        const segments = Array.from({ length: numSegments }).map((_, i) => {
-            const segmentEnd = (i + 1) * segmentSize;
-            if (totalProgress >= segmentEnd) return 100;
-            if (totalProgress <= i * segmentSize) return 0;
-            return ((totalProgress - (i * segmentSize)) / segmentSize) * 100;
-        });
+        // Generate prediction footer text
+        let footerText = '';
+        if (status === 'ahead') {
+            footerText = `EL INVENTARIO AVANZA UN ${deltaPercent.toFixed(0)}% MÁS RÁPIDO QUE EL OBJETIVO`;
+        } else if (status === 'behind') {
+            footerText = `SE REQUIERE UN ${Math.abs(deltaPercent).toFixed(0)}% MÁS DE AVANCE PARA EVITAR EL RETRASO`;
+        } else {
+            footerText = 'EL RITMO ACTUAL ES ADECUADO PARA FINALIZAR EN EL PLAZO';
+        }
 
         return {
             daysRemaining,
             daysElapsed,
-            timeProgress,
+            activeAssigned,
+            activeRemaining,
+            activeProgress,
+            activeTarget,
+            deltaPercent,
             status,
-            expectedProgress,
-            isDelayed,
-            segments
+            footerText
         };
-    }, [startDate, assignedDays, totalProgress]);
+    }, [startDate, assignedDays, totalProgress, timeframe]);
 
-    const getStatusColor = () => {
-        if (assignedDays === 0) return 'text-muted-foreground';
-        if (stats.status === 'behind') return 'text-destructive';
-        if (stats.status === 'ahead') return 'text-blue-500';
-        return 'text-green-500';
-    };
-
-    const getStatusLabel = () => {
-        if (assignedDays === 0) return 'Sin configurar';
-        if (stats.status === 'behind') return 'Retrasado';
-        if (stats.status === 'ahead') return 'Adelantado';
-        return 'Al día';
-    };
-
-    const getStatusIcon = () => {
-        if (assignedDays === 0) return <Timer className="h-4 w-4" />;
-        if (stats.status === 'behind') return <AlertCircle className="h-4 w-4" />;
-        if (stats.status === 'ahead') return <CheckCircle className="h-4 w-4" />;
-        return <CheckCircle className="h-4 w-4" />;
-    };
+    const showActionsMenu = isEditable || (canManageLock && !!onToggleLock);
 
     return (
         <div className="h-full flex flex-col overflow-hidden relative group/card">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 px-5 pt-4 pb-0 text-foreground">
-                <CardTitle className="text-lg font-medium tracking-tight">Plazo de Inventario</CardTitle>
+                <CardTitle className="text-lg font-medium tracking-tight">
+                    Plazo de Inventario
+                </CardTitle>
                 <div className="flex items-center gap-2">
+                    {/* Timeframe Dropdown */}
+                    {assignedDays > 0 && (
+                        <div className="relative z-50">
+                            <select 
+                                value={timeframe} 
+                                onChange={(e) => setTimeframe(e.target.value as any)}
+                                onPointerDown={(e) => e.stopPropagation()} // Stop drag sensor propagation
+                                className="appearance-none pr-7 pl-3 py-1 text-xs font-semibold bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-full text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                            >
+                                <option value="cycle">Ciclo</option>
+                                <option value="month">Este Mes</option>
+                                <option value="week">Esta Semana</option>
+                            </select>
+                            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500 dark:text-gray-400">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="m6 9 6 6 6-6"/>
+                                </svg>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Lock Status Indicator */}
                     {isLocked && (
-                        <div className="flex items-center gap-1 text-xs text-destructive" title={lockReason === 'manual' ? 'Bloqueado manualmente' : 'Bloqueado por vencimiento'}>
+                        <div className="flex items-center text-destructive" title={lockReason === 'manual' ? 'Bloqueado manualmente' : 'Bloqueado por vencimiento'}>
                             <Lock className="h-4.5 w-4.5" />
                         </div>
                     )}
 
-                    {/* Lock Toggle Button (Admin/Zonal only) */}
-                    {canManageLock && onToggleLock && (
-                        <button
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onToggleLock(!isLocked);
-                            }}
-                            className="relative z-50 text-muted-foreground hover:text-primary transition-colors opacity-0 group-hover/card:opacity-100 cursor-pointer"
-                            title={isLocked ? 'Desbloquear inventario' : 'Bloquear inventario'}
-                        >
-                            {isLocked ? <Unlock className="h-5 w-5" /> : <Lock className="h-5 w-5" />}
-                        </button>
+                    {/* Unified Actions Dropdown Menu */}
+                    {showActionsMenu && (
+                        <DropdownMenu>
+                            <DropdownTrigger render={
+                                <Button 
+                                    variant="secondary" 
+                                    size="icon-sm"
+                                    onPointerDown={(e) => e.stopPropagation()} // Stop drag sensor propagation
+                                    className="relative z-50 opacity-0 group-hover/card:opacity-100 transition-opacity"
+                                    title="Acciones de plazo"
+                                >
+                                    <DotsHorizontal />
+                                </Button>
+                            } />
+                            <DropdownContent align="end">
+                                {isEditable && (
+                                    <MenuItem 
+                                        index={0}
+                                        icon={Calendar}
+                                        label="Configurar plazo"
+                                        onSelect={() => onEdit?.()}
+                                    />
+                                )}
+                                {canManageLock && onToggleLock && (
+                                    <MenuItem 
+                                        index={isEditable ? 1 : 0}
+                                        icon={isLocked ? Unlock : Lock}
+                                        label={isLocked ? "Desbloquear inventario" : "Bloquear inventario"}
+                                        onSelect={() => onToggleLock(!isLocked)}
+                                    />
+                                )}
+                            </DropdownContent>
+                        </DropdownMenu>
                     )}
-
-                    {/* Edit Button */}
-                    {isEditable && (
-                        <button
-                            onPointerDown={(e) => e.stopPropagation()}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onEdit?.();
-                            }}
-                            className="relative z-50 text-muted-foreground hover:text-primary transition-colors opacity-0 group-hover/card:opacity-100 cursor-pointer"
-                            title="Configurar plazo"
-                        >
-                            <Calendar className="h-5 w-5" />
-                        </button>
-                    )}
-                    {!isEditable && !canManageLock && <Calendar className="h-5 w-5 text-muted-foreground" />}
                 </div>
             </CardHeader>
-            <CardContent className="flex flex-col justify-between flex-1 px-5 pb-5 pt-1 gap-4">
 
-                {/* Days Info */}
-                <div className="flex items-end justify-between">
-                    <div className="flex flex-col">
-                        <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-0.5">
-                            Asignados
-                        </span>
-                        <span className="text-3xl font-black tracking-tighter text-foreground leading-none">
-                            {assignedDays > 0 ? assignedDays : '--'}
-                        </span>
-                    </div>
-
-                    <div className="h-10 w-px bg-border/40 mx-2" />
-
-                    <div className="flex flex-col items-end">
-                        <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-0.5">
-                            Restantes
-                        </span>
-                        <span className={cn(
-                            "text-3xl font-black tracking-tighter leading-none",
-                            stats.daysRemaining < 7 && assignedDays > 0 ? "text-destructive" : "text-foreground"
-                        )}>
-                            {assignedDays > 0 ? stats.daysRemaining : '--'}
-                        </span>
+            <CardContent className="flex flex-col justify-between flex-1 px-5 pb-3 pt-0.5 @sm:pb-3.5 @sm:pt-1 gap-1 @sm:gap-2">
+                {/* Main value percentage and target indicators */}
+                <div className="flex flex-col gap-0.5">
+                    <Tooltip content="Porcentaje real de avance en la carga de inventario para el periodo seleccionado.">
+                        <div className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-gray-50 leading-none cursor-help w-max">
+                            {assignedDays > 0 ? `${stats.activeProgress.toFixed(1)}%` : '--%'}
+                        </div>
+                    </Tooltip>
+                    
+                    <div className="flex justify-between items-center mt-0.5">
+                        {/* Delta percentage VS expected target */}
+                        <Tooltip content="Diferencia (desvío) entre tu progreso real actual y el progreso objetivo esperado para hoy. Un valor negativo indica retraso.">
+                            <div className={cn(
+                                "text-xs font-normal cursor-help",
+                                stats.deltaPercent >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"
+                            )}>
+                                {assignedDays > 0 ? (
+                                    stats.deltaPercent >= 0 ? `+${stats.deltaPercent.toFixed(0)}% vs. objetivo` : `${stats.deltaPercent.toFixed(0)}% vs. objetivo`
+                               ) : '-- vs. objetivo'}
+                            </div>
+                        </Tooltip>
+                        
+                        {/* Target badge */}
+                        {assignedDays > 0 && (
+                            <Tooltip content="Progreso objetivo esperado que se debió haber alcanzado hoy para cumplir la meta a tiempo.">
+                                <div className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground cursor-help">
+                                    <span className="hidden @xs:inline">{stats.deltaPercent >= 0 ? 'Sobre el objetivo' : 'Bajo el objetivo'}</span>
+                                    <span className={cn(
+                                        "px-1.5 py-0.5 rounded-md text-[10px] font-bold text-white",
+                                        stats.deltaPercent >= 0 ? "bg-emerald-600 dark:bg-emerald-500" : "bg-red-600 dark:bg-red-500"
+                                    )}>
+                                        {stats.activeTarget}%
+                                    </span>
+                                </div>
+                            </Tooltip>
+                        )}
                     </div>
                 </div>
 
-                {/* Performance Logic */}
-                <div className="bg-muted/30 rounded-xl p-3 border border-border/50">
-                    <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-1.5">
-                            <span className={cn("flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider", getStatusColor())}>
-                                {getStatusIcon()}
-                                {getStatusLabel()}
-                            </span>
-                        </div>
-                        <span className="text-xs font-bold">{totalProgress}% <span className="text-[10px] font-normal text-muted-foreground ml-1">real</span></span>
-                    </div>
-
-                    {/* Pace Bar */}
-                    <div className="h-1.5 w-full bg-muted/50 rounded-full overflow-hidden relative">
-                        {/* Expected Marker */}
-                        <div
-                            className="absolute top-0 bottom-0 w-0.5 bg-foreground/20 z-10"
-                            style={{ left: `${stats.expectedProgress}%` }}
-                        />
-                        {/* Real Progress */}
+                {/* Notched Gauge and Pointer */}
+                <div className="relative w-full py-0.5">
+                    {/* Dynamic Pointer Triangle */}
+                    {assignedDays > 0 && stats.activeProgress > 0 && (
                         <div
                             className={cn(
-                                "h-full transition-all duration-700 rounded-full",
-                                stats.status === 'behind' ? 'bg-destructive' : 'bg-primary'
+                                "absolute top-[-5px] -translate-x-1/2 transition-all duration-700 pointer-events-none z-20",
+                                stats.status === 'behind' ? 'text-red-500' : stats.status === 'ahead' ? 'text-blue-500' : 'text-emerald-500'
                             )}
-                            style={{ width: `${totalProgress}%` }}
-                        />
-                    </div>
-                    <div className="flex justify-between mt-1 text-[9px] text-muted-foreground font-medium uppercase tracking-tighter">
-                        <span>Inicio</span>
-                        <span style={{ marginLeft: `${stats.expectedProgress - 5}%` }}>Objetivo Hoy</span>
-                        <span>Meta</span>
+                            style={{ left: `${stats.activeProgress}%` }}
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="currentColor" className="rotate-180">
+                                <path d="M12 3l10 18H2L12 3z" />
+                            </svg>
+                        </div>
+                    )}
+                    
+                    {/* Bklit Gauge component */}
+                    <Gauge
+                        orientation="linear"
+                        value={stats.activeProgress}
+                        totalNotches={72}
+                        spacing={20}
+                        notchCornerRadius={1.5}
+                        useGradient={true}
+                        activeGradient={["#ef4444", "#22c55e"] as const}
+                        inactiveFillOpacity={0.12}
+                        linearHeight={12}
+                    />
+
+                    {/* Progress Labels */}
+                    <div className="flex justify-between text-xs font-normal text-muted-foreground mt-1">
+                        <span>Atrasado</span>
+                        <span>Óptimo</span>
                     </div>
                 </div>
 
-                {/* Monthly Segments */}
-                <div className="space-y-1.5">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Avance por Periodos</span>
-                    <div className="grid grid-cols-3 gap-2">
-                        {stats.segments.map((val, i) => (
-                            <div key={i} className="space-y-1">
-                                <div className="h-1 w-full bg-muted/50 rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full bg-foreground/40 transition-all duration-1000"
-                                        style={{ width: `${val}%` }}
-                                    />
-                                </div>
-                                <div className="text-[9px] text-center font-bold text-muted-foreground/70">
-                                    M{i + 1}: {Math.round(val)}%
-                                </div>
-                            </div>
-                        ))}
+                {/* Days remaining info / stats */}
+                <Tooltip content="Días asignados totales para este periodo y días calendario que restan antes de que finalice.">
+                    <div className="flex flex-col @sm:flex-row @sm:justify-between @sm:items-center gap-1 px-0.5 mt-0.5 cursor-help w-full">
+                        <span className="text-muted-foreground text-xs font-normal text-left text-balance">Días de inventario:</span>
+                        <div className="text-xs font-normal text-muted-foreground text-left @sm:text-right text-balance">
+                            <span className="font-semibold text-gray-900 dark:text-gray-50">{stats.activeRemaining} restantes</span>
+                            <span className="mx-1 text-gray-300 dark:text-zinc-700">/</span>
+                            <span className="text-gray-500 dark:text-gray-400">{stats.activeAssigned} asignados</span>
+                        </div>
                     </div>
-                </div>
+                </Tooltip>
             </CardContent>
         </div>
     );
 }
-

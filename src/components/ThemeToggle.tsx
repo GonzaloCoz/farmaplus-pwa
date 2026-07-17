@@ -1,4 +1,4 @@
-import { Moon, Sun } from "@solar-icons/react";
+import { Moon01 as Moon, Sun } from '@untitledui/icons';
 import { motion } from "framer-motion";
 import { useTheme } from "@/hooks/useTheme";
 

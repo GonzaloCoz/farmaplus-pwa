@@ -1,7 +1,7 @@
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Upload, FileText as FileSpreadsheet } from '@solar-icons/react';
+import { Upload01 as Upload, File01 as FileSpreadsheet } from '@untitledui/icons';
 import { ChangeEvent } from 'react';
 
 interface CyclicUploadProps {

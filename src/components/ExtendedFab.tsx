@@ -1,5 +1,5 @@
 import { motion, useScroll, useTransform } from "framer-motion";
-import { Plus } from "lucide-react";
+import { Plus } from '@untitledui/icons';
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
 

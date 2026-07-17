@@ -1,6 +1,6 @@
 import { Dialog as BaseDialog } from "@base-ui-components/react/dialog";
 import { cva, type VariantProps } from "class-variance-authority";
-import { CloseCircle as X } from "@solar-icons/react";
+import { XClose as X } from '@untitledui/icons';
 import * as React from "react";
 
 import { cn } from "@/lib/utils";

@@ -2,7 +2,7 @@
 
 import { differenceInMinutes, format, isSameDay, isValid } from "date-fns";
 import { es } from "date-fns/locale";
-import { Copy, MapPinIcon, Trash2 } from "lucide-react";
+import { Copy01 as Copy, MarkerPin01 as MapPinIcon, Trash01 as Trash2 } from '@untitledui/icons';
 
 import {
   type CalendarEvent,

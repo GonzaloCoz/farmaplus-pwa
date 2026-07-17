@@ -1,17 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAppVersion } from '@/hooks/useAppVersion';
+import { sileo } from '@/components/ui/sileo';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, ArrowDown, X } from 'lucide-react';
-import { ScrollArea } from './ui/scroll-area';
-import { notify } from '@/lib/notifications';
-import { cn } from '@/lib/utils';
+import { BookOpen01 as BookOpen } from '@untitledui/icons';
 import {
     Dialog,
-    DialogPopup,
+    DialogContent,
     DialogHeader,
     DialogTitle,
     DialogDescription,
-    DialogPanel,
     DialogFooter,
     DialogClose,
 } from '@/components/ui/dialog';
@@ -28,11 +25,17 @@ export function AppUpdater() {
     } = useAppVersion();
 
     const [dismissed, setDismissed] = useState(false);
+    const [showChangelog, setShowChangelog] = useState(false);
+    const [changelogNotes, setChangelogNotes] = useState<string>('');
+    const reloadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
         checkForUpdates();
         setupRealtimeSubscription();
-        return () => { cleanupSubscription(); };
+        return () => {
+            cleanupSubscription();
+            if (reloadTimeoutRef.current) clearTimeout(reloadTimeoutRef.current);
+        };
     }, []);
 
     // Check if this version was already acknowledged
@@ -40,13 +43,14 @@ export function AppUpdater() {
         ? localStorage.getItem(ACKNOWLEDGED_VERSION_KEY) === latestVersion.version
         : false;
 
-    const handleUpdate = async () => {
+    const handleUpdate = () => {
         if (!latestVersion) return;
 
-        // Mark this version as acknowledged so the modal won't reappear
+        // Mark this version as acknowledged so the toast won't reappear
         localStorage.setItem(ACKNOWLEDGED_VERSION_KEY, latestVersion.version);
+        setChangelogNotes(latestVersion.release_notes || 'Optimización del sistema y corrección de errores.');
 
-        try {
+        const updatePromise = (async () => {
             // 1. Unregister all Service Workers
             if ('serviceWorker' in navigator) {
                 const registrations = await navigator.serviceWorker.getRegistrations();
@@ -61,80 +65,100 @@ export function AppUpdater() {
                 await Promise.all(keys.map(key => caches.delete(key)));
             }
 
-            // 3. Show success notification
-            notify.success("Actualización exitosa", "La aplicación ha sido actualizada correctamente.");
+            // 3. Pause for progress animation visibility
+            await new Promise(resolve => setTimeout(resolve, 1800));
+        })();
 
-            // 4. Brief pause for notification visibility, then reload
-            await new Promise(resolve => setTimeout(resolve, 600));
-            window.location.href = window.location.href.split('?')[0] + '?update=' + new Date().getTime();
-        } catch (e) {
-            console.error("Update wipe failed, falling back to basic reload", e);
-            window.location.reload();
-        }
+        sileo.promise(updatePromise, {
+            loading: {
+                id: "app-updater-toast",
+                title: "Instalando versión",
+                description: `Descargando v${latestVersion.version} y limpiando archivos...`,
+            },
+            success: {
+                title: "Actualización exitosa",
+                description: "Aplicación actualizada correctamente.",
+                button: {
+                    title: "Ver novedades",
+                    onClick: () => {
+                        // Cancel automatic reload
+                        if (reloadTimeoutRef.current) {
+                            clearTimeout(reloadTimeoutRef.current);
+                            reloadTimeoutRef.current = null;
+                        }
+                        // Open the dialog
+                        setShowChangelog(true);
+                    }
+                }
+            },
+            error: {
+                title: "Error al actualizar",
+                description: "Se recargará la aplicación de todos modos.",
+            }
+        });
+
+        updatePromise.then(() => {
+            // Automatic reload in 6 seconds if they don't click "Ver novedades"
+            reloadTimeoutRef.current = setTimeout(() => {
+                window.location.href = window.location.href.split('?')[0] + '?update=' + new Date().getTime();
+            }, 6000);
+        }).catch(() => {
+            setTimeout(() => {
+                window.location.reload();
+            }, 1200);
+        });
     };
 
-    // Don't render if no update, or already acknowledged, or dismissed
-    if (!isUpdateAvailable || !latestVersion || isAcknowledged || dismissed) return null;
+    const handleCloseChangelog = () => {
+        setShowChangelog(false);
+        // Reload immediately
+        window.location.href = window.location.href.split('?')[0] + '?update=' + new Date().getTime();
+    };
+
+    useEffect(() => {
+        if (isUpdateAvailable && latestVersion && !isAcknowledged && !dismissed) {
+            sileo.info({
+                id: "app-updater-toast",
+                title: "Actualización disponible",
+                description: `Nueva versión v${latestVersion.version} lista para aplicar.`,
+                duration: null, // Keep open until action
+                button: {
+                    title: "Actualizar ahora",
+                    onClick: handleUpdate
+                }
+            });
+        }
+    }, [isUpdateAvailable, latestVersion, isAcknowledged, dismissed]);
 
     return (
-        <Dialog open={true} onOpenChange={() => setDismissed(true)}>
-            <DialogPopup className="sm:max-w-md" showCloseButton={false}>
+        <Dialog open={showChangelog} onOpenChange={(open) => !open && handleCloseChangelog()}>
+            <DialogContent size="lg">
                 <DialogHeader>
                     <div className="flex items-center gap-4">
                         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-foreground text-background">
-                            <ArrowDown className="w-5 h-5" />
+                            <BookOpen className="w-5 h-5" />
                         </div>
                         <div>
-                            <DialogTitle>Actualización disponible</DialogTitle>
+                            <DialogTitle>Novedades de la actualización</DialogTitle>
+                            <DialogDescription>
+                                Se aplicaron los siguientes cambios en esta versión:
+                            </DialogDescription>
                         </div>
                     </div>
                 </DialogHeader>
-
-                <DialogPanel>
-                    <div className="flex flex-col gap-4 [&_strong]:font-semibold [&_strong]:text-foreground">
-                        <div className="flex flex-col gap-4">
-                            <div className="flex items-center gap-3">
-                                <p>
-                                    <strong>Nueva versión</strong>
-                                </p>
-                                <span className="px-3 py-1 rounded-lg bg-foreground/5 border border-border/40 text-sm font-mono font-bold">
-                                    {latestVersion.version}
-                                </span>
-                            </div>
-
-                            {latestVersion.release_notes && (
-                                <div className="flex flex-col gap-2 rounded-lg border border-border/40 bg-muted/10 p-4">
-                                    <p>
-                                        <strong>Log de cambios</strong>
-                                    </p>
-                                    <div className="text-sm leading-relaxed whitespace-pre-wrap text-foreground/70 font-medium italic pl-1 max-h-[120px] overflow-y-auto pr-1">
-                                        {latestVersion.release_notes}
-                                    </div>
-                                </div>
-                            )}
-
-                            <p className="text-xs text-muted-foreground/60 font-medium">
-                                La aplicación se reiniciará para aplicar los cambios. Tus datos guardados se mantendrán protegidos.
-                            </p>
-                        </div>
+                
+                <div className="px-6 py-2">
+                    <div className="text-[13px] text-muted-foreground whitespace-pre-wrap leading-relaxed max-h-[220px] overflow-y-auto pr-1">
+                        {changelogNotes}
                     </div>
-                </DialogPanel>
+                </div>
 
                 <DialogFooter>
-                    <DialogClose render={<Button variant="ghost" onClick={() => setDismissed(true)} />}>
-                        Más tarde
+                    <DialogClose render={<Button variant="ghost" onClick={handleCloseChangelog} />}>
+                        Entendido
                     </DialogClose>
-                    <Button
-                        type="button"
-                        onClick={handleUpdate}
-                        className="flex items-center gap-2"
-                    >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        Actualizar ahora
-                    </Button>
                 </DialogFooter>
-            </DialogPopup>
+            </DialogContent>
         </Dialog>
     );
 }
-

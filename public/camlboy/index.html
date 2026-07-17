@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+
+    <script type="text/javascript">
+        const originalFetch = window.fetch;
+        window.fetch = function (input, init) {
+            let url = "";
+            if (typeof input === 'string') url = input;
+            else if (input instanceof URL) url = input.href;
+            else if (input && input.url) url = input.url;
+            if (url.toLowerCase().endsWith('.gb')) {
+                return originalFetch('/camlboy/drmario.gb', init);
+            }
+            return originalFetch(input, init);
+        };
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const selector = document.getElementById('rom-selector');
+            if (selector) {
+                const observer = new MutationObserver(() => {
+                    if (selector.options.length > 0) {
+                        observer.disconnect();
+                        selector.innerHTML = '';
+                        const opt = document.createElement('option');
+                        opt.value = 'drmario.gb';
+                        opt.textContent = 'Dr. Mario (Clásico)';
+                        selector.appendChild(opt);
+                        selector.dispatchEvent(new Event('change'));
+                    }
+                });
+                observer.observe(selector, { childList: true });
+            }
+        });
+    </script>
+
+    <!-- Barrel distortion via spherical projection (Johan Beronius technique) -->
+    <script type="text/javascript">
+        (function () {
+            const size = 256;
+            const half = size / 2;
+            const c = document.createElement('canvas');
+            c.width = size; c.height = size;
+            const ctx = c.getContext('2d');
+
+            const aspect = 0.5; // Widescreen aspect stretch factor
+
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    const dx = x - half;
+                    const dy = (y - half) * aspect; // Squish vertical coordinate space
+                    const l = Math.sqrt(dx * dx + dy * dy);
+
+                    // Spherical projection: asin gives the glass dome angle
+                    const a = l < half ? Math.asin(l / half) : 0;
+                    const z = l < half ? 255 - Math.cos(a) * 255 : 0;
+
+                    // Falloff factor: smoothly transitions displacement back to 0 at the edges
+                    const r_norm = l / half;
+                    const falloff = l < half ? (1 - r_norm * r_norm) : 0;
+
+                    const r = l < half ? 128 + (dx / half) * (z / 255) * falloff * 128 : 128; // Neutral 128 when outside
+                    const g = l < half ? 128 + ((dy / aspect) / half) * (z / 255) * falloff * 128 : 128; // Neutral 128 when outside
+
+                    // Keep opacity at 1 to prevent clipping corners
+                    const o = 1;
+
+                    ctx.fillStyle = 'rgba(' + Math.floor(r) + ',' + Math.floor(g) + ',0,' + o + ')';
+                    ctx.fillRect(x, y, 1, 1);
+                }
+            }
+
+            const dataUri = c.toDataURL();
+
+            // Inject SVG filter with the displacement map baked in
+            document.write(
+                '<svg width="0" height="0" style="position:absolute;pointer-events:none">' +
+                '<defs>' +
+                '<filter id="barrel-distortion" x="-10%" y="-10%" width="120%" height="120%">' +
+                '<feImage href="' + dataUri + '" result="barrel" x="0%" y="0%" width="100%" height="100%"/>' +
+                '<feDisplacementMap in2="barrel" in="SourceGraphic" xChannelSelector="R" yChannelSelector="G" scale="4"/>' +
+                '</filter>' +
+                '</defs>' +
+                '</svg>'
+            );
+        })();
+    </script>
+
+    <script type="text/javascript" defer="defer" src="index.js"></script>
+    <title>Farmaplus - Retro Arcade</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --color-bg: #f0ede8;
+            --font-ui: 'Inter', sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body {
+            background-color: var(--color-bg);
+            font-family: var(--font-ui);
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .container {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.4rem; /* Even closer to the TV */
+        }
+
+        .bar,
+        #instructions,
+        .footer-nav {
+            display: none !important;
+        }
+
+        /* ── Header Styling (Inter Font) ──────────────── */
+        .header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            gap: 0.5rem;
+            max-width: 580px;
+            margin-bottom: 0.8rem;
+            padding: 0 1rem;
+            user-select: none;
+        }
+
+        .header h1 {
+            font-family: var(--font-ui);
+            font-weight: 800; /* Extra Bold */
+            font-size: 2.2rem;
+            color: #18181b;
+            letter-spacing: -0.03em;
+        }
+
+        .header p {
+            font-family: var(--font-ui);
+            font-weight: 400;
+            font-size: 0.8rem;
+            color: #71717a;
+            line-height: 1.45;
+        }
+
+        /* ── TV Shell ───────────────────────────────── */
+        .tv-container {
+            position: relative;
+            width: 720px;
+            max-width: 95vw;
+            max-height: 90vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .tv-image {
+            width: 100%;
+            height: auto;
+            display: block;
+            position: relative;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        /* ── Black inner bezel filling the tube opening ── */
+        .tv-inner-bezel {
+            position: absolute;
+            top: 12.5%;
+            left: 27%;
+            width: 46%;
+            height: 61%;
+            z-index: 0;
+            background: #050505;
+            border-radius: 0px;
+        }
+
+        /* ── CRT Screen ──────────────────────────────── */
+        .crt-screen {
+            position: absolute;
+            top: 19.5%;
+            left: 29%;
+            width: 42%;
+            height: 49%;
+            z-index: 1;
+            overflow: hidden;
+
+            /* Subtle CRT curvature — gentle rounded rectangle */
+            border-radius: 10% / 80%;
+
+            /* Barrel distortion applied to entire screen (canvas + scanlines) */
+            filter: url(#barrel-distortion);
+        }
+
+        #canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            image-rendering: pixelated;
+            background-color: #8bac0f;
+        }
+
+        /* ── CRT Glass Effects ───────────────────────── */
+
+        /* Layer 1 — Vignette + inset shadows → curved glass depth */
+        .crt-screen::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: 10;
+            pointer-events: none;
+            border-radius: inherit;
+            background: radial-gradient(ellipse 78% 72% at 50% 50%,
+                    transparent 40%,
+                    rgba(0, 0, 0, 0.28) 65%,
+                    rgba(0, 0, 0, 0.65) 88%,
+                    rgba(0, 0, 0, 0.90) 100%);
+            box-shadow:
+                inset 0 0 60px 12px rgba(0, 0, 0, 0.5),
+                inset 0 0 14px 5px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Layer 2 — Specular glare + scanlines */
+        .crt-screen::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: 11;
+            pointer-events: none;
+            border-radius: inherit;
+            background:
+                radial-gradient(ellipse 55% 35% at 36% 20%,
+                    rgba(255, 255, 255, 0.13) 0%,
+                    transparent 100%),
+                repeating-linear-gradient(to bottom,
+                    transparent 0px,
+                    transparent 2px,
+                    rgba(0, 0, 0, 0.12) 2px,
+                    rgba(0, 0, 0, 0.12) 4px);
+        }
+
+        .gameboy {
+            display: none !important;
+        }
+
+        #buttons {
+            display: none !important;
+        }
+
+        /* ── Controls Deck (Minimalist) ────────────────── */
+        .controls-deck {
+            display: flex;
+            gap: 2rem; /* Reduced gap between groups */
+            align-items: center;
+            background: transparent;
+            border: none;
+            padding: 0;
+            z-index: 10;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.3rem; /* Reduced space between label and keys */
+        }
+
+        .group-label {
+            font-size: 0.65rem;
+            font-weight: 500;
+            color: #8e8e93;
+            user-select: none;
+        }
+
+        /* D-Pad Layout */
+        .dpad-layout {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .dpad-row {
+            display: flex;
+            gap: 0.2rem; /* Reduced padding between WASD buttons */
+        }
+
+        /* Action & Menu Button Layouts */
+        .action-layout, .menu-layout {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        /* Minimalist apple-like keycap styling (even smaller format) */
+        .kbd-key {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.6rem;
+            height: 1.6rem;
+            background: #ffffff;
+            border: 1px solid #dcdde1;
+            border-radius: 6px;
+            font-family: var(--font-ui);
+            font-weight: 500;
+            font-size: 0.7rem;
+            color: #5f6368;
+            user-select: none;
+            cursor: default;
+            transition: 
+                transform 0.08s cubic-bezier(0.25, 1, 0.5, 1), 
+                box-shadow 0.08s cubic-bezier(0.25, 1, 0.5, 1), 
+                background-color 0.08s cubic-bezier(0.25, 1, 0.5, 1);
+            box-shadow: 
+                0 2px 0px rgba(220, 221, 225, 0.4),
+                0 2px 6px rgba(0, 0, 0, 0.02);
+        }
+
+        .kbd-key.wide {
+            width: auto;
+            padding: 0 0.6rem;
+        }
+
+        /* Hover & active transitions matching spring.fast timing */
+        .kbd-key:hover {
+            background: #fbfaf8;
+        }
+
+        .kbd-key.pressed {
+            transform: translateY(1px) !important;
+            background: #fafafa !important;
+            box-shadow: 
+                0 0.5px 0px rgba(220, 221, 225, 0.4),
+                0 1px 1px rgba(0, 0, 0, 0.02) !important;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Pagina en Mantenimiento</h1>
+            <p>Estamos migrando sistemas para integrar nuevos métodos de trabajo y herramientas de análisis más robustas. Aunque el sitio se encuentra temporalmente fuera de servicio por estas actualizaciones, podes poner a prueba tus reflejos mientras finalizamos esta transición. Gracias por tu paciencia.</p>
+        </div>
+
+        <div class="bar">
+            <div id="fps-and-throttle">
+                <div id="throttle-box">
+                    <label for="throttle">Throttle</label>
+                    <input type="checkbox" id="throttle" checked>
+                </div>
+                <div id="fps-box"><span id="fps">00.0</span> FPS</div>
+            </div>
+            <select id="rom-selector"></select>
+            <button class="load-rom-btn">
+                <input id="load-rom" type="file" style="display: none;">
+                <label for="load-rom">Subir .gb</label>
+            </button>
+        </div>
+
+        <div class="tv-container">
+            <img src="vintage-tv.png" alt="TV" class="tv-image">
+            <div class="tv-inner-bezel"></div>
+            <div class="crt-screen">
+                <canvas id="canvas" width="160" height="144"></canvas>
+            </div>
+        </div>
+
+        <!-- Controls Deck (Minimalist layout) -->
+        <div class="controls-deck">
+            <!-- Movimiento Group (in a single horizontal row) -->
+            <div class="control-group">
+                <div class="group-label">Movimiento</div>
+                <div class="dpad-row">
+                    <kbd class="kbd-key" id="key-w">W</kbd>
+                    <kbd class="kbd-key" id="key-a">A</kbd>
+                    <kbd class="kbd-key" id="key-s">S</kbd>
+                    <kbd class="kbd-key" id="key-d">D</kbd>
+                </div>
+            </div>
+
+            <!-- Girar Group -->
+            <div class="control-group">
+                <div class="group-label">Girar</div>
+                <kbd class="kbd-key" id="key-j">J</kbd>
+            </div>
+
+            <!-- Pausa Group -->
+            <div class="control-group">
+                <div class="group-label">Pausa</div>
+                <kbd class="kbd-key wide" id="key-enter">ENTER</kbd>
+            </div>
+        </div>
+
+        <div class="gameboy" style="display:none!important">
+            <div class="display">
+                <div class="canvas-frame"></div>
+            </div>
+            <div id="buttons">
+                <div id="main-buttons">
+                    <div id="direction-keys">
+                        <div class="row"><span id="up" class="key"></span></div>
+                        <div class="row"><span id="left" class="key"></span><span id="right" class="key"></span></div>
+                        <div class="row"><span id="down" class="key"></span></div>
+                    </div>
+                    <div id="ab-keys">
+                        <div class="ab-keys-col b-col"><span id="b" class="key"></span></div>
+                        <div class="ab-keys-col a-col"><span id="a" class="key"></span></div>
+                    </div>
+                </div>
+                <div id="start-select-keys">
+                    <span id="select" class="key"></span>
+                    <span id="start" class="key"></span>
+                </div>
+            </div>
+        </div>
+
+        <div id="instructions"></div>
+        <div class="footer-nav"></div>
+    </div>
+
+    <!-- Map physical keyboard keys to visual active classes and dispatch virtual Game Boy keys -->
+    <script type="text/javascript">
+        (function() {
+            const keyMap = {
+                'w': 'key-w', 'W': 'key-w',
+                'a': 'key-a', 'A': 'key-a',
+                's': 'key-s', 'S': 'key-s',
+                'd': 'key-d', 'D': 'key-d',
+                'j': 'key-j', 'J': 'key-j',
+                'Enter': 'key-enter'
+            };
+
+            const virtualKeys = {
+                'w': { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 },
+                'W': { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 },
+                'a': { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 },
+                'A': { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 },
+                's': { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 },
+                'S': { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 },
+                'd': { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
+                'D': { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
+                'j': { key: 'x', code: 'KeyX', keyCode: 88 },
+                'J': { key: 'x', code: 'KeyX', keyCode: 88 }
+            };
+
+            function triggerVirtualKey(type, originalEvent) {
+                if (!originalEvent.isTrusted) return; // Prevent loop
+
+                const keyData = virtualKeys[originalEvent.key];
+                if (keyData) {
+                    originalEvent.preventDefault();
+                    
+                    // Dispatch keyboard event to window and document so OCaml WASM catches it
+                    const customEvent = new KeyboardEvent(type, {
+                        key: keyData.key,
+                        code: keyData.code,
+                        keyCode: keyData.keyCode,
+                        which: keyData.keyCode,
+                        bubbles: true,
+                        cancelable: true
+                    });
+                    
+                    window.dispatchEvent(customEvent);
+                    document.dispatchEvent(customEvent);
+                }
+            }
+
+            document.addEventListener('keydown', (e) => {
+                const id = keyMap[e.key];
+                if (id) {
+                    const el = document.getElementById(id);
+                    if (el) el.classList.add('pressed');
+                }
+                triggerVirtualKey('keydown', e);
+            });
+
+            document.addEventListener('keyup', (e) => {
+                const id = keyMap[e.key];
+                if (id) {
+                    const el = document.getElementById(id);
+                    if (el) el.classList.remove('pressed');
+                }
+                triggerVirtualKey('keyup', e);
+            });
+        })();
+    </script>
+</body>
+
+</html>

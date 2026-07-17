@@ -1,156 +1,168 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Lock, User, QuestionCircle as HelpCircle } from "@solar-icons/react";
-import { notify } from "@/lib/notifications";
 import { useUser } from "@/contexts/UserContext";
-import { loadDefaultData } from "@/services/preCountDB";
+import { HelpCircle } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import Beams from "@/components/ui/Beams";
+import { InputGroup, InputField } from "@/components/ui/input-group";
+import { StatefulButton, type ButtonState } from "@/components/ui/stateful-button";
+import { useIcons } from "@/lib/icon-context";
 
 export default function Login() {
     const { login, user } = useUser();
     const navigate = useNavigate();
-    const [isLoading, setIsLoading] = useState(false);
+    const icons = useIcons();
+    
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
+    const [error, setError] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [buttonState, setButtonState] = useState<ButtonState>("idle");
 
-    // Redirigir si ya está autenticado
+    // Redirect if already authenticated
     useEffect(() => {
         if (user) {
             navigate("/", { replace: true });
         }
     }, [user, navigate]);
 
-    const handleLogin = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        console.log("[Login] handleLogin started");
-        setIsLoading(true);
+        setError("");
+        setLoading(true);
+        setButtonState("loading");
 
-        try {
-            console.log("[Login] Credentials:", { username, hasPassword: !!password });
-            if (username && password) {
-                console.log("[Login] Calling context login...");
-                const success = await login(username, password);
-                console.log("[Login] Context login result:", success);
-
-                if (success) {
-                    const displayName = username
-                        .replace(/\./g, ' ')
-                        .replace(/(^\w|\s\w)/g, m => m.toUpperCase());
-                    notify.success(`¡Bienvenido a Farmaplus ${displayName}!`);
-                    await loadDefaultData();
-                    navigate("/", { replace: true });
-                } else {
-                    notify.error("Credenciales inválidas", "Verifique su usuario y contraseña.");
-                }
-            } else {
-                notify.warning("Campos requeridos", "Por favor ingresa usuario y contraseña.");
-            }
-        } catch (error) {
-            console.error(error);
-            notify.error("Error de acceso", "Ocurrió un error al iniciar sesión.");
-        } finally {
-            setIsLoading(false);
+        const success = await login(username, password);
+        if (success) {
+            setButtonState("success");
+            setTimeout(() => {
+                navigate("/", { replace: true });
+            }, 600);
+        } else {
+            setButtonState("error");
+            setError("Usuario o contraseña incorrectos");
+            setLoading(false);
+            setTimeout(() => {
+                setButtonState("idle");
+            }, 2000);
         }
     };
 
     return (
-        <div className="flex h-screen w-full bg-[#cccccc] dark:bg-[#cccccc] overflow-hidden transition-all duration-500 font-sans">
-            {/* Panel Izquierdo - Formulario */}
-            <div className="w-full lg:w-[40%] h-full flex flex-col p-8 lg:p-12 xl:p-16 z-10 relative bg-[#cccccc] dark:bg-[#cccccc] overflow-hidden">
-                <div className="max-w-sm mx-auto w-full pt-4 lg:pt-8 xl:pt-12">
-                    {/* Cabecera: Logo y Bienvenida alineados a la derecha */}
-                    <div className="flex items-center gap-6 mb-12">
-                        <img
-                            src="/logo.png"
-                            alt="Farmaplus Logo"
-                            className="h-20 w-auto object-contain"
-                        />
-                        <div className="flex flex-col">
-                            <h1 className="text-3xl font-bold tracking-tight text-gray-900 font-heading">
-                                Bienvenido
-                            </h1>
-                            <p className="text-gray-600 text-sm leading-tight">
-                                Ingresa tus credenciales para continuar
-                            </p>
-                        </div>
+        <div className="flex h-screen w-full bg-[#0a0a0c] text-white overflow-hidden font-sans select-none">
+            {/* Left Panel: Form */}
+            <div className="w-full lg:w-[42%] xl:w-[38%] h-full flex flex-col justify-center items-center p-6 sm:p-10 md:p-12 z-10 relative bg-[#0a0a0c] border-r border-white/[0.04]">
+                <div className="max-w-sm w-full flex flex-col justify-center gap-8 py-8">
+                    {/* Brand Logo & Intro */}
+                    <div>
+                        <h1 className="font-sans text-3xl font-semibold tracking-tight text-white">
+                            Iniciar sesión
+                        </h1>
+                        <p className="mt-2 text-zinc-400 text-sm">
+                            Te damos la bienvenida de nuevo. Ingresa tus datos.
+                        </p>
                     </div>
 
-                    <form onSubmit={handleLogin} className="space-y-6">
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="username" className="text-sm font-semibold text-gray-700">
-                                    Usuario
-                                </Label>
-                                <div className="relative group">
-                                    <User className="absolute left-3 top-3.5 h-4 w-4 text-gray-500 group-focus-within:text-black transition-colors" />
-                                    <input
-                                        id="username"
-                                        placeholder="nombre.apellido"
-                                        className="w-full pl-10 h-12 bg-white/50 border-transparent focus:bg-white focus:ring-0 outline-none transition-all rounded-md px-4 text-sm text-black"
-                                        value={username}
-                                        onChange={(e) => setUsername(e.target.value)}
-                                        required
-                                    />
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="password" className="text-sm font-semibold text-gray-700">
-                                    Contraseña
-                                </Label>
-                                <div className="relative group">
-                                    <Lock className="absolute left-3 top-3.5 h-4 w-4 text-gray-400 group-focus-within:text-black transition-colors" />
-                                    <input
-                                        id="password"
-                                        type="password"
-                                        placeholder="Tu contraseña"
-                                        className="w-full pl-10 h-12 bg-white/50 border-transparent focus:bg-white focus:ring-0 outline-none transition-all rounded-lg px-4 text-sm text-black"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        required
-                                    />
-                                </div>
-                            </div>
-                        </div>
+                    <div>
+                        {/* Form */}
+                        <form onSubmit={handleSubmit} className="space-y-6">
+                            <InputGroup className="w-full">
+                                <InputField
+                                    index={0}
+                                    label="Usuario"
+                                    placeholder="Ingresa tu usuario"
+                                    icon={icons.mail}
+                                    value={username}
+                                    onChange={(val) => {
+                                        setUsername(val);
+                                        if (error) setError("");
+                                    }}
+                                    error={error ? "Por favor ingresa un usuario válido." : undefined}
+                                />
+                                <InputField
+                                    index={1}
+                                    label="Contraseña"
+                                    type="password"
+                                    placeholder="Ingresa tu contraseña"
+                                    icon={icons.lock}
+                                    value={password}
+                                    onChange={(val) => {
+                                        setPassword(val);
+                                        if (error) setError("");
+                                    }}
+                                    error={error ? "Por favor ingresa tu contraseña." : undefined}
+                                />
+                            </InputGroup>
 
-                        <Button
-                            type="submit"
-                            className="w-full h-12 text-base font-semibold bg-black text-white hover:opacity-90 transition-all rounded-lg shadow-sm"
-                            disabled={isLoading}
-                        >
-                            {isLoading ? "Accediendo..." : "Ingresar"}
-                        </Button>
-
-                        <div className="text-center pt-2">
-                            <a
-                                href="https://teams.microsoft.com/l/chat/0/0?users=GHCoz@farmaplus.com.ar&message=Hola Gonzalo, necesito ayuda con el acceso al PWA"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-[#4B53BC] transition-colors group"
+                            {/* Submit Button */}
+                            <StatefulButton
+                                type="submit"
+                                state={buttonState}
+                                loadingText="Ingresando..."
+                                successText="Ingresado"
+                                errorText="Intenta de nuevo"
+                                disabled={loading}
+                                className="w-full h-11 rounded-full mt-4 text-sm"
                             >
-                                <HelpCircle className="w-4 h-4 text-gray-500 group-hover:text-[#4B53BC] transition-colors" />
-                                <span>¿Necesitas ayuda?</span>
-                            </a>
-                        </div>
-                    </form>
+                                Iniciar sesión
+                            </StatefulButton>
+                        </form>
+                    </div>
+
+                    {/* Support / Help footer */}
+                    <div className="text-center pt-6 border-t border-white/[0.03]">
+                        <a
+                            href="https://teams.microsoft.com/l/chat/0/0?users=GHCoz@farmaplus.com.ar&message=Hola Gonzalo, necesito ayuda con el acceso al PWA"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-500 hover:text-white transition-colors group justify-center"
+                        >
+                            <HelpCircle className="w-4 h-4 text-zinc-600 group-hover:text-white transition-colors" />
+                            <span>¿Necesitas ayuda con el acceso?</span>
+                        </a>
+                    </div>
                 </div>
             </div>
 
-            {/* Panel Derecho - Imagen bg.svg */}
-            <div className="hidden lg:block lg:w-[60%] h-full relative overflow-hidden bg-[#cccccc]">
-                <div
-                    className="absolute inset-0 w-full h-full"
-                    style={{
-                        backgroundImage: `url('/bg.svg')`,
-                        backgroundSize: 'cover',
-                        backgroundPosition: '10% center',
-                        backgroundRepeat: 'no-repeat',
-                        filter: 'contrast(1) opacity(0.9)'
-                    }}
-                />
+            {/* Right Panel: Animated Beams Panel */}
+            <div className="hidden lg:block lg:w-[58%] xl:w-[62%] h-full relative overflow-hidden bg-black">
+                {/* 3D Beams Background from React Bits */}
+                <div className="absolute inset-0 z-0">
+                    <Beams
+                        beamWidth={1.5}
+                        beamHeight={20}
+                        beamNumber={12}
+                        lightColor="#ffffff"
+                        speed={1.5}
+                        noiseIntensity={2.5}
+                        scale={0.2}
+                        rotation={-12}
+                    />
+                </div>
 
-                {/* Overlay gradual - Se ajusta al color de fondo #cccccc con un difuminado más suave */}
-                <div className="absolute inset-0 bg-gradient-to-r from-[#cccccc] via-[#cccccc]/40 to-transparent pointer-events-none w-1/2" />
+                {/* Dark Vignette Overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0c]/80 via-transparent to-[#0a0a0c]/30 pointer-events-none z-10" />
+                <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0c] via-transparent to-transparent pointer-events-none w-1/4 z-10" />
+
+                {/* Text Content */}
+                <div className="relative flex h-full flex-col justify-end p-16 xl:p-20 z-20">
+                    <motion.p
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 0.85, y: 0 }}
+                        transition={{ delay: 0.3, duration: 0.8 }}
+                        className="font-medium text-sm text-white/80 tracking-wide drop-shadow-sm uppercase"
+                    >
+                        Monitoreo y Control
+                    </motion.p>
+                    <motion.h2
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.5, duration: 0.8 }}
+                        className="mt-3 max-w-lg text-balance font-sans text-3xl font-medium text-white leading-tight drop-shadow-md"
+                    >
+                        Monitorea tus inventarios cíclicos en tiempo real con total precisión.
+                    </motion.h2>
+                </div>
             </div>
         </div>
     );

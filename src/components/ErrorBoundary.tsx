@@ -1,5 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { Danger as AlertTriangle, Restart as RefreshCw } from '@solar-icons/react';
+import { AlertTriangle, RefreshCw01 as RefreshCw } from '@untitledui/icons';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -20,6 +20,21 @@ export class ErrorBoundary extends Component<Props, State> {
     };
 
     public static getDerivedStateFromError(error: Error): State {
+        // ponytail: reload on dynamic chunk load errors to auto-update active clients
+        const isChunkError = 
+            error.name === 'ChunkLoadError' || 
+            error.message?.includes('Failed to fetch dynamically imported module') ||
+            error.message?.includes('error loading dynamically imported module') ||
+            error.message?.includes('Importing a module script failed');
+            
+        if (isChunkError) {
+            const hasReloaded = sessionStorage.getItem('chunk_error_reloaded');
+            const now = Date.now();
+            if (!hasReloaded || now - parseInt(hasReloaded, 10) > 10000) {
+                sessionStorage.setItem('chunk_error_reloaded', now.toString());
+                window.location.reload();
+            }
+        }
         return { hasError: true, error };
     }
 

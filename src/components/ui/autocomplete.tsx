@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Autocomplete as BaseAutocomplete } from "@base-ui-components/react/autocomplete";
-import { Magnifer as Search, CheckCircle as Check } from "@solar-icons/react";
+import { SearchLg as Search, CheckCircle as Check } from '@untitledui/icons';
 
 import { cn } from "@/lib/utils";
 

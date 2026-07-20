@@ -2,7 +2,7 @@ import { NavLink } from "react-router-dom";
 import { useMemo, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { LayoutGrid01 as LayoutGrid, Upload01 as Upload, File01 as FileText, Box as Package, BarChart01 as BarChart3 } from '@untitledui/icons';
+import { LayoutGrid01 as LayoutGrid, Upload01 as Upload, File02 as FileText, Box as Package, BarChart01 as BarChart3 } from '@untitledui/icons';
 import { useUser } from "@/contexts/UserContext";
 import { ZebraIcon } from "@/components/icons/ZebraIcon";
 

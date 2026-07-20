@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft as ArrowLeft, Camera01 as Camera, PlusCircle as Plus, CheckCircle, Clock, Trash01 as Trash2, Calendar, LayoutGrid01 as Package, AlertTriangle, File01 as FileText, Bell01 as Bell, Bell01 as BellRing, ChevronRight as ArrowRight, Play, RefreshCw01 as History, LayoutGrid01 as Wifi, XClose as WifiOff, SearchLg as Search, Edit01 as Pencil } from '@untitledui/icons';
+import { ChevronLeft as ArrowLeft, Camera01 as Camera, PlusCircle as Plus, CheckCircle, Clock, Trash01 as Trash2, Calendar, LayoutGrid01 as Package, AlertTriangle, File02 as FileText, Bell01 as Bell, Bell01 as BellRing, ChevronRight as ArrowRight, Play, RefreshCw01 as History, LayoutGrid01 as Wifi, XClose as WifiOff, SearchLg as Search, Edit01 as Pencil } from '@untitledui/icons';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {

@@ -2,11 +2,24 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { BottomNavBar } from "../BottomNavBar";
 import { TopAppBar } from "@/components/TopAppBar";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { HomeSmile as Home, Scan, BarChart01 as BarChart2, CheckCircle, User01 as User, LayoutGrid01 as Beaker, Box, LayersTwo01 as Layers, LayoutGrid01 as LayoutDashboard, Database01 as Database, Clipboard as ClipboardList, LayoutGrid01 as Package, File01 as FileText, Settings01 as Settings, LifeBuoy02 } from '@untitledui/icons';
+import { HomeSmile as Home, Scan, BarChart01 as BarChart2, CheckCircle, User01 as User, LayoutGrid01 as Beaker, Box, LayersTwo01 as Layers, LayoutGrid01 as LayoutDashboard, Database01 as Database, Clipboard as ClipboardList, LayoutGrid01 as Package, File02 as FileText, Settings01 as Settings, LifeBuoy02 } from '@untitledui/icons';
 import { DesktopHeader } from "@/components/DesktopHeader";
 import { SyncStatus } from "@/components/SyncStatus";
 import { useWindowManager } from "@/contexts/WindowManagerContext";
-import { useEffect } from "react";
+import { useEffect, useState, useMemo } from "react";
+import { useUser } from "@/contexts/UserContext";
+import { CommandPalette } from "@/components/motion/command-palette";
+import { getLaboratoriesForBranch } from "@/services/productService";
+import { cyclicInventoryService } from "@/services/cyclicInventoryService";
+import {
+  LayoutDashboard as DashboardIcon,
+  BarChart3 as BarChartIcon,
+  ClipboardList as ClipboardIcon,
+  Scale as ScaleIcon,
+  Clock as ClockIcon,
+  LogOut as LogOutIcon,
+  Settings as SettingsIcon
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { WindowRouter } from "@/components/WindowRouter";
 import { getTabMetaForPath } from "@/config/tabConfig";
@@ -22,6 +35,129 @@ export function AppLayout() {
   const { windows, activeWindowId } = useWindowManager();
   const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
   const isNative = Capacitor.isNativePlatform();
+  const navigate = useNavigate();
+  const { user, logout } = useUser();
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [labs, setLabs] = useState<{ name: string, category: string, round: number }[]>([]);
+  const [activeRounds, setActiveRounds] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const handleOpen = () => setIsSearchOpen(true);
+    window.addEventListener("open-command-palette", handleOpen);
+    return () => window.removeEventListener("open-command-palette", handleOpen);
+  }, []);
+
+  useEffect(() => {
+    const branch = user?.branchSheet || user?.branchName;
+    if (!branch) {
+      setLabs([]);
+      setActiveRounds({});
+      return;
+    }
+    Promise.all([
+      getLaboratoriesForBranch(branch),
+      cyclicInventoryService.getBranchConfig(branch)
+    ]).then(([labsData, configData]) => {
+      setLabs(labsData || []);
+      setActiveRounds(configData?.rounds || {});
+    });
+  }, [user?.branchSheet, user?.branchName, isSearchOpen]);
+
+  const commandItems = useMemo(() => {
+    const items = [
+      {
+        id: "dashboard",
+        label: "Dashboard",
+        group: "Navegación",
+        hint: "Vista general de métricas",
+        icon: DashboardIcon,
+        keywords: ["inicio", "home", "metricas", "dashboard"],
+        onSelect: () => navigate("/"),
+      },
+      {
+        id: "cyclic-inventory",
+        label: "Inventarios Cíclicos",
+        group: "Navegación",
+        hint: "Ajustes e inventario",
+        icon: BarChartIcon,
+        keywords: ["inventario", "ciclico", "stock"],
+        onSelect: () => navigate("/cyclic-inventory"),
+      },
+    ];
+
+    if (user?.role === 'admin' || user?.role === 'mod') {
+      items.push({
+        id: "reports",
+        label: "Reportes y Auditoría",
+        group: "Navegación",
+        hint: "Historial y logs",
+        icon: ClipboardIcon,
+        keywords: ["reporte", "auditoria", "log"],
+        onSelect: () => navigate("/reports"),
+      });
+    }
+
+    if (user?.role === 'admin') {
+      items.push({
+        id: "comparison",
+        label: "Comparativa",
+        group: "Navegación",
+        hint: "Comparación de sucursales",
+        icon: ScaleIcon,
+        keywords: ["comparativa", "comparacion", "sucursales"],
+        onSelect: () => navigate("/comparison"),
+      });
+    }
+
+    items.push(
+      {
+        id: "expiration-control",
+        label: "Control de Vencimiento",
+        group: "Navegación",
+        hint: "Gestión de vencimientos",
+        icon: ClockIcon,
+        keywords: ["control", "vencimiento", "fecha"],
+        onSelect: () => navigate("/stock/expiration-control"),
+      },
+      {
+        id: "settings",
+        label: "Configuración",
+        group: "Navegación",
+        hint: "Ajustes de la aplicación",
+        icon: SettingsIcon,
+        keywords: ["configuracion", "ajustes", "preferencias"],
+        onSelect: () => navigate("/settings"),
+      },
+      {
+        id: "logout",
+        label: "Cerrar sesión",
+        group: "Sistema",
+        hint: "Salir de la cuenta",
+        icon: LogOutIcon,
+        keywords: ["salir", "cerrar", "sesion", "logout"],
+        onSelect: () => logout(),
+      }
+    );
+
+    // Map and append active round laboratory items
+    const labItems = labs
+      .filter((l) => {
+        const catNorm = (l.category || '').trim().toUpperCase();
+        const activeRound = activeRounds[catNorm] || activeRounds['GENERAL'] || 1;
+        return l.round === activeRound;
+      })
+      .map((l) => ({
+        id: `lab-${l.name}-${l.category}`,
+        label: l.name,
+        group: "Laboratorios",
+        hint: l.category.toUpperCase(),
+        icon: BarChartIcon,
+        keywords: ["laboratorio", l.name.toLowerCase(), "control", "inventario", l.category.toLowerCase()],
+        onSelect: () => navigate(`/cyclic-inventory/${encodeURIComponent(l.name)}`),
+      }));
+
+    return [...items, ...labItems];
+  }, [user, navigate, logout, labs, activeRounds]);
 
   return (
     <SurfaceProvider value={1}>
@@ -113,6 +249,12 @@ export function AppLayout() {
         </div>
         <AppUpdater />
       </div>
+      <CommandPalette
+        open={isSearchOpen}
+        onOpenChange={setIsSearchOpen}
+        items={commandItems}
+        placeholder="Buscar páginas, sucursales, productos..."
+      />
     </SurfaceProvider>
   );
 }

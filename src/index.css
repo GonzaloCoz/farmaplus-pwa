@@ -626,3 +626,23 @@ p {
     transition: none !important;
   }
 }
+
+/* Spinner Keyframes for Button loading animations */
+@keyframes spinner-move {
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+@keyframes spinner-dash {
+  0% {
+    stroke-dasharray: 0 100;
+  }
+  50% {
+    stroke-dasharray: 65 35;
+    stroke-dashoffset: -14;
+  }
+  100% {
+    stroke-dasharray: 0 100;
+    stroke-dashoffset: -100;
+  }
+}

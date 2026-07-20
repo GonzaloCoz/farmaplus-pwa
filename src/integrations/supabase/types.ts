@@ -344,6 +344,7 @@ export interface Database {
                     was_readjusted: boolean
                     adjustment_id_shortage: string | null
                     adjustment_id_surplus: string | null
+                    round: number
                     created_at: string
                     updated_at: string
                 }
@@ -359,6 +360,7 @@ export interface Database {
                     was_readjusted?: boolean
                     adjustment_id_shortage?: string | null
                     adjustment_id_surplus?: string | null
+                    round?: number
                     created_at?: string
                     updated_at?: string
                 }
@@ -374,6 +376,7 @@ export interface Database {
                     was_readjusted?: boolean
                     adjustment_id_shortage?: string | null
                     adjustment_id_surplus?: string | null
+                    round?: number
                     created_at?: string
                     updated_at?: string
                 }
@@ -641,6 +644,8 @@ export interface Database {
                     total_surplus_value: number
                     total_net_value: number
                     total_items_adjusted: number
+                    total_counted_items: number
+                    round: number
                     created_at: string
                 }
                 Insert: {
@@ -656,6 +661,8 @@ export interface Database {
                     total_surplus_value?: number
                     total_net_value?: number
                     total_items_adjusted?: number
+                    total_counted_items?: number
+                    round?: number
                     created_at?: string
                 }
                 Update: {
@@ -671,6 +678,8 @@ export interface Database {
                     total_surplus_value?: number
                     total_net_value?: number
                     total_items_adjusted?: number
+                    total_counted_items?: number
+                    round?: number
                     created_at?: string
                 }
                 Relationships: []

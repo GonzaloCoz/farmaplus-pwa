@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar as CalendarIcon, File01 as FileSpreadsheet, File01 as FileText, XClose as X } from '@untitledui/icons';
+import { Calendar as CalendarIcon, File02 as FileSpreadsheet, File02 as FileText, XClose as X } from '@untitledui/icons';
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 

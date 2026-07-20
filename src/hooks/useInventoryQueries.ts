@@ -3,16 +3,16 @@ import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 
 export const INVENTORY_KEYS = {
     all: ['inventory'] as const,
-    lab: (branchName: string, labName: string) => [...INVENTORY_KEYS.all, 'lab', branchName, labName] as const,
+    lab: (branchName: string, labName: string, round?: number) => [...INVENTORY_KEYS.all, 'lab', branchName, labName, round] as const,
     stats: (branchName: string, labName: string, category: string) => [...INVENTORY_KEYS.all, 'stats', branchName, labName, category] as const,
     summary: () => [...INVENTORY_KEYS.all, 'summary'] as const,
     history: (branchName: string, labName: string) => [...INVENTORY_KEYS.all, 'history', branchName, labName] as const,
 };
 
-export function useLabInventoryQuery(branchName: string, labName: string) {
+export function useLabInventoryQuery(branchName: string, labName: string, round?: number) {
     return useQuery({
-        queryKey: INVENTORY_KEYS.lab(branchName, labName),
-        queryFn: () => cyclicInventoryService.getLabInventory(branchName, labName),
+        queryKey: INVENTORY_KEYS.lab(branchName, labName, round),
+        queryFn: () => cyclicInventoryService.getLabInventory(branchName, labName, round),
         enabled: !!labName && branchName !== 'Sucursal Desconocida',
         staleTime: 1000 * 60 * 5, // 5 minutos de caché
     });
@@ -21,12 +21,12 @@ export function useLabInventoryQuery(branchName: string, labName: string) {
 export function usePrefetchLabInventory() {
     const queryClient = useQueryClient();
 
-    const prefetch = (branchName: string, labName: string) => {
+    const prefetch = (branchName: string, labName: string, round?: number) => {
         if (!labName || branchName === 'Sucursal Desconocida') return;
 
         queryClient.prefetchQuery({
-            queryKey: INVENTORY_KEYS.lab(branchName, labName),
-            queryFn: () => cyclicInventoryService.getLabInventory(branchName, labName),
+            queryKey: INVENTORY_KEYS.lab(branchName, labName, round),
+            queryFn: () => cyclicInventoryService.getLabInventory(branchName, labName, round),
             staleTime: 1000 * 60 * 5,
         });
     };

@@ -37,9 +37,9 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
 export function hasPermission(user: User | null, permission: Permission): boolean {
     if (!user) return false;
 
-    // AI Chat is enabled for all authenticated users
+    // AI Chat is only enabled for gcoz
     if (permission === 'USE_AI_CHAT') {
-        return true;
+        return user.username.toLowerCase() === 'gcoz';
     }
 
     // 1. Check if user has specific permission overrides

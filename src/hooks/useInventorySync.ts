@@ -8,10 +8,11 @@ interface UseInventorySyncProps {
     labName: string;
     items: CyclicItem[];
     onItemsLoaded: (items: CyclicItem[]) => void;
+    round?: number;
 }
 
-export function useInventorySync({ branchName, labName, items, onItemsLoaded }: UseInventorySyncProps) {
-    const { data: queryData, isLoading: queryLoading } = useLabInventoryQuery(branchName, labName);
+export function useInventorySync({ branchName, labName, items, onItemsLoaded, round }: UseInventorySyncProps) {
+    const { data: queryData, isLoading: queryLoading } = useLabInventoryQuery(branchName, labName, round);
     const [isSaving, setIsSaving] = useState(false);
     const setIsLoading = (loading: boolean) => { }; // Compatibilidad con el controlador
 

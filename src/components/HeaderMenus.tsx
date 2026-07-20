@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Bell01 as Bell, Settings01 as Settings, User01 as User, ChevronRight, Moon01 as Moon, Sun, Trash01 as Trash2, Bell01 as BellRing, CheckCircle as Check, MessageSquare01 as MessageSquare, RefreshCw01 as RefreshIcon, XClose as XIcon, InfoCircle, AlertTriangle as ErrorIcon, AlertCircle as WarningIcon, ChevronDown, ChevronUp } from '@untitledui/icons';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogPopup, DialogPanel } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogPopup, DialogPanel, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { TabsSubtle, TabsSubtleItem, TabsSubtlePanel } from "@/components/ui/tabs-subtle";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { fontWeights } from "@/lib/font-weight";
 
 import { useUser } from "@/contexts/UserContext";
 
@@ -81,6 +83,11 @@ export function NotificationsMenu() {
   const { user } = useUser();
   const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
   const [activeTab, setActiveTab] = useState<NotifTab>('todas');
+  const tabKeys: NotifTab[] = ['todas', 'mencionado', 'sistema'];
+  const selectedIndex = tabKeys.indexOf(activeTab);
+  const handleSelectTab = (index: number) => {
+    setActiveTab(tabKeys[index]);
+  };
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -162,188 +169,185 @@ export function NotificationsMenu() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <div className="inline-block relative">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setOpen(true)}
-          aria-label="Notificaciones"
-          className={cn("shrink-0 cursor-pointer", surfaceClasses(3))}
-          style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
-        >
-          <Bell className={`w-5 h-5 ${unreadCount > 0 ? 'text-accent' : 'text-current'}`} />
-          {unreadCount > 0 && (
-            <span
-              className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-accent text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-background shadow-sm"
-              role="status"
-              aria-label={`${unreadCount} notificaciones nuevas`}
-            >
-              {unreadCount}
-            </span>
-          )}
-        </Button>
-      </div>
-
-      <DialogPopup className="w-[400px] p-0 gap-0">
-        {/* ── Header ── */}
-        <DialogHeader className="flex flex-row items-center justify-between pb-2 pr-12">
-          <DialogTitle>Notificaciones</DialogTitle>
-          <button
-            className={cn("p-1.5 rounded-lg hover:bg-muted/80 transition-all text-muted-foreground", isRefreshing && "animate-spin")}
-            onClick={handleRefresh}
-            title="Actualizar"
+      <DialogTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Notificaciones"
+            className={cn("shrink-0 cursor-pointer relative", surfaceClasses(3))}
+            style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
           >
-            <RefreshIcon className="w-4 h-4" />
-          </button>
+            <Bell className={`w-5 h-5 ${unreadCount > 0 ? 'text-accent' : 'text-current'}`} />
+            {unreadCount > 0 && (
+              <span
+                className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-accent text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-background shadow-sm"
+                role="status"
+                aria-label={`${unreadCount} notificaciones nuevas`}
+              >
+                {unreadCount}
+              </span>
+            )}
+          </Button>
+        }
+      />
+
+      <DialogContent size="lg" className="p-0 flex flex-col h-[600px] max-h-[85vh] overflow-hidden">
+        {/* ── Header ── */}
+        <DialogHeader className="flex flex-row items-center gap-3 px-6 pt-7 pb-3 shrink-0 mb-0">
+          <DialogTitle className="m-0 leading-none">Notificaciones</DialogTitle>
         </DialogHeader>
 
-        {/* ── Content ── */}
-        <DialogPanel className="p-0 scroll-smooth">
-          {/* ── Tabs ── */}
-          <div className="flex items-center gap-1 px-5 py-3 bg-background/50 sticky top-0 z-20  border-b border-border/10">
-            {tabs.map(tab => {
-              const isActive = activeTab === tab.key;
-              const count = counts[tab.key];
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border",
-                    isActive
-                      ? "bg-foreground text-background border-foreground shadow-sm"
-                      : "bg-transparent text-muted-foreground border-border/60 hover:bg-muted/60 hover:text-foreground"
-                  )}
-                >
-                  {tab.label}
-                  <span className={cn(
-                    "text-[10px] font-bold tabular-nums min-w-[16px] text-center",
-                    isActive ? "text-background/70" : "text-muted-foreground/60"
-                  )}>
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+        {/* ── Tabs ── */}
+        <div className="px-6 pb-5 border-b border-border/10 shrink-0">
+          <TabsSubtle
+            idPrefix="notif"
+            selectedIndex={selectedIndex}
+            onSelect={handleSelectTab}
+            className="w-full"
+          >
+            <TabsSubtleItem index={0} label={counts.todas > 0 ? `Todas (${counts.todas})` : "Todas"} />
+            <TabsSubtleItem index={1} label={counts.mencionado > 0 ? `Mencionado (${counts.mencionado})` : "Mencionado"} />
+            <TabsSubtleItem index={2} label={counts.sistema > 0 ? `Sistema (${counts.sistema})` : "Sistema"} />
+          </TabsSubtle>
+        </div>
 
-          {/* ── Notification List ── */}
-          {filteredNotifications.length > 0 ? (
-            <div className="divide-y divide-border/10">
-              {filteredNotifications.map((n, idx) => {
-                const isExpanded = expandedId === n.id;
-                return (
-                  <div
-                    key={n.id}
-                    className={cn(
-                      "group flex items-start gap-3 px-5 py-4 transition-colors",
-                      !n.is_read
-                        ? "bg-accent/[0.04] hover:bg-accent/[0.08]"
-                        : "hover:bg-muted/40"
-                    )}
-                    onClick={() => {
-                      if (!n.is_read) markAsRead(n.id);
-                    }}
-                  >
-                    {/* Icon */}
-                    <div className="mt-0.5">
-                      <NotifTypeIcon type={n.type || 'info'} />
-                    </div>
+        {/* ── Content (Notification List) ── */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
+          {tabKeys.map((key, i) => {
+            const list = key === 'todas'
+              ? notifications
+              : key === 'mencionado'
+              ? notifications.filter(n => MENTIONED_CATEGORIES.includes((n.category || '').toUpperCase()))
+              : notifications.filter(n => SYSTEM_CATEGORIES.includes((n.category || '').toUpperCase()));
 
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className={cn(
-                          "text-[13px] leading-snug",
-                          !n.is_read ? "font-bold text-foreground" : "font-medium text-foreground/80"
-                        )}>
-                          {n.title}
-                        </p>
-                        {/* Action buttons */}
-                        <div className="flex items-center gap-0 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {n.message && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setExpandedId(isExpanded ? null : n.id); }}
-                              className="p-1 rounded-md hover:bg-muted/80 text-muted-foreground transition-colors"
-                              title={isExpanded ? "Contraer" : "Expandir"}
-                            >
-                              {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                            </button>
+            return (
+              <TabsSubtlePanel
+                key={key}
+                index={i}
+                selectedIndex={selectedIndex}
+                idPrefix="notif"
+                className="outline-none flex-1 flex flex-col"
+              >
+                {list.length > 0 ? (
+                  <div className="divide-y divide-border/10">
+                    {list.map((n) => {
+                      const isExpanded = expandedId === n.id;
+                      return (
+                        <div
+                          key={n.id}
+                          className={cn(
+                            "group flex items-start gap-3 px-6 py-4 transition-colors cursor-pointer",
+                            !n.is_read
+                              ? "bg-accent/[0.02] hover:bg-accent/[0.06]"
+                              : "hover:bg-muted/40"
                           )}
-                          <button
-                            onClick={(e) => { e.stopPropagation(); if (!n.is_read) markAsRead(n.id); }}
-                            className="p-1 rounded-md hover:bg-muted/80 text-muted-foreground transition-colors"
-                            title="Marcar como leída"
-                          >
-                            <XIcon className="w-3.5 h-3.5" />
-                          </button>
-                          {MENTIONED_CATEGORIES.includes((n.category || '').toUpperCase()) && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (confirm("¿Estás seguro de que deseas eliminar esta notificación?")) {
-                                  deleteNotification(n.id);
-                                }
-                              }}
-                              className="p-1 rounded-md hover:bg-destructive/10 text-destructive/70 hover:text-destructive transition-colors ml-0.5"
-                              title="Eliminar notificación"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                          onClick={() => {
+                            if (!n.is_read) markAsRead(n.id);
+                          }}
+                        >
+                          {/* Icon */}
+                          <div className="mt-0.5">
+                            <NotifTypeIcon type={n.type || 'info'} />
+                          </div>
+
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className={cn(
+                                "text-sm leading-snug",
+                                !n.is_read ? "font-semibold text-foreground" : "font-medium text-foreground/80"
+                              )}>
+                                {n.title}
+                              </p>
+                              {/* Action buttons */}
+                              <div className="flex items-center gap-0 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {n.message && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setExpandedId(isExpanded ? null : n.id); }}
+                                    className="p-1 rounded-md hover:bg-muted/80 text-muted-foreground transition-colors"
+                                    title={isExpanded ? "Contraer" : "Expandir"}
+                                  >
+                                    {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                  </button>
+                                )}
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); if (!n.is_read) markAsRead(n.id); }}
+                                  className="p-1 rounded-md hover:bg-muted/80 text-muted-foreground transition-colors"
+                                  title="Marcar como leída"
+                                >
+                                  <XIcon className="w-3.5 h-3.5" />
+                                </button>
+                                {MENTIONED_CATEGORIES.includes((n.category || '').toUpperCase()) && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (confirm("¿Estás seguro de que deseas eliminar esta notificación?")) {
+                                        deleteNotification(n.id);
+                                      }
+                                    }}
+                                    className="p-1 rounded-md hover:bg-destructive/10 text-destructive/70 hover:text-destructive transition-colors ml-0.5"
+                                    title="Eliminar notificación"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Expandable message */}
+                            {isExpanded && n.message && (
+                              <p className="text-xs text-muted-foreground mt-2 leading-relaxed pr-4 animate-in fade-in slide-in-from-top-1 duration-200 font-medium">
+                                {n.message}
+                              </p>
+                            )}
+
+                            {/* Preview message when collapsed */}
+                            {!isExpanded && n.message && (
+                              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1 opacity-70 font-medium">
+                                {n.message}
+                              </p>
+                            )}
+
+                            {/* Timestamp */}
+                            <p className="text-[11px] text-muted-foreground/60 mt-2 font-medium">
+                              {timeAgo(n.created_at)}
+                            </p>
+                          </div>
+
+                          {/* Unread dot */}
+                          {!n.is_read && (
+                            <div className="mt-2 shrink-0">
+                              <div className="h-2 w-2 rounded-full bg-accent" />
+                            </div>
                           )}
                         </div>
-                      </div>
-
-                      {/* Expandable message */}
-                      {isExpanded && n.message && (
-                        <p className="text-xs text-muted-foreground mt-2 leading-relaxed pr-4 animate-in fade-in slide-in-from-top-1 duration-200">
-                          {n.message}
-                        </p>
-                      )}
-
-                      {/* Preview message when collapsed */}
-                      {!isExpanded && n.message && (
-                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1 opacity-70">
-                          {n.message}
-                        </p>
-                      )}
-
-                      {/* Timestamp */}
-                      <p className="text-[11px] text-muted-foreground/60 mt-2 font-medium">
-                        {timeAgo(n.created_at)}
-                      </p>
-                    </div>
-
-                    {/* Unread dot */}
-                    {!n.is_read && (
-                      <div className="mt-2 shrink-0">
-                        <div className="h-2 w-2 rounded-full bg-accent" />
-                      </div>
-                    )}
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="py-16 px-5 text-center">
-              <div className="size-12 rounded-lg bg-muted/20 flex items-center justify-center mx-auto mb-4">
-                <Bell className="w-6 h-6 text-muted-foreground/30" />
-              </div>
-              <p className="text-sm font-bold text-foreground">No hay notificaciones</p>
-              <p className="text-xs text-muted-foreground/60 mt-1">Las nuevas aparecerán aquí automáticamente</p>
-            </div>
-          )}
-        </DialogPanel>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center text-center p-6 py-16">
+                    <p className="text-sm font-medium text-foreground">No hay notificaciones</p>
+                    <p className="text-xs text-muted-foreground/60 mt-1">Las nuevas aparecerán aquí automáticamente</p>
+                  </div>
+                )}
+              </TabsSubtlePanel>
+            );
+          })}
+        </div>
 
         {/* ── Footer ── */}
-        <DialogFooter className="justify-between">
+        <DialogFooter className="flex items-center justify-between border-t border-border/10 px-6 py-4 mt-0 shrink-0">
           <button
             onClick={handleMarkAllRead}
             disabled={unreadCount === 0}
             className={cn(
-              "text-xs font-bold transition-colors",
-              unreadCount > 0 ? "text-foreground hover:text-accent cursor-pointer" : "text-muted-foreground/40 cursor-default"
+              "h-9 px-3 flex items-center justify-center text-[13px] transition-all border-none outline-none bg-transparent rounded-lg font-medium",
+              unreadCount > 0
+                ? "text-muted-foreground hover:text-foreground hover:bg-muted/40 cursor-pointer"
+                : "text-muted-foreground/40 cursor-default"
             )}
+            style={{ fontVariationSettings: fontWeights.normal }}
           >
             Marcar todas como leídas
           </button>
@@ -353,13 +357,14 @@ export function NotificationsMenu() {
                 setOpen(false);
                 setShowAnnouncementDialog(true);
               }}
-              className="text-xs font-bold text-muted-foreground hover:text-accent transition-colors cursor-pointer"
+              className="h-9 px-3 flex items-center justify-center text-[13px] text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-all border-none outline-none bg-transparent rounded-lg font-medium cursor-pointer"
+              style={{ fontVariationSettings: fontWeights.normal }}
             >
               Enviar anuncio
             </button>
           )}
         </DialogFooter>
-      </DialogPopup>
+      </DialogContent>
 
       <Dialog open={showAnnouncementDialog} onOpenChange={setShowAnnouncementDialog}>
         <DialogPopup className="sm:max-w-[425px]">

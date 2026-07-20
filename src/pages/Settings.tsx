@@ -22,6 +22,7 @@ import { notify } from "@/lib/notifications";
 import { hasPermission } from "@/config/permissions";
 import { supabase } from "@/integrations/supabase/client";
 import { useTheme } from "@/hooks/useTheme";
+import { normalizeString } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -213,13 +214,13 @@ export default function Settings() {
 
       const existingLabsBulkMap = new Map<string, any>();
       existingLabsBulk?.forEach(row => {
-        const key = `${row.branch_name.toUpperCase().trim()}|${row.laboratory.toUpperCase().trim()}|${row.category.toUpperCase().trim()}`;
+        const key = `${normalizeString(row.branch_name)}|${row.laboratory.toUpperCase().trim()}|${row.category.toUpperCase().trim()}`;
         existingLabsBulkMap.set(key, row);
       });
 
       // 2. Insert/Update new assignments using UPSERT (Non-destructive to progress)
       const insertData = Array.from(uniqueAssignments.values()).map(a => {
-        const key = `${a.branch.toUpperCase().trim()}|${a.lab.toUpperCase().trim()}|${a.category.toUpperCase().trim()}`;
+        const key = `${normalizeString(a.branch)}|${a.lab.toUpperCase().trim()}|${a.category.toUpperCase().trim()}`;
         const existing = existingLabsBulkMap.get(key);
         const hasProgress = existing && ((existing.progress_percentage || 0) > 0 || existing.status !== 'pending');
 
@@ -227,13 +228,13 @@ export default function Settings() {
           // Preserve existing stats and status
           return {
             ...existing,
-            branch_name: a.branch,
+            branch_name: normalizeString(a.branch),
             laboratory: a.lab,
             category: a.category
           };
         } else {
           return {
-            branch_name: a.branch,
+            branch_name: normalizeString(a.branch),
             laboratory: a.lab,
             category: a.category,
             status: 'pending' as const,
@@ -271,7 +272,7 @@ export default function Settings() {
         const { data: existingLabs, error: fetchError } = await supabase
           .from('branch_laboratories')
           .select('id, laboratory, category')
-          .eq('branch_name', branch);
+          .eq('branch_name', normalizeString(branch));
 
         if (fetchError) throw new Error(`Error fetching labs for cleanup: ${fetchError.message}`);
 
@@ -364,7 +365,7 @@ export default function Settings() {
       const { data: existingLabs, error: fetchError } = await supabase
         .from('branch_laboratories')
         .select('*')
-        .eq('branch_name', selectedBranchUpper);
+        .eq('branch_name', normalizeString(selectedBranchImport));
 
       if (fetchError) throw fetchError;
 
@@ -400,13 +401,13 @@ export default function Settings() {
                   // PRESERVE: Keep all existing stats and status
                   newAssignments.push({
                     ...existing,
-                    branch_name: selectedBranchUpper,
+                    branch_name: normalizeString(selectedBranchImport),
                     laboratory: labName,
                     category: category
                   });
                 } else {
                   newAssignments.push({
-                     branch_name: selectedBranchUpper,
+                     branch_name: normalizeString(selectedBranchImport),
                      laboratory: labName,
                      category: category,
                      status: 'pending',

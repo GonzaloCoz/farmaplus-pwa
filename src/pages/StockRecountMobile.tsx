@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Phone as Smartphone, Laptop01 as Laptop, CheckCircle, File01 as DocumentText, LogOut01 as Logout, ArrowLeft, RefreshCw01 as Refresh, SearchLg as Search, TrendUp01 as TrendingUp, TrendDown01 as TrendingDown, LayoutGrid01 as Package } from '@untitledui/icons';
+import { Phone as Smartphone, Laptop01 as Laptop, CheckCircle, File02 as DocumentText, LogOut01 as Logout, ArrowLeft, RefreshCw01 as Refresh, SearchLg as Search, TrendUp01 as TrendingUp, TrendDown01 as TrendingDown, LayoutGrid01 as Package } from '@untitledui/icons';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

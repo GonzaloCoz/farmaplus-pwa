@@ -1,6 +1,6 @@
 
 import { useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useUser } from '@/contexts/UserContext';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { getProductCount } from "@/services/preCountDB";
@@ -24,6 +24,7 @@ export function useDashboardMetrics() {
         },
         enabled: !!user?.branchName,
         staleTime: 1000 * 60 * 5, // 5 minutes cache
+        placeholderData: keepPreviousData,
     });
 
     const { data: config = {}, isLoading: isLoadingConfig } = useQuery({
@@ -39,6 +40,7 @@ export function useDashboardMetrics() {
         },
         enabled: !!user?.branchName,
         staleTime: 1000 * 60 * 30, // 30 minutes cache
+        placeholderData: keepPreviousData,
     });
 
     const { data: activeProductCount = 0 } = useQuery({
@@ -69,6 +71,7 @@ export function useDashboardMetrics() {
         },
         enabled: !!user?.branchName && !!config,
         staleTime: 1000 * 60 * 5, // 5 minutes cache
+        placeholderData: keepPreviousData,
     });
 
     const isLoading = isLoadingInventories || isLoadingConfig || isLoadingLock;
@@ -125,14 +128,28 @@ export function useDashboardMetrics() {
         }
     });
 
-    const toggleLock = async (isLocked: boolean) => {
+  const toggleLock = async (isLocked: boolean) => {
         if (!user?.branchName) return;
         await toggleLockMutation.mutateAsync({ branch: user.branchName, isLocked });
     };
 
+    // Filter to active rounds only for computing current cycle metrics and progress
+    const activeInventories = useMemo(() => {
+        if (!inventories.length || !config) return [];
+        
+        const rounds = (config as any)?.rounds || {};
+        const generalRound = rounds['GENERAL'] || 1;
+        
+        return inventories.filter((lab: any) => {
+            const catNorm = (lab.category || 'VARIOS').toUpperCase();
+            const activeRound = rounds[catNorm] || generalRound;
+            return (lab.round || 1) === activeRound;
+        });
+    }, [inventories, config]);
+
     // 2. Metrics Calculation - Returning Object structure as expected by consumers
     const metrics = useMemo(() => {
-        if (!inventories.length) {
+        if (!activeInventories.length) {
             return {
                 totalStock: 0,
                 activeProducts: activeProductCount,
@@ -144,7 +161,7 @@ export function useDashboardMetrics() {
             };
         }
 
-        const aggregated = inventories.reduce((acc: any, inv: any) => ({
+        const aggregated = activeInventories.reduce((acc: any, inv: any) => ({
             negativeStock: acc.negativeStock + (inv.negativeValue || 0),
             positiveStock: acc.positiveStock + (inv.positiveValue || 0),
             totalStock: acc.totalStock + (inv.differenceValue || 0), // Assuming differenceValue is the net impact $
@@ -169,18 +186,19 @@ export function useDashboardMetrics() {
             positiveUnits: aggregated.positiveUnits,
             totalSystemUnits: aggregated.totalSystemUnits
         };
-    }, [inventories, activeProductCount]);
+    }, [activeInventories, activeProductCount]);
 
     const globalProgress = useMemo(() => {
         // Include all laboratories regardless of item count to match the new Coverage logic
-        if (!inventories.length) return 0;
+        if (!activeInventories.length) return 0;
         
-        const touched = inventories.filter((i: any) => i.status === 'controlado' || i.status === 'por_controlar').length;
-        return Math.round((touched / inventories.length) * 100);
-    }, [inventories]);
+        const touched = activeInventories.filter((i: any) => i.status === 'controlado' || i.status === 'por_controlar').length;
+        return Math.round((touched / activeInventories.length) * 100);
+    }, [activeInventories]);
 
     return {
         inventories,
+        config,
         metrics,
         globalProgress,
         assignedDays: (config as any)?.days || 0,

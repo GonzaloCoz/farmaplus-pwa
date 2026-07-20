@@ -1,5 +1,5 @@
 import React from "react";
-import { HomeSmile as Home, Upload01 as Upload, BarChart01 as BarChart3, Box as Package, File01 as FileText, Settings01 as Settings, TrendUp01 as TrendingUp, ShieldTick as ShieldCheck, Clock } from '@untitledui/icons';
+import { HomeSmile as Home, Upload01 as Upload, BarChart01 as BarChart3, Box as Package, File02 as FileText, Settings01 as Settings, TrendUp01 as TrendingUp, ShieldTick as ShieldCheck, Clock } from '@untitledui/icons';
 import { ZebraIcon } from "@/components/icons/ZebraIcon";
 
 export const TAB_CONFIG: Record<string, { title: string, icon: React.ReactNode }> = {

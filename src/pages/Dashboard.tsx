@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useUser } from "@/contexts/UserContext";
@@ -8,7 +8,6 @@ import { WidgetContainer } from "@/components/dashboard/WidgetContainer";
 import { CalendarModal } from "@/components/dashboard/CalendarModal";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { GlobalSearchInput } from "@/components/dashboard/GlobalSearchInput";
-import { SuperSearch } from "@/components/SuperSearch";
 import { WidgetRenderer } from "@/components/dashboard/WidgetRenderer";
 import { WidgetErrorBoundary } from "@/components/dashboard/WidgetErrorBoundary";
 import { ConfigDialog } from "@/components/dashboard/ConfigDialog";
@@ -43,9 +42,17 @@ export default function Dashboard() {
 
   const { visibleWidgets } = useDashboardLayout(user?.branchName);
 
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+
+  useEffect(() => {
+    if (!isLoading) {
+      setHasLoadedOnce(true);
+    }
+  }, [isLoading]);
+
   // Local UI State
   const [showConfigDialog, setShowConfigDialog] = useState(false);
-  const [showSuperSearch, setShowSuperSearch] = useState(false);
+  const [cycleFilter, setCycleFilter] = useState<'current' | 'previous'>('current');
 
   // Calendar State
   const [showCalendar, setShowCalendar] = useState(false);
@@ -68,7 +75,7 @@ export default function Dashboard() {
     });
   }, [visibleWidgets, user]);
 
-  if (isLoading) {
+  if (isLoading && !hasLoadedOnce) {
     return <DashboardSkeleton />;
   }
 
@@ -83,13 +90,8 @@ export default function Dashboard() {
 
       {/* Global Search Trigger (@coss/p-input-group-23) - Mobile only */}
       <GlobalSearchInput 
-        onClick={() => setShowSuperSearch(true)}
+        onClick={() => window.dispatchEvent(new CustomEvent("open-command-palette"))}
         className="my-2 lg:hidden"
-      />
-
-      <SuperSearch 
-        open={showSuperSearch} 
-        onOpenChange={setShowSuperSearch} 
       />
 
       <div className="grid grid-cols-12 gap-4 lg:gap-6 auto-rows-auto">
@@ -116,6 +118,8 @@ export default function Dashboard() {
                   isLocked={isLocked}
                   lockReason={lockReason}
                   onToggleLock={toggleLock}
+                  cycleFilter={cycleFilter}
+                  onCycleFilterChange={setCycleFilter}
                 />
               </WidgetErrorBoundary>
             </WidgetContainer>

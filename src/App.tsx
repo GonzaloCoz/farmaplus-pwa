@@ -8,6 +8,7 @@ import { AnimatePresence } from "framer-motion";
 import { AppLayout } from "./components/AppLayout";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster as Sonner } from "@/components/ui/sonner";
+import { Toaster as SileoToaster } from "@/components/ui/sileo";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { PageTransition } from "./components/PageTransition";
@@ -17,8 +18,6 @@ import { NotificationPreferencesProvider } from "./contexts/NotificationPreferen
 import { NotificationProvider } from "./contexts/NotificationContext";
 import { hasPermission } from "@/config/permissions";
 
-import { LayoutPresetsDialog } from "@/components/dashboard/LayoutPresetsDialog";
-import { LAYOUT_PRESETS } from "@/config/widgetPresets";
 import { OfflineBanner } from "@/components/offline/OfflineBanner";
 import { DashboardSkeleton } from "./components/DashboardSkeleton";
 import { PageSkeleton } from "./components/skeletons/PageSkeleton";
@@ -384,7 +383,7 @@ import { WindowManagerProvider } from "./contexts/WindowManagerContext";
 import { useAndroidBackButton } from "./hooks/useAndroidBackButton";
 
 // Toggle to temporarily pause/suspend the entire application UI
-const MAINTENANCE_MODE = true;
+const MAINTENANCE_MODE = false;
 
 // Playable Chrome T-Rex Dino Game
 const ChromeDinoGame = () => {
@@ -728,6 +727,7 @@ const App = () => {
           <NotificationPreferencesProvider>
             <UserProvider>
               <NotificationProvider>
+                <SileoToaster position="bottom-right" options={{ roundness: 12 }} />
                 <Sonner />
                 <OfflineIndicator />
                 <InstallPrompt />

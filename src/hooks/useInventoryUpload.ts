@@ -31,8 +31,6 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
     const [isUploading, setIsUploading] = useState(false);
     const [showMismatchDialog, setShowMismatchDialog] = useState(false);
     const [mismatchData, setMismatchData] = useState<MismatchData | null>(null);
-    const [showImportModeDialog, setShowImportModeDialog] = useState(false);
-    const [pendingFile, setPendingFile] = useState<File | null>(null);
     
     const navigate = useNavigate();
     const { user } = useUser();
@@ -348,14 +346,6 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
         reader.readAsBinaryString(file);
     };
 
-    const handleSelectImportMode = async (mode: 'merge' | 'overwrite') => {
-        setShowImportModeDialog(false);
-        if (pendingFile) {
-            await executeUpload(pendingFile, mode);
-            setPendingFile(null);
-        }
-    };
-
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -379,17 +369,6 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
             } catch (error) {
                 console.error('Error checking lock status:', error);
             }
-        }
-
-        try {
-            const dbItems = await cyclicInventoryService.getLabInventory(branchName, labName);
-            if (dbItems.length > 0) {
-                setPendingFile(file);
-                setShowImportModeDialog(true);
-                return;
-            }
-        } catch (err) {
-            console.warn("Could not check lab items status, proceeding with default merge:", err);
         }
 
         await executeUpload(file, 'merge');
@@ -540,9 +519,6 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
         showMismatchDialog,
         setShowMismatchDialog,
         mismatchData,
-        handleResolveMismatch,
-        showImportModeDialog,
-        setShowImportModeDialog,
-        handleSelectImportMode
+        handleResolveMismatch
     };
 }

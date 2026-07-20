@@ -56,14 +56,15 @@ export interface CyclicItem {
 }
 
 export const cyclicInventoryService = {
-    getLabInventory: async (branchName: string, labName: string): Promise<CyclicItem[]> => {
+    getLabInventory: async (branchName: string, labName: string, round?: number): Promise<CyclicItem[]> => {
         try {
-            console.log(`[CyclicService] getLabInventory (v2 RPC) for ${labName} at ${branchName}`);
+            console.log(`[CyclicService] getLabInventory (v2 RPC) for ${labName} at ${branchName}, round: ${round}`);
             
             // Use the NEW ROBUST RPC for accent-insensitive and case-insensitive matching
             const { data, error } = await (supabase as any).rpc('get_lab_inventory_v2', {
                 p_branch_name: branchName,
-                p_laboratory: labName
+                p_laboratory: labName,
+                p_round: round !== undefined ? round : null
             });
 
             if (error) {
@@ -170,8 +171,8 @@ export const cyclicInventoryService = {
             let round = 1;
             try {
                 const config = await cyclicInventoryService.getBranchConfig(branchName);
-                const controlledItems = items.filter(i => i.status === 'controlled');
-                const cat = controlledItems[0]?.category || 'GENERAL';
+                const activeItems = items.filter(i => i.status === 'controlled' || i.status === 'adjusted');
+                const cat = activeItems[0]?.category || 'GENERAL';
                 const normCat = cat.toUpperCase();
                 round = config.rounds?.[normCat] || config.rounds?.GENERAL || 1;
             } catch (err) {
@@ -641,32 +642,38 @@ export const cyclicInventoryService = {
                 progress: progress
             };
         }
-    },
-
-    // Get all inventories (aggregated from branch_laboratories metadata)
+    },    // Get all inventories (aggregated from branch_laboratories metadata)
     getAllCyclicInventories: async (branchName?: string): Promise<CyclicInventoryStats[]> => {
         // Fetch metadata from branch_laboratories.
         // Note: We no longer filter by "active" inventories here because labs that were
         // reset/finalized should still appear in the list as "pendiente". The source of
         // truth for the master lab list is branch_laboratories, which is now reset (not deleted)
         // when a lab is cleared. This fixes the bug where labs disappeared after reset/finalize.
-        let query;
+        let allData: any[] = [];
+        let page = 0;
+        const limit = 1000;
 
-        if (branchName) {
-            query = (supabase as any).rpc('get_all_cyclic_inventories', {
-                p_branch_name: branchName
-            });
-        } else {
-            query = supabase
-                .from('branch_laboratories')
-                .select(`*`);
+        while (true) {
+            let query = supabase.from('branch_laboratories').select('*');
+            if (branchName) {
+                const cleanBranch = normalizeString(branchName);
+                query = query.or(`branch_name.eq.${cleanBranch},branch_name.eq.${branchName.trim()}`);
+            }
+
+            const { data, error } = await query.range(page * limit, (page + 1) * limit - 1);
+
+            if (error) {
+                console.error('Error fetching cyclic inventories:', error);
+                return [];
+            }
+            if (!data || data.length === 0) break;
+
+            allData = allData.concat(data);
+            if (data.length < limit) break;
+            page++;
         }
 
-        const { data, error } = await query;
-
-        if (error || !data) return [];
-
-        return data
+        return allData
             .map((row: any) => {
                 // Map DB status to UI Status
                 let status: LaboratoryStatus = 'pendiente';
@@ -734,26 +741,40 @@ export const cyclicInventoryService = {
             // 3. Fetch Configs for Start Date, Days, and Rounds
             const { data: configData } = await supabase
                 .from('inventories')
-                .select('branch_name, ean, quantity')
-                .eq('laboratory', '_CONFIG_');
+                .select('branch_name, ean, quantity, round')
+                .eq('laboratory', '_CONFIG_')
+                .or('ean.eq.CONFIG_DAYS,ean.eq.CONFIG_START_DATE,ean.like.CONFIG_ROUND%');
 
             const branchConfigs: Record<string, { startDate: string | null, days: number, rounds: Record<string, number> }> = {};
             if (configData) {
+                // First pass: Resolve rounds for each branch
                 configData.forEach(c => {
                     const normalized = normalizeString(c.branch_name || '');
                     if (!branchConfigs[normalized]) {
                         branchConfigs[normalized] = { startDate: null, days: 0, rounds: { GENERAL: 1 } };
                     }
-                    if (c.ean === 'CONFIG_START_DATE') {
-                        branchConfigs[normalized].startDate = new Date(c.quantity * 1000).toISOString();
-                    } else if (c.ean === 'CONFIG_DAYS') {
-                        branchConfigs[normalized].days = c.quantity;
-                    } else if (c.ean && c.ean.startsWith('CONFIG_ROUND')) {
+                    if (c.ean && c.ean.startsWith('CONFIG_ROUND')) {
                         if (c.ean === 'CONFIG_ROUND') {
                             branchConfigs[normalized].rounds.GENERAL = c.quantity;
                         } else {
                             const cat = c.ean.replace('CONFIG_ROUND_', '').toUpperCase();
                             branchConfigs[normalized].rounds[cat] = c.quantity;
+                        }
+                    }
+                });
+
+                // Second pass: Load CONFIG_DAYS and CONFIG_START_DATE matching the target round
+                configData.forEach(c => {
+                    const normalized = normalizeString(c.branch_name || '');
+                    const rounds = branchConfigs[normalized]?.rounds || { GENERAL: 1 };
+                    const activeRound = rounds.GENERAL || 1;
+                    const targetRound = showPrevious ? Math.max(1, activeRound - 1) : activeRound;
+
+                    if (c.round === targetRound) {
+                        if (c.ean === 'CONFIG_START_DATE') {
+                            branchConfigs[normalized].startDate = new Date(c.quantity * 1000).toISOString();
+                        } else if (c.ean === 'CONFIG_DAYS') {
+                            branchConfigs[normalized].days = c.quantity;
                         }
                     }
                 });
@@ -849,13 +870,22 @@ export const cyclicInventoryService = {
                     remainingDays = assignedDays;
                 }
 
+                const activeRound = config.rounds?.GENERAL || 1;
+                const displayRound = showPrevious ? Math.max(1, activeRound - 1) : activeRound;
+                const displayRounds: Record<string, number> = {};
+                if (config.rounds) {
+                    Object.entries(config.rounds).forEach(([key, val]) => {
+                        displayRounds[key] = showPrevious ? Math.max(1, val - 1) : val;
+                    });
+                }
+
                 return {
                     branchName,
                     deploymentDate,
                     assignedDays: Number(assignedDays) || 0,
                     remainingDays: Number(remainingDays) || 0,
-                    cyclicRound: config.rounds?.GENERAL || 1,
-                    rounds: config.rounds || {},
+                    cyclicRound: displayRound,
+                    rounds: displayRounds,
                     monthlyGoal: totalLabsMaster, // Using Total Labs Count instead of Goal
                     elapsedDays,
                     progress: progress,
@@ -888,30 +918,20 @@ export const cyclicInventoryService = {
         const cleanBranch = normalizeString(branchName);
         const { data, error } = await supabase
             .from('inventories')
-            .select('ean, quantity')
-            .eq('branch_name', cleanBranch)
-            .eq('laboratory', '_CONFIG_');
+            .select('branch_name, ean, quantity, round')
+            .eq('laboratory', '_CONFIG_')
+            .or('ean.eq.CONFIG_DAYS,ean.eq.CONFIG_START_DATE,ean.like.CONFIG_ROUND%');
 
         if (error || !data || data.length === 0) return { days: 0, startDate: null, rounds: {} };
 
-        const configData = data as any[];
-        const daysRecord = configData.find(r => r.ean === 'CONFIG_DAYS');
-        const startDateRecord = configData.find(r => r.ean === 'CONFIG_START_DATE');
+        // Normalize and filter in JS to bypass any spacing/accent differences between DB and client
+        const configData = (data as any[]).filter(r => normalizeString(r.branch_name || '') === cleanBranch);
 
-        const days = Number(daysRecord?.quantity || 0);
-
-        let startDate = null;
-        if (startDateRecord && startDateRecord.quantity) {
-            startDate = new Date(startDateRecord.quantity * 1000).toISOString();
-        }
+        if (configData.length === 0) return { days: 0, startDate: null, rounds: {} };
 
         const rounds: Record<string, number> = {};
         // Default rounds to 1
         rounds['GENERAL'] = 1;
-        rounds['MEDICAMENTOS'] = 1;
-        rounds['PERFUMERIA'] = 1;
-        rounds['ACCESORIOS'] = 1;
-        rounds['VARIOS'] = 1;
 
         configData.forEach(r => {
             if (r.ean && r.ean.startsWith('CONFIG_ROUND')) {
@@ -923,6 +943,27 @@ export const cyclicInventoryService = {
                 }
             }
         });
+
+        const activeRound = rounds['GENERAL'] || 1;
+        
+        // Find days config with active round, falling back to round 1 if not set
+        let daysRecord = configData.find(r => r.ean === 'CONFIG_DAYS' && r.round === activeRound);
+        if (!daysRecord && activeRound > 1) {
+            daysRecord = configData.find(r => r.ean === 'CONFIG_DAYS' && r.round === 1);
+        }
+
+        // Find start date config with active round, falling back to round 1 if not set
+        let startDateRecord = configData.find(r => r.ean === 'CONFIG_START_DATE' && r.round === activeRound);
+        if (!startDateRecord && activeRound > 1) {
+            startDateRecord = configData.find(r => r.ean === 'CONFIG_START_DATE' && r.round === 1);
+        }
+
+        const days = Number(daysRecord?.quantity || 0);
+
+        let startDate = null;
+        if (startDateRecord && startDateRecord.quantity) {
+            startDate = new Date(startDateRecord.quantity * 1000).toISOString();
+        }
 
         return { days, startDate, rounds };
     },
@@ -1062,6 +1103,7 @@ export const cyclicInventoryService = {
             // Optional: Pass full items snapshot if available
             items_snapshot?: CyclicItem[];
             category?: string;
+            round?: number; // New param
         }
     ): Promise<void> => {
         try {
@@ -1096,6 +1138,8 @@ export const cyclicInventoryService = {
                 );
 
                 if (countedItems.length > 0) {
+                    const totalCountedItems = countedItems.reduce((acc, item) => acc + (item.countedQuantity || 0), 0);
+
                     const { data: ledgerHeader, error: ledgerError } = await supabase
                         .from('inventory_ledger')
                         .insert({
@@ -1109,29 +1153,34 @@ export const cyclicInventoryService = {
                             total_shortage_value: data.shortage_value,
                             total_surplus_value: data.surplus_value,
                             total_net_value: data.surplus_value - data.shortage_value,
-                            total_items_adjusted: adjustedItems.length
+                            total_items_adjusted: adjustedItems.length,
+                            total_counted_items: totalCountedItems,
+                            round: data.round || 1
                         })
                         .select()
                         .single();
 
                     if (!ledgerError && ledgerHeader) {
-                        const ledgerItems = countedItems.map(item => ({
+                        // Insert only adjusted items into the ledger detail to avoid database bloat
+                        const ledgerItems = adjustedItems.map(item => ({
                             ledger_id: ledgerHeader.id,
                             ean: item.ean,
-                            product_name: item.name,
+                            product_name: item.name || 'Producto Desconocido',
                             category: item.category || 'Varios',
-                            system_quantity: item.systemQuantity,
-                            counted_quantity: item.countedQuantity,
-                            difference: item.countedQuantity - item.systemQuantity,
-                            unit_cost: item.cost,
-                            total_diff_value: (item.countedQuantity - item.systemQuantity) * item.cost
+                            system_quantity: item.systemQuantity || 0,
+                            counted_quantity: item.countedQuantity || 0,
+                            difference: (item.countedQuantity || 0) - (item.systemQuantity || 0),
+                            unit_cost: item.cost || 0,
+                            total_diff_value: ((item.countedQuantity || 0) - (item.systemQuantity || 0)) * (item.cost || 0)
                         }));
 
-                        const { error: itemsError } = await supabase
-                            .from('inventory_ledger_items')
-                            .insert(ledgerItems);
+                        if (ledgerItems.length > 0) {
+                            const { error: itemsError } = await supabase
+                                .from('inventory_ledger_items')
+                                .insert(ledgerItems);
 
-                        if (itemsError) console.error("Error creating Ledger items:", itemsError);
+                            if (itemsError) console.error("Error creating Ledger items:", itemsError);
+                        }
                     } else {
                         console.error("Error creating Ledger header:", ledgerError);
                     }
@@ -1204,7 +1253,7 @@ export const cyclicInventoryService = {
             // Normalize ledger field names to match the UI's expected schema
             return ledgerData.map((row: any) => {
                 const items = row.inventory_ledger_items || [];
-                const total_stock_counted = items.reduce((sum: number, item: any) => sum + (item.counted_quantity || 0), 0);
+                const total_stock_counted = row.total_counted_items ?? items.reduce((sum: number, item: any) => sum + (item.counted_quantity || 0), 0);
                 return {
                     ...row,
                     shortage_value: row.shortage_value ?? row.total_shortage_value ?? 0,

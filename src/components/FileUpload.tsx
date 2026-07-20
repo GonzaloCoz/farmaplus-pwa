@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle as AlertCircleIcon, Archive as FileArchiveIcon, File01 as FileIcon, FileCheck01 as FileSpreadsheetIcon, File01 as FileTextIcon, Upload01 as FileUpIcon, Headphones01 as HeadphonesIcon, Image01 as ImageIcon, VideoRecorder as VideoIcon, XClose as XIcon } from '@untitledui/icons';
+import { AlertCircle as AlertCircleIcon, Archive as FileArchiveIcon, File02 as FileIcon, FileCheck01 as FileSpreadsheetIcon, File02 as FileTextIcon, Upload01 as FileUpIcon, Headphones01 as HeadphonesIcon, Image01 as ImageIcon, VideoRecorder as VideoIcon, XClose as XIcon } from '@untitledui/icons';
 
 import {
   formatBytes,

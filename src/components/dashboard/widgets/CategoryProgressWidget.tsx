@@ -35,137 +35,150 @@ interface CategoryData {
     previousPercentage: number; // For the hatched/striped part
 }
 
-export function CategoryProgressWidget() {
+interface CategoryProgressWidgetProps {
+    showPrevious?: boolean;
+}
+
+export function CategoryProgressWidget({ showPrevious = false }: CategoryProgressWidgetProps) {
     const { user } = useUser();
-    const { assignedDays, cycleStartDate } = useDashboardMetrics();
+    const { inventories, config, assignedDays, cycleStartDate, isLoading: metricsLoading } = useDashboardMetrics();
     const canvaRef = useRef<HTMLDivElement>(null);
-    const [categories, setCategories] = useState<CategoryData[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [closures, setClosures] = useState<Record<string, number>>({});
+    const [closuresLoading, setClosuresLoading] = useState(true);
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
+    const loading = metricsLoading || closuresLoading;
+
+    // Load historical closures once per branch change
     useEffect(() => {
-        const loadData = async () => {
+        const loadClosures = async () => {
             if (!user?.branchSheet) {
-                setLoading(false);
+                setClosuresLoading(false);
                 return;
             }
-
-            const branchName = user.branchSheet.trim(); // Normalización de entrada
-
+            const branchName = user.branchSheet.trim();
             try {
-                // 1. Get Current Statuses (Master List + Progress)
-                const inventories = await cyclicInventoryService.getAllCyclicInventories(branchName) || [];
-
-                // 2. Get Configuration & Historical Closures
-                const config = await cyclicInventoryService.getBranchConfig(branchName);
-
-                console.log('[DEBUG] CategoryProgressWidget inventories:', inventories);
-                console.log('[DEBUG] CategoryProgressWidget config:', config);
-
-                // Calculate Days Elapsed
-                let daysElapsed = 0;
-                if (config.startDate) {
-                    const start = new Date(config.startDate);
-                    const now = new Date();
-                    const diffTime = Math.abs(now.getTime() - start.getTime());
-                    daysElapsed = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                }
-
-                // Check & Auto-Execute Closures (Every 30 days)
-                const checkAndRunAutoClosure = async (period: number, dayThreshold: number, currentCats: Record<string, { total: number, controlled: number }>) => {
-                    if (daysElapsed >= dayThreshold) {
-                        const existingClosure = await cyclicInventoryService.getCycleClosures(branchName, period);
-                        const hasClosure = Object.keys(existingClosure).length > 0;
-
-                        if (!hasClosure) {
-                            console.log(`Auto-closing Period ${period} (Day ${dayThreshold} reached)`);
-                            const dataToSave = Object.entries(currentCats).map(([name, stats]) => ({
-                                name,
-                                percentage: stats.total > 0 ? Math.round((stats.controlled / stats.total) * 100) : 0
-                            }));
-
-                            await cyclicInventoryService.saveCycleClosure(branchName, period, dataToSave);
-                            notify.success(`Cierre automático del Periodo ${period} completado.`);
-                            return true;
-                        }
-                    }
-                    return false;
-                };
-
-                // Initialize categories temp structure
-                const cats: Record<string, { total: number, controlled: number }> = {
-                    'Medicamentos': { total: 0, controlled: 0 },
-                    'Perfumería': { total: 0, controlled: 0 },
-                    'Accesorios': { total: 0, controlled: 0 },
-                    'Varios': { total: 0, controlled: 0 }
-                };
-
-                // Aggregate Data
-                inventories.forEach(inv => {
-                    const catNorm = (inv.category || 'VARIOS').toUpperCase();
-                    const activeRound = config.rounds?.[catNorm] || config.rounds?.GENERAL || 1;
-
-                    // Filtrar por la ronda activa de esta categoría
-                    if ((inv.round || 1) !== activeRound) return;
-
-                    let catKey = 'Varios';
-                    const labCat = catNorm.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); 
-
-                    if (labCat === 'MEDICAMENTOS') catKey = 'Medicamentos';
-                    else if (labCat === 'PERFUMERIA') catKey = 'Perfumería';
-                    else if (labCat === 'ACCESORIOS') catKey = 'Accesorios';
-
-                    // Numerator: Count labs that are either finished (controlado) OR in progress (por_controlar)
-                    const isTouched = inv.status === 'controlado' || inv.status === 'por_controlar';
-
-                    cats[catKey].total += 1;
-                    if (isTouched) cats[catKey].controlled += 1;
-                });
-
-                // Execute Auto-Closures if needed
-                // We check existing closures AGAIN after potentially saving to get the data for display
-                try {
-                    await checkAndRunAutoClosure(1, 30, cats);
-                    await checkAndRunAutoClosure(2, 60, cats);
-                } catch (closureErr) {
-                    console.warn('[ProgressWidget] Background closure check failed (likely a conflict), continuing...', closureErr);
-                }
-
-                // Reload closures for display (Period 1 is currently the base for the chart)
+                setClosuresLoading(true);
                 const closuresRaw = await cyclicInventoryService.getCycleClosures(branchName, 1);
-
                 // Normalizar llaves de cierres para comparación sin acentos
-                const closures: Record<string, number> = {};
+                const normalizedClosures: Record<string, number> = {};
                 Object.entries(closuresRaw).forEach(([k, v]) => {
                     const normalizedKey = k.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
-                    closures[normalizedKey] = v;
+                    normalizedClosures[normalizedKey] = v;
                 });
-
-                // Map to final data structure
-                const categoryData: CategoryData[] = Object.entries(cats).map(([name, stats]) => {
-                    const percentage = stats.total > 0 ? Math.round((stats.controlled / stats.total) * 100) : 0;
-                    const lookupName = name.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                    const prevPerc = closures[lookupName] || 0;
-                    return {
-                        name,
-                        totalItems: stats.total,
-                        controlledItems: stats.controlled,
-                        percentage,
-                        previousPercentage: Math.min(prevPerc, percentage) // Cannot be more than current
-                    };
-                });
-
-                setCategories(categoryData);
-            } catch (error) {
-                console.error('Error loading category progress:', error);
+                setClosures(normalizedClosures);
+            } catch (err) {
+                console.error("Error loading closures:", err);
             } finally {
-                setLoading(false);
+                setClosuresLoading(false);
             }
         };
 
-        loadData();
-    }, [user]);
+        loadClosures();
+    }, [user?.branchSheet]);
+
+    // Process categories reactively
+    const categories = useMemo(() => {
+        if (!inventories || inventories.length === 0) return [];
+
+        const cats: Record<string, { total: number, controlled: number }> = {
+            'Medicamentos': { total: 0, controlled: 0 },
+            'Perfumería': { total: 0, controlled: 0 },
+            'Accesorios': { total: 0, controlled: 0 },
+            'Varios': { total: 0, controlled: 0 }
+        };
+
+        // Aggregate Data
+        inventories.forEach(inv => {
+            const catNorm = (inv.category || 'VARIOS').toUpperCase();
+            const activeRound = (config as any).rounds?.[catNorm] || (config as any).rounds?.GENERAL || 1;
+            const targetRound = showPrevious ? Math.max(1, activeRound - 1) : activeRound;
+
+            // Filtrar por la ronda objetivo de esta categoría
+            if ((inv.round || 1) !== targetRound) return;
+
+            let catKey = 'Varios';
+            const labCat = catNorm.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); 
+
+            if (labCat === 'MEDICAMENTOS') catKey = 'Medicamentos';
+            else if (labCat === 'PERFUMERIA') catKey = 'Perfumería';
+            else if (labCat === 'ACCESORIOS') catKey = 'Accesorios';
+
+            // Numerator: Count labs that are either finished (controlado) OR in progress (por_controlar)
+            const isTouched = inv.status === 'controlado' || inv.status === 'por_controlar';
+
+            cats[catKey].total += 1;
+            if (isTouched) cats[catKey].controlled += 1;
+        });
+
+        // Map to final data structure
+        return Object.entries(cats).map(([name, stats]) => {
+            const percentage = stats.total > 0 ? Math.round((stats.controlled / stats.total) * 100) : 0;
+            const lookupName = name.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            const prevPerc = closures[lookupName] || 0;
+            return {
+                name,
+                totalItems: stats.total,
+                controlledItems: stats.controlled,
+                percentage,
+                previousPercentage: Math.min(prevPerc, percentage) // Cannot be more than current
+            };
+        });
+    }, [inventories, config, closures, showPrevious]);
+
+    // Handle background auto-closures side-effect when categories change
+    useEffect(() => {
+        if (loading || !user?.branchSheet || categories.length === 0) return;
+
+        const checkAndRunAutoClosures = async () => {
+            const branchName = user.branchSheet.trim();
+            // Calculate Days Elapsed
+            let daysElapsed = 0;
+            const startDate = (config as any)?.startDate;
+            if (startDate) {
+                const start = new Date(startDate);
+                const now = new Date();
+                const diffTime = Math.abs(now.getTime() - start.getTime());
+                daysElapsed = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            }
+
+            const checkAndRun = async (period: number, dayThreshold: number) => {
+                if (daysElapsed >= dayThreshold) {
+                    const existingClosure = await cyclicInventoryService.getCycleClosures(branchName, period);
+                    const hasClosure = Object.keys(existingClosure).length > 0;
+
+                    if (!hasClosure) {
+                        console.log(`Auto-closing Period ${period} (Day ${dayThreshold} reached)`);
+                        const dataToSave = categories.map(c => ({
+                            name: c.name,
+                            percentage: c.percentage
+                        }));
+
+                        await cyclicInventoryService.saveCycleClosure(branchName, period, dataToSave);
+                        notify.success(`Cierre automático del Periodo ${period} completado.`);
+                        // Refresh closures
+                        const closuresRaw = await cyclicInventoryService.getCycleClosures(branchName, 1);
+                        const normalizedClosures: Record<string, number> = {};
+                        Object.entries(closuresRaw).forEach(([k, v]) => {
+                            const normalizedKey = k.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+                            normalizedClosures[normalizedKey] = v;
+                        });
+                        setClosures(normalizedClosures);
+                    }
+                }
+            };
+
+            try {
+                await checkAndRun(1, 30);
+                await checkAndRun(2, 60);
+            } catch (err) {
+                console.warn('[ProgressWidget] Background closure check failed', err);
+            }
+        };
+
+        checkAndRunAutoClosures();
+    }, [categories, loading, config, user?.branchSheet]);
 
     const activeStats = useMemo(() => {
         if (selectedCategory) {

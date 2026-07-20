@@ -47,13 +47,15 @@ const PopoverRowCell = memo(function PopoverRowCell({
 }: PopoverRowCellProps) {
     const [open, setOpen] = useState(false);
     const [qty, setQty] = useState(item.countedQuantity.toString());
+    const [reason, setReason] = useState(item.readjustmentReason || '');
 
     // Sync input value when item countedQuantity changes or popover opens
     useEffect(() => {
         if (open) {
             setQty(item.countedQuantity.toString());
+            setReason(item.readjustmentReason || '');
         }
-    }, [open, item.countedQuantity]);
+    }, [open, item.countedQuantity, item.readjustmentReason]);
 
     const handleSave = () => {
         // Business rule check
@@ -71,7 +73,14 @@ const PopoverRowCell = memo(function PopoverRowCell({
             return;
         }
 
-        onUpdateQuantity(item.id, parsedQty);
+        const isReAdjustment = item.status === 'adjusted';
+        const hasDiff = parsedQty !== item.systemQuantity;
+        if (isReAdjustment && hasDiff && !reason) {
+            notify.error("Motivo Requerido", "Por favor seleccioná el motivo del re-ajuste.");
+            return;
+        }
+
+        onUpdateQuantity(item.id, parsedQty, hasDiff ? reason : undefined);
         setOpen(false);
         notify.success("Stock Guardado", `${item.name}: ${parsedQty} unidades.`);
     };
@@ -131,6 +140,29 @@ const PopoverRowCell = memo(function PopoverRowCell({
                                 min="0"
                             />
                         </label>
+                        {(() => {
+                            const parsedVal = parseFloat(qty);
+                            const hasDiff = !isNaN(parsedVal) && parsedVal !== item.systemQuantity;
+                            const isReAdjustment = item.status === 'adjusted';
+                            return (isReAdjustment && hasDiff) ? (
+                                <div className="flex flex-col gap-1.5 mt-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                                    <span className="text-xs font-semibold text-muted-foreground text-left">Motivo del Ajuste</span>
+                                    <select
+                                        value={reason}
+                                        onChange={(e) => setReason(e.target.value)}
+                                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary/20 cursor-pointer"
+                                    >
+                                        <option value="" disabled>Seleccionar motivo...</option>
+                                        <option value="Error de ingreso/recepción">Error de ingreso/recepción</option>
+                                        <option value="Mercadería vencida">Mercadería vencida</option>
+                                        <option value="Rotura o daño">Rotura o daño</option>
+                                        <option value="Hurto o pérdida">Hurto o pérdida</option>
+                                        <option value="Error de conteo previo">Error de conteo previo</option>
+                                        <option value="Otro motivo">Otro motivo</option>
+                                    </select>
+                                </div>
+                            ) : null;
+                        })()}
                     </div>
 
                     <div className="flex justify-end gap-2 pt-2 border-t border-border/20">
@@ -229,7 +261,13 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                 key: 'name',
                 header: 'Producto',
                 width: '320px',
-                cell: (item) => (
+                cell: (item) => readOnly ? (
+                    <div className="flex items-center min-w-0 py-1 select-none">
+                        <span className="font-medium text-[14px] truncate max-w-[200px] sm:max-w-xs md:max-w-md text-foreground">
+                            {item.name}
+                        </span>
+                    </div>
+                ) : (
                     <PopoverRowCell
                         item={item}
                         isExcelUploaded={isExcelUploaded}
@@ -304,7 +342,8 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                     header: 'Id',
                     width: '100px',
                     cell: (item) => {
-                        const val = item.shortageId || item.surplusId;
+                        const diff = item.countedQuantity - item.systemQuantity;
+                        const val = diff < 0 ? item.shortageId : diff > 0 ? item.surplusId : null;
                         return val ? (
                             <Badge variant="outline">
                                 {val.split(',')[0]}
@@ -354,7 +393,7 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
         }
 
         return baseCols;
-    }, [isPending]);
+    }, [isPending, isExcelUploaded, readOnly, onUpdateQuantity]);
 
     return (
         <>
@@ -363,12 +402,12 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                 data={items}
                 columns={columns}
                 getRowId={(row) => row.id}
-                selectable={true}
+                selectable={!readOnly}
                 selectedRowIds={selectedIds}
                 onSelectionChange={setSelectedIds}
                 height={600}
                 rowHeight={56}
-                onRowClick={handleStartEdit}
+                onRowClick={readOnly ? undefined : handleStartEdit}
                 className="border-none"
             />
 

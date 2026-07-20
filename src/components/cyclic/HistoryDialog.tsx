@@ -2,7 +2,7 @@
 
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { ClockRewind as RiHistoryLine, File01 as RiFileTextLine, User01 as RiUserLine, ArrowUpRight as RiArrowRightUpLine, ArrowDownLeft as RiArrowLeftDownLine, InfoCircle as RiInformationLine, Edit01 as RiEditLine } from '@untitledui/icons';
+import { ClockRewind as RiHistoryLine, File02 as RiFileTextLine, User01 as RiUserLine, ArrowUpRight as RiArrowRightUpLine, ArrowDownLeft as RiArrowLeftDownLine, InfoCircle as RiInformationLine, Edit01 as RiEditLine } from '@untitledui/icons';
 
 import {
   Dialog,

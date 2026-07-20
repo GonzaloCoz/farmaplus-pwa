@@ -16,9 +16,10 @@ const CATEGORIES = ["Medicamentos", "Perfumería", "Accesorios", "Varios"];
 
 interface UseCyclicInventoryControllerProps {
     labName: string;
+    round?: number;
 }
 
-export function useCyclicInventoryController({ labName }: UseCyclicInventoryControllerProps) {
+export function useCyclicInventoryController({ labName, round }: UseCyclicInventoryControllerProps) {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { user } = useUser();
@@ -27,6 +28,14 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
     // Core State
     const [items, setItems] = useState<CyclicItem[]>([]);
     const [isExcelUploaded, setIsExcelUploaded] = useState(false);
+
+    useEffect(() => {
+        if (branchName && labName) {
+            const key = `excel_uploaded_${normalizeString(branchName)}_${normalizeString(labName)}`;
+            setIsExcelUploaded(localStorage.getItem(key) === 'true');
+        }
+    }, [branchName, labName]);
+
     const [isAdminEditActive, setIsAdminEditActive] = useState(false);
     const [isLabHidden, setIsLabHidden] = useState(false);
 
@@ -60,7 +69,8 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         branchName,
         labName,
         items,
-        onItemsLoaded: setItems
+        onItemsLoaded: setItems,
+        round
     });
 
     // 2. Upload Logic
@@ -71,10 +81,7 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         showMismatchDialog,
         setShowMismatchDialog,
         mismatchData,
-        handleResolveMismatch,
-        showImportModeDialog,
-        setShowImportModeDialog,
-        handleSelectImportMode
+        handleResolveMismatch
     } = useInventoryUpload({
         branchName,
         labName,
@@ -82,6 +89,10 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         onItemsUpdated: (newItems) => {
             setItems(newItems);
             setIsExcelUploaded(true); // Se acaba de cargar un Excel, permitimos re-ajustes
+            if (branchName && labName) {
+                const key = `excel_uploaded_${normalizeString(branchName)}_${normalizeString(labName)}`;
+                localStorage.setItem(key, 'true');
+            }
         }
     });
 
@@ -419,6 +430,18 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
                 ? controlledCategories.join(', ')
                 : categoryToFinalize;
 
+            // Resolve active round for the ledger history
+            let activeRound = 1;
+            try {
+                const config = await cyclicInventoryService.getBranchConfig(branchName);
+                const activeItems = items.filter(i => i.status === 'controlled' || i.status === 'adjusted');
+                const cat = activeItems[0]?.category || currentCategory || 'GENERAL';
+                const normCat = cat.toUpperCase();
+                activeRound = config.rounds?.[normCat] || config.rounds?.GENERAL || 1;
+            } catch (err) {
+                console.warn("No se pudo obtener la ronda del config, usando default 1:", err);
+            }
+
             await cyclicInventoryService.saveAdjustmentHistory(branchName, labName, {
                 adjustment_id_shortage: shortageId,
                 adjustment_id_surplus: surplusId,
@@ -428,13 +451,21 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
                 user_name: user?.name,
                 user_id: user?.id,
                 items_snapshot: updatedItems,
-                category: historyCategoryStr
+                category: historyCategoryStr,
+                round: activeRound
             });
 
             notify.success("Operación exitosa", `${categoryToFinalize} finalizado y archivado. Listo para nueva carga.`);
             setShowSaveDialog(false);
             setShortageId("");
             setSurplusId("");
+
+            // Limpiar localStorage tras finalizar para que el próximo control/re-ajuste requiera carga nueva de Excel
+            if (branchName && labName) {
+                const key = `excel_uploaded_${normalizeString(branchName)}_${normalizeString(labName)}`;
+                localStorage.removeItem(key);
+            }
+            setIsExcelUploaded(false);
 
             // Redirigir a la lista principal
             navigate('/cyclic-inventory');
@@ -479,6 +510,13 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
             // Removed 1.5s artificial delay for better fluidity
             await cyclicInventoryService.deleteInventory(branchName, labName);
             await cyclicInventoryService.deleteAdjustmentHistory(branchName, labName);
+
+            // Clean localStorage
+            if (branchName && labName) {
+                const key = `excel_uploaded_${normalizeString(branchName)}_${normalizeString(labName)}`;
+                localStorage.removeItem(key);
+            }
+            setIsExcelUploaded(false);
 
             // Invalidar Caché de React Query para forzar recarga limpia
             queryClient.invalidateQueries({
@@ -540,6 +578,17 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
                 ? controlledCategories.join(', ')
                 : currentCategory;
 
+            // Resolve active round for the ledger history
+            let activeRoundAdmin = 1;
+            try {
+                const config = await cyclicInventoryService.getBranchConfig(branchName);
+                const cat = adjustedItems[0]?.category || 'GENERAL';
+                const normCat = cat.toUpperCase();
+                activeRoundAdmin = config.rounds?.[normCat] || config.rounds?.GENERAL || 1;
+            } catch (err) {
+                console.warn("No se pudo obtener la ronda del config, usando default 1:", err);
+            }
+
             await cyclicInventoryService.saveAdjustmentHistory(branchName, labName, {
                 adjustment_id_shortage: existingShortageId,
                 adjustment_id_surplus: existingSurplusId,
@@ -549,7 +598,8 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
                 user_name: `${user?.name || 'Admin'} (Edición Admin)`,
                 user_id: user?.id,
                 items_snapshot: items,
-                category: historyCategoryStr
+                category: historyCategoryStr,
+                round: activeRoundAdmin
             });
 
             notify.success("Operación exitosa", "Ajustes editados y guardados correctamente.");
@@ -719,11 +769,6 @@ export function useCyclicInventoryController({ labName }: UseCyclicInventoryCont
         setShowMismatchDialog,
         mismatchData,
         handleResolveMismatch,
-
-        // Import Mode Dialog
-        showImportModeDialog,
-        setShowImportModeDialog,
-        handleSelectImportMode,
 
         // Special State
         shouldHidePendings,

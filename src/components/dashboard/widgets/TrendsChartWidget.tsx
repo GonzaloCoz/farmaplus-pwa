@@ -17,7 +17,7 @@ import { CounterAnimation } from "@/components/CounterAnimation";
 import * as React from "react";
 import { RefreshCw01 as Loader2 } from '@untitledui/icons';
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useUser } from "@/contexts/UserContext";
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import { useTheme } from "@/hooks/useTheme";
@@ -97,6 +97,7 @@ export function TrendsChartWidget({ type = "positive" }: TrendsChartWidgetProps)
     },
     enabled: !!user?.branchName,
     staleTime: 1000 * 60 * 5,
+    placeholderData: keepPreviousData,
   });
 
   // ── Fetch live current-month metrics directly from inventories (via RPC) ──
@@ -119,6 +120,7 @@ export function TrendsChartWidget({ type = "positive" }: TrendsChartWidgetProps)
     },
     enabled: !!user?.branchName,
     staleTime: 1000 * 60 * 2,
+    placeholderData: keepPreviousData,
   });
 
   // ── Set up realtime subscription to adjustments and labs ──

@@ -1,6 +1,4 @@
-import { useState } from "react";
 import { WindowTabs } from "@/components/WindowTabs";
-import { SuperSearch } from "@/components/SuperSearch";
 import { cn } from "@/lib/utils";
 import { TrainingCenterButton } from "./TrainingCenterButton";
 import { NotificationsMenu } from "@/components/HeaderMenus";
@@ -9,8 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Minus, Square, XClose as XIcon } from '@untitledui/icons';
 
 export function DesktopHeader() {
-    const [searchOpen, setSearchOpen] = useState(false);
     const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
+
+    const triggerSearch = () => {
+        window.dispatchEvent(new CustomEvent("open-command-palette"));
+    };
 
     return (
         <>
@@ -23,7 +24,7 @@ export function DesktopHeader() {
             >
                 {/* Left and Center: Navigation and Tabs */}
                 <div className="flex-1 h-full min-w-0">
-                    <WindowTabs onSearchClick={() => setSearchOpen(true)} />
+                    <WindowTabs onSearchClick={triggerSearch} />
                 </div>
 
                 {/* Right Actions */}
@@ -72,9 +73,6 @@ export function DesktopHeader() {
                     )}
                 </div>
             </header>
-
-            {/* Global Search Command Palette */}
-            <SuperSearch open={searchOpen} onOpenChange={setSearchOpen} />
         </>
     );
 }

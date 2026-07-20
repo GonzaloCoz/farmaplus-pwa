@@ -7,7 +7,7 @@ import {
     Plus,
     XClose,
     DotsHorizontal,
-    File01 as FileText,
+    File02 as FileText,
     Trash01 as Trash,
 } from "@untitledui/icons";
 import { Button } from "@/components/ui/button";

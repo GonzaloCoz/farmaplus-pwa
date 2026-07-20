@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Group, GroupSeparator } from "@/components/ui/group";
 import { Card } from "@/components/ui/card";
-import { BarChart01 as BarChart3, CheckCircle, AlertCircle, CurrencyDollar as Dollar, TrendDown01 as TrendingDown, TrendUp01 as TrendingUp, RefreshCw01 as Loader2, SearchLg as Search, FilterLines as Filter, DotsHorizontal as MoreVertical, LayoutGrid01 as GridIcon, List as ListIcon, Clock, Download01 as Download, File01 as DocumentIcon, Trash01 as Trash } from '@untitledui/icons';
+import { BarChart01 as BarChart3, CheckCircle, AlertCircle, CurrencyDollar as Dollar, TrendDown01 as TrendingDown, TrendUp01 as TrendingUp, RefreshCw01 as Loader2, SearchLg as Search, FilterLines as Filter, DotsHorizontal as MoreVertical, LayoutGrid01 as GridIcon, List as ListIcon, Clock, Download01 as Download, File02 as DocumentIcon, Trash01 as Trash } from '@untitledui/icons';
 import { LaboratoryCard, LaboratoryStatus } from "@/components/LaboratoryCard";
 import { CounterAnimation } from "@/components/CounterAnimation";
 import { MetricCarousel } from "@/components/MetricCarousel";
@@ -157,7 +157,7 @@ export default function CyclicInventory() {
       }
 
       const branchInv = inventoriesData || [];
-      const uniqueEans = Array.from(new Set(branchInv.map((i: any) => String(i.ean || '')))).filter(Boolean);
+      const uniqueEans: string[] = Array.from(new Set(branchInv.map((i: any) => String(i.ean || '')))).filter(Boolean) as string[];
 
       const costMap = new Map<string, number>();
       if (uniqueEans.length > 0) {
@@ -173,14 +173,27 @@ export default function CyclicInventory() {
         }
       }
 
+      // Filtrar por la ronda activa de cada categoría
+      const activeInventoryStats = inventoryStats.filter(lab => {
+        const catNorm = (lab.category || 'VARIOS').toUpperCase();
+        const activeRound = config.rounds?.[catNorm] || config.rounds?.GENERAL || 1;
+        return (lab.round || 1) === activeRound;
+      });
+
+      const activeAllowedLabs = allowedLabs.filter(labInfo => {
+        const catNorm = (labInfo.category || 'VARIOS').toUpperCase();
+        const activeRound = config.rounds?.[catNorm] || config.rounds?.GENERAL || 1;
+        return (labInfo.round || 1) === activeRound;
+      });
+
       // 3. Unir datos: Unión de Inventario Activo + Lista Maestra (para pendientes)
-      const mergedData: CyclicInventoryStats[] = [...inventoryStats];
+      const mergedData: CyclicInventoryStats[] = [...activeInventoryStats];
 
       // Crear un Set de búsqueda para evitar duplicados (Clave: Nombre|Categoría)
       // Normalizar categoría para una comparación robusta
-      const activeLabsSet = new Set(inventoryStats.map(s => `${s.labName.trim().toUpperCase()}|${normalizeString(s.category || '')}`));
+      const activeLabsSet = new Set(activeInventoryStats.map(s => `${s.labName.trim().toUpperCase()}|${normalizeString(s.category || '')}`));
 
-      allowedLabs.forEach(labInfo => {
+      activeAllowedLabs.forEach(labInfo => {
         const labName = labInfo.name.trim().toUpperCase();
         const category = normalizeString(labInfo.category);
         const key = `${labName}|${category}`;
@@ -201,7 +214,8 @@ export default function CyclicInventory() {
             totalSystemUnits: 0,
             negativeUnits: 0,
             positiveUnits: 0,
-            netUnits: 0
+            netUnits: 0,
+            round: labInfo.round
           });
         }
       });
@@ -463,7 +477,7 @@ export default function CyclicInventory() {
       setIsLoading(true);
       // 1. Fetch current config to find active round
       const config = await cyclicInventoryService.getBranchConfig(user.branchSheet);
-      const currentRound = config.rounds?.[categoryFilter.toUpperCase()] || 1;
+      const currentRound = config.rounds?.[categoryFilter.toUpperCase()] || config.rounds?.GENERAL || 1;
       const nextRound = currentRound + 1;
 
       // 2. Call service to reset category round
@@ -629,7 +643,7 @@ export default function CyclicInventory() {
     setIsAddingLab(true);
     try {
       const rowsToInsert = newLabCategories.map(cat => ({
-        branch_name: user.branchSheet.toUpperCase().trim(),
+        branch_name: normalizeString(user.branchSheet),
         laboratory: cleanLabName,
         category: cat.toUpperCase().trim(),
         status: 'pending'
@@ -718,7 +732,7 @@ export default function CyclicInventory() {
 
     setIsAddingLab(true);
     try {
-      const branchUpper = user.branchSheet.toUpperCase().trim();
+      const branchUpper = normalizeString(user.branchSheet);
 
       // 1. Rename the laboratory name across all tables if it changed
       if (cleanOldName !== cleanNewName) {
@@ -767,7 +781,7 @@ export default function CyclicInventory() {
       // A. Insert new categories
       if (catsToAdd.length > 0) {
         const rowsToInsert = catsToAdd.map(cat => ({
-          branch_name: user.branchSheet.toUpperCase().trim(),
+          branch_name: normalizeString(user.branchSheet),
           laboratory: cleanNewName,
           category: cat,
           status: 'pending'

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ChevronLeft as ArrowLeft, SearchLg as Search, AlertTriangle, CheckCircle, RefreshCw01 as RefreshCw, LayoutGrid01 as PackageX, Trash01 as Trash2, Calendar, FilterLines as Filter, ArrowUpRight, File01 as FileText } from '@untitledui/icons';
+import { ChevronLeft as ArrowLeft, SearchLg as Search, AlertTriangle, CheckCircle, RefreshCw01 as RefreshCw, LayoutGrid01 as PackageX, Trash01 as Trash2, Calendar, FilterLines as Filter, ArrowUpRight, File02 as FileText } from '@untitledui/icons';
 import { FabMenu } from '@/components/FabMenu';
 import { ExportOptionsModal, ExportOptions } from '@/components/modals/ExportOptionsModal';
 import { generateExport } from '@/services/ExportService';

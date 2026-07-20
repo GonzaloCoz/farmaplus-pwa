@@ -25,6 +25,7 @@ interface BranchSummary {
     assignedDays: number;
     remainingDays: number;
     cyclicRound: number;
+    rounds?: Record<string, number>;
     monthlyGoal: number;
     elapsedDays: number;
     progress: number;
@@ -114,7 +115,7 @@ const columns: TableColumn<BranchSummary>[] = [
                     {awards.map((award, idx) => (
                         <Tooltip key={idx}>
                             <TooltipTrigger render={
-                                <span 
+                                <span
                                     className="text-base cursor-help select-none"
                                     onClick={(e) => e.stopPropagation()}
                                 >
@@ -325,18 +326,27 @@ const columns: TableColumn<BranchSummary>[] = [
 
 interface BranchesTableWidgetProps {
     branches?: any[];
+    cycleFilter?: 'current' | 'previous';
+    onCycleFilterChange?: (filter: 'current' | 'previous') => void;
 }
 
-export function BranchesTableWidget({ branches: initialBranches }: BranchesTableWidgetProps) {
+export function BranchesTableWidget({
+    branches: initialBranches,
+    cycleFilter: propCycleFilter,
+    onCycleFilterChange
+}: BranchesTableWidgetProps) {
     const { selectBranch, clearBranchSelection, user } = useUser();
     const { availableBranches } = useUserBranches();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedZonal, setSelectedZonal] = useState<string>('all');
 
-    const [timeframeFilter, setTimeframeFilter] = useState<'all' | 'day' | 'week' | 'month'>('all');
-    const [cycleFilter, setCycleFilter] = useState<'current' | 'previous'>('current');
+    const [timeframeFilter, setTimeframeFilter] = useState<'all' | 'yesterday' | 'day' | 'week' | 'month'>('all');
+    const [localCycleFilter, setLocalCycleFilter] = useState<'current' | 'previous'>('current');
 
-    const isSingleBranchView = user?.role === 'branch' || (user?.branchName && user.branchName !== 'Casa Central');
+    const cycleFilter = propCycleFilter !== undefined ? propCycleFilter : localCycleFilter;
+    const setCycleFilter = onCycleFilterChange !== undefined ? onCycleFilterChange : setLocalCycleFilter;
+
+    const isSingleBranchView = user?.role === 'branch';
 
     const { data: branchSummaries = [], isLoading: loading } = useQuery({
         queryKey: ['branch-summaries-lite', availableBranches, timeframeFilter, cycleFilter],
@@ -367,7 +377,7 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
         // If it's a single branch view, filter to show ONLY their own branch
         if (isSingleBranchView && user?.branchName) {
             const normalizedUserBranch = normalizeString(user.branchName);
-            return data.filter(branch => 
+            return data.filter(branch =>
                 normalizeString(branch.branchName) === normalizedUserBranch
             );
         }
@@ -377,7 +387,7 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
             const zonal = zonales.find(z => z.id === selectedZonal);
             if (zonal) {
                 const normalizedAllowed = zonal.branches.map(b => normalizeString(b));
-                data = data.filter(branch => 
+                data = data.filter(branch =>
                     normalizedAllowed.includes(normalizeString(branch.branchName))
                 );
             }
@@ -392,7 +402,7 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
         }
 
         return data;
-    }, [branchSummaries, searchTerm, selectedZonal, zonales, user]);
+    }, [branchSummaries, searchTerm, selectedZonal, zonales, user, isSingleBranchView]);
 
     const handleRowClick = (branchName: string) => {
         const canSwitch = user?.role === 'admin' || user?.role === 'mod';
@@ -463,8 +473,8 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                                 </SelectContent>
                             </Select>
 
-                            <Select 
-                                value={cycleFilter === 'previous' ? 'all' : timeframeFilter} 
+                            <Select
+                                value={cycleFilter === 'previous' ? 'all' : timeframeFilter}
                                 onValueChange={(val: any) => setTimeframeFilter(val)}
                                 disabled={cycleFilter === 'previous'}
                             >
@@ -472,13 +482,14 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                                 <SelectContent className="rounded-xl shadow-2xl border-border/40 min-w-[130px]">
                                     <SelectItem index={0} value="all">Ciclo Completo</SelectItem>
                                     <SelectItem index={1} value="day">Hoy</SelectItem>
-                                    <SelectItem index={2} value="week">Esta Semana</SelectItem>
-                                    <SelectItem index={3} value="month">Este Mes</SelectItem>
+                                    <SelectItem index={2} value="yesterday">Ayer</SelectItem>
+                                    <SelectItem index={3} value="week">Esta Semana</SelectItem>
+                                    <SelectItem index={4} value="month">Este Mes</SelectItem>
                                 </SelectContent>
                             </Select>
 
-                            <Select 
-                                value={cycleFilter} 
+                            <Select
+                                value={cycleFilter}
                                 onValueChange={(val: any) => {
                                     setCycleFilter(val);
                                     if (val === 'previous') {
@@ -512,13 +523,14 @@ export function BranchesTableWidget({ branches: initialBranches }: BranchesTable
                         data={filteredData}
                         columns={columns}
                         getRowId={(row) => row.branchName}
+                        selectedRowIds={user?.branchName && user.branchName !== 'Casa Central' ? [user.branchName] : []}
                         height={isSingleBranchView ? 100 : 500}
                         loading={loading}
                         defaultSort={{ key: "progress", direction: "desc" }}
                         onRowClick={(user?.role === 'admin' || user?.role === 'mod') ? (row) => handleRowClick(row.branchName) : undefined}
                         className="border-none bg-transparent"
                         emptyState={
-                            searchTerm 
+                            searchTerm
                                 ? `No se encontraron sucursales para "${searchTerm}"`
                                 : 'Sin resultados.'
                         }

@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from "framer-motion";
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Group, GroupSeparator } from '@/components/ui/group';
@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTab, TabItem } from "@/components/ui/tabs";
 import { ScrollArea, ScrollAreaViewport, ScrollAreaScrollbar } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Upload01 as Upload, SearchLg as Search, InfoCircle as Info, RefreshCw01 as Loader2, CheckCircle, RefreshCw01 as RotateCcw, CurrencyDollar as Dollar, Clipboard as ClipboardList, ChevronLeft as ArrowLeft, FilterFunnel02 as Filter, DotsHorizontal as MoreVertical, ClipboardX as DiffIcon, AlertTriangle, File01 as Document, Download01 as Download, Edit01 as Pen, RefreshCw01 as Refresh, ArrowUpRight, ArrowDownRight, TrendUp01 as TrendingUp } from '@untitledui/icons';
+import { Upload01 as Upload, SearchLg as Search, InfoCircle as Info, RefreshCw01 as Loader2, CheckCircle, RefreshCw01 as RotateCcw, CurrencyDollar as Dollar, Clipboard as ClipboardList, ChevronLeft as ArrowLeft, FilterFunnel02 as Filter, DotsHorizontal as MoreVertical, ClipboardX as DiffIcon, AlertTriangle, File02 as Document, Download01 as Download, Edit01 as Pen, RefreshCw01 as Refresh, ArrowUpRight, ArrowDownRight, TrendUp01 as TrendingUp } from '@untitledui/icons';
 import {
     InputGroup,
     InputField,
@@ -70,6 +70,11 @@ export default function CyclicInventoryDetail() {
     const { id } = useParams(); // This will be the Lab Name
     const labName = id ? decodeURIComponent(id) : '';
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const roundParam = searchParams.get('round');
+    const round = roundParam ? Number(roundParam) : undefined;
+    const isReadOnly = round !== undefined;
+
     const { activeWindowId, updateWindowMeta } = useWindowManager();
     const { user } = useUser();
     const [activeTab, setActiveTab] = useState("pending");
@@ -94,11 +99,27 @@ export default function CyclicInventoryDetail() {
     // Columns config for history table
     const historyColumns = useMemo<any[]>(() => [
         {
+            key: "folio",
+            header: <span className="pl-4">Folio</span>,
+            width: "140px",
+            cell: (h: any) => (
+                <span className="pl-4 block">
+                    {h.folio ? (
+                        <Badge variant="outline" showDot={false} className="text-[12px] font-bold border-indigo-200 bg-indigo-50/50 text-indigo-700 dark:border-indigo-900/30 dark:bg-indigo-950/30 dark:text-indigo-400">
+                            {h.folio}
+                        </Badge>
+                    ) : (
+                        <span className="text-muted-foreground/30 text-[13px]">–</span>
+                    )}
+                </span>
+            )
+        },
+        {
             key: "date",
-            header: <span className="pl-4">Fecha</span>,
+            header: "Fecha",
             width: "120px",
             cell: (h: any) => (
-                <span className="text-[13px] font-medium text-muted-foreground whitespace-nowrap pl-4 block">
+                <span className="text-[13px] font-medium text-muted-foreground whitespace-nowrap block">
                     {new Date(h.created_at).toLocaleDateString()}
                 </span>
             )
@@ -299,16 +320,11 @@ export default function CyclicInventoryDetail() {
         mismatchData,
         handleResolveMismatch,
 
-        // Import Mode Dialog
-        showImportModeDialog,
-        setShowImportModeDialog,
-        handleSelectImportMode,
-
         // Advanced Logic
         sortBy, setSortBy,
         getSortedItems
 
-    } = useCyclicInventoryController({ labName });
+    } = useCyclicInventoryController({ labName, round });
 
     // Resumen de Rubros Controlados y Totales para el Diálogo de Finalización
     const categoryStats = useMemo(() => {
@@ -491,6 +507,11 @@ export default function CyclicInventoryDetail() {
                                             <h1 className="text-sm font-bold text-foreground">
                                                 {labName}
                                             </h1>
+                                            {isReadOnly && (
+                                                <Badge variant="outline" className="border-amber-200 bg-amber-50/50 text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/30 dark:text-amber-400 font-bold rounded-lg text-[11px] px-2 py-0.5 whitespace-nowrap">
+                                                    Historial (Vuelta {round})
+                                                </Badge>
+                                            )}
                                             {/* Admin Secret Button Next to Title */}
                                             <AnimatePresence>
                                                 {isAdminModeEnabled && user?.role === 'admin' && (
@@ -720,90 +741,62 @@ export default function CyclicInventoryDetail() {
                                                     </Button>
                                                 } />
                                                 <DropdownContent align="end" className="w-56">
-                                                    <DropdownLabel>Carga de Datos</DropdownLabel>
-                                                    <MenuItem
-                                                        index={0}
-                                                        icon={Document}
-                                                        label="Cargar archivo Excel"
-                                                        onSelect={() => document.getElementById('inventory-upload-hidden')?.click()}
-                                                    />
-                                                    
-                                                    <DropdownSeparator />
-                                                    
-                                                    <DropdownLabel>Reportes</DropdownLabel>
-                                                    <MenuItem
-                                                        index={1}
-                                                        icon={Download}
-                                                        label="Descargar reporte PDF"
-                                                        onSelect={() => ReportExporter.exportToPDF(items, labName, branchName)}
-                                                    />
-                                                    <MenuItem
-                                                        index={2}
-                                                        icon={Download}
-                                                        label="Descargar reporte EXCEL"
-                                                        onSelect={() => ReportExporter.exportToExcel(items, labName, branchName)}
-                                                    />
-                                                    
-                                                    <DropdownSeparator />
-                                                    
-                                                    <DropdownLabel>Avanzado</DropdownLabel>
-                                                    <MenuItem
-                                                        index={3}
-                                                        icon={Pen}
-                                                        label="Ver historial completo"
-                                                        onSelect={() => setIsHistoryDialogOpen(true)}
-                                                    />
+                                                    {(() => {
+                                                        let itemIndex = 0;
+                                                        return (
+                                                            <>
+                                                                {!isReadOnly && (
+                                                                    <>
+                                                                        <DropdownLabel>Carga de Datos</DropdownLabel>
+                                                                        <MenuItem
+                                                                            index={itemIndex++}
+                                                                            icon={Document}
+                                                                            label="Cargar archivo Excel"
+                                                                            onSelect={() => document.getElementById('inventory-upload-hidden')?.click()}
+                                                                        />
+                                                                        <DropdownSeparator />
+                                                                    </>
+                                                                )}
+                                                                
+                                                                <DropdownLabel>Reportes</DropdownLabel>
+                                                                <MenuItem
+                                                                    index={itemIndex++}
+                                                                    icon={Download}
+                                                                    label="Descargar reporte PDF"
+                                                                    onSelect={() => ReportExporter.exportToPDF(items, labName, branchName)}
+                                                                />
+                                                                <MenuItem
+                                                                    index={itemIndex++}
+                                                                    icon={Download}
+                                                                    label="Descargar reporte EXCEL"
+                                                                    onSelect={() => ReportExporter.exportToExcel(items, labName, branchName)}
+                                                                />
+                                                                
+                                                                <DropdownSeparator />
+                                                                
+                                                                <DropdownLabel>Avanzado</DropdownLabel>
+                                                                {user?.role === 'admin' && (
+                                                                    <MenuItem
+                                                                        index={itemIndex++}
+                                                                        icon={TrashIcon}
+                                                                        label="Eliminar laboratorio"
+                                                                        onSelect={() => setShowAdminPurgeModal(true)}
+                                                                        className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                                                                    />
+                                                                )}
 
-                                                    {user?.role === 'admin' && (
-                                                        <>
-                                                            <MenuItem
-                                                                index={4}
-                                                                icon={Refresh}
-                                                                label="Sincronizar avance (Forzar)"
-                                                                onSelect={handleForceRefreshProgress}
-                                                            />
-                                                            <MenuItem
-                                                                index={5}
-                                                                icon={Pen}
-                                                                label={isAdminEditActive ? "Desactivar edición de ajuste" : "Editar ajuste sin Excel"}
-                                                                onSelect={() => setIsAdminEditActive(!isAdminEditActive)}
-                                                            />
-                                                            <MenuItem
-                                                                index={6}
-                                                                icon={Pen}
-                                                                label="Editar IDs de ajuste"
-                                                                onSelect={() => {
-                                                                    const existingShortage = items.find(i => i.status === 'adjusted' && i.shortageId)?.shortageId || "";
-                                                                    const existingSurplus = items.find(i => i.status === 'adjusted' && i.surplusId)?.surplusId || "";
-                                                                    setSelectedSessionToEdit("active");
-                                                                    setTempShortageId(existingShortage);
-                                                                    setTempSurplusId(existingSurplus);
-                                                                    setShowEditIdsDialog(true);
-                                                                }}
-                                                            />
-                                                            <MenuItem
-                                                                index={7}
-                                                                label="Ocultar laboratorio"
-                                                                checked={isLabHidden}
-                                                                onSelect={() => handleToggleHideLab(!isLabHidden)}
-                                                            />
-                                                            <MenuItem
-                                                                index={8}
-                                                                icon={TrashIcon}
-                                                                label="Eliminar laboratorio"
-                                                                onSelect={() => setShowAdminPurgeModal(true)}
-                                                                className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                                                            />
-                                                        </>
-                                                    )}
-
-                                                    <MenuItem
-                                                        index={9}
-                                                        icon={RotateCcw}
-                                                        label="Reiniciar laboratorio"
-                                                        onSelect={handleResetData}
-                                                        className="text-destructive focus:text-destructive focus:bg-destructive/10"
-                                                    />
+                                                                {!isReadOnly && (
+                                                                    <MenuItem
+                                                                        index={itemIndex++}
+                                                                        icon={RotateCcw}
+                                                                        label="Reiniciar laboratorio"
+                                                                        onSelect={handleResetData}
+                                                                        className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                                                                    />
+                                                                )}
+                                                            </>
+                                                        );
+                                                    })()}
                                                 </DropdownContent>
                                             </DropdownMenu>
 
@@ -827,17 +820,17 @@ export default function CyclicInventoryDetail() {
                                                         Guardar Cambios (Admin)
                                                     </Button>
                                                 </div>
-                                            ) : (
+                                            ) : !isReadOnly ? (
                                                 <Button
                                                     onClick={handleFinalizeClick}
                                                     disabled={isSaving || (pendingItems.length === 0 && controlledItems.length === 0 && adjustedItems.length === 0)}
                                                     variant="primary"
                                                     className="rounded-xl h-9 px-4 group transition-all duration-200 flex items-center gap-1.5 font-semibold text-[13px] ml-1.5 shrink-0"
-                                                >
+                                                 >
                                                     <CheckCircle size={16} className="shrink-0" />
                                                     <span>Finalizar</span>
                                                 </Button>
-                                            )}
+                                            ) : null}
                                         </div>
                                     </div>
                                     <ScrollArea className="flex-1 -mx-4 px-4 overflow-hidden">
@@ -899,17 +892,17 @@ export default function CyclicInventoryDetail() {
                                                         )}
                                                     </Card>
                                                 )}
-
-                                                <CyclicInventoryList
+                                                               <CyclicInventoryList
                                                     items={getSortedItems(pendingItems)}
                                                     onUpdateQuantity={handleUpdateQuantity}
                                                     onCheck={handleCheck}
                                                     onBulkCheck={handleBulkCheck}
                                                     isPending={true}
+                                                    readOnly={isReadOnly}
                                                     isExcelUploaded={isExcelUploaded || isAdminEditActive}
                                                 />
                                             </TabsContent>
-
+ 
                                             <TabsContent value="controlled" className="space-y-4 pt-2">
                                                 <CyclicInventoryList
                                                     items={getSortedItems(controlledItems)}
@@ -917,18 +910,18 @@ export default function CyclicInventoryDetail() {
                                                     onCheck={handleCheck}
                                                     onBulkCheck={handleBulkCheck}
                                                     onRevert={handleRevertItem}
-                                                    readOnly={false}
+                                                    readOnly={isReadOnly}
                                                     isExcelUploaded={isExcelUploaded || isAdminEditActive}
                                                 />
                                             </TabsContent>
-
+ 
                                             <TabsContent value="adjusted" className="space-y-4 pt-2">
                                                 <CyclicInventoryList
                                                     items={getSortedItems(adjustedItems)}
                                                     onUpdateQuantity={handleUpdateQuantity}
                                                     onCheck={() => { }} // No check needed for adjusted
                                                     onBulkCheck={handleBulkCheck}
-                                                    readOnly={false} // Enable editing for readjustments
+                                                    readOnly={isReadOnly}
                                                     isExcelUploaded={isExcelUploaded || isAdminEditActive}
                                                 />
                                             </TabsContent>
@@ -970,7 +963,7 @@ export default function CyclicInventoryDetail() {
             {/* Save Dialog */}
             <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
                 <DialogContent showCloseButton={true} className="max-w-lg p-0 gap-0 overflow-hidden rounded-2xl bg-background border border-border/60 shadow-xl">
-                    <Form 
+                    <form 
                         className="flex flex-col" 
                         onSubmit={(e) => {
                             e.preventDefault();
@@ -1043,7 +1036,7 @@ export default function CyclicInventoryDetail() {
                                         {totalControlledUnits} Unidades Controladas
                                     </span>
                                 </div>
-                            </div>
+                             </div>
                         </div>
 
                         {/* Block 2 — Ajustes de inventario (Showcase Accordion wrapper) */}
@@ -1156,7 +1149,7 @@ export default function CyclicInventoryDetail() {
                             </Accordion>
                         </div>
 
-                        <DialogFooter className="px-5 pb-4 pt-0 mt-0 justify-end">
+                        <DialogFooter className="px-5 pb-5 pt-4 mt-2 justify-end">
                             <Button 
                                 variant="ghost" 
                                 type="button"
@@ -1165,21 +1158,29 @@ export default function CyclicInventoryDetail() {
                             >
                                 Cancelar
                             </Button>
-                            <Button 
-                                type="submit"
-                                loading={isSaving}
-                                onClick={handleSaveInventory}
-                                disabled={
-                                    isSaving || 
-                                    (shortageValue !== 0 && !shortageId.trim()) || 
-                                    (surplusValue !== 0 && !surplusId.trim())
-                                }
-                                className="bg-foreground text-background hover:bg-foreground/90 rounded-xl"
-                            >
-                                Confirmar y finalizar
-                            </Button>
+                            {isSaving ? (
+                                <Button 
+                                    variant="secondary"
+                                    loading={true}
+                                    disabled={true}
+                                    className="rounded-xl"
+                                >
+                                    Guardando...
+                                </Button>
+                            ) : (
+                                <Button 
+                                    type="submit"
+                                    disabled={
+                                        (shortageValue !== 0 && !shortageId.trim()) || 
+                                        (surplusValue !== 0 && !surplusId.trim())
+                                    }
+                                    className="bg-foreground text-background hover:bg-foreground/90 rounded-xl"
+                                >
+                                    Confirmar y finalizar
+                                </Button>
+                            )}
                         </DialogFooter>
-                    </Form>
+                    </form>
                 </DialogContent>
             </Dialog>
 
@@ -1285,63 +1286,6 @@ export default function CyclicInventoryDetail() {
                 </DialogContent>
             </Dialog>
 
-            {/* Import Mode Selection Dialog (Combinar vs Sobrescribir) */}
-            <Dialog open={showImportModeDialog} onOpenChange={setShowImportModeDialog}>
-                <DialogContent className="max-w-md p-0 gap-0 overflow-hidden border border-border/60 shadow-md rounded-lg bg-background">
-                    <div className="flex items-center justify-between px-5 pt-5 pb-3">
-                        <DialogTitle className="text-base font-semibold tracking-tight flex items-center gap-2">
-                            <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
-                                <Document className="w-4 h-4" />
-                            </div>
-                            Modo de Carga
-                        </DialogTitle>
-                    </div>
-
-                    <div className="px-5 pb-5 space-y-4">
-                        <div className="space-y-1.5">
-                            <p className="text-[13px] text-muted-foreground leading-relaxed">
-                                Ya existen productos cargados para <strong className="text-foreground">{labName}</strong>. ¿Cómo deseas proceder con el nuevo archivo?
-                            </p>
-                        </div>
-
-                        <div className="space-y-2.5">
-                            <button
-                                onClick={() => handleSelectImportMode('overwrite')}
-                                className="w-full flex flex-col p-4 rounded-xl border border-primary/30 bg-primary/5 hover:bg-primary/10 hover:border-primary/50 text-left transition-all group"
-                            >
-                                <span className="text-xs font-semibold text-primary">
-                                    Carga Limpia (Recomendado)
-                                </span>
-                                <span className="text-[11px] text-muted-foreground mt-1">
-                                    Reemplaza todos los productos anteriores con los del nuevo Excel. Ideal si los datos previos quedaron corruptos o desactualizados.
-                                </span>
-                            </button>
-
-                            <button
-                                onClick={() => handleSelectImportMode('merge')}
-                                className="w-full flex flex-col p-4 rounded-xl border border-border/40 bg-muted/20 hover:bg-muted/40 hover:border-border/60 text-left transition-all group"
-                            >
-                                <span className="text-xs font-semibold text-foreground group-hover:text-foreground transition-colors">
-                                    Combinar (Merge)
-                                </span>
-                                <span className="text-[11px] text-muted-foreground mt-1">
-                                    Conserva los recuentos y productos existentes, y agrega solo los artículos nuevos del Excel.
-                                </span>
-                            </button>
-                        </div>
-
-                        <div className="flex flex-col gap-2 pt-1">
-                            <Button 
-                                variant="ghost" 
-                                onClick={() => setShowImportModeDialog(false)}
-                                className="h-10 w-full text-[13px] text-muted-foreground hover:text-foreground font-medium rounded-xl hover:bg-muted/50"
-                            >
-                                Cancelar
-                            </Button>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
 
             {/* Minimalist Admin Purge Modal */}
             <Dialog open={showAdminPurgeModal} onOpenChange={setShowAdminPurgeModal}>

@@ -194,27 +194,40 @@ export async function getProductCount(): Promise<number> {
 }
 
 // Get laboratories assigned to a specific branch
-export async function getLaboratoriesForBranch(branchName: string): Promise<{ name: string, category: string }[]> {
+export async function getLaboratoriesForBranch(branchName: string): Promise<{ name: string, category: string, round: number }[]> {
     try {
-        const { data, error } = await supabase
-            .from('branch_laboratories')
-            .select('laboratory, category')
-            .ilike('branch_name', branchName.trim());
+        let allData: any[] = [];
+        let page = 0;
+        const limit = 1000;
+        const cleanBranch = normalizeString(branchName);
+        while (true) {
+            const { data, error } = await supabase
+                .from('branch_laboratories')
+                .select('laboratory, category, round')
+                .or(`branch_name.eq.${cleanBranch},branch_name.eq.${branchName.trim()}`)
+                .range(page * limit, (page + 1) * limit - 1);
 
-        if (error) {
-            console.error('Error fetching laboratories for branch:', error);
-            return [];
+            if (error) {
+                console.error('Error fetching laboratories for branch:', error);
+                return [];
+            }
+            if (!data || data.length === 0) break;
+
+            allData = allData.concat(data);
+            if (data.length < limit) break;
+            page++;
         }
 
         // Deduplicate and normalize in-memory to be extra safe
         const uniqueLabs = new Map<string, string>();
-        (data || []).forEach(item => {
+        allData.forEach(item => {
             const name = (item.laboratory || '').trim();
             const cat = normalizeString(item.category || 'VARIOS');
+            const round = Number(item.round || 1);
             if (name) {
-                const key = `${name.toUpperCase()}|${cat}`;
+                const key = `${name.toUpperCase()}|${cat}|${round}`;
                 if (!uniqueLabs.has(key)) {
-                    uniqueLabs.set(key, JSON.stringify({ name, category: cat }));
+                    uniqueLabs.set(key, JSON.stringify({ name, category: cat, round }));
                 }
             }
         });

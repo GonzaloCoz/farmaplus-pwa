@@ -21,6 +21,8 @@ interface WidgetRendererProps {
     isLocked?: boolean;
     lockReason?: 'manual' | 'deadline' | null;
     onToggleLock?: (isLocked: boolean) => void;
+    cycleFilter?: 'current' | 'previous';
+    onCycleFilterChange?: (filter: 'current' | 'previous') => void;
 }
 
 export const WidgetRenderer = memo(({
@@ -34,7 +36,9 @@ export const WidgetRenderer = memo(({
     onEditConfig,
     isLocked,
     lockReason,
-    onToggleLock
+    onToggleLock,
+    cycleFilter = 'current',
+    onCycleFilterChange
 }: WidgetRendererProps) => {
 
     switch (widgetType) {
@@ -48,14 +52,18 @@ export const WidgetRenderer = memo(({
             return <UpcomingInventoriesWidget onDateClick={onDateClick} />;
         case 'branches-table':
             if (!hasPermission(user, 'VIEW_BRANCH_MONITOR')) return null;
-            return <BranchesTableWidget branches={[
-                { name: "Belgrano IV", address: "Av. Cabildo 2040", zonal: "Zona Norte", email: "belgrano4@farmaplus.com" },
-                { name: "Recoleta", address: "Av. Santa Fe 1860", zonal: "Zona Centro", email: "recoleta@farmaplus.com" },
-                { name: "Palermo II", address: "Av. Las Heras 3520", zonal: "Zona Norte", email: "palermo2@farmaplus.com" },
-                { name: "Microcentro", address: "Florida 520", zonal: "Zona Centro", email: "microcentro@farmaplus.com" },
-                { name: "Belgrano III", address: "Av. Cabildo 1520", zonal: "Zona Norte", email: "belgrano3@farmaplus.com" },
-                { name: "Villa Urquiza II", address: "Av. Triunvirato 4280", zonal: "Zona Norte", email: "villaurquiza2@farmaplus.com" },
-            ]} />;
+            return <BranchesTableWidget 
+                cycleFilter={cycleFilter}
+                onCycleFilterChange={onCycleFilterChange}
+                branches={[
+                    { name: "Belgrano IV", address: "Av. Cabildo 2040", zonal: "Zona Norte", email: "belgrano4@farmaplus.com" },
+                    { name: "Recoleta", address: "Av. Santa Fe 1860", zonal: "Zona Centro", email: "recoleta@farmaplus.com" },
+                    { name: "Palermo II", address: "Av. Las Heras 3520", zonal: "Zona Norte", email: "palermo2@farmaplus.com" },
+                    { name: "Microcentro", address: "Florida 520", zonal: "Zona Centro", email: "microcentro@farmaplus.com" },
+                    { name: "Belgrano III", address: "Av. Cabildo 1520", zonal: "Zona Norte", email: "belgrano3@farmaplus.com" },
+                    { name: "Villa Urquiza II", address: "Av. Triunvirato 4280", zonal: "Zona Norte", email: "villaurquiza2@farmaplus.com" },
+                ]} 
+            />;
         case 'trends-chart':
             return <TrendsChartWidget type="negative" />;
         case 'countdown':
@@ -73,7 +81,7 @@ export const WidgetRenderer = memo(({
                 />
             );
         case 'category-progress':
-            return <CategoryProgressWidget />;
+            return <CategoryProgressWidget showPrevious={cycleFilter === 'previous'} />;
         default:
             return null;
     }

@@ -21,12 +21,12 @@ export class ErrorBoundary extends Component<Props, State> {
 
     public static getDerivedStateFromError(error: Error): State {
         // ponytail: reload on dynamic chunk load errors to auto-update active clients
-        const isChunkError = 
-            error.name === 'ChunkLoadError' || 
+        const isChunkError =
+            error.name === 'ChunkLoadError' ||
             error.message?.includes('Failed to fetch dynamically imported module') ||
             error.message?.includes('error loading dynamically imported module') ||
             error.message?.includes('Importing a module script failed');
-            
+
         if (isChunkError) {
             const hasReloaded = sessionStorage.getItem('chunk_error_reloaded');
             const now = Date.now();

@@ -36,6 +36,7 @@ export function ConfigDialog({
     const [selectedDaysIndex, setSelectedDaysIndex] = useState(0);
     const [extensionDays, setExtensionDays] = useState(0);
     const [isSaving, setIsSaving] = useState(false);
+    const [startDate, setStartDate] = useState("");
 
     // Initial load and reset when opening
     useEffect(() => {
@@ -50,11 +51,22 @@ export function ConfigDialog({
             setSelectedDaysIndex(idx !== -1 ? idx : 0);
             setExtensionDays(Math.max(0, currentTotal - foundBase));
 
+            // Set start date string formatted for <input type="date"> (YYYY-MM-DD)
+            if (currentStartDate) {
+                const dateObj = new Date(currentStartDate);
+                const yyyy = dateObj.getFullYear();
+                const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+                const dd = String(dateObj.getDate()).padStart(2, '0');
+                setStartDate(`${yyyy}-${mm}-${dd}`);
+            } else {
+                setStartDate("");
+            }
+
             // Default: select current user's branch (only if it is not Casa Central / admin view)
             const isSingleBranch = user?.role === 'branch' || (user?.branchName && user.branchName !== 'Casa Central');
             setSelectedBranches(isSingleBranch && user?.branchName ? [user.branchName] : []);
         }
-    }, [open, currentAssignedDays, user]);
+    }, [open, currentAssignedDays, currentStartDate, user]);
 
     // Filter branches list
     const filteredBranches = useMemo(() => {
@@ -94,15 +106,16 @@ export function ConfigDialog({
         const total = (DAY_OPTIONS[selectedDaysIndex] || 90) + extensionDays;
         setIsSaving(true);
         try {
-            // Keep currentStartDate or default to null
-            const startDateStr = currentStartDate instanceof Date 
-                ? currentStartDate.toISOString() 
-                : currentStartDate 
-                ? String(currentStartDate) 
-                : undefined;
+            // Convert 'YYYY-MM-DD' back to ISO string at local noon
+            let startDateStr = undefined;
+            if (startDate) {
+                const [yyyy, mm, dd] = startDate.split('-').map(Number);
+                const dateObj = new Date(yyyy, mm - 1, dd, 12, 0, 0);
+                startDateStr = dateObj.toISOString();
+            }
 
             await onSave(selectedBranches, total, startDateStr);
-            notify.success("Operación exitosa", `Plazo actualizado para ${selectedBranches.length} sucursales`);
+            notify.success("Operación exitosa", `Plazo y fecha actualizados para ${selectedBranches.length} sucursales`);
             onOpenChange(false);
         } catch (e) {
             notify.error("Error", "Error al guardar la configuración");
@@ -198,6 +211,23 @@ export function ConfigDialog({
                                         placeholder="Escribe los días..."
                                         value={extensionDays === 0 ? "" : String(extensionDays)}
                                         onChange={(val) => setExtensionDays(Math.max(0, parseInt(val) || 0))}
+                                        alwaysShowBorder
+                                    />
+                                </InputGroup>
+                            </div>
+
+                            {/* Fecha de Inicio */}
+                            <div className="space-y-3 pt-2">
+                                <label className="text-[14px] text-foreground leading-tight block" style={{ fontVariationSettings: "'wght' 700" }}>
+                                    Fecha de Inicio del Ciclo
+                                </label>
+                                <InputGroup>
+                                    <InputField
+                                        index={0}
+                                        type="date"
+                                        placeholder="Seleccione la fecha de inicio..."
+                                        value={startDate}
+                                        onChange={(val) => setStartDate(val)}
                                         alwaysShowBorder
                                     />
                                 </InputGroup>

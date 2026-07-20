@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ChevronLeft as ArrowLeft, File01 as FileText, TrendUp01 as TrendingUp, TrendDown01 as TrendingDown, LayoutGrid01 as Package, CheckCircle, Activity as Target, Calendar, MarkerPin01 as MapPin, LayersTwo01 as Layers } from '@untitledui/icons';
+import { ChevronLeft as ArrowLeft, File02 as FileText, TrendUp01 as TrendingUp, TrendDown01 as TrendingDown, LayoutGrid01 as Package, CheckCircle, Activity as Target, Calendar, MarkerPin01 as MapPin, LayersTwo01 as Layers } from '@untitledui/icons';
 import { notify } from "@/lib/notifications";
 
 // Interfaces de Reporte

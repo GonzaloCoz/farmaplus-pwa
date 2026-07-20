@@ -147,13 +147,32 @@ export default function CyclicInventory() {
       const inventoryStats = await cyclicInventoryService.getAllCyclicInventories(user.branchSheet);
 
       // 2b. Obtener todos los items del inventario para calcular métricas extra (IRA, desvío, ajustes)
-      const { data: inventoriesData, error: invError } = await (supabase as any)
-        .from('inventories')
-        .select('laboratory, category, quantity, system_quantity, status, ean, round')
-        .eq('branch_name', normalizeString(user.branchSheet));
+      let inventoriesData: any[] = [];
+      let page = 0;
+      const limit = 1000;
+      const cleanBranch = normalizeString(user.branchSheet);
+      let fetchMore = true;
 
-      if (invError) {
-        console.error("Error al obtener items de inventario para estadísticas:", invError);
+      while (fetchMore) {
+        const { data, error: invError } = await (supabase as any)
+          .from('inventories')
+          .select('laboratory, category, quantity, system_quantity, status, ean, round')
+          .eq('branch_name', cleanBranch)
+          .range(page * limit, (page + 1) * limit - 1);
+
+        if (invError) {
+          console.error("Error al obtener items de inventario para estadísticas:", invError);
+          fetchMore = false;
+        } else if (data && data.length > 0) {
+          inventoriesData = inventoriesData.concat(data);
+          if (data.length < limit) {
+            fetchMore = false;
+          } else {
+            page++;
+          }
+        } else {
+          fetchMore = false;
+        }
       }
 
       const branchInv = inventoriesData || [];

@@ -74,10 +74,8 @@ self.onmessage = async (e: MessageEvent) => {
         const qtyIndex = getIndex(['cantidad', 'cant', 'stock', 'sistema', 'systemquantity', 'system_quantity', 'cantidad_sistema'], 4);
         const categoryIndex = getIndex(['rubro', 'categoria', 'category'], 9);
         
-        let costIndex = headers.findIndex(h => ['costo', 'cost', 'precio_costo'].includes(h));
-        if (costIndex === -1) {
-            costIndex = getIndex(['precio', 'price', 'precio_venta'], 10);
-        }
+        // Inventario Cíclico: Priorizar Columna K (índice 10: Precio / Precio Venta) que es uniforme para todas las sucursales
+        const costIndex = getIndex(['precio', 'price', 'precio_venta', 'precio_publico', 'pvp', 'precio_lista', 'costo', 'cost'], 10);
         
         // Inventario Cíclico: ignorar columna Q (CodigosBarra) - se reserva para inventarios nocturnos.
         // Usar SOLO la columna C (codebar, índice 2) como EAN único por producto.
@@ -85,6 +83,8 @@ self.onmessage = async (e: MessageEvent) => {
 
         let addedCount = 0;
         let updatedCount = 0;
+
+        const excelCategoriesSet = new Set<string>();
 
         for (let i = 1; i < data.length; i++) {
             const row: any = data[i];
@@ -100,6 +100,8 @@ self.onmessage = async (e: MessageEvent) => {
             if (!ean) continue;
 
             const category = normalizeStringWorker(row[categoryIndex]?.toString() || 'Varios');
+            if (category) excelCategoriesSet.add(category.toUpperCase());
+
             const rawCost = row[costIndex];
             const costValue = Math.round((Number(rawCost) || 0) * 100) / 100;
 
@@ -141,7 +143,8 @@ self.onmessage = async (e: MessageEvent) => {
             success: true,
             finalItems,
             addedCount,
-            updatedCount
+            updatedCount,
+            excelCategories: Array.from(excelCategoriesSet)
         });
 
     } catch (err: any) {

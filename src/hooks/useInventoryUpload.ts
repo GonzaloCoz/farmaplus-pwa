@@ -7,6 +7,7 @@ import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { normalizeString, getStringSimilarity } from '@/lib/utils';
 import { getLaboratoriesForBranch } from '@/services/preCountDB';
 import { useUser } from '@/contexts/UserContext';
+import { supabase } from '@/integrations/supabase/client';
 import ExcelWorker from '../workers/excelCyclicWorker?worker';
 
 // Definir categorías para evitar dependencias circulares o redefiniciones
@@ -27,13 +28,69 @@ interface MismatchData {
     electronData?: any;
 }
 
+export interface CategoryWarningData {
+    targetLab: string;
+    expectedCategories: string[];
+    foundCategories: string[];
+    missingCategories: string[];
+    pendingUpload: {
+        finalItems: any[];
+        addedCount: number;
+        updatedCount: number;
+        action?: 'current' | 'redirect';
+        targetLab: string;
+    };
+}
+
 export function useInventoryUpload({ labName, branchName, currentItems, onItemsUpdated }: UseInventoryUploadProps) {
     const [isUploading, setIsUploading] = useState(false);
     const [showMismatchDialog, setShowMismatchDialog] = useState(false);
     const [mismatchData, setMismatchData] = useState<MismatchData | null>(null);
-    
+
+    // Advertencia de Rubros Faltantes
+    const [showCategoryWarningDialog, setShowCategoryWarningDialog] = useState(false);
+    const [categoryWarningData, setCategoryWarningData] = useState<CategoryWarningData | null>(null);
+
     const navigate = useNavigate();
     const { user } = useUser();
+
+    const checkMissingCategories = async (targetLab: string, branchName: string, excelCategories: string[]) => {
+        try {
+            const allowedLabs = await getLaboratoriesForBranch(branchName);
+            const normTarget = normalizeString(targetLab);
+            const labEntries = allowedLabs.filter(l => normalizeString(l.name) === normTarget);
+
+            // Categorías asignadas en esta sucursal para este laboratorio en la lista maestra (branch_laboratories)
+            const expectedCategories = Array.from(new Set(
+                labEntries.map(l => (l.category || 'VARIOS').trim().toUpperCase())
+            ));
+
+            // Si el laboratorio solo tiene 1 o 0 rubros asignados en la sucursal, no hay riesgo de omisión
+            if (expectedCategories.length <= 1) {
+                return { hasMissingCategories: false, expectedCategories: [], foundCategories: [], missingCategories: [] };
+            }
+
+            // Categorías presentes EXCLUSIVAMENTE en las filas del archivo Excel subido
+            const foundCategories = Array.from(new Set(
+                (excelCategories || [])
+                    .map(cat => (cat || 'VARIOS').trim().toUpperCase())
+                    .filter(Boolean)
+            ));
+
+            // Categorías omitidas en el reporte subido
+            const missingCategories = expectedCategories.filter(cat => !foundCategories.includes(cat));
+
+            return {
+                hasMissingCategories: missingCategories.length > 0,
+                expectedCategories,
+                foundCategories,
+                missingCategories
+            };
+        } catch (err) {
+            console.error("Error checking missing categories:", err);
+            return { hasMissingCategories: false, expectedCategories: [], foundCategories: [], missingCategories: [] };
+        }
+    };
 
     const handleResolveMismatch = async (action: 'current' | 'redirect' | 'cancel', chosenLab?: string) => {
         if (action === 'cancel' || !mismatchData) {
@@ -55,7 +112,7 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 const worker = new ExcelWorker();
 
                 worker.onmessage = async (eMsg) => {
-                    const { success, error, finalItems, addedCount, updatedCount } = eMsg.data;
+                    const { success, error, finalItems, addedCount, updatedCount, excelCategories } = eMsg.data;
 
                     if (error) {
                         notify.error("Error de archivo", error);
@@ -65,6 +122,27 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                     }
 
                     if (success) {
+                        const categoryCheck = await checkMissingCategories(targetLab, branchName, excelCategories || []);
+                        if (categoryCheck.hasMissingCategories) {
+                            setCategoryWarningData({
+                                targetLab,
+                                expectedCategories: categoryCheck.expectedCategories,
+                                foundCategories: categoryCheck.foundCategories,
+                                missingCategories: categoryCheck.missingCategories,
+                                pendingUpload: {
+                                    finalItems,
+                                    addedCount,
+                                    updatedCount,
+                                    action,
+                                    targetLab
+                                }
+                            });
+                            setShowCategoryWarningDialog(true);
+                            setIsUploading(false);
+                            worker.terminate();
+                            return;
+                        }
+
                         // Actualizamos el estado en pantalla si nos quedamos en el mismo laboratorio (o si elegimos el mismo de la lista)
                         if (action === 'current' || targetLab.toUpperCase() === labName.toUpperCase()) {
                             onItemsUpdated(finalItems);
@@ -127,10 +205,8 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 const qtyIndex = getIndex(['cantidad', 'cant', 'stock', 'sistema', 'systemquantity', 'system_quantity', 'cantidad_sistema'], 4);
                 const categoryIndex = getIndex(['rubro', 'categoria', 'category'], 9);
                 
-                let costIndex = headers.findIndex(h => ['costo', 'cost', 'precio_costo'].includes(h));
-                if (costIndex === -1) {
-                    costIndex = getIndex(['precio', 'price', 'precio_venta'], 10);
-                }
+                // Inventario Cíclico: Priorizar Columna K (índice 10: Precio / Precio Venta) que es uniforme para todas las sucursales
+                const costIndex = getIndex(['precio', 'price', 'precio_venta', 'precio_publico', 'pvp', 'precio_lista', 'costo', 'cost'], 10);
                 
                 const codigosBarraIndex = -1; // Inventario Cíclico: ignorar columna Q (CodigosBarra)
                 const eanIndex = getIndex(['codebar', 'codigobarra', 'barras', 'código de barras', 'ean'], 2);
@@ -184,6 +260,32 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                         });
                         addedCount++;
                     }
+                }
+
+                const excelCategoriesFromRows: string[] = Array.from(new Set<string>(
+                    (rows || []).slice(1)
+                        .map((r: any) => normalizeString(r[categoryIndex]?.toString() || 'VARIOS').toUpperCase())
+                        .filter(Boolean)
+                ));
+
+                const categoryCheck = await checkMissingCategories(targetLab, branchName, excelCategoriesFromRows);
+                if (categoryCheck.hasMissingCategories) {
+                    setCategoryWarningData({
+                        targetLab,
+                        expectedCategories: categoryCheck.expectedCategories,
+                        foundCategories: categoryCheck.foundCategories,
+                        missingCategories: categoryCheck.missingCategories,
+                        pendingUpload: {
+                            finalItems,
+                            addedCount,
+                            updatedCount,
+                            action,
+                            targetLab
+                        }
+                    });
+                    setShowCategoryWarningDialog(true);
+                    setIsUploading(false);
+                    return;
                 }
 
                 if (action === 'current' || targetLab.toUpperCase() === labName.toUpperCase()) {
@@ -306,6 +408,28 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 }
 
                 if (success) {
+                    const { excelCategories } = eMsg.data;
+                    const categoryCheck = await checkMissingCategories(labName, branchName, excelCategories || []);
+                    if (categoryCheck.hasMissingCategories) {
+                        setCategoryWarningData({
+                            targetLab: labName,
+                            expectedCategories: categoryCheck.expectedCategories,
+                            foundCategories: categoryCheck.foundCategories,
+                            missingCategories: categoryCheck.missingCategories,
+                            pendingUpload: {
+                                finalItems,
+                                addedCount,
+                                updatedCount,
+                                action: 'current',
+                                targetLab: labName
+                            }
+                        });
+                        setShowCategoryWarningDialog(true);
+                        setIsUploading(false);
+                        worker.terminate();
+                        return;
+                    }
+
                     onItemsUpdated(finalItems);
 
                     try {
@@ -439,16 +563,16 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
             const qtyIndex = getIndex(['cantidad', 'cant', 'stock', 'sistema', 'systemquantity', 'system_quantity', 'cantidad_sistema'], 4);
             const categoryIndex = getIndex(['rubro', 'categoria', 'category'], 9);
             
-            let costIndex = headers.findIndex(h => ['costo', 'cost', 'precio_costo'].includes(h));
-            if (costIndex === -1) {
-                costIndex = getIndex(['precio', 'price', 'precio_venta'], 10);
-            }
+            // Inventario Cíclico: Priorizar Columna K (índice 10: Precio / Precio Venta) que es uniforme para todas las sucursales
+            const costIndex = getIndex(['precio', 'price', 'precio_venta', 'precio_publico', 'pvp', 'precio_lista', 'costo', 'cost'], 10);
             
             const codigosBarraIndex = -1; // Inventario Cíclico: ignorar columna Q (CodigosBarra)
             const eanIndex = getIndex(['codebar', 'codigobarra', 'barras', 'código de barras', 'ean'], 2);
 
             let addedCount = 0;
             let updatedCount = 0;
+
+            const excelCategoriesSet = new Set<string>();
 
             for (let i = 1; i < rows.length; i++) {
                 const row: any = rows[i];
@@ -458,12 +582,12 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 if (!name) continue;
                 
                 const id_producto = row[idProductoIndex] ? String(row[idProductoIndex]).trim() : '';
-                // Inventario Cíclico: usar SOLO la columna C (Codebar, índice 2) como EAN único.
-                // NO usar columna Q (CodigosBarra) ni hacer split('-').
                 const ean = String(row[eanIndex] || '').trim();
                 if (!ean) continue;
 
                 let category = normalizeString(row[categoryIndex]?.toString() || 'Varios').toUpperCase();
+                if (category) excelCategoriesSet.add(category);
+
                 const rawCost = row[costIndex];
                 const costValue = Math.round((Number(rawCost) || 0) * 100) / 100;
 
@@ -498,6 +622,27 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 }
             }
 
+            // Validar si faltan rubros autorizados (evaluando únicamente las categorías del Excel)
+            const categoryCheck = await checkMissingCategories(labName, branchName, Array.from(excelCategoriesSet));
+            if (categoryCheck.hasMissingCategories) {
+                setCategoryWarningData({
+                    targetLab: labName,
+                    expectedCategories: categoryCheck.expectedCategories,
+                    foundCategories: categoryCheck.foundCategories,
+                    missingCategories: categoryCheck.missingCategories,
+                    pendingUpload: {
+                        finalItems,
+                        addedCount,
+                        updatedCount,
+                        action: 'current',
+                        targetLab: labName
+                    }
+                });
+                setShowCategoryWarningDialog(true);
+                setIsUploading(false);
+                return;
+            }
+
             onItemsUpdated(finalItems);
             await cyclicInventoryService.purgeAndSaveLabInventory(branchName, labName, finalItems);
             
@@ -512,6 +657,45 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
         }
     };
 
+    const handleResolveCategoryWarning = async (action: 'proceed' | 'cancel') => {
+        if (action === 'cancel' || !categoryWarningData) {
+            setShowCategoryWarningDialog(false);
+            setCategoryWarningData(null);
+            setIsUploading(false);
+            return;
+        }
+
+        const { pendingUpload } = categoryWarningData;
+        const { finalItems, addedCount, updatedCount, action: uploadAction, targetLab } = pendingUpload;
+
+        setIsUploading(true);
+        setShowCategoryWarningDialog(false);
+
+        try {
+            if (uploadAction === 'current' || targetLab.toUpperCase() === labName.toUpperCase()) {
+                onItemsUpdated(finalItems);
+            }
+
+            await cyclicInventoryService.purgeAndSaveLabInventory(branchName, targetLab, finalItems);
+
+            if (addedCount > 0 || updatedCount > 0) {
+                notify.success("Carga exitosa", `Se importaron ${addedCount} productos nuevos y ${updatedCount} existentes en ${targetLab}.`);
+            } else {
+                notify.info("Sin cambios", `Todos los productos en el archivo ya estaban procesados.`);
+            }
+
+            if (uploadAction === 'redirect' && targetLab.toUpperCase() !== labName.toUpperCase()) {
+                navigate(`/cyclic-inventory/${encodeURIComponent(targetLab)}`);
+            }
+        } catch (err) {
+            console.error("Failed to save after upload (warning bypass):", err);
+            notify.error("Error al guardar", "Se procesó el archivo pero hubo un problema al guardar.");
+        } finally {
+            setIsUploading(false);
+            setCategoryWarningData(null);
+        }
+    };
+
     return {
         isUploading,
         handleFileUpload,
@@ -519,6 +703,12 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
         showMismatchDialog,
         setShowMismatchDialog,
         mismatchData,
-        handleResolveMismatch
+        handleResolveMismatch,
+
+        // Advertencia de Rubros Faltantes
+        showCategoryWarningDialog,
+        setShowCategoryWarningDialog,
+        categoryWarningData,
+        handleResolveCategoryWarning
     };
 }

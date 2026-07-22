@@ -320,6 +320,12 @@ export default function CyclicInventoryDetail() {
         mismatchData,
         handleResolveMismatch,
 
+        // Advertencia de Rubros Faltantes
+        showCategoryWarningDialog,
+        setShowCategoryWarningDialog,
+        categoryWarningData,
+        handleResolveCategoryWarning,
+
         // Advanced Logic
         sortBy, setSortBy,
         getSortedItems
@@ -1282,6 +1288,63 @@ export default function CyclicInventoryDetail() {
                                 Cancelar Carga
                             </Button>
                         </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Category Warning Dialog (Missing Rubros in Excel) */}
+            <Dialog open={showCategoryWarningDialog} onOpenChange={setShowCategoryWarningDialog}>
+                <DialogContent size="lg">
+                    <div className="space-y-4">
+                        <DialogHeader>
+                            <DialogTitle>Advertencia de Rubros Faltantes ({categoryWarningData?.targetLab})</DialogTitle>
+                            <DialogDescription>
+                                El laboratorio <strong className="text-foreground">{categoryWarningData?.targetLab}</strong> tiene asignados varios rubros en tu sucursal, pero el archivo subido sólo reporta parte de ellos. Por favor verifica si descargaste el stock completo desde PLEX antes de continuar.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-3 pt-1 text-sm">
+                            <div>
+                                <span className="text-xs font-medium text-muted-foreground block mb-1">
+                                    Rubros Encontrados en el Archivo:
+                                </span>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {categoryWarningData?.foundCategories.map(cat => (
+                                        <span key={cat} className="inline-flex items-center text-xs px-2.5 py-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium">
+                                            ✓ {cat}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <span className="text-xs font-medium text-muted-foreground block mb-1">
+                                    Rubros Omitidos / Faltantes en el Archivo:
+                                </span>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {categoryWarningData?.missingCategories.map(cat => (
+                                        <span key={cat} className="inline-flex items-center text-xs px-2.5 py-1 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium">
+                                            ✕ {cat}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <DialogFooter>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => handleResolveCategoryWarning('cancel')}
+                            >
+                                Cancelar e ir a PLEX
+                            </Button>
+                            <Button
+                                onClick={() => handleResolveCategoryWarning('proceed')}
+                            >
+                                Continuar de todos modos
+                            </Button>
+                        </DialogFooter>
                     </div>
                 </DialogContent>
             </Dialog>

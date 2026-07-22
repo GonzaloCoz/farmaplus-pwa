@@ -81,7 +81,12 @@ export function useCyclicInventoryController({ labName, round }: UseCyclicInvent
         showMismatchDialog,
         setShowMismatchDialog,
         mismatchData,
-        handleResolveMismatch
+        handleResolveMismatch,
+
+        showCategoryWarningDialog,
+        setShowCategoryWarningDialog,
+        categoryWarningData,
+        handleResolveCategoryWarning
     } = useInventoryUpload({
         branchName,
         labName,
@@ -769,6 +774,12 @@ export function useCyclicInventoryController({ labName, round }: UseCyclicInvent
         setShowMismatchDialog,
         mismatchData,
         handleResolveMismatch,
+
+        // Advertencia de Rubros Faltantes
+        showCategoryWarningDialog,
+        setShowCategoryWarningDialog,
+        categoryWarningData,
+        handleResolveCategoryWarning,
 
         // Special State
         shouldHidePendings,

@@ -146,52 +146,6 @@ export default function CyclicInventory() {
       // 2. Obtener estado actual del inventario desde Supabase (Filtrado por sucursal)
       const inventoryStats = await cyclicInventoryService.getAllCyclicInventories(user.branchSheet);
 
-      // 2b. Obtener todos los items del inventario para calcular métricas extra (IRA, desvío, ajustes)
-      let inventoriesData: any[] = [];
-      let page = 0;
-      const limit = 1000;
-      const cleanBranch = normalizeString(user.branchSheet);
-      let fetchMore = true;
-
-      while (fetchMore) {
-        const { data, error: invError } = await (supabase as any)
-          .from('inventories')
-          .select('laboratory, category, quantity, system_quantity, status, ean, round')
-          .eq('branch_name', cleanBranch)
-          .range(page * limit, (page + 1) * limit - 1);
-
-        if (invError) {
-          console.error("Error al obtener items de inventario para estadísticas:", invError);
-          fetchMore = false;
-        } else if (data && data.length > 0) {
-          inventoriesData = inventoriesData.concat(data);
-          if (data.length < limit) {
-            fetchMore = false;
-          } else {
-            page++;
-          }
-        } else {
-          fetchMore = false;
-        }
-      }
-
-      const branchInv = inventoriesData || [];
-      const uniqueEans: string[] = Array.from(new Set(branchInv.map((i: any) => String(i.ean || '')))).filter(Boolean) as string[];
-
-      const costMap = new Map<string, number>();
-      if (uniqueEans.length > 0) {
-        const { data: productsData, error: prodError } = await supabase
-          .from('products')
-          .select('ean, cost')
-          .in('ean', uniqueEans);
-
-        if (prodError) {
-          console.error("Error al obtener costos de productos para estadísticas:", prodError);
-        } else {
-          productsData?.forEach(p => costMap.set(p.ean, p.cost || 0));
-        }
-      }
-
       // Filtrar por la ronda activa de cada categoría
       const activeInventoryStats = inventoryStats.filter(lab => {
         const catNorm = (lab.category || 'VARIOS').toUpperCase();
@@ -205,11 +159,10 @@ export default function CyclicInventory() {
         return (labInfo.round || 1) === activeRound;
       });
 
-      // 3. Unir datos: Unión de Inventario Activo + Lista Maestra (para pendientes)
+      // 3. Unir datos: Unión de Inventario Activo (desde branch_laboratories) + Lista Maestra (para pendientes)
       const mergedData: CyclicInventoryStats[] = [...activeInventoryStats];
 
       // Crear un Set de búsqueda para evitar duplicados (Clave: Nombre|Categoría)
-      // Normalizar categoría para una comparación robusta
       const activeLabsSet = new Set(activeInventoryStats.map(s => `${s.labName.trim().toUpperCase()}|${normalizeString(s.category || '')}`));
 
       activeAllowedLabs.forEach(labInfo => {
@@ -239,93 +192,7 @@ export default function CyclicInventory() {
         }
       });
 
-      // Enriquecer datos con métricas extras calculadas client-side
-      const enrichedData = mergedData.map(lab => {
-        const normLabName = normalizeString(lab.labName);
-        const normCategory = normalizeString(lab.category || '');
-
-        // Obtener ronda activa para la categoría de este laboratorio
-        const catNorm = (lab.category || 'VARIOS').toUpperCase();
-        const activeRound = config.rounds?.[catNorm] || config.rounds?.GENERAL || 1;
-
-        // Filtrar items por laboratorio, categoría y ronda activa
-        const labItems = branchInv.filter(item =>
-          normalizeString(item.laboratory) === normLabName &&
-          normalizeString(item.category || '') === normCategory &&
-          (item.round || 1) === activeRound
-        );
-
-        const controlledItemsList = labItems.filter(i => i.status === 'controlled' || i.status === 'adjusted');
-        const adjustmentCount = controlledItemsList.filter(i => i.quantity !== i.system_quantity).length;
-
-        const controlledCount = controlledItemsList.length;
-        const totalItems = labItems.length;
-
-        // Calcular progreso real del laboratorio/categoría para la ronda activa
-        const progress = totalItems > 0
-          ? Math.min(100, Math.round((controlledCount / totalItems) * 100))
-          : 0;
-
-        const status: LaboratoryStatus = progress === 100 
-          ? 'controlado' 
-          : progress > 0 
-            ? 'por_controlar' 
-            : 'pendiente';
-
-        // Calcular desvíos y valores monetarios de la ronda activa
-        let negativeValue = 0;
-        let positiveValue = 0;
-        let negativeUnits = 0;
-        let positiveUnits = 0;
-
-        controlledItemsList.forEach(item => {
-          const diff = item.quantity - item.system_quantity;
-          const cost = costMap.get(item.ean) || 0;
-          if (diff < 0) {
-            negativeUnits += Math.abs(diff);
-            negativeValue += Math.abs(diff) * cost;
-          } else if (diff > 0) {
-            positiveUnits += diff;
-            positiveValue += diff * cost;
-          }
-        });
-
-        // Redondear a 2 decimales
-        negativeValue = Math.round(negativeValue * 100) / 100;
-        positiveValue = Math.round(positiveValue * 100) / 100;
-        const netValue = Math.round((positiveValue - negativeValue) * 100) / 100;
-        const differenceValue = netValue; 
-
-        const systemValue = labItems.reduce((acc, item) => {
-          const cost = costMap.get(item.ean) || 0;
-          return acc + (item.system_quantity * cost);
-        }, 0);
-
-        const totalSystemUnits = labItems.reduce((acc, item) => acc + item.system_quantity, 0);
-
-        return {
-          ...lab,
-          status,
-          progress,
-          totalItems,
-          controlledItems: controlledCount,
-          negativeValue,
-          positiveValue,
-          netValue,
-          differenceValue,
-          totalSystemUnits,
-          negativeUnits,
-          positiveUnits,
-          netUnits: negativeUnits + positiveUnits,
-          adjustmentCount,
-          ira: controlledCount > 0
-            ? ((controlledCount - adjustmentCount) / controlledCount) * 100
-            : 100,
-          systemValue
-        };
-      });
-
-      setLaboratories(enrichedData);
+      setLaboratories(mergedData);
 
       // Contar ajustes históricos reales del ledger (con ID de PLEX)
       try {

@@ -142,8 +142,8 @@ function SettingsMenu({
     const isMobile = useMediaQuery("(max-width: 768px)");
 
     const trigger = (
-        <Button variant="outline" size="icon" className="shrink-0">
-            <Settings />
+        <Button variant="outline" size="icon" className="h-10 w-10 shrink-0">
+            <Settings className="size-4" />
         </Button>
     );
 
@@ -665,7 +665,7 @@ export default function PreCount() {
     const [quantity, setQuantity] = useState(0);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const lastScanTimeRef = useRef<number>(0);
-    const [highSpeedMode, setHighSpeedMode] = useState(true);
+    const [highSpeedMode, setHighSpeedMode] = useState(false);
     const [showQtyDrawer, setShowQtyDrawer] = useState(false);
     const [deviceName, setDeviceName] = useState(() => localStorage.getItem('precount_device_name') || '');
     const [accessMode, setAccessMode] = useState<'admin' | 'zebra' | 'salon' | null>(null);
@@ -1230,26 +1230,6 @@ export default function PreCount() {
         try {
             console.log('Barcode scanned (Hardware):', code);
 
-            if (!activeLocation) {
-                setShowNoZoneDialog(true);
-                trigger('error');
-                playSound('error');
-                return;
-            }
-
-            // Visual feedback: brief flash
-            const mainContainer = document.getElementById('counting-main-container');
-            if (mainContainer) {
-                mainContainer.classList.add('scan-flash-success');
-                setTimeout(() => mainContainer.classList.remove('scan-flash-success'), 300);
-            }
-
-            if (isActiveLocationClosed) {
-                notify.error("Operación Denegada", `La zona ${activeLocation} está finalizada. No puedes registrar más productos.`);
-                trigger('error');
-                return;
-            }
-
             lastScanTimeRef.current = Date.now();
 
             let productToUse: any = null;
@@ -1515,18 +1495,6 @@ export default function PreCount() {
 
     // Agregar producto al colector
     const handleAddProduct = async () => {
-        if (!activeLocation) {
-            notify.error("Operación Denegada", "Debes escanear o inicializar una Zona antes de contar productos.");
-            trigger('error');
-            return;
-        }
-
-        if (isActiveLocationClosed) {
-            notify.error("Operación Denegada", `La zona ${activeLocation} está finalizada. No puedes registrar más productos.`);
-            trigger('error');
-            return;
-        }
-
         if (!manualEAN.trim()) {
             notify.error("Error", 'Por favor, ingresa o escanea un código EAN');
             return;
@@ -3218,418 +3186,208 @@ export default function PreCount() {
                                             </Alert>
                                         </div>
                                     )}
-                                    <div className="flex-1 flex flex-col overflow-hidden rounded-t-2xl">
-                                        <div className="flex-1 overflow-auto custom-scrollbar p-0">
-                                            <div className="flex-1 p-0 md:px-2 md:py-6 flex flex-col md:flex-row gap-0 md:gap-4 w-full md:h-full min-w-0 overflow-hidden">
-                                                            {/* Left Column: Escaneo / Info */}
-                                                            <div className="w-full md:w-[380px] shrink-0 flex flex-col gap-4 min-h-0">
-                                                                <Card className="flex flex-col h-full overflow-hidden bg-card border-border/40 shadow-sm rounded-xl">
-                                                                    {/* 1. Info Header & Location Widget */}
-                                                                    <div className={`p-3 sm:p-5 border-b border-border/40 transition-colors duration-500 bg-transparent`}>
-                                                                        <div className="flex flex-col gap-3">
-                                                                            <div className="flex items-center justify-between px-1">
-                                                                                <div className="flex items-center gap-2 overflow-hidden">
-                                                                                    <div className="flex items-center gap-1.5 shrink-0">
-                                                                                        <Smartphone className="size-3.5 text-muted-foreground" />
-                                                                                        <span className="text-xs font-medium text-foreground truncate">{deviceName || 'Zebra'}</span>
-                                                                                    </div>
-                                                                                    <div className="flex items-center gap-2 border-l border-border/20 pl-2 shrink-0">
-                                                                                        <Badge variant="outline" size="lg">#{session?.id?.toString().slice(-4)}</Badge>
-                                                                                    </div>
-                                                                                </div>
-                                                                            </div>
+                                    <div className="flex-1 flex flex-col overflow-hidden rounded-t-2xl min-h-0">
+                                        {/* Unico Recuadro Unificado en Superficie Capa 4 */}
+                                        <div className="flex-1 flex flex-col min-h-0 overflow-hidden min-w-0 bg-card rounded-2xl border border-border/30 shadow-xs">
+                                            {/* Cabecera Superior Integrada de Controles (Fila Única) */}
+                                            <div className="p-3 sm:p-4 border-b border-border/20 shrink-0">
+                                                <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 sm:gap-3">
+                                                    {/* Buscador de Productos */}
+                                                    <div className="w-full max-w-[560px] flex-1 min-w-0">
+                                                        <SmartProductSearch
+                                                            key={searchResetKey}
+                                                            sessionId={session?.id}
+                                                            onSelect={async (p) => {
+                                                                const timeSinceScan = Date.now() - lastScanTimeRef.current;
+                                                                if (timeSinceScan < 500) return;
+                                                                if (!p.name) {
+                                                                    notify.warning("Advertencia", 'Producto no encontrado en la base de datos', { description: 'Puedes agregarlo manualmente' });
+                                                                    registerError();
+                                                                }
+                                                                setManualEAN(p.ean);
+                                                                setSelectedProduct({ ...p, stock: 0, salePrice: 0, cost: 0, id_producto: p.id_producto });
+                                                                setEditingItemId(null);
+                                                                if (highSpeedMode) {
+                                                                    await addItem(p.ean, p.name, 1, p.id_producto, activeLocation || undefined);
+                                                                    setManualEAN('');
+                                                                    setSelectedProduct(null);
+                                                                    setSearchResetKey(prev => prev + 1);
+                                                                    trigger('success');
+                                                                    playSound('success');
+                                                                } else if (accessMode === 'zebra') {
+                                                                    setTimeout(() => setShowQtyDrawer(true), 80);
+                                                                } else {
+                                                                    setTimeout(() => {
+                                                                        document.getElementById('quantity-input')?.focus();
+                                                                        (document.getElementById('quantity-input') as HTMLInputElement)?.select();
+                                                                    }, 50);
+                                                                }
+                                                            }}
+                                                            autoFocus={true}
+                                                            className="w-full"
+                                                        />
+                                                    </div>
 
-                                                                            <div className="flex items-center gap-1.5">
-                                                                                {/* Selector: Pin + Combobox */}
-                                                                                <div ref={setComboboxAnchor} className="flex-1 flex min-w-0">
-                                                                                    <Group className="flex-1 shadow-xs">
-                                                                                        <GroupText
-                                                                                            className="pointer-events-none px-2.5 border-input bg-transparent text-muted-foreground/80 shrink-0"
-                                                                                        >
-                                                                                            <MapPin className="size-4" />
-                                                                                        </GroupText>
-                                                                                        <GroupSeparator />
-                                                                                        <Combobox
-                                                                                            items={allSectors.map(s => s.tag)}
-                                                                                            value={activeLocation || undefined}
-                                                                                            onValueChange={(val) => {
-                                                                                                if (typeof val === 'string') {
-                                                                                                    setActiveLocation(val);
-                                                                                                }
-                                                                                            }}
-                                                                                        >
-                                                                                            <ComboboxTrigger
-                                                                                                ref={comboboxAnchorRef}
-                                                                                                render={
-                                                                                                    <SelectButton
-                                                                                                        variant="outline"
-                                                                                                        className="flex-1 bg-transparent hover:bg-muted/30 transition-colors font-bold text-sm shadow-none"
-                                                                                                    />
-                                                                                                }
-                                                                                            >
-                                                                                                <div className="flex items-center gap-2 truncate">
-                                                                                                    <span className="truncate">
-                                                                                                        {activeLocation || "Todos"}
-                                                                                                    </span>
-                                                                                                    {activeLocation && isActiveLocationClosed && (
-                                                                                                        <Badge variant="secondary" className="text-[8px] h-3.5 uppercase px-1 leading-none font-bold ml-1 opacity-70">Cerrado</Badge>
-                                                                                                    )}
-                                                                                                </div>
-                                                                                            </ComboboxTrigger>
-                                                                                            <ComboboxPopup
-                                                                                                anchor={comboboxAnchor}
-                                                                                                align="start"
-                                                                                                className="w-[calc(var(--anchor-width)+2px)] z-[100] -ml-[1px]"
-                                                                                            >
-                                                                                                <div className="border-b p-2">
-                                                                                                    <ComboboxInput
-                                                                                                        placeholder="Buscar sector..."
-                                                                                                        startAddon={<Search className="size-4" />}
-                                                                                                        className="h-8 ps-9"
-                                                                                                    />
-                                                                                                </div>
-                                                                                                <ComboboxEmpty>No se encontraron sectores.</ComboboxEmpty>
-                                                                                                <ComboboxList className="max-h-64">
-                                                                                                    {allSectors.map((sector) => {
-                                                                                                        const sectorItemCount = items.filter(i => i.location_tag === sector.tag).length;
-                                                                                                        const sectorUnitCount = items.filter(i => i.location_tag === sector.tag).reduce((sum, i) => sum + i.quantity, 0);
-                                                                                                        return (
-                                                                                                            <ComboboxItem key={sector.tag} value={sector.tag}>
-                                                                                                                <div className="flex items-center gap-2 w-full">
-                                                                                                                    <MapPin className={cn("size-3.5 mt-0.5", sector.status === 'closed' ? "text-muted-foreground" : "text-amber-500")} />
-                                                                                                                    <span className={cn("font-bold flex-1", sector.status === 'closed' && "text-muted-foreground line-through opacity-60")}>
-                                                                                                                        {sector.tag}
-                                                                                                                    </span>
-                                                                                                                    <span className="text-[9px] text-muted-foreground font-medium tabular-nums">
-                                                                                                                        {sectorItemCount}P · {sectorUnitCount}U
-                                                                                                                    </span>
-                                                                                                                    {sector.status === 'closed' && (
-                                                                                                                        <CheckCircle className="size-3 text-emerald-500" />
-                                                                                                                    )}
-                                                                                                                </div>
-                                                                                                            </ComboboxItem>
-                                                                                                        );
-                                                                                                    })}
-                                                                                                </ComboboxList>
-                                                                                            </ComboboxPopup>
-                                                                                        </Combobox>
-                                                                                    </Group>
-                                                                                </div>
-
-                                                                                {/* Add new sector */}
-                                                                                <Button
-                                                                                    variant="outline"
-                                                                                    size="icon"
-                                                                                    className="shrink-0"
-                                                                                    onClick={() => setShowAddSectorDialog(true)}
-                                                                                >
-                                                                                    <Plus />
-                                                                                </Button>
-                                                                                {/* Dynamic sector button: X to deselect empty sector, Check to finalize sector with items */}
-                                                                                {activeLocation && (() => {
-                                                                                    const sectorHasItems = items.some(i => i.location_tag === activeLocation);
-                                                                                    return sectorHasItems ? (
-                                                                                        <Button
-                                                                                            variant="outline"
-                                                                                            size="icon"
-                                                                                            className="shrink-0"
-                                                                                            onClick={() => handleLocationScan(activeLocation)}
-                                                                                            title="Cerrar sector"
-                                                                                        >
-                                                                                            <CheckCircle />
-                                                                                        </Button>
-                                                                                    ) : (
-                                                                                        <Button
-                                                                                            variant="outline"
-                                                                                            size="icon"
-                                                                                            className="shrink-0"
-                                                                                            onClick={() => setActiveLocation(null)}
-                                                                                            title="Descartar sector vacío"
-                                                                                        >
-                                                                                            <X />
-                                                                                        </Button>
-                                                                                    );
-                                                                                })()}
-                                                                                <SettingsMenu
-                                                                                    highSpeedMode={highSpeedMode}
-                                                                                    setHighSpeedMode={setHighSpeedMode}
-                                                                                    isManualMode={isManualMode}
-                                                                                    setIsManualMode={setIsManualMode}
-                                                                                    autoSave={autoSave}
-                                                                                    setAutoSave={setAutoSave}
-                                                                                    sortOrder={sortOrder}
-                                                                                    setSortOrder={setSortOrder}
-                                                                                    isZenMode={isZenMode}
-                                                                                    setIsZenMode={setIsZenMode}
-                                                                                    handleResetSector={handleResetSector}
-                                                                                    handleExportTXT={handleExportTXT}
-                                                                                    accessMode={accessMode}
-                                                                                    handleFinishClick={handleFinishClick}
-                                                                                />
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    {/* 2. Counters Grid - Outline Style */}
-                                                                    <div className="grid grid-cols-3 divide-x divide-border/40 border-b border-border/40 bg-transparent">
-                                                                        <div className="p-4 flex flex-col items-center justify-center text-center">
-                                                                            <span className="text-xs font-semibold text-muted-foreground mb-2">Productos</span>
-                                                                            <div className="text-2xl font-black text-primary">
-                                                                                <AnimatedCounter value={totalProducts} digits={4} />
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="p-4 flex flex-col items-center justify-center text-center">
-                                                                            <span className="text-xs font-semibold text-muted-foreground mb-2">Unidades</span>
-                                                                            <div className="text-2xl font-bold text-foreground">
-                                                                                <AnimatedCounter value={totalUnits} digits={4} />
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="p-4 flex flex-col items-center justify-center text-center">
-                                                                            <span className="text-xs font-semibold text-muted-foreground mb-2">Desconocidos</span>
-                                                                            <div className="text-2xl font-bold text-amber-500">
-                                                                                <AnimatedCounter value={errorCount} digits={3} />
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    {/* 3. Actions / Modes - Flat Design */}
-                                                                    <div className={cn("p-4 border-b border-border/40 flex items-center justify-between transition-all", (activeLocation && !isActiveLocationClosed) ? "bg-transparent" : "bg-transparent opacity-40 pointer-events-none grayscale")}>
-                                                                        <span className="text-xs font-semibold text-muted-foreground">Configuración de Escaneo</span>
-                                                                        <div className="flex items-center gap-4">
-                                                                            <Group aria-label="Configuración de Escaneo">
-                                                                                <Button
-                                                                                    variant={highSpeedMode && !isManualMode ? "secondary" : "outline"}
-                                                                                    size="sm"
-                                                                                    className={cn(
-                                                                                        "h-9 px-5 font-bold text-xs transition-all",
-                                                                                        highSpeedMode && !isManualMode ? "opacity-100" : "opacity-80 hover:opacity-100"
-                                                                                    )}
-                                                                                    onClick={(e) => {
-                                                                                        setHighSpeedMode(true);
-                                                                                        setIsManualMode(false);
-                                                                                        (e.currentTarget as HTMLElement).blur();
-                                                                                    }}
-                                                                                >
-                                                                                    +1
-                                                                                </Button>
-                                                                                <GroupSeparator />
-                                                                                <Button
-                                                                                    variant={!highSpeedMode && !isManualMode ? "secondary" : "outline"}
-                                                                                    size="sm"
-                                                                                    className={cn(
-                                                                                        "h-9 px-5 font-bold text-xs transition-all flex items-center gap-2",
-                                                                                        !highSpeedMode && !isManualMode ? "opacity-100" : "opacity-80 hover:opacity-100"
-                                                                                    )}
-                                                                                    onClick={(e) => {
-                                                                                        setHighSpeedMode(false);
-                                                                                        setIsManualMode(false);
-                                                                                        (e.currentTarget as HTMLElement).blur();
-                                                                                        // Abrir teclado virtual solo en Zebra si hay un producto seleccionado
-                                                                                        if ((selectedProduct || manualEAN) && accessMode === 'zebra') {
-                                                                                            setShowQtyDrawer(true);
-                                                                                        } else if (selectedProduct || manualEAN) {
-                                                                                            document.getElementById('quantity-input')?.focus();
-                                                                                            (document.getElementById('quantity-input') as HTMLInputElement)?.select();
-                                                                                        }
-                                                                                    }}
-                                                                                >
-                                                                                    <Infinity className="size-4" />
-                                                                                    Cantidad
-                                                                                </Button>
-                                                                                {accessMode !== 'salon' && (
-                                                                                     <>
-                                                                                         <GroupSeparator />
-                                                                                         <Button
-                                                                                             variant={isManualMode ? "secondary" : "outline"}
-                                                                                             size="icon-sm"
-                                                                                             className={cn(
-                                                                                                 "h-9 w-9 font-bold transition-all flex items-center justify-center",
-                                                                                                 isManualMode ? "opacity-100" : "opacity-80 hover:opacity-100"
-                                                                                             )}
-                                                                                             onClick={(e) => {
-                                                                                                 setIsManualMode(!isManualMode);
-                                                                                                 (e.currentTarget as HTMLElement).blur();
-                                                                                             }}
-                                                                                             title="Modo Teclado Manual"
-                                                                                         >
-                                                                                             <Keyboard className="size-4" />
-                                                                                         </Button>
-                                                                                     </>
-                                                                                 )}
-                                                                            </Group>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    {/* 4. Search & Quantity Input - Outline */}
-                                                                    <div className={cn("px-4 py-2 space-y-3 border-b border-border/40 transition-all relative z-40", (activeLocation && !isActiveLocationClosed) ? "bg-transparent" : "bg-transparent opacity-40 pointer-events-none grayscale", (!isManualMode && "hidden lg:block"))}>
-                                                                        {/* Search bar */}
-                                                                        <div className="relative z-50 w-full">
-                                                                            <SmartProductSearch
-                                                                                key={searchResetKey}
-                                                                                sessionId={session?.id}
-                                                                                onSelect={async (p) => {
-                                                                                    if (!activeLocation) return;
-
-                                                                                    const timeSinceScan = Date.now() - lastScanTimeRef.current;
-                                                                                    if (timeSinceScan < 500) return;
-
-                                                                                    if (!p.name) {
-                                                                                        notify.warning("Advertencia", 'Producto no encontrado en la base de datos', {
-                                                                                            description: 'Puedes agregarlo manualmente',
-                                                                                        });
-                                                                                        registerError();
-                                                                                    }
-
-                                                                                    setManualEAN(p.ean);
-                                                                                    setSelectedProduct({ ...p, stock: 0, salePrice: 0, cost: 0, id_producto: p.id_producto });
-                                                                                    setEditingItemId(null);
-
-                                                                                    if (highSpeedMode) {
-                                                                                         // En modo +1, agregar inmediatamente
-                                                                                         await addItem(p.ean, p.name, 1, p.id_producto, activeLocation || undefined);
-                                                                                         setManualEAN('');
-                                                                                         setSelectedProduct(null);
-                                                                                         setSearchResetKey(prev => prev + 1);
-                                                                                         trigger('success');
-                                                                                         playSound('success');
-                                                                                     } else if (accessMode === 'zebra') {
-                                                                                         setTimeout(() => setShowQtyDrawer(true), 80);
-                                                                                     } else {
-                                                                                        setTimeout(() => {
-                                                                                            document.getElementById('quantity-input')?.focus();
-                                                                                            (document.getElementById('quantity-input') as HTMLInputElement)?.select();
-                                                                                        }, 50);
-                                                                                    }
-                                                                                }}
-                                                                                autoFocus={true}
-                                                                                className="w-full"
-                                                                            />
-                                                                        </div>
-
-                                                                        {/* Quantity + Add */}
-                                                                        <div className="hidden lg:flex gap-2 items-stretch">
-                                                                            <NumberField
-                                                                                key={searchResetKey}
-                                                                                value={quantity}
-                                                                                onValueChange={(val) => setQuantity(val ?? 1)}
-                                                                                min={1}
-                                                                                className="flex-1 relative"
-                                                                            >
-                                                                                <div className="relative">
-                                                                                    <NumberFieldDecrement className="text-muted-foreground/40 hover:text-primary" />
-                                                                                    <NumberFieldInput
-                                                                                        id="quantity-input"
-                                                                                        className="h-11 text-sm font-bold bg-transparent border-input shadow-none focus-visible:ring-primary/10"
-                                                                                        inputMode="none"
-                                                                                        onKeyDown={(e: React.KeyboardEvent) => {
-                                                                                            if (e.key === 'Enter') {
-                                                                                                handleAddProduct();
-                                                                                            }
-                                                                                        }}
-                                                                                    />
-                                                                                    <NumberFieldIncrement className="text-muted-foreground/40 hover:text-primary" />
-                                                                                </div>
-                                                                            </NumberField>
-
-                                                                            <Button
-                                                                                onClick={handleAddProduct}
-                                                                                className="h-11 sm:h-11 px-6 shadow-none font-bold flex-shrink-0 bg-black dark:bg-white text-white dark:text-black hover:bg-black/90 dark:hover:bg-white/90 rounded-xl"
-                                                                                disabled={!manualEAN.trim()}
-                                                                            >
-                                                                                <Plus className="size-5" />
-                                                                            </Button>
-                                                                        </div>
-
-                                                                        <AnimatePresence>
-                                                                            {selectedProduct && (
-                                                                                <motion.button
-                                                                                    initial={{ opacity: 0, height: 0, scale: 0.95 }}
-                                                                                    animate={{ opacity: 1, height: 'auto', scale: 1 }}
-                                                                                    exit={{ opacity: 0, height: 0 }}
-                                                                                    className="w-full bg-primary/5 rounded border border-primary/10 flex items-center justify-between p-2 overflow-hidden mt-1.5 cursor-pointer active:scale-[0.98] transition-all text-left"
-                                                                                    onClick={() => {
-                                                                                        if (accessMode === 'zebra') {
-                                                                                            setShowQtyDrawer(true);
-                                                                                        } else {
-                                                                                            document.getElementById('quantity-input')?.focus();
-                                                                                            (document.getElementById('quantity-input') as HTMLInputElement)?.select();
-                                                                                        }
-                                                                                    }}
-                                                                                >
-                                                                                    <div className="flex items-center gap-2 min-w-0">
-                                                                                        <CheckCircle className="w-4 h-4 text-primary shrink-0" />
-                                                                                        <div className="min-w-0 flex flex-col sm:flex-row sm:items-baseline gap-1">
-                                                                                            <span className="font-semibold text-foreground text-sm truncate">{selectedProduct.name}</span>
-                                                                                            <span className="text-xs text-muted-foreground font-mono truncate">{selectedProduct.ean}</span>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                    <div className="flex items-center gap-1.5">
-                                                                                        <Button
-                                                                                            size="icon"
-                                                                                            variant="ghost"
-                                                                                            className="size-7 text-muted-foreground/60 hover:text-primary hover:bg-primary/5"
-                                                                                            onClick={() => {
-                                                                                                if (accessMode === 'zebra') {
-                                                                                                    setShowQtyDrawer(true);
-                                                                                                } else {
-                                                                                                    document.getElementById('quantity-input')?.focus();
-                                                                                                    (document.getElementById('quantity-input') as HTMLInputElement)?.select();
-                                                                                                }
-                                                                                            }}
-                                                                                        >
-                                                                                            <Pencil className="size-3.5" />
-                                                                                        </Button>
-                                                                                        <Button
-                                                                                            size="icon"
-                                                                                            variant="ghost"
-                                                                                            className="size-7 text-muted-foreground/60 hover:text-destructive hover:bg-destructive/5"
-                                                                                            onClick={(e) => {
-                                                                                                e.stopPropagation();
-                                                                                                setSelectedProduct(null);
-                                                                                                setManualEAN('');
-                                                                                            }}
-                                                                                        >
-                                                                                            <Trash2 className="size-3.5" />
-                                                                                        </Button>
-                                                                                    </div>
-                                                                                </motion.button>
-                                                                            )}
-                                                                        </AnimatePresence>
-                                                                    </div>
-                                                                </Card>
-                                                            </div>
-
-                                                            {/* Right Column: Dense List / Table (Solo para Zebra/Salon) */}
-                                                            <div className="flex-1 flex flex-col min-h-0 overflow-hidden min-w-0">
-                                                                <PreCountList
-                                                                    items={sortedItems}
-                                                                    mode={listMode}
-                                                                    onUpdate={updateItem}
-                                                                    onDelete={removeItem}
-                                                                    onEditRequest={(item) => {
-                                                                        setSelectedProduct({
-                                                                            ean: item.ean,
-                                                                            name: item.productName || 'Producto',
-                                                                            stock: 0,
-                                                                            salePrice: 0,
-                                                                            cost: 0,
-                                                                            id_producto: item.id_producto
-                                                                        });
-                                                                        setManualEAN(item.ean);
-                                                                        setQuantity(item.quantity);
-                                                                        setEditingItemId(item.id);
-                                                                        if (accessMode === 'zebra') {
-                                                                            setShowQtyDrawer(true);
-                                                                        } else {
-                                                                            setTimeout(() => {
-                                                                                document.getElementById('quantity-input')?.focus();
-                                                                                (document.getElementById('quantity-input') as HTMLInputElement)?.select();
-                                                                            }, 50);
+                                                    {/* Stepper de Cantidad + Botón (+) */}
+                                                    <div className="flex items-center gap-1.5 shrink-0">
+                                                        <NumberField
+                                                            key={searchResetKey}
+                                                            value={quantity}
+                                                            onValueChange={(val) => setQuantity(val ?? 1)}
+                                                            min={1}
+                                                            className="w-28 relative"
+                                                        >
+                                                            <div className="relative">
+                                                                <NumberFieldDecrement className="text-muted-foreground/40 hover:text-primary" />
+                                                                <NumberFieldInput
+                                                                    id="quantity-input"
+                                                                    className="h-10 text-sm font-bold bg-transparent border-input shadow-none focus-visible:ring-primary/10 text-center"
+                                                                    inputMode="none"
+                                                                    onKeyDown={(e: React.KeyboardEvent) => {
+                                                                        if (e.key === 'Enter') {
+                                                                            handleAddProduct();
                                                                         }
                                                                     }}
-                                                                    masterCatalog={session?.master_catalog}
                                                                 />
+                                                                <NumberFieldIncrement className="text-muted-foreground/40 hover:text-primary" />
                                                             </div>
+                                                        </NumberField>
+                                                         <Button
+                                                             onClick={handleAddProduct}
+                                                             className="h-10 px-4 shadow-none font-bold flex-shrink-0 bg-black dark:bg-white text-white dark:text-black hover:bg-black/90 dark:hover:bg-white/90 rounded-xl"
+                                                             disabled={!manualEAN.trim()}
+                                                         >
+                                                             <Plus className="size-4" />
+                                                         </Button>
+                                                    </div>
+
+                                                    {/* Exportar TXT + Configuración */}
+                                                    <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="h-10 px-3 font-bold text-xs gap-1.5 shrink-0 bg-transparent hover:bg-muted/40 transition-colors"
+                                                            onClick={handleExportTXT}
+                                                            title="Exportar archivo TXT"
+                                                        >
+                                                            <Download className="size-3.5 text-primary" />
+                                                            <span className="hidden sm:inline">Exportar TXT</span>
+                                                        </Button>
+                                                        <SettingsMenu
+                                                            highSpeedMode={highSpeedMode}
+                                                            setHighSpeedMode={setHighSpeedMode}
+                                                            isManualMode={isManualMode}
+                                                            setIsManualMode={setIsManualMode}
+                                                            autoSave={autoSave}
+                                                            setAutoSave={setAutoSave}
+                                                            sortOrder={sortOrder}
+                                                            setSortOrder={setSortOrder}
+                                                            isZenMode={isZenMode}
+                                                            setIsZenMode={setIsZenMode}
+                                                            handleResetSector={handleResetSector}
+                                                            handleExportTXT={handleExportTXT}
+                                                            accessMode={accessMode}
+                                                            handleFinishClick={handleFinishClick}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Espacio Reservado Fijo para Producto Seleccionado */}
+                                                <div className="mt-2 h-9 flex items-center w-full">
+                                                    <AnimatePresence mode="wait">
+                                                        {selectedProduct ? (
+                                                            <motion.button
+                                                                key={selectedProduct.id_producto || selectedProduct.ean}
+                                                                initial={{ opacity: 0, scale: 0.98 }}
+                                                                animate={{ opacity: 1, scale: 1 }}
+                                                                exit={{ opacity: 0, scale: 0.98 }}
+                                                                transition={{ duration: 0.15 }}
+                                                                className="w-full h-full bg-emerald-500/10 dark:bg-emerald-500/10 rounded-xl border border-emerald-500/20 flex items-center justify-between py-1.5 px-3 overflow-hidden cursor-pointer active:scale-[0.98] transition-all text-left font-sans"
+                                                                onClick={() => {
+                                                                    if (accessMode === 'zebra') {
+                                                                        setShowQtyDrawer(true);
+                                                                    } else {
+                                                                        document.getElementById('quantity-input')?.focus();
+                                                                        (document.getElementById('quantity-input') as HTMLInputElement)?.select();
+                                                                    }
+                                                                }}
+                                                            >
+                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                    <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                                                    <div className="min-w-0 flex flex-col sm:flex-row sm:items-baseline gap-1.5 font-sans">
+                                                                        <span className="font-semibold text-foreground text-xs truncate font-sans">{selectedProduct.name}</span>
+                                                                        <span className="text-xs text-muted-foreground font-sans truncate">{selectedProduct.ean}</span>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center gap-1 shrink-0">
+                                                                    <Button
+                                                                        size="icon"
+                                                                        variant="ghost"
+                                                                        className="size-6 text-muted-foreground/60 hover:text-primary hover:bg-primary/5"
+                                                                        onClick={() => {
+                                                                            if (accessMode === 'zebra') {
+                                                                                setShowQtyDrawer(true);
+                                                                            } else {
+                                                                                document.getElementById('quantity-input')?.focus();
+                                                                                (document.getElementById('quantity-input') as HTMLInputElement)?.select();
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        <Pencil className="size-3" />
+                                                                    </Button>
+                                                                    <Button
+                                                                        size="icon"
+                                                                        variant="ghost"
+                                                                        className="size-6 text-muted-foreground/60 hover:text-destructive hover:bg-destructive/5"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setSelectedProduct(null);
+                                                                            setManualEAN('');
+                                                                        }}
+                                                                    >
+                                                                        <Trash2 className="size-3" />
+                                                                    </Button>
+                                                                </div>
+                                                            </motion.button>
+                                                        ) : (
+                                                            <div className="w-full h-full rounded-xl border border-dashed border-border/30 bg-muted/10 flex items-center px-3 text-xs text-muted-foreground/50 select-none">
+                                                                <span>Sin producto seleccionado — el ítem activo se mostrará aquí</span>
+                                                            </div>
+                                                        )}
+                                                    </AnimatePresence>
+                                                </div>
+                                            </div>
+
+                                            {/* Cuerpo: Tabla de Datos */}
+                                            <div className="flex-1 flex flex-col min-h-0 overflow-hidden p-0">
+                                                <PreCountList
+                                                    items={sortedItems}
+                                                    mode={listMode}
+                                                    onUpdate={updateItem}
+                                                    onDelete={removeItem}
+                                                    onEditRequest={(item) => {
+                                                        setSelectedProduct({
+                                                            ean: item.ean,
+                                                            name: item.productName || 'Producto',
+                                                            stock: 0,
+                                                            salePrice: 0,
+                                                            cost: 0,
+                                                            id_producto: item.id_producto
+                                                        });
+                                                        setManualEAN(item.ean);
+                                                        setQuantity(item.quantity);
+                                                        setEditingItemId(item.id);
+                                                        if (accessMode === 'zebra') {
+                                                            setShowQtyDrawer(true);
+                                                        } else {
+                                                            setTimeout(() => {
+                                                                document.getElementById('quantity-input')?.focus();
+                                                                (document.getElementById('quantity-input') as HTMLInputElement)?.select();
+                                                            }, 50);
+                                                        }
+                                                    }}
+                                                    masterCatalog={session?.master_catalog}
+                                                />
                                             </div>
                                         </div>
                                     </div>

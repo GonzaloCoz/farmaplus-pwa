@@ -1,22 +1,13 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { UIPreCountItem } from "@/hooks/usePreCount";
 import { MasterCatalogItem } from "@/services/preCountDB";
-import { CardFrame, CardFrameFooter } from "@/components/ui/card";
+import { CardFrame } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
+import { Table, type TableColumn } from "@/components/motion/table";
 import { 
-    ChevronSelectorVertical as ChevronsUpDown, 
-    MarkerPin01 as MapPin, 
     Pencil01 as Pencil, 
     Trash01 as Trash2, 
     Clock, 
@@ -36,10 +27,9 @@ interface PreCountListProps {
 
 export function PreCountList({ items, mode = "full", onUpdate, onDelete, onEditRequest, masterCatalog }: PreCountListProps) {
     const [searchQuery, setSearchQuery] = useState("");
-    const [pageIndex, setPageIndex] = useState(0);
-    const [pageSize, setPageSize] = useState(15);
     const containerRef = useRef<HTMLDivElement>(null);
     const [isMobile, setIsMobile] = useState(false);
+    const [tableHeight, setTableHeight] = useState(500);
 
     // Detectar layout móvil
     useEffect(() => {
@@ -51,33 +41,47 @@ export function PreCountList({ items, mode = "full", onUpdate, onDelete, onEditR
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    // Ajustar pageSize dinámicamente según la altura REAL del contenedor (solo útil en desktop)
-    useEffect(() => {
-        if (!containerRef.current) return;
+    // Calcular altura disponible basándose en la posición del contenedor en el viewport
+    // (evita dependencia circular: container crece → ResizeObserver → height grande → no scroll)
+    const tableWrapperRef = useRef<HTMLDivElement>(null);
 
-        const calculatePageSize = () => {
-            if (!containerRef.current) return;
-            const containerHeight = containerRef.current.offsetHeight;
-            const footerHeight = 64; // Altura CardFrameFooter
-            
-            // Detectar layout móvil (ancho < 768px)
-            const isMobileView = window.innerWidth < 768;
-            const headerHeight = isMobileView ? 0 : 48; // Altura TableHeader (no se muestra en móvil)
-            const rowHeight = isMobileView ? 88 : 46;    // Altura del Card de Swipeable vs TableRow
-            
-            const availableHeight = containerHeight - headerHeight - footerHeight;
-            let size = Math.floor(availableHeight / rowHeight);
-            
-            if (size < 5) size = 5;
-            setPageSize(size);
+    useEffect(() => {
+        const calcHeight = () => {
+            if (!tableWrapperRef.current) return;
+            const rect = tableWrapperRef.current.getBoundingClientRect();
+            // Espacio desde el top del wrapper de la tabla hasta el fondo del viewport
+            // 48px de margen para padding inferior del layout
+            const available = window.innerHeight - rect.top - 48;
+            setTableHeight(Math.max(available, 200));
         };
 
-        calculatePageSize();
-        const resizeObserver = new ResizeObserver(calculatePageSize);
-        resizeObserver.observe(containerRef.current);
-        
-        return () => resizeObserver.disconnect();
-    }, []);
+        // Calcular después del primer layout
+        const raf = requestAnimationFrame(calcHeight);
+        window.addEventListener('resize', calcHeight);
+
+        return () => {
+            cancelAnimationFrame(raf);
+            window.removeEventListener('resize', calcHeight);
+        };
+    }, [items.length]);
+
+    const getLab = useCallback((id_producto?: string, ean?: string) => {
+        if (!masterCatalog) return "Laboratorio";
+        const matched = masterCatalog.find(item => 
+            (id_producto && item.id_producto === id_producto) || 
+            (ean && (item.ean === ean || item.eans?.includes(ean)))
+        );
+        return matched?.laboratory || "Laboratorio"; 
+    }, [masterCatalog]);
+
+    const getRubro = useCallback((id_producto?: string, ean?: string) => {
+        if (!masterCatalog) return "Varios";
+        const matched = masterCatalog.find(item => 
+            (id_producto && item.id_producto === id_producto) || 
+            (ean && (item.ean === ean || item.eans?.includes(ean)))
+        );
+        return matched?.rubro || "Varios"; 
+    }, [masterCatalog]);
 
     const filteredItems = useMemo(() => {
         let baseItems = [...items].sort((a, b) => b.timestamp - a.timestamp);
@@ -94,41 +98,132 @@ export function PreCountList({ items, mode = "full", onUpdate, onDelete, onEditR
         return baseItems;
     }, [items, searchQuery]);
 
-    // Resetear página al buscar
-    useEffect(() => {
-        setPageIndex(0);
-    }, [searchQuery]);
+    const totalProducts = filteredItems.length;
+    const totalUnits = useMemo(() => filteredItems.reduce((acc, item) => acc + (item.quantity || 0), 0), [filteredItems]);
+    const errorCount = useMemo(() => filteredItems.filter(item => !item.productName || item.productName === 'Producto no encontrado' || item.productName === 'Desconocido' || item.productName.trim() === '').length, [filteredItems]);
 
-    const pageItems = useMemo(() => {
-        if (isMobile) {
-            return filteredItems; // Sin paginación en móviles para scroll continuo
-        }
-        return filteredItems.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize);
-    }, [filteredItems, pageIndex, pageSize, isMobile]);
 
-    const pageCount = Math.ceil(filteredItems.length / pageSize);
 
-    const getLab = (id_producto?: string, ean?: string) => {
-        if (!masterCatalog) return "Laboratorio";
-        const matched = masterCatalog.find(item => 
-            (id_producto && item.id_producto === id_producto) || 
-            (ean && (item.ean === ean || item.eans?.includes(ean)))
-        );
-        return matched?.laboratory || "Laboratorio"; 
-    };
+    // Mapear columnas de la Data Table beui
+    const columns = useMemo<TableColumn<UIPreCountItem>[]>(
+        () => [
+            {
+                key: "ean",
+                header: "Código EAN",
+                sortable: true,
+                width: "120px",
+                align: "center",
+                cell: (row) => (
+                    <span className="font-semibold text-muted-foreground text-xs truncate">
+                        {row.ean}
+                    </span>
+                ),
+            },
+            {
+                key: "productName",
+                header: "Producto",
+                sortable: true,
+                width: "2fr",
+                cell: (row) => (
+                    <span className="font-semibold text-foreground text-xs truncate">
+                        {row.productName}
+                    </span>
+                ),
+            },
+            {
+                key: "laboratory",
+                header: "Laboratorio",
+                sortable: true,
+                width: "1.2fr",
+                sortValue: (row) => getLab(row.id_producto, row.ean),
+                cell: (row) => (
+                    <span className="font-medium text-muted-foreground text-xs truncate">
+                        {getLab(row.id_producto, row.ean)}
+                    </span>
+                ),
+            },
+            {
+                key: "rubro",
+                header: "Rubro",
+                sortable: true,
+                width: "1fr",
+                sortValue: (row) => getRubro(row.id_producto, row.ean),
+                cell: (row) => (
+                    <span className="font-medium text-muted-foreground text-xs truncate">
+                        {getRubro(row.id_producto, row.ean)}
+                    </span>
+                ),
+            },
+            {
+                key: "location_tag",
+                header: "Sector",
+                sortable: true,
+                width: "85px",
+                align: "center",
+                sortValue: (row) => row.location_tag || "S/S",
+                cell: (row) => (
+                    <Badge
+                        variant="solid"
+                        color="blue"
+                        size="sm"
+                        className="h-5 px-1.5 bg-blue-50/50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-900/50 font-normal text-[11px]"
+                    >
+                        {row.location_tag || "S/S"}
+                    </Badge>
+                ),
+            },
+            {
+                key: "quantity",
+                header: "Cant.",
+                sortable: true,
+                width: "70px",
+                align: "center",
+                sortValue: (row) => row.quantity,
+                cell: (row) => (
+                    <span className="font-semibold text-foreground text-xs tabular-nums">
+                        {row.quantity}
+                    </span>
+                ),
+            },
+            {
+                key: "actions",
+                header: "Acciones",
+                width: "90px",
+                align: "center",
+                cell: (row) => (
+                    <div className="flex items-center justify-center gap-1">
+                        <Button
+                            variant="tertiary"
+                            size="sm"
+                            className="relative h-7 w-7 p-0 rounded-md shrink-0 border-border/40 transition-all active:scale-[0.96]"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onEditRequest?.(row);
+                            }}
+                        >
+                            <Pencil className="size-3 text-muted-foreground" />
+                        </Button>
+                        <Button
+                            variant="tertiary"
+                            size="sm"
+                            className="relative h-7 w-7 p-0 rounded-md border-red-100 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/30 shrink-0 transition-all active:scale-[0.96]"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onDelete(row.id);
+                            }}
+                        >
+                            <Trash2 className="size-3 text-red-500" />
+                        </Button>
+                    </div>
+                ),
+            },
+        ],
+        [getLab, getRubro, onDelete, onEditRequest]
+    );
 
-    const getRubro = (id_producto?: string, ean?: string) => {
-        if (!masterCatalog) return "Varios";
-        const matched = masterCatalog.find(item => 
-            (id_producto && item.id_producto === id_producto) || 
-            (ean && (item.ean === ean || item.eans?.includes(ean)))
-        );
-        return matched?.rubro || "Varios"; 
-    };
-
-    // Mapear los items paginados a items compatibles con SwipeableList
+    // Items para swipeable en mobile
     const swipeableItems = useMemo<SwipeableListItem[]>(() => {
-        return pageItems.map((item) => ({
+        return filteredItems.map((item) => ({
             id: item.id,
             leftActions: [
                 {
@@ -149,11 +244,10 @@ export function PreCountList({ items, mode = "full", onUpdate, onDelete, onEditR
                 }
             ]
         }));
-    }, [pageItems, onEditRequest, onDelete]);
+    }, [filteredItems, onEditRequest, onDelete]);
 
-    // Renderizado personalizado de la tarjeta deslizable
     const renderSwipeableItem = (swipeItem: SwipeableListItem) => {
-        const originalItem = pageItems.find(i => i.id === swipeItem.id);
+        const originalItem = filteredItems.find(i => i.id === swipeItem.id);
         if (!originalItem) return null;
 
         const lab = getLab(originalItem.id_producto, originalItem.ean);
@@ -199,88 +293,64 @@ export function PreCountList({ items, mode = "full", onUpdate, onDelete, onEditR
     };
 
     return (
-        <CardFrame 
+        <div 
             ref={containerRef}
-            className="flex flex-col flex-1 overflow-hidden bg-card border-border/40 shadow-sm rounded-2xl h-full w-full min-w-0"
+            className="flex flex-col flex-1 overflow-hidden h-full w-full min-w-0 min-h-0 gap-2"
         >
-            {/* Desktop Table View */}
-            <div className="hidden md:block flex-1 overflow-auto scrollbar-none rounded-t-2xl min-w-0">
-                <Table className="scrollbar-none w-full border-collapse">
-                    <TableHeader className="sticky top-0 bg-secondary/10 dark:bg-secondary/5 backdrop-blur-sm z-10 rounded-t-2xl overflow-hidden">
-                        <TableRow className="hover:bg-transparent border-none">
-                            <TableHead className="w-[12%] min-w-[140px] py-4 h-12 align-middle text-center pl-5">Código EAN</TableHead>
-                            <TableHead className="w-[28%] min-w-[200px] py-4 h-12 align-middle">Producto</TableHead>
-                            <TableHead className="w-[12%] min-w-[130px] py-4 h-12 align-middle">Laboratorio</TableHead>
-                            <TableHead className="w-[12%] min-w-[120px] py-4 h-12 align-middle">Rubro</TableHead>
-                            <TableHead className="w-[10%] min-w-[100px] py-4 h-12 align-middle text-center">Sector</TableHead>
-                            <TableHead className="w-[10%] min-w-[80px] py-4 h-12 align-middle text-center">Hora</TableHead>
-                            <TableHead className="w-[6%] min-w-[70px] py-4 h-12 align-middle text-center">Cant.</TableHead>
-                            <TableHead className="w-[10%] min-w-[100px] py-4 h-12 align-middle text-center pr-5">Acciones</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {pageItems.map((item, idx) => (
-                            <TableRow key={item.id} index={idx} className="group border-b border-border/40 last:border-0 h-[46px]">
-                                <TableCell className="py-2 pl-5 pr-3 text-center">
-                                    <div className="font-medium font-mono text-muted-foreground text-[12px] truncate">{item.ean}</div>
-                                </TableCell>
-                                <TableCell className="py-2 px-3">
-                                    <div className="font-bold text-[13px] leading-tight line-clamp-1">{item.productName}</div>
-                                </TableCell>
-                                <TableCell className="py-2 px-3">
-                                    <div className="font-medium text-muted-foreground text-[12px] truncate">{getLab(item.id_producto, item.ean)}</div>
-                                </TableCell>
-                                <TableCell className="py-2 px-3">
-                                    <div className="font-medium text-muted-foreground text-[12px] truncate">{getRubro(item.id_producto, item.ean)}</div>
-                                </TableCell>
-                                <TableCell className="py-2 px-3 text-center">
-                                    <Badge variant="solid" color="blue" size="sm" className="h-6 px-2 bg-blue-50/50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-900/50 font-normal">
-                                        {item.location_tag || "S/S"}
-                                    </Badge>
-                                </TableCell>
-                                <TableCell className="py-2 px-3 text-center">
-                                    <div className="flex items-center justify-center gap-1.5 text-muted-foreground font-medium text-[11px]">
-                                        <Clock className="size-3 opacity-60" />
-                                        {format(item.timestamp, 'HH:mm')}
-                                    </div>
-                                </TableCell>
-                                <TableCell className="py-2 px-3 text-center">
-                                    <div className="font-bold tabular-nums text-[14px]">{item.quantity}</div>
-                                </TableCell>
-                                <TableCell className="py-2 pl-3 pr-5 text-center">
-                                    <div className="flex items-center justify-center gap-1.5">
-                                        <Button 
-                                            variant="tertiary" 
-                                            size="sm" 
-                                            className="relative h-8 w-8 p-0 rounded-md shrink-0 border-border/40 transition-all active:scale-[0.96] after:absolute after:inset-[-4px] after:content-['']"
-                                            onClick={() => onEditRequest?.(item)}
-                                        >
-                                            <Pencil className="size-3.5 text-muted-foreground" />
-                                        </Button>
-                                        <Button 
-                                            variant="tertiary" 
-                                            size="sm" 
-                                            className="relative h-8 w-8 p-0 rounded-md border-red-100 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/30 shrink-0 transition-all active:scale-[0.96] after:absolute after:inset-[-4px] after:content-['']"
-                                            onClick={() => onDelete(item.id)}
-                                        >
-                                            <Trash2 className="size-3.5 text-red-500" />
-                                        </Button>
-                                    </div>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                        {/* Fill empty space if pageItems is less than pageSize to keep footer anchored */}
-                        {pageItems.length < pageSize && pageItems.length > 0 && (
-                             <TableRow style={{ height: (pageSize - pageItems.length) * 46 }} className="border-none hover:bg-transparent">
-                                 <TableCell colSpan={8} className="p-0 border-none" />
-                             </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
+            {/* Toolbar Superior: Contador y Buscador */}
+            <div className="flex items-center justify-between gap-3 shrink-0 px-4 pt-3 pb-1">
+                <div className="flex flex-wrap items-center gap-2 font-medium">
+                    <Badge size="lg" variant="dot" showDot={false} color="blue">
+                        {totalProducts} Productos
+                    </Badge>
+                    <Badge size="lg" variant="dot" showDot={false} color="emerald">
+                        {totalUnits} Cantidad
+                    </Badge>
+                    <Badge size="lg" variant="dot" showDot={false} color="amber">
+                        {errorCount} Desconocidos
+                    </Badge>
+                </div>
+
+                <div className="w-full max-w-[280px]">
+                    <div className="relative inline-flex w-full min-w-0 items-center rounded-xl border border-input bg-background/50 text-xs text-foreground shadow-xs/5 transition-shadow sm:text-xs" role="group">
+                        <div className="flex h-auto cursor-text select-none items-center justify-center ps-3">
+                            <Search className="size-3.5 text-muted-foreground/80" aria-hidden="true" />
+                        </div>
+                        <input 
+                            aria-label="Buscar productos..." 
+                            placeholder="Buscar por EAN, nombre o sector..." 
+                            type="search" 
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="h-8 w-full min-w-0 px-2.5 outline-none placeholder:text-muted-foreground/70 bg-transparent border-none text-xs" 
+                        />
+                    </div>
+                </div>
+            </div>
+
+            {/* Data Table beui (Desktop) */}
+            <div ref={tableWrapperRef} className="hidden md:block flex-1 min-h-0 w-full overflow-hidden">
+                <Table
+                    data={filteredItems}
+                    columns={columns}
+                    getRowId={(row) => row.id}
+                    resizable
+                    reorderable
+                    defaultSort={{ key: "productName", direction: "asc" }}
+                    height={tableHeight}
+                    rowHeight={40}
+                    overscan={5}
+                    emptyState={
+                        <div className="flex flex-col items-center justify-center p-8 text-muted-foreground text-xs">
+                            No hay productos registrados.
+                        </div>
+                    }
+                    className="rounded-2xl border-none w-full"
+                />
             </div>
 
             {/* Mobile Swipeable List View */}
-            <div className="block md:hidden flex-1 overflow-auto scrollbar-none px-4 py-3 min-w-0">
+            <div className="block md:hidden flex-1 overflow-auto scrollbar-none py-1 min-w-0">
                 {swipeableItems.length > 0 ? (
                     <SwipeableList
                         items={swipeableItems}
@@ -298,65 +368,6 @@ export function PreCountList({ items, mode = "full", onUpdate, onDelete, onEditR
                     </div>
                 )}
             </div>
-
-            {!isMobile && (
-                <CardFrameFooter className="shrink-0 border-t bg-secondary/10 dark:bg-secondary/5 px-5 py-3 rounded-b-2xl">
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 w-full">
-                        <div className="flex flex-col sm:flex-row items-center gap-4 flex-1 w-full sm:w-auto">
-                            <div className="flex items-center justify-between sm:justify-start gap-2 whitespace-nowrap w-full sm:w-auto">
-                                <div className="text-muted-foreground text-[13px] flex items-center gap-1.5">
-                                    <span>Viendo</span>
-                                    <Button variant="tertiary" size="sm" className="h-8 w-fit gap-1.5 px-3 font-medium bg-background text-[13px] transition-all active:scale-[0.96]">
-                                        {filteredItems.length > 0 ? pageIndex * pageSize + 1 : 0}-{Math.min((pageIndex + 1) * pageSize, filteredItems.length)}
-                                        <ChevronsUpDown className="size-4 opacity-50" />
-                                    </Button>
-                                    <span>de <strong className="font-medium text-foreground">{filteredItems.length}</strong> resultados</span>
-                                </div>
-                            </div>
-
-                            <div className="max-w-full sm:max-w-[280px] w-full">
-                                <div className="relative inline-flex w-full min-w-0 items-center rounded-lg border border-input bg-background not-dark:bg-clip-padding text-base text-foreground shadow-xs/5 ring-ring/24 transition-shadow before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] sm:text-sm dark:bg-input/32" data-slot="input-group" role="group">
-                                    <div className="flex h-auto cursor-text select-none items-center justify-center gap-2 leading-none order-first ps-[calc(theme(spacing.3)-1px)]" data-align="inline-start" data-slot="input-group-addon">
-                                        <Search className="size-4 text-muted-foreground/80" aria-hidden="true" />
-                                    </div>
-                                    <span className="contents" data-size="default" data-slot="input-control">
-                                        <input 
-                                            data-slot="input" 
-                                            aria-label="Buscar" 
-                                            placeholder="Buscar..." 
-                                            type="search" 
-                                            value={searchQuery}
-                                            onChange={(e) => setSearchQuery(e.target.value)}
-                                            className="h-8 w-full min-w-0 rounded-[inherit] px-[calc(theme(spacing.3)-1px)] leading-8 outline-none placeholder:text-muted-foreground/72 sm:h-7.5 sm:leading-7.5 bg-transparent border-none focus:ring-0 [&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none [&::-webkit-search-results-button]:appearance-none [&::-webkit-search-results-decoration]:appearance-none" 
-                                        />
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
-                            <Button 
-                                variant="tertiary" 
-                                size="sm" 
-                                disabled={pageIndex === 0} 
-                                onClick={() => setPageIndex(p => p - 1)}
-                                className="h-8 px-4 transition-all active:scale-[0.96] flex-1 sm:flex-none"
-                            >
-                                Anterior
-                            </Button>
-                            <Button 
-                                variant="tertiary" 
-                                size="sm" 
-                                disabled={pageIndex >= pageCount - 1} 
-                                onClick={() => setPageIndex(p => p + 1)}
-                                className="h-8 px-4 transition-all active:scale-[0.96] flex-1 sm:flex-none"
-                            >
-                                Siguiente
-                            </Button>
-                        </div>
-                    </div>
-                </CardFrameFooter>
-            )}
-        </CardFrame>
+        </div>
     );
 }

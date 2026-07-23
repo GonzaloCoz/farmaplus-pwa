@@ -231,6 +231,9 @@ export const cyclicInventoryService = {
             console.error("Error purging lab inventory:", JSON.stringify(error, null, 2));
             throw error;
         }
+
+        // Resetea automáticamente los metadatos de todas las categorías de este laboratorio a 0% y pendiente
+        await cyclicInventoryService.updateLabMetadata(branchName, labName);
     },
 
     async adminPurgeLabInventory(branchName: string, labName: string, password: string, userId: string) {
@@ -281,19 +284,25 @@ export const cyclicInventoryService = {
     correctProgressAfterFinalize: async (
         branchName: string,
         labName: string,
-        masterTotal: number   // Total leído de DB ANTES de que updateLabMetadata lo pise
+        masterTotal: number,   // Total leído de DB ANTES de que updateLabMetadata lo pise
+        category?: string
     ): Promise<void> => {
         try {
             if (masterTotal === 0) return;
 
-            // 1. Contar TODOS los items ajustados acumulados en Supabase para este branch+lab
-            //    (incluye ajustes de sesiones anteriores, no sólo el batch actual)
-            const { count: dbAdjustedCount, error: countError } = await supabase
+            // 1. Contar TODOS los items ajustados acumulados en Supabase para este branch+lab (+category si existe)
+            let query = supabase
                 .from('inventories')
                 .select('*', { count: 'exact', head: true })
                 .ilike('branch_name', branchName.trim())
                 .eq('laboratory', labName)
                 .eq('status', 'adjusted');
+
+            if (category) {
+                query = query.eq('category', category);
+            }
+
+            const { count: dbAdjustedCount, error: countError } = await query;
 
             if (countError) {
                 console.error('[Progress] Error counting adjusted items:', countError);
@@ -311,7 +320,7 @@ export const cyclicInventoryService = {
             const realStatus = realProgress >= 100 ? 'completed' : 'in_progress';
 
             // 3. Persistir en branch_laboratories con el denominador correcto
-            const { error } = await supabase
+            let updateQuery = supabase
                 .from('branch_laboratories')
                 .update({
                     total_items: masterTotal,
@@ -322,10 +331,16 @@ export const cyclicInventoryService = {
                 .eq('branch_name', normalizeString(branchName))
                 .eq('laboratory', normalizeString(labName));
 
+            if (category) {
+                updateQuery = updateQuery.eq('category', normalizeString(category));
+            }
+
+            const { error } = await updateQuery;
+
             if (error) {
                 console.error('[Progress] Error persisting real progress:', error);
             } else {
-                console.log(`[Progress] ${labName} (${branchName}): ${realProgress}% (${cumulativeAdjusted}/${masterTotal})`);
+                console.log(`[Progress] ${labName} (${category || 'ALL'}) (${branchName}): ${realProgress}% (${cumulativeAdjusted}/${masterTotal})`);
             }
         } catch (e) {
             console.error('[Progress] Unexpected error in correctProgressAfterFinalize:', e);
@@ -339,28 +354,9 @@ export const cyclicInventoryService = {
      */
     recomputeLabProgress: async (branchName: string, labName: string, round?: number): Promise<void> => {
         try {
-            let activeRound = round;
-            if (!activeRound) {
-                try {
-                    const config = await cyclicInventoryService.getBranchConfig(branchName);
-                    const dbItems = await cyclicInventoryService.getLabInventory(branchName, labName);
-                    const cat = dbItems[0]?.category || 'GENERAL';
-                    const normCat = cat.toUpperCase();
-                    activeRound = config.rounds?.[normCat] || config.rounds?.GENERAL || 1;
-                } catch (err) {
-                    console.warn("No se pudo obtener la ronda del config para recompute, usando default 1:", err);
-                    activeRound = 1;
-                }
-            }
-
-            const { error } = await (supabase as any).rpc('recompute_lab_progress', {
-                p_branch_name: normalizeString(branchName),
-                p_laboratory: normalizeString(labName),
-                p_round: activeRound
-            });
-            if (error) console.error('[Progress] Error in recompute_lab_progress:', error);
+            await cyclicInventoryService.updateLabMetadata(branchName, labName);
         } catch (e) {
-            console.error('[Progress] Error calling recompute_lab_progress:', e);
+            console.error('[Progress] Error in recomputeLabProgress:', e);
         }
     },
 
@@ -474,24 +470,25 @@ export const cyclicInventoryService = {
                 grouped[cat].push(item);
             });
 
-            // --- CÁLCULO DE PROGRESO GLOBAL (Basado en el universo completo de ítems) ---
-            // IMPORTANTE: Usamos itemsToProcess para que, aunque se guarde un solo ítem, 
-            // el progreso refleje el estado real de todo el laboratorio en la DB.
-            const globalProcessed = itemsToProcess.filter(i => i.status === 'controlled' || i.status === 'adjusted').length;
-            const globalTotal = totalDenominator ?? itemsToProcess.length;
+            // Fetch all assigned categories for this lab in branch_laboratories
+            const { data: existingBranchLabs } = await supabase
+                .from('branch_laboratories')
+                .select('category, round')
+                .or(`branch_name.eq.${cleanBranch},branch_name.eq.${branchName.trim()}`)
+                .eq('laboratory', cleanLab);
 
-            let globalProgress = 0;
-            if (globalTotal > 0) {
-                globalProgress = Number(((globalProcessed / globalTotal) * 100).toFixed(1));
-                if (globalProgress > 100) globalProgress = 100;
-            }
-            // -------------------------------------------------------------------------
+            const assignedCategories = new Set<string>();
+            existingBranchLabs?.forEach(l => {
+                if (l.category) assignedCategories.add(normalizeString(l.category));
+            });
+            Object.keys(grouped).forEach(cat => assignedCategories.add(cat));
 
             // Obtener el config de la sucursal para resolver las rondas activas por categoría
             const config = await cyclicInventoryService.getBranchConfig(branchName);
 
-            // Iterate each category and upsert its own stats
-            const upsertPromises = Object.entries(grouped).map(async ([category, catItems]) => {
+            // Iterate ALL assigned categories and upsert their own stats (or reset if empty)
+            const upsertPromises = Array.from(assignedCategories).map(async (category) => {
+                const catItems = grouped[category] || [];
                 const stats = cyclicInventoryService.calculateStats(catItems);
 
                 const normCat = category.toUpperCase();
@@ -502,8 +499,16 @@ export const cyclicInventoryService = {
                 const adjustedItems = catItems.filter(i => i.status === 'adjusted').length;
                 const pendingItems = catItems.filter(i => i.status === 'pending').length;
 
-                // Category-specific counts (for accurate data)
+                // Category-specific counts
                 const totalInventoryItems = catItems.length;
+
+                let catProgress = 0;
+                if (totalInventoryItems > 0) {
+                    catProgress = Number((((controlledItems + adjustedItems) / totalInventoryItems) * 100).toFixed(1));
+                    if (catProgress > 100) catProgress = 100;
+                }
+
+                const catStatus = totalInventoryItems === 0 ? 'pending' : (catProgress >= 100 ? 'completed' : catProgress > 0 ? 'in_progress' : 'pending');
 
                 // Upsert to metadata table with composite key (Branch + Lab + Category + Round)
                 return supabase
@@ -517,7 +522,7 @@ export const cyclicInventoryService = {
                         controlled_items: controlledItems + adjustedItems, // Correct Category Processed
                         adjusted_items: adjustedItems,
                         pending_items: pendingItems,
-                        progress_percentage: globalProgress, // <--- FORCED GLOBAL PROGRESS (28%)
+                        progress_percentage: catProgress, // % real por categoría (0% si no hay items)
                         total_system_units: stats.totalSystemUnits,
                         net_units: stats.netUnits,
                         net_value: stats.net,
@@ -525,7 +530,7 @@ export const cyclicInventoryService = {
                         positive_value: stats.positive,
                         negative_units: stats.negativeUnits,
                         positive_units: stats.positiveUnits,
-                        status: globalProgress >= 100 ? 'completed' : globalProgress > 0 ? 'in_progress' : 'pending'
+                        status: catStatus
                     }, {
                         onConflict: 'branch_name,laboratory,category,round'
                     });

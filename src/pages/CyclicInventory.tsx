@@ -451,22 +451,25 @@ export default function CyclicInventory() {
   // --- Mass Actions ---
 
   const handleMassSync = async () => {
-    if (!user?.branchSheet || filteredAndSortedLabs.length === 0) return;
+    const targetBranch = user?.branchSheet || "PADUA";
 
     setIsProcessingMassAction(true);
-    notify.info("Sincronización Masiva", `Sincronizando ${filteredAndSortedLabs.length} laboratorios...`);
+    notify.info("Sincronización Masiva", `Sincronizando laboratorios de sucursal ${targetBranch}...`);
 
     try {
-      // Usamos Promise.all con un pequeño delay o secuencial para no saturar Supabase
-      // En este caso, como son RPCs, podemos dispararlos en batches
-      const labsToSync = filteredAndSortedLabs.filter(l => l.status !== 'pendiente');
+      const cleanBranch = normalizeString(targetBranch);
+      const { data: labs } = await supabase
+        .from('branch_laboratories')
+        .select('laboratory')
+        .or(`branch_name.eq.${cleanBranch},branch_name.eq.${targetBranch.trim()}`);
 
-      for (const lab of labsToSync) {
-        await cyclicInventoryService.recomputeLabProgress(user.branchSheet, lab.labName);
+      const uniqueNames = Array.from(new Set(labs?.map(l => l.laboratory) || []));
+
+      for (const labName of uniqueNames) {
+        await cyclicInventoryService.updateLabMetadata(targetBranch, labName);
       }
 
-      notify.success("Sincronización Completada", "Todos los laboratorios han sido actualizados.");
-      // Recargar datos
+      notify.success("Sincronización Completada", `Todos los laboratorios de ${targetBranch} han sido actualizados.`);
       window.location.reload();
     } catch (error) {
       console.error("Error in mass sync:", error);

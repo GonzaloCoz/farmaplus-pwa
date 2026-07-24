@@ -471,9 +471,9 @@ export const cyclicInventoryService = {
             });
 
             // Fetch all assigned categories for this lab in branch_laboratories
-            const { data: existingBranchLabs } = await supabase
+            const { data: existingBranchLabs } = await (supabase as any)
                 .from('branch_laboratories')
-                .select('category, round')
+                .select('category')
                 .or(`branch_name.eq.${cleanBranch},branch_name.eq.${branchName.trim()}`)
                 .eq('laboratory', cleanLab);
 
@@ -724,23 +724,30 @@ export const cyclicInventoryService = {
             const { data: dbBranches, error: branchesError } = await supabase
                 .from('branches')
                 .select('name');
-            
-            if (branchesError || !dbBranches) {
-                console.error("[Monitor] Error fetching branches list:", branchesError);
-                throw branchesError || new Error("No branches found");
+
+            let branchNames: string[] = [];
+            if (dbBranches && dbBranches.length > 0) {
+                branchNames = dbBranches.map(b => b.name);
+            } else {
+                console.warn("[Monitor] Warning fetching branches list:", branchesError);
+                const { data: labBranches } = await supabase.from('branch_laboratories').select('branch_name');
+                if (labBranches && labBranches.length > 0) {
+                    branchNames = Array.from(new Set(labBranches.map((b: any) => b.branch_name).filter(Boolean)));
+                }
             }
-            const branchNames = dbBranches.map(b => b.name);
 
             // 1. Fetch dynamic summaries
-            const { data: summaries, error: sumError } = await (supabase as any)
+            let summaries: any[] = [];
+            const { data: rpcSummaries, error: sumError } = await (supabase as any)
                 .rpc('get_branch_monitor_summaries', {
                     p_timeframe: timeframe,
                     p_show_previous: showPrevious
                 });
 
             if (sumError) {
-                console.error("[Monitor] Error calling get_branch_monitor_summaries RPC:", sumError);
-                throw sumError;
+                console.warn("[Monitor] Warning calling get_branch_monitor_summaries RPC:", sumError);
+            } else if (rpcSummaries) {
+                summaries = rpcSummaries;
             }
 
             // 3. Fetch Configs for Start Date, Days, and Rounds

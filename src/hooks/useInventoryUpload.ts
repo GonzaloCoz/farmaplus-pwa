@@ -42,6 +42,20 @@ export interface CategoryWarningData {
     };
 }
 
+export interface OutdatedWarningData {
+    targetLab: string;
+    fileDateStr: string;
+    relativeDateStr?: string;
+    excelCategories?: string[];
+    pendingUpload: {
+        finalItems: any[];
+        addedCount: number;
+        updatedCount: number;
+        action?: 'current' | 'redirect';
+        targetLab: string;
+    };
+}
+
 export function useInventoryUpload({ labName, branchName, currentItems, onItemsUpdated }: UseInventoryUploadProps) {
     const [isUploading, setIsUploading] = useState(false);
     const [showMismatchDialog, setShowMismatchDialog] = useState(false);
@@ -50,6 +64,10 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
     // Advertencia de Rubros Faltantes
     const [showCategoryWarningDialog, setShowCategoryWarningDialog] = useState(false);
     const [categoryWarningData, setCategoryWarningData] = useState<CategoryWarningData | null>(null);
+
+    // Advertencia de Archivo Desactualizado
+    const [showOutdatedWarningDialog, setShowOutdatedWarningDialog] = useState(false);
+    const [outdatedWarningData, setOutdatedWarningData] = useState<OutdatedWarningData | null>(null);
 
     const navigate = useNavigate();
     const { user } = useUser();
@@ -122,7 +140,29 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                     }
 
                     if (success) {
+                        const { isOutdated, fileDateStr, relativeDateStr } = eMsg.data;
                         const categoryCheck = await checkMissingCategories(targetLab, branchName, excelCategories || []);
+
+                        if (isOutdated) {
+                            setOutdatedWarningData({
+                                targetLab,
+                                fileDateStr: fileDateStr || 'Sin fecha',
+                                relativeDateStr: relativeDateStr || 'en una fecha anterior',
+                                excelCategories: excelCategories || [],
+                                pendingUpload: {
+                                    finalItems,
+                                    addedCount,
+                                    updatedCount,
+                                    action,
+                                    targetLab
+                                }
+                            });
+                            setShowOutdatedWarningDialog(true);
+                            setIsUploading(false);
+                            worker.terminate();
+                            return;
+                        }
+
                         if (categoryCheck.hasMissingCategories) {
                             setCategoryWarningData({
                                 targetLab,
@@ -408,7 +448,28 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 }
 
                 if (success) {
-                    const { excelCategories } = eMsg.data;
+                    const { excelCategories, isOutdated, fileDateStr, relativeDateStr } = eMsg.data;
+
+                    if (isOutdated) {
+                        setOutdatedWarningData({
+                            targetLab: labName,
+                            fileDateStr: fileDateStr || 'Sin fecha',
+                            relativeDateStr: relativeDateStr || 'en una fecha anterior',
+                            excelCategories: excelCategories || [],
+                            pendingUpload: {
+                                finalItems,
+                                addedCount,
+                                updatedCount,
+                                action: 'current',
+                                targetLab: labName
+                            }
+                        });
+                        setShowOutdatedWarningDialog(true);
+                        setIsUploading(false);
+                        worker.terminate();
+                        return;
+                    }
+
                     const categoryCheck = await checkMissingCategories(labName, branchName, excelCategories || []);
                     if (categoryCheck.hasMissingCategories) {
                         setCategoryWarningData({
@@ -696,6 +757,67 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
         }
     };
 
+    const handleResolveOutdatedWarning = async (action: 'proceed' | 'cancel') => {
+        if (action === 'cancel' || !outdatedWarningData) {
+            setShowOutdatedWarningDialog(false);
+            setOutdatedWarningData(null);
+            setIsUploading(false);
+            return;
+        }
+
+        const { pendingUpload, excelCategories } = outdatedWarningData;
+        const { finalItems, addedCount, updatedCount, action: uploadAction, targetLab } = pendingUpload;
+
+        setIsUploading(true);
+        setShowOutdatedWarningDialog(false);
+
+        try {
+            // Chained validation: Check missing categories after outdated warning is resolved
+            const categoryCheck = await checkMissingCategories(targetLab, branchName, excelCategories || []);
+            if (categoryCheck.hasMissingCategories) {
+                setCategoryWarningData({
+                    targetLab,
+                    expectedCategories: categoryCheck.expectedCategories,
+                    foundCategories: categoryCheck.foundCategories,
+                    missingCategories: categoryCheck.missingCategories,
+                    pendingUpload: {
+                        finalItems,
+                        addedCount,
+                        updatedCount,
+                        action: uploadAction,
+                        targetLab
+                    }
+                });
+                setShowCategoryWarningDialog(true);
+                setIsUploading(false);
+                setOutdatedWarningData(null);
+                return;
+            }
+
+            if (uploadAction === 'current' || targetLab.toUpperCase() === labName.toUpperCase()) {
+                onItemsUpdated(finalItems);
+            }
+
+            await cyclicInventoryService.purgeAndSaveLabInventory(branchName, targetLab, finalItems);
+
+            if (addedCount > 0 || updatedCount > 0) {
+                notify.success("Carga exitosa", `Se importaron ${addedCount} productos nuevos y ${updatedCount} existentes en ${targetLab}.`);
+            } else {
+                notify.info("Sin cambios", `Todos los productos en el archivo ya estaban procesados.`);
+            }
+
+            if (uploadAction === 'redirect' && targetLab.toUpperCase() !== labName.toUpperCase()) {
+                navigate(`/cyclic-inventory/${encodeURIComponent(targetLab)}`);
+            }
+        } catch (err) {
+            console.error("Failed to save after upload (outdated warning bypass):", err);
+            notify.error("Error al guardar", "Se procesó el archivo pero hubo un problema al guardar.");
+        } finally {
+            setIsUploading(false);
+            setOutdatedWarningData(null);
+        }
+    };
+
     return {
         isUploading,
         handleFileUpload,
@@ -709,6 +831,12 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
         showCategoryWarningDialog,
         setShowCategoryWarningDialog,
         categoryWarningData,
-        handleResolveCategoryWarning
+        handleResolveCategoryWarning,
+
+        // Advertencia de Archivo Desactualizado
+        showOutdatedWarningDialog,
+        setShowOutdatedWarningDialog,
+        outdatedWarningData,
+        handleResolveOutdatedWarning
     };
 }

@@ -326,6 +326,12 @@ export default function CyclicInventoryDetail() {
         categoryWarningData,
         handleResolveCategoryWarning,
 
+        // Advertencia de Archivo Desactualizado
+        showOutdatedWarningDialog,
+        setShowOutdatedWarningDialog,
+        outdatedWarningData,
+        handleResolveOutdatedWarning,
+
         // Advanced Logic
         sortBy, setSortBy,
         getSortedItems
@@ -1341,6 +1347,53 @@ export default function CyclicInventoryDetail() {
                             </Button>
                             <Button
                                 onClick={() => handleResolveCategoryWarning('proceed')}
+                            >
+                                Continuar de todos modos
+                            </Button>
+                        </DialogFooter>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Outdated File Warning Dialog */}
+            <Dialog open={showOutdatedWarningDialog} onOpenChange={setShowOutdatedWarningDialog}>
+                <DialogContent size="lg">
+                    <div className="space-y-4">
+                        <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2">
+                                <span>Advertencia de Archivo Desactualizado ({outdatedWarningData?.targetLab})</span>
+                            </DialogTitle>
+                            <DialogDescription>
+                                El reporte de Excel que intentás subir para <strong className="text-foreground">{outdatedWarningData?.targetLab}</strong> fue emitido <strong className="text-foreground">{outdatedWarningData?.relativeDateStr || 'en una fecha anterior'}</strong>. Importar un archivo desactualizado puede generar diferencias involuntarias de stock durante el conteo.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-3 pt-1 text-sm">
+                            <div>
+                                <span className="text-xs font-medium text-muted-foreground block mb-1">
+                                    Fecha y Hora de Emisión del Archivo:
+                                </span>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="inline-flex items-center text-xs px-2.5 py-1 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium">
+                                        {outdatedWarningData?.fileDateStr || 'Desconocida'}
+                                    </span>
+                                    <span className="inline-flex items-center text-xs px-2.5 py-1 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium">
+                                        ✕ Posibles diferencias de stock
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <DialogFooter>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => handleResolveOutdatedWarning('cancel')}
+                            >
+                                Cancelar e ir a PLEX
+                            </Button>
+                            <Button
+                                onClick={() => handleResolveOutdatedWarning('proceed')}
                             >
                                 Continuar de todos modos
                             </Button>

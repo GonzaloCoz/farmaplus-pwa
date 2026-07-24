@@ -49,6 +49,7 @@ const InventoryReminder = lazy(() => import("./pages/InventoryReminder"));
 const TrainingCenter = lazy(() => import("./pages/TrainingCenter"));
 const PostDetail = lazy(() => import("./pages/PostDetail"));
 const AdminEditor = lazy(() => import("./pages/AdminEditor"));
+const DataCollectorPage = lazy(() => import("./pages/DataCollectorPage"));
 
 
 const queryClient = new QueryClient({
@@ -120,21 +121,11 @@ const AppRoutes = () => {
           <>
             <Route
               index
-              element={<Navigate to="/stock/pre-count" replace />}
-            />
-            <Route
-              path="stock/pre-count"
-              element={
-                <Suspense fallback={<DashboardSkeleton />}>
-                  <PageTransition>
-                    <PreCount />
-                  </PageTransition>
-                </Suspense>
-              }
+              element={<Navigate to="/collector" replace />}
             />
             <Route
               path="*"
-              element={<Navigate to="/stock/pre-count" replace />}
+              element={<Navigate to="/collector" replace />}
             />
           </>
         ) : (
@@ -362,6 +353,22 @@ const AppRoutes = () => {
           </>
         )}
       </Route>
+      <Route
+        path="/collector"
+        element={
+          <Suspense fallback={<DashboardSkeleton />}>
+            <DataCollectorPage />
+          </Suspense>
+        }
+      />
+      <Route
+        path="/data-collector"
+        element={
+          <Suspense fallback={<DashboardSkeleton />}>
+            <DataCollectorPage />
+          </Suspense>
+        }
+      />
       <Route
         path="*"
         element={

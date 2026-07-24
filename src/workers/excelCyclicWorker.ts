@@ -20,10 +20,71 @@ self.onmessage = async (e: MessageEvent) => {
 
     try {
         // 1. Procesar Excel
-        const wb = XLSX.read(fileData, { type: 'binary' });
+        const wb = XLSX.read(fileData, { type: 'binary', cellDates: true });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+        // 1.b Evaluación de fecha de emisión del reporte
+        let fileCreationDate: Date | null = null;
+        const props = wb.Props as any;
+        if (props && (props.Created || props.Modified || props.CreatedDate || props.ModifiedDate)) {
+            fileCreationDate = new Date(props.Created || props.Modified || props.CreatedDate || props.ModifiedDate);
+        } else if (e.data.lastModified) {
+            fileCreationDate = new Date(e.data.lastModified);
+        }
+
+        let isOutdated = false;
+        let fileDateStr = "";
+        let relativeDateStr = "";
+
+        if (fileCreationDate && !isNaN(fileCreationDate.getTime())) {
+            fileDateStr = fileCreationDate.toLocaleString('es-AR', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+            });
+
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const fileDay = new Date(fileCreationDate.getFullYear(), fileCreationDate.getMonth(), fileCreationDate.getDate());
+            const diffDays = Math.round((today.getTime() - fileDay.getTime()) / (1000 * 60 * 60 * 24));
+
+            if (diffDays <= 0) {
+                relativeDateStr = "en la madrugada de hoy";
+            } else if (diffDays === 1) {
+                relativeDateStr = "el día de ayer";
+            } else if (diffDays === 2) {
+                relativeDateStr = "antes de ayer";
+            } else if (diffDays >= 3 && diffDays <= 6) {
+                relativeDateStr = `hace ${diffDays} días`;
+            } else if (diffDays >= 7 && diffDays <= 13) {
+                relativeDateStr = "hace 1 semana";
+            } else if (diffDays >= 14 && diffDays <= 29) {
+                const weeks = Math.floor(diffDays / 7);
+                relativeDateStr = `hace ${weeks} semanas`;
+            } else if (diffDays >= 30 && diffDays <= 59) {
+                relativeDateStr = "hace 1 mes";
+            } else if (diffDays >= 60) {
+                const months = Math.floor(diffDays / 30);
+                relativeDateStr = `hace ${months} meses`;
+            } else {
+                relativeDateStr = "en una fecha anterior";
+            }
+
+            const opStart = new Date(now);
+            if (now.getHours() < 7) {
+                opStart.setDate(opStart.getDate() - 1);
+            }
+            opStart.setHours(7, 0, 0, 0);
+
+            const opEnd = new Date(opStart);
+            opEnd.setDate(opEnd.getDate() + 1);
+            opEnd.setHours(1, 0, 0, 0);
+
+            if (fileCreationDate < opStart || fileCreationDate > opEnd) {
+                isOutdated = true;
+            }
+        }
 
         // 2. Identificar Laboratorio
         let fileLabName = "";
@@ -144,7 +205,10 @@ self.onmessage = async (e: MessageEvent) => {
             finalItems,
             addedCount,
             updatedCount,
-            excelCategories: Array.from(excelCategoriesSet)
+            excelCategories: Array.from(excelCategoriesSet),
+            isOutdated,
+            fileDateStr,
+            relativeDateStr
         });
 
     } catch (err: any) {

@@ -86,7 +86,12 @@ export function useCyclicInventoryController({ labName, round }: UseCyclicInvent
         showCategoryWarningDialog,
         setShowCategoryWarningDialog,
         categoryWarningData,
-        handleResolveCategoryWarning
+        handleResolveCategoryWarning,
+
+        showOutdatedWarningDialog,
+        setShowOutdatedWarningDialog,
+        outdatedWarningData,
+        handleResolveOutdatedWarning
     } = useInventoryUpload({
         branchName,
         labName,
@@ -780,6 +785,12 @@ export function useCyclicInventoryController({ labName, round }: UseCyclicInvent
         setShowCategoryWarningDialog,
         categoryWarningData,
         handleResolveCategoryWarning,
+
+        // Advertencia de Archivo Desactualizado
+        showOutdatedWarningDialog,
+        setShowOutdatedWarningDialog,
+        outdatedWarningData,
+        handleResolveOutdatedWarning,
 
         // Special State
         shouldHidePendings,

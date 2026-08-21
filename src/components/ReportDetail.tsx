@@ -67,7 +67,7 @@ export default function ReportDetail() {
           El reporte que buscas no existe o ha sido eliminado.
         </p>
         <Button asChild variant="ghost" className="mt-4">
-          <Link to="/reports">Volver a Reportes</Link>
+          <Link to="/reportes">Volver a Reportes</Link>
         </Button>
       </div>
     );
@@ -79,7 +79,7 @@ export default function ReportDetail() {
     <div className="p-6 space-y-6">
       <div className="flex items-center gap-4">
         <Button asChild variant="outline" size="icon">
-          <Link to="/reports">
+          <Link to="/reportes">
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>

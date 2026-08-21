@@ -198,7 +198,7 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                             }
 
                             if (action === 'redirect' && targetLab.toUpperCase() !== labName.toUpperCase()) {
-                                navigate(`/cyclic-inventory/${encodeURIComponent(targetLab)}`);
+                                navigate(`/inventario-ciclico/${encodeURIComponent(targetLab)}`);
                             }
                         } catch (err) {
                             console.error("Failed to save after upload:", err);
@@ -336,7 +336,7 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 notify.success("Importación Exitosa", `Se sincronizaron ${addedCount + updatedCount} productos en ${targetLab}.`);
                 
                 if (action === 'redirect' && targetLab.toUpperCase() !== labName.toUpperCase()) {
-                    navigate(`/cyclic-inventory/${encodeURIComponent(targetLab)}`);
+                    navigate(`/inventario-ciclico/${encodeURIComponent(targetLab)}`);
                 }
                 setIsUploading(false);
             }
@@ -746,7 +746,7 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
             }
 
             if (uploadAction === 'redirect' && targetLab.toUpperCase() !== labName.toUpperCase()) {
-                navigate(`/cyclic-inventory/${encodeURIComponent(targetLab)}`);
+                navigate(`/inventario-ciclico/${encodeURIComponent(targetLab)}`);
             }
         } catch (err) {
             console.error("Failed to save after upload (warning bypass):", err);
@@ -807,7 +807,7 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
             }
 
             if (uploadAction === 'redirect' && targetLab.toUpperCase() !== labName.toUpperCase()) {
-                navigate(`/cyclic-inventory/${encodeURIComponent(targetLab)}`);
+                navigate(`/inventario-ciclico/${encodeURIComponent(targetLab)}`);
             }
         } catch (err) {
             console.error("Failed to save after upload (outdated warning bypass):", err);

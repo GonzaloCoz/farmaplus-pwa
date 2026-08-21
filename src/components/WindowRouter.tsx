@@ -32,24 +32,23 @@ export function WindowRouter({ currentPath }: { initialPath: string, currentPath
             <PageTransition key={currentPath}>
                 <Routes location={currentPath}>
                     <Route path="/" element={<Dashboard />} />
-                    <Route path="/showcase" element={<ComponentsShowcase />} />
+                    <Route path="/componentes" element={<ComponentsShowcase />} />
                     <Route path="/sandbox" element={<Sandbox />} />
                     <Route path="/stock" element={<Stock />} />
-                    <Route path="/stock/pre-count" element={<PreCount />} />
-                    <Route path="/stock/import" element={<StockImport />} />
-                    <Route path="/stock/recount-mobile" element={<StockRecountMobile />} />
-                    <Route path="/stock/expiration-control" element={<ExpirationControl />} />
-                    <Route path="/cyclic-inventory" element={<CyclicInventory />} />
-                    <Route path="/cyclic-inventory/:id" element={<CyclicInventoryDetail />} />
-                    <Route path="/reports" element={<Reports />} />
-                    <Route path="/comparison" element={<BranchComparison />} />
-                    <Route path="/settings" element={<Settings />} />
-                    <Route path="/animations-demo" element={<AnimationsDemo />} />
-                    <Route path="/admin/audit" element={<AdminAudit />} />
-                    <Route path="/admin/users" element={<AdminUsers />} />
-                    <Route path="/admin/branches" element={<AdminBranches />} />
-                    <Route path="/smart-analyst" element={<SmartAnalystPage />} />
-                    <Route path="/inventory-reminder" element={<InventoryReminder />} />
+                    <Route path="/stock/colector" element={<PreCount />} />
+                    <Route path="/stock/recuento-movil" element={<StockRecountMobile />} />
+                    <Route path="/stock/control-vencimiento" element={<ExpirationControl />} />
+                    <Route path="/inventario-ciclico" element={<CyclicInventory />} />
+                    <Route path="/inventario-ciclico/:id" element={<CyclicInventoryDetail />} />
+                    <Route path="/reportes" element={<Reports />} />
+                    <Route path="/comparativa" element={<BranchComparison />} />
+                    <Route path="/configuracion" element={<Settings />} />
+                    <Route path="/demo-animaciones" element={<AnimationsDemo />} />
+                    <Route path="/admin/auditoria" element={<AdminAudit />} />
+                    <Route path="/admin/usuarios" element={<AdminUsers />} />
+                    <Route path="/admin/sucursales" element={<AdminBranches />} />
+                    <Route path="/control-vencimiento" element={<SmartAnalystPage />} />
+                    <Route path="/recordatorio-inventario" element={<InventoryReminder />} />
                     <Route path="/foro" element={<TrainingCenter />} />
                     <Route path="/foro/:id" element={<PostDetail />} />
                     <Route path="/foro/admin/edit" element={<AdminEditor />} />

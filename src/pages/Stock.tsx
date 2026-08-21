@@ -15,37 +15,17 @@ export default function Stock() {
             title: 'Colector de Datos',
             description: 'Una forma simple de contar productos, incluso sin internet. Escaneá rápido y sincronizá todo al final.',
             icon: ZebraIcon,
-            path: '/stock/pre-count',
+            path: '/stock/colector',
             color: 'primary',
             gradient: 'from-primary/20 to-primary/5',
             showOnMobile: true,
-            showOnDesktop: true
-        },
-        {
-            title: 'Control de Vencimientos',
-            description: 'Registra lotes y fechas de vencimiento de productos para gestión de ofertas.',
-            icon: Clock,
-            path: '/stock/expiration-control',
-            color: 'primary',
-            gradient: 'from-primary/20 to-primary/5',
-            showOnMobile: true,
-            showOnDesktop: true
-        },
-        {
-            title: 'Importar Inventario y Servidor de Recuento',
-            description: 'Importa archivos Excel de inventario físico y crea salas de recuento masivo para las Zebras.',
-            icon: Laptop,
-            path: '/stock/import',
-            color: 'primary',
-            gradient: 'from-primary/20 to-primary/5',
-            showOnMobile: false, // Oculto en móbiles (las Zebras no importan excel ni hostean servidores)
             showOnDesktop: true
         },
         {
             title: 'Conectar Zebra a Recuento',
             description: 'Ingresa el PIN de acceso para contar productos en una sesión de recuento guiada por la PC.',
             icon: Smartphone,
-            path: '/stock/recount-mobile',
+            path: '/stock/recuento-movil',
             color: 'primary',
             gradient: 'from-success/20 to-success/5',
             showOnMobile: true,

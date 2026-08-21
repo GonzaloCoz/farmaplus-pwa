@@ -9,12 +9,12 @@ import { notify } from "@/lib/notifications";
 import { surfaceClasses } from "@/lib/surface-classes";
 
 const menuItems = [
-  { title: "Dashboard", url: "/", icon: Home },
+  { title: "Inicio", url: "/", icon: Home },
   { title: "Stock", url: "/stock", icon: Upload },
-  { title: "Control de Vencimiento", url: "/smart-analyst", icon: Clock, comingSoon: true },
-  { title: "Inventarios Cíclicos", url: "/cyclic-inventory", icon: BarChart3 },
-  { title: "Comparativa", url: "/comparison", icon: TrendingUp, roles: ['admin'] as const },
-  { title: "Reportes", url: "/reports", icon: FileText, roles: ['admin', 'mod'] as const },
+  { title: "Control de Vencimiento", url: "/control-vencimiento", icon: Clock },
+  { title: "Inventarios Cíclicos", url: "/inventario-ciclico", icon: BarChart3 },
+  { title: "Comparativa", url: "/comparativa", icon: TrendingUp, roles: ['admin'] as const },
+  { title: "Reportes", url: "/reportes", icon: FileText, roles: ['admin', 'mod'] as const },
 ];
 
 interface AppSidebarMenuItemProps {

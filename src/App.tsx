@@ -151,7 +151,7 @@ const AppRoutes = () => {
               }
             />
             <Route
-              path="stock/pre-count"
+              path="stock/colector"
               element={
                 <Suspense fallback={<DashboardSkeleton />}>
                   <PageTransition>
@@ -160,18 +160,9 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
+            <Route path="stock/pre-count" element={<Navigate to="/stock/colector" replace />} />
             <Route
-              path="stock/import"
-              element={
-                <Suspense fallback={<DashboardSkeleton />}>
-                  <PageTransition>
-                    <StockImport />
-                  </PageTransition>
-                </Suspense>
-              }
-            />
-            <Route
-              path="stock/recount-mobile"
+              path="stock/recuento-movil"
               element={
                 <Suspense fallback={<DashboardSkeleton />}>
                   <PageTransition>
@@ -180,8 +171,9 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
+            <Route path="stock/recount-mobile" element={<Navigate to="/stock/recuento-movil" replace />} />
             <Route
-              path="stock/expiration-control"
+              path="stock/control-vencimiento"
               element={
                 <Suspense fallback={<DashboardSkeleton />}>
                   <PageTransition>
@@ -190,8 +182,9 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
+            <Route path="stock/expiration-control" element={<Navigate to="/stock/control-vencimiento" replace />} />
             <Route
-              path="cyclic-inventory"
+              path="inventario-ciclico"
               element={
                 <Suspense fallback={<DashboardSkeleton />}>
                   <PageTransition>
@@ -200,8 +193,9 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
+            <Route path="cyclic-inventory" element={<Navigate to="/inventario-ciclico" replace />} />
             <Route
-              path="cyclic-inventory/:id"
+              path="inventario-ciclico/:id"
               element={
                 <Suspense fallback={<DashboardSkeleton />}>
                   <PageTransition>
@@ -212,7 +206,7 @@ const AppRoutes = () => {
             />
 
             <Route
-              path="reports"
+              path="reportes"
               element={
                 <Suspense fallback={<PageSkeleton />}>
                   <PageTransition>
@@ -221,8 +215,9 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
+            <Route path="reports" element={<Navigate to="/reportes" replace />} />
             <Route
-              path="comparison"
+              path="comparativa"
               element={
                 <AdminRoute>
                   <Suspense fallback={<PageSkeleton />}>
@@ -233,8 +228,9 @@ const AppRoutes = () => {
                 </AdminRoute>
               }
             />
+            <Route path="comparison" element={<Navigate to="/comparativa" replace />} />
             <Route
-              path="settings"
+              path="configuracion"
               element={
                 <Suspense fallback={<PageSkeleton />}>
                   <PageTransition>
@@ -243,8 +239,9 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
+            <Route path="settings" element={<Navigate to="/configuracion" replace />} />
             <Route
-              path="animations-demo"
+              path="demo-animaciones"
               element={
                 <Suspense fallback={<DashboardSkeleton />}>
                   <PageTransition>
@@ -253,8 +250,9 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
+            <Route path="animations-demo" element={<Navigate to="/demo-animaciones" replace />} />
             <Route
-              path="admin/audit"
+              path="admin/auditoria"
               element={
                 <AdminRoute>
                   <Suspense fallback={<PageSkeleton />}>
@@ -265,9 +263,10 @@ const AppRoutes = () => {
                 </AdminRoute>
               }
             />
+            <Route path="admin/audit" element={<Navigate to="/admin/auditoria" replace />} />
 
             <Route
-              path="admin/users"
+              path="admin/usuarios"
               element={
                 <AdminRoute>
                   <Suspense fallback={<PageSkeleton />}>
@@ -278,8 +277,9 @@ const AppRoutes = () => {
                 </AdminRoute>
               }
             />
+            <Route path="admin/users" element={<Navigate to="/admin/usuarios" replace />} />
             <Route
-              path="admin/branches"
+              path="admin/sucursales"
               element={
                 <AdminRoute>
                   <Suspense fallback={<PageSkeleton />}>
@@ -290,8 +290,9 @@ const AppRoutes = () => {
                 </AdminRoute>
               }
             />
+            <Route path="admin/branches" element={<Navigate to="/admin/sucursales" replace />} />
             <Route
-              path="smart-analyst"
+              path="control-vencimiento"
               element={
                 <Suspense fallback={<PageSkeleton />}>
                   <PageTransition>
@@ -300,8 +301,9 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
+            <Route path="smart-analyst" element={<Navigate to="/control-vencimiento" replace />} />
             <Route
-              path="inventory-reminder"
+              path="recordatorio-inventario"
               element={
                 <Suspense fallback={<DashboardSkeleton />}>
                   <PageTransition>
@@ -310,6 +312,7 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
+            <Route path="inventory-reminder" element={<Navigate to="/recordatorio-inventario" replace />} />
             <Route
               path="foro"
               element={

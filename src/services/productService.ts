@@ -200,11 +200,12 @@ export async function getLaboratoriesForBranch(branchName: string): Promise<{ na
         let page = 0;
         const limit = 1000;
         const cleanBranch = normalizeString(branchName);
+        const upperBranch = (branchName || '').trim().toUpperCase();
         while (true) {
             const { data, error } = await supabase
                 .from('branch_laboratories')
                 .select('laboratory, category, round')
-                .or(`branch_name.eq.${cleanBranch},branch_name.eq.${branchName.trim()}`)
+                .or(`branch_name.eq.${cleanBranch},branch_name.eq.${branchName.trim()},branch_name.eq.${upperBranch}`)
                 .range(page * limit, (page + 1) * limit - 1);
 
             if (error) {

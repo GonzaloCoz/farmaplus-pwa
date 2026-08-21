@@ -67,7 +67,7 @@ export function AppLayout() {
     const items = [
       {
         id: "dashboard",
-        label: "Dashboard",
+        label: "Inicio",
         group: "Navegación",
         hint: "Vista general de métricas",
         icon: DashboardIcon,
@@ -81,7 +81,7 @@ export function AppLayout() {
         hint: "Ajustes e inventario",
         icon: BarChartIcon,
         keywords: ["inventario", "ciclico", "stock"],
-        onSelect: () => navigate("/cyclic-inventory"),
+        onSelect: () => navigate("/inventario-ciclico"),
       },
     ];
 
@@ -93,7 +93,7 @@ export function AppLayout() {
         hint: "Historial y logs",
         icon: ClipboardIcon,
         keywords: ["reporte", "auditoria", "log"],
-        onSelect: () => navigate("/reports"),
+        onSelect: () => navigate("/reportes"),
       });
     }
 
@@ -105,7 +105,7 @@ export function AppLayout() {
         hint: "Comparación de sucursales",
         icon: ScaleIcon,
         keywords: ["comparativa", "comparacion", "sucursales"],
-        onSelect: () => navigate("/comparison"),
+        onSelect: () => navigate("/comparativa"),
       });
     }
 
@@ -117,7 +117,7 @@ export function AppLayout() {
         hint: "Gestión de vencimientos",
         icon: ClockIcon,
         keywords: ["control", "vencimiento", "fecha"],
-        onSelect: () => navigate("/stock/expiration-control"),
+        onSelect: () => navigate("/control-vencimiento"),
       },
       {
         id: "settings",
@@ -126,7 +126,7 @@ export function AppLayout() {
         hint: "Ajustes de la aplicación",
         icon: SettingsIcon,
         keywords: ["configuracion", "ajustes", "preferencias"],
-        onSelect: () => navigate("/settings"),
+        onSelect: () => navigate("/configuracion"),
       },
       {
         id: "logout",

@@ -428,7 +428,7 @@ export default function CyclicInventoryDetail() {
             if (result.success) {
                 toast.success("Éxito", result.message);
                 setShowAdminPurgeModal(false);
-                navigate('/cyclic-inventory');
+                navigate('/inventario-ciclico');
             } else {
                 toast.error("Error", result.message);
             }
@@ -482,7 +482,7 @@ export default function CyclicInventoryDetail() {
                     // Si es otro laboratorio, guardamos y redirigimos
                     toast.info("Cambio de Laboratorio", `El archivo es de ${fileLabName}. Redirigiendo...`);
                     sessionStorage.setItem('pending_electron_excel', JSON.stringify(data));
-                    navigate(`/cyclic-inventory/${encodeURIComponent(fileLabName)}`);
+                    navigate(`/inventario-ciclico/${encodeURIComponent(fileLabName)}`);
                 }
             });
 

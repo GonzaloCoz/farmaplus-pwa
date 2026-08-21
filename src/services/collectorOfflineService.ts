@@ -71,15 +71,22 @@ export const collectorOfflineService = {
                 console.warn("[CollectorDB] Warning fetching products:", prodErr);
             }
 
+            const productMap = new Map<string, LocalProduct>();
             if (dbProducts && dbProducts.length > 0) {
-                const mappedProducts: LocalProduct[] = dbProducts.map(p => ({
-                    ean: p.ean,
-                    name: p.name,
-                    cost: Number(p.cost || 0),
-                    category: p.category || undefined,
-                    laboratory: p.laboratory || undefined,
-                    id_producto: p.id_producto || undefined
-                }));
+                const mappedProducts: LocalProduct[] = dbProducts.map(p => {
+                    const prod: LocalProduct = {
+                        ean: p.ean,
+                        name: p.name,
+                        cost: Number(p.cost || 0),
+                        category: p.category || undefined,
+                        laboratory: p.laboratory || undefined,
+                        id_producto: p.id_producto || undefined
+                    };
+                    if (p.ean) {
+                        productMap.set(p.ean, prod);
+                    }
+                    return prod;
+                });
                 await collectorDb.products.bulkPut(mappedProducts);
             }
 
@@ -95,21 +102,24 @@ export const collectorOfflineService = {
             }
 
             const items = dbItems || [];
-            const mappedItems: LocalInventoryItem[] = items.map(item => ({
-                id: item.id || crypto.randomUUID(),
-                branch_name: branchName,
-                laboratory: laboratory,
-                ean: item.ean,
-                name: item.name || 'Producto sin nombre',
-                systemQuantity: Number(item.quantity || 0),
-                countedQuantity: Number(item.counted_quantity || item.quantity || 0),
-                cost: Number(item.cost || 0),
-                category: item.category || 'Varios',
-                id_producto: item.id_producto || undefined,
-                status: (item.status as any) || 'pending',
-                updatedAt: item.created_at || new Date().toISOString(),
-                isSynced: true
-            }));
+            const mappedItems: LocalInventoryItem[] = items.map((item: any) => {
+                const prod = productMap.get(item.ean);
+                return {
+                    id: item.id || crypto.randomUUID(),
+                    branch_name: branchName,
+                    laboratory: laboratory,
+                    ean: item.ean,
+                    name: item.name || prod?.name || 'Producto sin nombre',
+                    systemQuantity: Number(item.system_quantity ?? item.quantity ?? 0),
+                    countedQuantity: Number(item.counted_quantity ?? item.quantity ?? 0),
+                    cost: Number(item.cost ?? prod?.cost ?? 0),
+                    category: item.category || prod?.category || 'Varios',
+                    id_producto: item.id_producto || prod?.id_producto || undefined,
+                    status: (item.status as any) || 'pending',
+                    updatedAt: item.created_at || new Date().toISOString(),
+                    isSynced: true
+                };
+            });
 
             // Reemplazar inventario local para este laboratorio
             await collectorDb.transaction('rw', collectorDb.inventories, collectorDb.sessions, async () => {

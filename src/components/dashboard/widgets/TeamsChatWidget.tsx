@@ -26,9 +26,9 @@ También puedo redactar mensajes pre-configurados para que los envíes directame
 
 const DEFAULT_LINKS = [
   { label: "Enviar Alerta de Stock", type: "teams" as const, target: "Hola, he detectado una diferencia de stock importante." },
-  { label: "Ir a Inventarios", type: "navigate" as const, route: "/cyclic-inventory" },
-  { label: "Ver Vencimientos", type: "navigate" as const, route: "/stock/expiration-control" },
-  { label: "Ver Reportes", type: "navigate" as const, route: "/reports" },
+  { label: "Ir a Inventarios", type: "navigate" as const, route: "/inventario-ciclico" },
+  { label: "Ver Vencimientos", type: "navigate" as const, route: "/control-vencimiento" },
+  { label: "Ver Reportes", type: "navigate" as const, route: "/reportes" },
   { label: "Soporte Técnico", type: "teams" as const, target: "Hola, necesito asistencia técnica con el sistema de inventarios." },
   { label: "Centro de Capacitación", type: "navigate" as const, route: "/foro" }
 ];

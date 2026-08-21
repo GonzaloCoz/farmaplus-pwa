@@ -478,7 +478,7 @@ export function useCyclicInventoryController({ labName, round }: UseCyclicInvent
             setIsExcelUploaded(false);
 
             // Redirigir a la lista principal
-            navigate('/cyclic-inventory');
+            navigate('/inventario-ciclico');
 
             const newHistory = await cyclicInventoryService.getAdjustmentHistory(branchName, labName);
             // Non-destructive: React Query will refetch via invalidation
@@ -538,7 +538,7 @@ export function useCyclicInventoryController({ labName, round }: UseCyclicInvent
 
             setShowDeleteDialog(false);
             notify.success("Operación exitosa", "Datos reiniciados correctamente.");
-            navigate('/cyclic-inventory');
+            navigate('/inventario-ciclico');
         } catch (error) {
             console.error("Error resetting data:", error);
             notify.error("Error", "Error al reiniciar datos. Intente de nuevo.");

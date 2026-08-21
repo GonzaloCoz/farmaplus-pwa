@@ -7,10 +7,10 @@ import { useUser } from "@/contexts/UserContext";
 import { ZebraIcon } from "@/components/icons/ZebraIcon";
 
 const navItems = [
-    { to: "/", icon: LayoutGrid, label: "Dashboard" },
+    { to: "/", icon: LayoutGrid, label: "Inicio" },
     { to: "/stock", icon: Upload, label: "Stock" },
-    { to: "/cyclic-inventory", icon: FileText, label: "Cíclico" },
-    { to: "/reports", icon: BarChart3, label: "Reportes", roles: ['admin', 'mod'] as const },
+    { to: "/inventario-ciclico", icon: FileText, label: "Cíclico" },
+    { to: "/reportes", icon: BarChart3, label: "Reportes", roles: ['admin', 'mod'] as const },
 ];
 
 export function BottomNavBar() {

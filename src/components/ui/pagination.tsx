@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 const Pagination = ({ className, ...props }: React.ComponentProps<"nav">) => (
   <nav
     role="navigation"
-    aria-label="pagination"
+    aria-label="Paginación"
     className={cn("mx-auto flex w-full justify-center", className)}
     {...props}
   />
@@ -71,7 +71,7 @@ const PaginationPrevious = ({
   ...props
 }: React.ComponentProps<typeof PaginationLink>) => (
   <PaginationLink
-    aria-label="Go to previous page"
+    aria-label="Página anterior"
     className={cn("gap-1", className)}
     render={render}
     {...props}
@@ -89,7 +89,7 @@ const PaginationNext = ({
   ...props
 }: React.ComponentProps<typeof PaginationLink>) => (
   <PaginationLink
-    aria-label="Go to next page"
+    aria-label="Página siguiente"
     className={cn("gap-1", className)}
     render={render}
     {...props}

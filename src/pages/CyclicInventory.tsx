@@ -251,7 +251,7 @@ export default function CyclicInventory() {
           notify.info("Archivo Detectado", `Redirigiendo a ${laboratory}...`);
           // Almacenamos los datos temporalmente para que el detalle los pueda recoger tras la navegación
           sessionStorage.setItem('pending_electron_excel', JSON.stringify(data));
-          navigate(`/cyclic-inventory/${encodeURIComponent(laboratory)}`);
+          navigate(`/inventario-ciclico/${encodeURIComponent(laboratory)}`);
         } else {
           notify.error("Error", "No se pudo identificar el laboratorio en el archivo enviado.");
         }
@@ -1088,7 +1088,7 @@ export default function CyclicInventory() {
                       differenceValue={lab.differenceValue}
                       status={lab.status}
                       progress={lab.progress}
-                      onClick={() => navigate(`/cyclic-inventory/${encodeURIComponent(lab.labName)}`)}
+                      onClick={() => navigate(`/inventario-ciclico/${encodeURIComponent(lab.labName)}`)}
                       onMouseEnter={() => prefetchLab(user?.branchSheet || "", lab.labName)}
                     />
                   ))}
@@ -1115,7 +1115,7 @@ export default function CyclicInventory() {
                           <TableRow
                             key={lab.labName}
                             className="cursor-pointer border-t border-border/40 first:border-none"
-                            onClick={() => navigate(`/cyclic-inventory/${encodeURIComponent(lab.labName)}`)}
+                            onClick={() => navigate(`/inventario-ciclico/${encodeURIComponent(lab.labName)}`)}
                           >
                             <TableCell className="pl-6 whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]">
                               <span className="font-semibold text-foreground/90">{lab.labName}</span>

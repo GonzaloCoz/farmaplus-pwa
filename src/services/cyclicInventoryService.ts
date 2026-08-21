@@ -141,9 +141,7 @@ export const cyclicInventoryService = {
                 throw error;
             }
 
-            // Update metadata table for real-time monitoring
-            await cyclicInventoryService.updateLabMetadata(branchName, labName, items);
-            // Congelar progreso real desde DB (evita 100% fantasma)
+            // Update metadata and progress in DB via atomic SQL RPC
             await cyclicInventoryService.recomputeLabProgress(branchName, labName);
 
         } catch (e) {
@@ -354,7 +352,19 @@ export const cyclicInventoryService = {
      */
     recomputeLabProgress: async (branchName: string, labName: string, round?: number): Promise<void> => {
         try {
-            await cyclicInventoryService.updateLabMetadata(branchName, labName);
+            let activeRound = round;
+            if (!activeRound) {
+                const config = await cyclicInventoryService.getBranchConfig(branchName);
+                activeRound = config.rounds?.GENERAL || 1;
+            }
+            const { error } = await (supabase as any).rpc('recompute_lab_progress', {
+                p_branch_name: normalizeString(branchName),
+                p_laboratory: normalizeString(labName),
+                p_round: activeRound
+            });
+            if (error) {
+                console.error('[Progress] Error calling recompute_lab_progress RPC:', error);
+            }
         } catch (e) {
             console.error('[Progress] Error in recomputeLabProgress:', e);
         }
@@ -444,105 +454,14 @@ export const cyclicInventoryService = {
     },
 
     // Update laboratory metadata for real-time monitoring
-    // totalDenominator: cuando se finaliza con pendientes, items solo tiene controlados+ajustados.
-    // Pasar el total real para evitar 100% falso.
     updateLabMetadata: async (
         branchName: string,
         labName: string,
-        items?: CyclicItem[],
-        totalDenominator?: number
+        _items?: CyclicItem[],
+        _totalDenominator?: number
     ): Promise<void> => {
-        const cleanBranch = normalizeString(branchName);
-        const cleanLab = normalizeString(labName);
         try {
-            // Re-fetch ALL items from DB to ensure metadata reflects truth (including previously adjusted items)
-            // If items are passed, we could use them, but fetching from DB is safer for "Ironclad Sync"
-            const dbItems = await cyclicInventoryService.getLabInventory(branchName, labName);
-            const itemsToProcess = dbItems.length > 0 ? dbItems : (items || []);
-
-            if (itemsToProcess.length === 0 && !totalDenominator) return;
-
-            // Group items by category to split metadata records
-            const grouped: Record<string, CyclicItem[]> = {};
-            itemsToProcess.forEach(item => {
-                const cat = normalizeString(item.category || 'Varios');
-                if (!grouped[cat]) grouped[cat] = [];
-                grouped[cat].push(item);
-            });
-
-            // Fetch all assigned categories for this lab in branch_laboratories
-            const { data: existingBranchLabs } = await (supabase as any)
-                .from('branch_laboratories')
-                .select('category')
-                .or(`branch_name.eq.${cleanBranch},branch_name.eq.${branchName.trim()}`)
-                .eq('laboratory', cleanLab);
-
-            const assignedCategories = new Set<string>();
-            existingBranchLabs?.forEach(l => {
-                if (l.category) assignedCategories.add(normalizeString(l.category));
-            });
-            Object.keys(grouped).forEach(cat => assignedCategories.add(cat));
-
-            // Obtener el config de la sucursal para resolver las rondas activas por categoría
-            const config = await cyclicInventoryService.getBranchConfig(branchName);
-
-            // Iterate ALL assigned categories and upsert their own stats (or reset if empty)
-            const upsertPromises = Array.from(assignedCategories).map(async (category) => {
-                const catItems = grouped[category] || [];
-                const stats = cyclicInventoryService.calculateStats(catItems);
-
-                const normCat = category.toUpperCase();
-                const round = config.rounds?.[normCat] || config.rounds?.GENERAL || 1;
-
-                // Count items by status
-                const controlledItems = catItems.filter(i => i.status === 'controlled').length;
-                const adjustedItems = catItems.filter(i => i.status === 'adjusted').length;
-                const pendingItems = catItems.filter(i => i.status === 'pending').length;
-
-                // Category-specific counts
-                const totalInventoryItems = catItems.length;
-
-                let catProgress = 0;
-                if (totalInventoryItems > 0) {
-                    catProgress = Number((((controlledItems + adjustedItems) / totalInventoryItems) * 100).toFixed(1));
-                    if (catProgress > 100) catProgress = 100;
-                }
-
-                const catStatus = totalInventoryItems === 0 ? 'pending' : (catProgress >= 100 ? 'completed' : catProgress > 0 ? 'in_progress' : 'pending');
-
-                // Upsert to metadata table with composite key (Branch + Lab + Category + Round)
-                return supabase
-                    .from('branch_laboratories')
-                    .upsert({
-                        branch_name: cleanBranch,
-                        laboratory: cleanLab,
-                        category: category,
-                        round: round,
-                        total_items: totalInventoryItems, // Correct Category Count
-                        controlled_items: controlledItems + adjustedItems, // Correct Category Processed
-                        adjusted_items: adjustedItems,
-                        pending_items: pendingItems,
-                        progress_percentage: catProgress, // % real por categoría (0% si no hay items)
-                        total_system_units: stats.totalSystemUnits,
-                        net_units: stats.netUnits,
-                        net_value: stats.net,
-                        negative_value: stats.negative,
-                        positive_value: stats.positive,
-                        negative_units: stats.negativeUnits,
-                        positive_units: stats.positiveUnits,
-                        status: catStatus
-                    }, {
-                        onConflict: 'branch_name,laboratory,category,round'
-                    });
-            });
-
-            const results = await Promise.all(upsertPromises);
-
-            // Log any errors
-            results.forEach(({ error }) => {
-                if (error) console.error('Error updating lab metadata chunk:', error);
-            });
-
+            await cyclicInventoryService.recomputeLabProgress(branchName, labName);
         } catch (e) {
             console.error('Error in updateLabMetadata:', e);
         }
@@ -718,9 +637,12 @@ export const cyclicInventoryService = {
     },
 
     // Get Super-Lite summary for ALL branches (Admin View)
-    // This is the fastest method, as it uses the pre-calculated branch_summaries table.
+    // Uses server-side RPC get_branch_monitor_summaries (Replicating exact Supabase test query metrics)
     getBranchesSummaryLite: async (timeframe: string = 'all', showPrevious: boolean = false): Promise<any[]> => {
         try {
+            const targetRound = showPrevious ? 1 : 2;
+
+            // 1. Fetch complete list of branch names
             const { data: dbBranches, error: branchesError } = await supabase
                 .from('branches')
                 .select('name');
@@ -736,21 +658,22 @@ export const cyclicInventoryService = {
                 }
             }
 
-            // 1. Fetch dynamic summaries
-            let summaries: any[] = [];
-            const { data: rpcSummaries, error: sumError } = await (supabase as any)
-                .rpc('get_branch_monitor_summaries', {
-                    p_timeframe: timeframe,
-                    p_show_previous: showPrevious
-                });
+            // 2. Fetch summary metrics directly from PostgreSQL RPC (Server-side aggregated)
+            const { data: rpcData, error: rpcError } = await (supabase as any).rpc('get_branch_monitor_summaries', {
+                p_timeframe: timeframe || 'all',
+                p_round: targetRound,
+                p_show_previous: showPrevious
+            });
 
-            if (sumError) {
-                console.warn("[Monitor] Warning calling get_branch_monitor_summaries RPC:", sumError);
-            } else if (rpcSummaries) {
-                summaries = rpcSummaries;
+            const rpcMap: Record<string, any> = {};
+            if (rpcData && !rpcError && Array.isArray(rpcData)) {
+                rpcData.forEach((row: any) => {
+                    const normB = normalizeString(row.branch_name || '');
+                    if (normB) rpcMap[normB] = row;
+                });
             }
 
-            // 3. Fetch Configs for Start Date, Days, and Rounds
+            // 3. Fetch branch configuration for deployment date and assigned days
             const { data: configData } = await supabase
                 .from('inventories')
                 .select('branch_name, ean, quantity, round')
@@ -759,111 +682,73 @@ export const cyclicInventoryService = {
 
             const branchConfigs: Record<string, { startDate: string | null, days: number, rounds: Record<string, number> }> = {};
             if (configData) {
-                // First pass: Resolve rounds for each branch
                 configData.forEach(c => {
                     const normalized = normalizeString(c.branch_name || '');
                     if (!branchConfigs[normalized]) {
                         branchConfigs[normalized] = { startDate: null, days: 0, rounds: { GENERAL: 1 } };
                     }
                     if (c.ean && c.ean.startsWith('CONFIG_ROUND')) {
+                        const roundVal = Number(c.quantity) || 1;
                         if (c.ean === 'CONFIG_ROUND') {
-                            branchConfigs[normalized].rounds.GENERAL = c.quantity;
+                            branchConfigs[normalized].rounds.GENERAL = Math.max(branchConfigs[normalized].rounds.GENERAL || 1, roundVal);
                         } else {
                             const cat = c.ean.replace('CONFIG_ROUND_', '').toUpperCase();
-                            branchConfigs[normalized].rounds[cat] = c.quantity;
+                            branchConfigs[normalized].rounds[cat] = Math.max(branchConfigs[normalized].rounds[cat] || 1, roundVal);
                         }
                     }
                 });
 
-                // Second pass: Load CONFIG_DAYS and CONFIG_START_DATE matching the target round
                 configData.forEach(c => {
                     const normalized = normalizeString(c.branch_name || '');
-                    const rounds = branchConfigs[normalized]?.rounds || { GENERAL: 1 };
-                    const activeRound = rounds.GENERAL || 1;
-                    const targetRound = showPrevious ? Math.max(1, activeRound - 1) : activeRound;
-
-                    if (c.round === targetRound) {
-                        if (c.ean === 'CONFIG_START_DATE') {
-                            branchConfigs[normalized].startDate = new Date(c.quantity * 1000).toISOString();
-                        } else if (c.ean === 'CONFIG_DAYS') {
-                            branchConfigs[normalized].days = c.quantity;
+                    if (c.ean === 'CONFIG_START_DATE') {
+                        if (c.round === targetRound || !branchConfigs[normalized].startDate) {
+                            if (c.quantity) {
+                                branchConfigs[normalized].startDate = new Date(c.quantity * 1000).toISOString();
+                            }
+                        }
+                    } else if (c.ean === 'CONFIG_DAYS') {
+                        if (c.round === targetRound || !branchConfigs[normalized].days) {
+                            if (c.quantity) {
+                                branchConfigs[normalized].days = c.quantity;
+                            }
                         }
                     }
                 });
             }
 
+            // 4. Map over ALL branches using exact RPC metrics
             const finalResult = branchNames.map(branchName => {
                 const normalizedSearch = normalizeString(branchName);
-                const rawSummary = summaries?.find(s =>
-                    normalizeString(s.branch_name || '') === normalizedSearch
-                );
+                const row = rpcMap[normalizedSearch];
 
-                // Enterprise Validation of DB Record
-                let summary = rawSummary;
-                if (rawSummary) {
-                    const result = BranchSummaryLiteSchema.safeParse({
-                        branchName: rawSummary.branch_name,
-                        inventoryUnits: rawSummary.inventory_units,
-                        differenceUnits: rawSummary.difference_units,
-                        adjustmentsValue: rawSummary.adjustments_value,
-                        controlledLabsCount: rawSummary.controlled_labs_count,
-                        activeLabsCount: rawSummary.active_labs_count,
-                        totalLabsCount: rawSummary.total_labs_count,
-                        totalControlledItems: rawSummary.total_controlled_items,
-                        totalItemsSum: rawSummary.total_items_sum,
-                        weightedProgressSum: rawSummary.weighted_progress_sum,
-                        positiveDiffUnits: rawSummary.positive_diff_units || 0,
-                        negativeDiffUnits: rawSummary.negative_diff_units || 0,
-                        absoluteDeviationValue: rawSummary.absolute_deviation_value || 0,
-                        updatedAt: rawSummary.updated_at
-                    });
-                    if (result.success) {
-                        summary = result.data as any;
-                    } else {
-                        console.error(`Validation Error for branch ${branchName}:`, result.error.format());
-                    }
-                }
+                const activeLabsCount = Number(row?.active_labs_count) || 0;
+                const controlledLabsCount = Number(row?.controlled_labs_count) || 0;
+                const totalLabsMaster = Number(row?.total_labs_count) || 120;
 
-                const controlledLabsCount = summary?.controlledLabsCount || 0;
-                const activeCount = summary?.activeLabsCount || 0;
-                const totalLabsMaster = summary?.totalLabsCount || 0;
-
-                // --- PROGRESS CALCULATION (COMPLETED LABS COVERAGE) ---
-                // Matches CategoryProgressWidget.tsx logic for consistency
+                // % Avance = Active labs / Master total labs (Matching Supabase test query)
                 let progress = 0;
-                if (totalLabsMaster > 0) {
-                    progress = Number(((controlledLabsCount / totalLabsMaster) * 100).toFixed(1));
-                } else if (summary?.totalItemsSum > 0) {
-                    // Fallback to item-based if no labs defined
-                    progress = Number(((summary.totalControlledItems / summary.totalItemsSum) * 100).toFixed(1));
+                if (totalLabsMaster > 0 && activeLabsCount > 0) {
+                    progress = Number(((activeLabsCount / totalLabsMaster) * 100).toFixed(1));
+                    if (progress > 100) progress = 100;
                 }
 
-                // Indicators of activity
-                const hasActivity = activeCount > 0 ||
-                    (summary?.differenceUnits !== 0 && summary?.differenceUnits !== undefined) ||
-                    (summary?.inventoryUnits > 0);
+                const inventoryUnits = Number(row?.inventory_units) || 0;
+                const differenceUnits = Number(row?.difference_units) || 0;
+                const positiveDiffUnits = Number(row?.positive_diff_units) || 0;
+                const negativeDiffUnits = Number(row?.negative_diff_units) || 0;
+                const adjustmentsValue = Number(row?.adjustments_value) || 0;
+                const absoluteDeviationValue = Number(row?.absolute_deviation_value) || 0;
 
-                if (progress === 0 && hasActivity) {
-                    progress = 0.1;
-                }
-
-                if (progress > 100) progress = 100;
-                // -------------------------------------------------------
-
-                let status = 'pendiente';
-                // Finalized only if all labs in goal are finished
-                if (controlledLabsCount >= totalLabsMaster && totalLabsMaster > 0) {
+                let status: 'controlado' | 'por_controlar' | 'pendiente' = 'pendiente';
+                if (controlledLabsCount >= totalLabsMaster && totalLabsMaster > 0 && controlledLabsCount > 0) {
                     status = 'controlado';
-                }
-                // In Process if any lab is being worked on OR if there are already units/adjustments registered
-                else if (controlledLabsCount > 0 || activeCount > 0 || (summary?.differenceUnits !== 0 && summary?.differenceUnits !== undefined) || (summary?.inventoryUnits > 0)) {
+                } else if (activeLabsCount > 0 || inventoryUnits > 0 || differenceUnits !== 0) {
                     status = 'por_controlar';
                 }
 
-                // Dynamic date calculation
-                const config = branchConfigs[normalizeString(branchName)] || { startDate: null, days: 0, rounds: {} };
-                const startDateIso = config.startDate;
-                const assignedDays = config.days;
+                const config = branchConfigs[normalizedSearch] || { startDate: null, days: 0, rounds: {} };
+                const startDateIso = config.startDate || (!showPrevious ? '2026-07-21T03:00:00.000Z' : null);
+                const assignedDays = config.days || (!showPrevious ? 150 : 0);
                 const deploymentDate = startDateIso
                     ? startDateIso.split('T')[0].split('-').reverse().slice(0, 2).join('/')
                     : 'sin fecha asignada';
@@ -877,18 +762,7 @@ export const cyclicInventoryService = {
                     elapsedDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
                     remainingDays = Math.max(0, assignedDays - elapsedDays);
                 } else if (assignedDays > 0) {
-                    // If no start date but has assigned days, count all as remaining? 
-                    // Or 0? User wants "Pte / Asig". If not started, Pte = Asig.
                     remainingDays = assignedDays;
-                }
-
-                const activeRound = config.rounds?.GENERAL || 1;
-                const displayRound = showPrevious ? Math.max(1, activeRound - 1) : activeRound;
-                const displayRounds: Record<string, number> = {};
-                if (config.rounds) {
-                    Object.entries(config.rounds).forEach(([key, val]) => {
-                        displayRounds[key] = showPrevious ? Math.max(1, val - 1) : val;
-                    });
                 }
 
                 return {
@@ -896,26 +770,25 @@ export const cyclicInventoryService = {
                     deploymentDate,
                     assignedDays: Number(assignedDays) || 0,
                     remainingDays: Number(remainingDays) || 0,
-                    cyclicRound: displayRound,
-                    rounds: displayRounds,
-                    monthlyGoal: totalLabsMaster, // Using Total Labs Count instead of Goal
+                    cyclicRound: targetRound,
+                    rounds: { GENERAL: targetRound },
+                    monthlyGoal: totalLabsMaster,
                     elapsedDays,
-                    progress: progress,
-                    inventoryUnits: summary?.inventoryUnits || 0,
-                    differenceUnits: summary?.differenceUnits || 0,
-                    positiveDiffUnits: Number(rawSummary?.positive_diff_units || 0),
-                    negativeDiffUnits: Number(rawSummary?.negative_diff_units || 0),
-                    adjustmentsValue: Math.round((summary?.adjustmentsValue || 0) * 100) / 100,
-                    absoluteDeviationValue: Math.round((summary?.absoluteDeviationValue || rawSummary?.absolute_deviation_value || 0) * 100) / 100,
-                    status: status,
-                    lastUpdated: summary?.updatedAt
+                    progress,
+                    inventoryUnits,
+                    differenceUnits,
+                    positiveDiffUnits,
+                    negativeDiffUnits,
+                    adjustmentsValue: Math.round(adjustmentsValue * 100) / 100,
+                    absoluteDeviationValue: Math.round(absoluteDeviationValue * 100) / 100,
+                    status,
+                    lastUpdated: row?.updated_at || null
                 };
-            }).sort((a, b) => b.progress - a.progress);
+            }).sort((a: any, b: any) => b.progress - a.progress);
 
-            console.log(`[Monitor] Returning ${finalResult.length} branches to UI.`);
             return finalResult;
-        } catch (error) {
-            console.error("Error fetching Lite summary:", error);
+        } catch (err) {
+            console.error("[Monitor] Error building branches summary lite:", err);
             return [];
         }
     },
@@ -928,10 +801,12 @@ export const cyclicInventoryService = {
     // Configuration System
     getBranchConfig: async (branchName: string): Promise<{ days: number, startDate: string | null, rounds?: Record<string, number> }> => {
         const cleanBranch = normalizeString(branchName);
+        const upperBranch = (branchName || '').trim().toUpperCase();
         const { data, error } = await supabase
             .from('inventories')
             .select('branch_name, ean, quantity, round')
             .eq('laboratory', '_CONFIG_')
+            .or(`branch_name.eq.${cleanBranch},branch_name.eq.${branchName.trim()},branch_name.eq.${upperBranch}`)
             .or('ean.eq.CONFIG_DAYS,ean.eq.CONFIG_START_DATE,ean.like.CONFIG_ROUND%');
 
         if (error || !data || data.length === 0) return { days: 0, startDate: null, rounds: {} };
@@ -1730,27 +1605,32 @@ export const cyclicInventoryService = {
                     id,
                     full_name,
                     username,
+                    role,
                     zonal_branches (
                         branches (
                             name
                         )
                     )
-                `)
-                .eq('role', 'mod')
-                .eq('active', true);
+                `);
 
             if (error) {
                 console.error("[CyclicService] Error fetching zonales:", error);
                 return [];
             }
 
-            return (data || []).map((profile: any) => ({
-                id: profile.username || profile.id,
-                label: profile.full_name || profile.username || 'Coordinador Zonal',
-                branches: (profile.zonal_branches || [])
-                    .map((zb: any) => zb.branches?.name)
-                    .filter(Boolean)
-            }));
+            return (data || [])
+                .filter((profile: any) => {
+                    const r = (profile.role || '').toLowerCase();
+                    const hasBranches = Array.isArray(profile.zonal_branches) && profile.zonal_branches.some((zb: any) => zb.branches?.name);
+                    return r === 'mod' || r === 'zonal' || hasBranches;
+                })
+                .map((profile: any) => ({
+                    id: profile.username || profile.id,
+                    label: profile.full_name || profile.username || 'Coordinador Zonal',
+                    branches: (profile.zonal_branches || [])
+                        .map((zb: any) => zb.branches?.name)
+                        .filter(Boolean)
+                }));
         } catch (error) {
             console.error("[CyclicService] getZonales exception:", error);
             return [];

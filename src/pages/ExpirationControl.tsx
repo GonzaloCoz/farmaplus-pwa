@@ -166,7 +166,7 @@ export default function ExpirationControl() {
 
         await finishSession();
         notify.success("Operación exitosa", "Control guardado exitosamente");
-        navigate('/reports');
+        navigate('/reportes');
     };
 
     const formatExpiryDate = (date: string) => {

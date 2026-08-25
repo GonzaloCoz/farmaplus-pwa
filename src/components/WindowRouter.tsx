@@ -25,6 +25,7 @@ const PostDetail = lazy(() => import("../pages/PostDetail"));
 const AdminEditor = lazy(() => import("../pages/AdminEditor"));
 const ComponentsShowcase = lazy(() => import("@/pages/ComponentsShowcase"));
 const Sandbox = lazy(() => import("@/pages/Sandbox"));
+const RequestsPage = lazy(() => import("@/pages/RequestsPage"));
 
 export function WindowRouter({ currentPath }: { initialPath: string, currentPath: string, onPathChange: (path: string) => void }) {
     return (
@@ -34,6 +35,7 @@ export function WindowRouter({ currentPath }: { initialPath: string, currentPath
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/componentes" element={<ComponentsShowcase />} />
                     <Route path="/sandbox" element={<Sandbox />} />
+                    <Route path="/solicitudes" element={<RequestsPage />} />
                     <Route path="/stock" element={<Stock />} />
                     <Route path="/stock/colector" element={<PreCount />} />
                     <Route path="/stock/recuento-movil" element={<StockRecountMobile />} />

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { HomeSmile as Home, Upload01 as Upload, BarChart01 as BarChart3, Clock, File02 as FileText, TrendUp01 as TrendingUp } from '@untitledui/icons';
+import { HomeSmile as Home, Upload01 as Upload, BarChart01 as BarChart3, Clock, File02 as FileText, TrendUp01 as TrendingUp, FileSearch02 } from '@untitledui/icons';
 import { NavLink } from "@/components/NavLink";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -13,6 +13,7 @@ const menuItems = [
   { title: "Stock", url: "/stock", icon: Upload },
   { title: "Control de Vencimiento", url: "/control-vencimiento", icon: Clock },
   { title: "Inventarios Cíclicos", url: "/inventario-ciclico", icon: BarChart3 },
+  { title: "Solicitudes", url: "/solicitudes", icon: FileSearch02 },
   { title: "Comparativa", url: "/comparativa", icon: TrendingUp, roles: ['admin'] as const },
   { title: "Reportes", url: "/reportes", icon: FileText, roles: ['admin', 'mod'] as const },
 ];

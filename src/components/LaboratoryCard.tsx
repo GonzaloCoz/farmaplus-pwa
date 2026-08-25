@@ -2,6 +2,14 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { CounterAnimation } from "./CounterAnimation";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { DotsHorizontal, FileSearch02 } from '@untitledui/icons';
+import {
+    DropdownMenu,
+    DropdownTrigger,
+    DropdownContent,
+    MenuItem,
+} from "@/components/ui/dropdown";
 
 export type LaboratoryStatus = "controlado" | "por_controlar" | "pendiente";
 
@@ -15,6 +23,9 @@ interface LaboratoryCardProps {
     onClick?: () => void;
     onMouseEnter?: () => void;
     className?: string;
+    onRequestRemoval?: (labName: string) => void;
+    disabled?: boolean;
+    isDischarged?: boolean;
 }
 
 export function LaboratoryCard({
@@ -27,7 +38,11 @@ export function LaboratoryCard({
     onClick,
     onMouseEnter,
     className,
+    onRequestRemoval,
+    disabled,
+    isDischarged,
 }: LaboratoryCardProps) {
+    const isInactive = disabled || isDischarged;
     const displayProgress = progress || 0;
 
     const totalAdjusted = positiveValue + Math.abs(negativeValue);
@@ -72,31 +87,76 @@ export function LaboratoryCard({
     return (
         <Card
             className={cn(
-                "group cursor-pointer transition-all duration-200 active:scale-[0.99] hover:border-border hover:shadow-md flex flex-col gap-3 p-5",
+                "group transition-all duration-200 flex flex-col gap-3 p-5",
+                isInactive 
+                    ? "opacity-55 grayscale-[25%] bg-muted/15 border-dashed border-border/60 hover:border-border/60 hover:shadow-none cursor-not-allowed select-none" 
+                    : "cursor-pointer active:scale-[0.99] hover:border-border hover:shadow-md",
                 className
             )}
-            onClick={onClick}
-            onMouseEnter={onMouseEnter}
+            onClick={isInactive ? (e) => { e.preventDefault(); e.stopPropagation(); } : onClick}
+            onMouseEnter={isInactive ? undefined : onMouseEnter}
         >
             {/* Header */}
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center justify-between gap-2">
                 <h3
-                    className="font-semibold text-[13px] text-muted-foreground tracking-tight truncate group-hover:text-primary transition-colors max-w-[60%]"
+                    className={cn(
+                        "font-semibold text-[13px] tracking-tight truncate flex-1 min-w-0 transition-colors",
+                        isInactive ? "text-muted-foreground/70 line-through" : "text-muted-foreground group-hover:text-primary"
+                    )}
                     title={name}
                 >
                     {name}
                 </h3>
-                <Badge
-                    variant="dot"
-                    size="sm"
-                    color={status === "controlado" ? "green" : status === "por_controlar" ? "blue" : "gray"}
-                    className={cn(
-                        "shrink-0 font-semibold",
-                        status === "por_controlar" && "[&>span:first-child]:animate-pulse"
+                <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    {isInactive ? (
+                        <Badge
+                            variant="outline"
+                            color="rose"
+                            size="sm"
+                            className="shrink-0 font-semibold border-rose-500/30 text-rose-500 bg-rose-500/10 text-[10px] uppercase"
+                        >
+                            Baja Aprobada
+                        </Badge>
+                    ) : (
+                        <Badge
+                            variant="dot"
+                            size="sm"
+                            color={status === "controlado" ? "green" : status === "por_controlar" ? "blue" : "gray"}
+                            className={cn(
+                                "shrink-0 font-semibold",
+                                status === "por_controlar" && "[&>span:first-child]:animate-pulse"
+                            )}
+                        >
+                            {displayProgress}%
+                        </Badge>
                     )}
-                >
-                    {displayProgress}%
-                </Badge>
+
+                    {onRequestRemoval && !isInactive && (
+                        <DropdownMenu>
+                            <DropdownTrigger render={
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="h-7 w-7 p-0 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors shrink-0"
+                                    title="Opciones"
+                                >
+                                    <DotsHorizontal className="size-4" />
+                                </Button>
+                            } />
+                            <DropdownContent align="end" className="w-56">
+                                <MenuItem
+                                    index={0}
+                                    icon={FileSearch02}
+                                    label="Solicitar baja de laboratorio"
+                                    onSelect={() => {
+                                        onRequestRemoval(name);
+                                    }}
+                                />
+                            </DropdownContent>
+                        </DropdownMenu>
+                    )}
+                </div>
             </div>
 
             {/* Diferencia neta */}

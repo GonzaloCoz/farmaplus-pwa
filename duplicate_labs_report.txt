@@ -1,3 +1,0 @@
---- Duplicate Laboratories Report ---
-
-No laboratory duplicates found (differing only by accents).

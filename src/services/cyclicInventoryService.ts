@@ -31,11 +31,11 @@ export interface CyclicInventoryStats {
     positiveUnits: number;
     netUnits: number;
 
-    // Extra computed metrics
     adjustmentCount?: number;
     ira?: number;
     systemValue?: number;
     round?: number;
+    isDischarged?: boolean;
 }
 
 export interface CyclicItem {
@@ -60,22 +60,34 @@ export const cyclicInventoryService = {
         try {
             console.log(`[CyclicService] getLabInventory (v2 RPC) for ${labName} at ${branchName}, round: ${round}`);
             
-            // Use the NEW ROBUST RPC for accent-insensitive and case-insensitive matching
-            const { data, error } = await (supabase as any).rpc('get_lab_inventory_v2', {
-                p_branch_name: branchName,
-                p_laboratory: labName,
-                p_round: round !== undefined ? round : null
-            });
+            // Loop with pagination to retrieve ALL items regardless of PostgREST 1000 max-rows limit
+            let allData: any[] = [];
+            let page = 0;
+            const limit = 1000;
 
-            if (error) {
-                console.error(`Error loading inventory for ${labName}:`, error);
-                return [];
+            while (true) {
+                const { data, error } = await (supabase as any).rpc('get_lab_inventory_v2', {
+                    p_branch_name: branchName,
+                    p_laboratory: labName,
+                    p_round: round !== undefined ? round : null
+                }).range(page * limit, (page + 1) * limit - 1);
+
+                if (error) {
+                    console.error(`Error loading inventory page ${page} for ${labName}:`, error);
+                    break;
+                }
+
+                if (!data || data.length === 0) break;
+
+                allData = allData.concat(data);
+                if (data.length < limit) break;
+                page++;
             }
 
-            console.log(`[CyclicService] Found ${data?.length || 0} rows in DB (v2)`);
+            console.log(`[CyclicService] Found ${allData.length} total rows in DB (v2)`);
 
             // Map RPC result to CyclicItem
-            return data.map((item: any) => {
+            return allData.map((item: any) => {
                  const mappedItem = {
                     id: item.id,
                     ean: item.ean,
@@ -111,34 +123,50 @@ export const cyclicInventoryService = {
     // Save inventory (Upsert)
     saveInventory: async (branchName: string, labName: string, items: CyclicItem[]) => {
         try {
-            // Prepare items payload for the RPC function
-            const rpcItems = items.map(item => ({
-                ean: item.ean,
-                name: item.name,
-                category: item.category,
-                cost: item.cost || 0,
-                countedQuantity: item.countedQuantity,
-                systemQuantity: item.systemQuantity,
-                status: item.status,
-                wasReadjusted: item.wasReadjusted || false,
-                readjustmentReason: item.readjustmentReason,
-                shortageId: item.shortageId,
-                surplusId: item.surplusId,
-                id_producto: item.id_producto
-            }));
+            // Prepare items payload for the RPC function with dual casing for bulletproof SQL matching
+            const rpcItems = items.map(item => {
+                const counted = (item.countedQuantity !== undefined && item.countedQuantity !== null)
+                    ? item.countedQuantity 
+                    : (item.systemQuantity ?? 0);
+                const system = item.systemQuantity ?? 0;
 
-            // Call the database function (RPC V2)
-            // This handles BOTH product creation/update and inventory upsert atomically
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { error } = await (supabase as any).rpc('save_cyclic_inventory_v2', {
-                p_branch_name: normalizeString(branchName),
-                p_laboratory: normalizeString(labName),
-                p_items: rpcItems as any
+                return {
+                    ean: item.ean,
+                    name: item.name,
+                    category: item.category,
+                    cost: item.cost || 0,
+                    countedQuantity: counted,
+                    counted_quantity: counted,
+                    systemQuantity: system,
+                    system_quantity: system,
+                    status: item.status || 'pending',
+                    wasReadjusted: item.wasReadjusted || false,
+                    was_readjusted: item.wasReadjusted || false,
+                    readjustmentReason: item.readjustmentReason,
+                    readjustment_reason: item.readjustmentReason,
+                    shortageId: item.shortageId,
+                    shortage_id: item.shortageId,
+                    surplusId: item.surplusId,
+                    surplus_id: item.surplusId,
+                    id_producto: item.id_producto
+                };
             });
 
-            if (error) {
-                console.error('Error calling save_cyclic_inventory_v2 RPC:', error);
-                throw error;
+            // Call the database function (RPC V2) in chunks to avoid Postgres statement timeouts on large datasets (e.g. L'Oreal)
+            const CHUNK_SIZE = 250;
+            for (let i = 0; i < rpcItems.length; i += CHUNK_SIZE) {
+                const chunk = rpcItems.slice(i, i + CHUNK_SIZE);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const { error } = await (supabase as any).rpc('save_cyclic_inventory_v2', {
+                    p_branch_name: normalizeString(branchName),
+                    p_laboratory: normalizeString(labName),
+                    p_items: chunk as any
+                });
+
+                if (error) {
+                    console.error('Error calling save_cyclic_inventory_v2 RPC on chunk:', error);
+                    throw error;
+                }
             }
 
             // Update metadata and progress in DB via atomic SQL RPC

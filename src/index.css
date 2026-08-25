@@ -429,6 +429,18 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+html.is-tauri,
+html.is-tauri body,
+html.is-tauri #root {
+  background-color: var(--surface-2) !important;
+  overflow: hidden !important;
+  scrollbar-gutter: auto !important;
+}
+
+html.is-tauri {
+  scrollbar-gutter: auto !important;
+}
+
 h1,
 h2,
 h3,

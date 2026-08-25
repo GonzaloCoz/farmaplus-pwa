@@ -28,6 +28,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Stock = lazy(() => import("./pages/Stock"));
 const PreCount = lazy(() => import("./pages/PreCount"));
+const PreCountAlpha = lazy(() => import("./pages/PreCountAlpha"));
 const StockImport = lazy(() => import("./pages/StockImport"));
 const StockRecountMobile = lazy(() => import("./pages/StockRecountMobile"));
 const ExpirationControl = lazy(() => import("./pages/ExpirationControl"));
@@ -160,7 +161,18 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
+            <Route
+              path="stock/colector-alpha"
+              element={
+                <Suspense fallback={<DashboardSkeleton />}>
+                  <PageTransition>
+                    <PreCountAlpha />
+                  </PageTransition>
+                </Suspense>
+              }
+            />
             <Route path="stock/pre-count" element={<Navigate to="/stock/colector" replace />} />
+            <Route path="colector-alpha" element={<Navigate to="/stock/colector-alpha" replace />} />
             <Route
               path="stock/recuento-movil"
               element={

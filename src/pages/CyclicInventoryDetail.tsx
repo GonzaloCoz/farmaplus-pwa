@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTab, TabItem } from "@/components/ui/tabs";
 import { ScrollArea, ScrollAreaViewport, ScrollAreaScrollbar } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Upload01 as Upload, SearchLg as Search, InfoCircle as Info, RefreshCw01 as Loader2, CheckCircle, RefreshCw01 as RotateCcw, CurrencyDollar as Dollar, Clipboard as ClipboardList, ChevronLeft as ArrowLeft, FilterFunnel02 as Filter, DotsHorizontal as MoreVertical, ClipboardX as DiffIcon, AlertTriangle, File02 as Document, Download01 as Download, Edit01 as Pen, RefreshCw01 as Refresh, ArrowUpRight, ArrowDownRight, TrendUp01 as TrendingUp } from '@untitledui/icons';
+import { Upload01 as Upload, SearchLg as Search, InfoCircle as Info, RefreshCw01 as Loader2, CheckCircle, RefreshCw01 as RotateCcw, CurrencyDollar as Dollar, Clipboard as ClipboardList, ChevronLeft as ArrowLeft, FilterFunnel02 as Filter, DotsHorizontal as MoreVertical, ClipboardX as DiffIcon, AlertTriangle, File02 as Document, Download01 as Download, Edit01 as Pen, RefreshCw01 as Refresh, ArrowUpRight, ArrowDownRight, TrendUp01 as TrendingUp, FileSearch02 } from '@untitledui/icons';
+import { LabRemovalModal } from "@/components/LabRemovalModal";
 import {
     InputGroup,
     InputField,
@@ -337,6 +338,8 @@ export default function CyclicInventoryDetail() {
         getSortedItems
 
     } = useCyclicInventoryController({ labName, round });
+
+    const [removalModalOpen, setRemovalModalOpen] = useState(false);
 
     // Resumen de Rubros Controlados y Totales para el Diálogo de Finalización
     const categoryStats = useMemo(() => {
@@ -698,6 +701,17 @@ export default function CyclicInventoryDetail() {
                                                 title="Solo Diferencias"
                                             >
                                                 <DiffIcon className="w-4 h-4" />
+                                            </Button>
+
+                                            {/* Botón Solicitar Baja de Laboratorio */}
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => setRemovalModalOpen(true)}
+                                                className="bg-surface-2 shadow-surface-2 text-muted-foreground hover:text-amber-500 rounded-xl group transition-all duration-200"
+                                                title="Solicitar Baja de Laboratorio"
+                                            >
+                                                <FileSearch02 className="w-4 h-4 group-hover:text-amber-500 transition-colors" />
                                             </Button>
 
                                             {/* Dropdown Ordenar */}
@@ -1545,6 +1559,16 @@ export default function CyclicInventoryDetail() {
                     </Form>
                 </DialogContent>
             </Dialog>
+
+            {/* Modal de Solicitud de Baja */}
+            <LabRemovalModal
+                open={removalModalOpen}
+                onOpenChange={setRemovalModalOpen}
+                labName={labName}
+                category={currentCategory}
+                round={round}
+                branchName={branchName}
+            />
         </PageLayout>
     );
 }

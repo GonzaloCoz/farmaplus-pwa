@@ -1,0 +1,34 @@
+[package]
+name = "farmaplus"
+version = "0.1.0"
+description = "Farmaplus Desktop"
+authors = ["Farmaplus"]
+license = ""
+repository = "https://github.com/GonzaloCoz/farmaplus-pwa"
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "farmaplus_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2.11.3", features = [] }
+tauri-plugin-log = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+tokio = { version = "1.43", features = ["full"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

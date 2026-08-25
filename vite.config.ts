@@ -126,9 +126,13 @@ export default defineConfig(({ mode }) => {
       },
       dedupe: ['react', 'react-dom']
     },
+    clearScreen: false,
+    envPrefix: ['VITE_', 'TAURI_ENV_*'],
     server: {
+      port: 5173,
+      strictPort: true,
       watch: {
-        ignored: ['**/android/**', '**/dist/**']
+        ignored: ['**/src-tauri/**', '**/android/**', '**/dist/**']
       }
     },
     build: {

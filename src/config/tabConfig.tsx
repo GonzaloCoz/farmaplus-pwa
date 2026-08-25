@@ -1,11 +1,13 @@
 import React from "react";
-import { HomeSmile as Home, Upload01 as Upload, BarChart01 as BarChart3, Box as Package, File02 as FileText, Settings01 as Settings, TrendUp01 as TrendingUp, ShieldTick as ShieldCheck, Clock, User01 as Users, Building01 as Building } from '@untitledui/icons';
+import { HomeSmile as Home, Upload01 as Upload, BarChart01 as BarChart3, Box as Package, File02 as FileText, Settings01 as Settings, TrendUp01 as TrendingUp, ShieldTick as ShieldCheck, Clock, User01 as Users, Building01 as Building, Zap, FileSearch02 } from '@untitledui/icons';
 import { ZebraIcon } from "@/components/icons/ZebraIcon";
 
 export const TAB_CONFIG: Record<string, { title: string, icon: React.ReactNode }> = {
     "/": { title: "Inicio", icon: <Home size={16} /> },
+    "/solicitudes": { title: "Solicitudes", icon: <FileSearch02 size={16} /> },
     "/stock": { title: "Stock", icon: <Upload size={16} /> },
     "/stock/colector": { title: "Colector de Datos", icon: <ZebraIcon className="w-4 h-4" /> },
+    "/stock/colector-alpha": { title: "Colector (Alpha)", icon: <Zap size={16} className="text-blue-500" /> },
     "/stock/recuento-movil": { title: "Recuento Móvil", icon: <ZebraIcon className="w-4 h-4" /> },
     "/stock/control-vencimiento": { title: "Control de Vencimiento", icon: <Clock size={16} /> },
     "/inventario-ciclico": { title: "Inventarios Cíclicos", icon: <BarChart3 size={16} /> },

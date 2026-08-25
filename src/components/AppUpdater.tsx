@@ -51,6 +51,35 @@ export function AppUpdater() {
         setChangelogNotes(latestVersion.release_notes || 'Optimización del sistema y corrección de errores.');
 
         const updatePromise = (async () => {
+            const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+            if (isTauri) {
+                try {
+                    const { check } = await import('@tauri-apps/plugin-updater');
+                    const { relaunch } = await import('@tauri-apps/plugin-process');
+                    const update = await check();
+                    if (update) {
+                        let downloaded = 0;
+                        let contentLength = 0;
+                        await update.downloadAndInstall((event) => {
+                            switch (event.event) {
+                                case 'Started':
+                                    contentLength = event.data.contentLength || 0;
+                                    break;
+                                case 'Progress':
+                                    downloaded += event.data.chunkLength;
+                                    break;
+                                case 'Finished':
+                                    break;
+                            }
+                        });
+                        await relaunch();
+                        return;
+                    }
+                } catch (tauriErr) {
+                    console.warn('Tauri update fallback:', tauriErr);
+                }
+            }
+
             // 1. Unregister all Service Workers
             if ('serviceWorker' in navigator) {
                 const registrations = await navigator.serviceWorker.getRegistrations();
@@ -73,7 +102,7 @@ export function AppUpdater() {
             loading: {
                 id: "app-updater-toast",
                 title: "Instalando versión",
-                description: `Descargando v${latestVersion.version} y limpiando archivos...`,
+                description: `Descargando v${latestVersion.version} y aplicando cambios...`,
             },
             success: {
                 title: "Actualización exitosa",

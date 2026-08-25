@@ -5,8 +5,9 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Group, GroupSeparator } from "@/components/ui/group";
 import { Card } from "@/components/ui/card";
-import { BarChart01 as BarChart3, CheckCircle, AlertCircle, CurrencyDollar as Dollar, TrendDown01 as TrendingDown, TrendUp01 as TrendingUp, RefreshCw01 as Loader2, SearchLg as Search, FilterLines as Filter, DotsHorizontal as MoreVertical, LayoutGrid01 as GridIcon, List as ListIcon, Clock, Download01 as Download, File02 as DocumentIcon, Trash01 as Trash } from '@untitledui/icons';
+import { BarChart01 as BarChart3, CheckCircle, AlertCircle, CurrencyDollar as Dollar, TrendDown01 as TrendingDown, TrendUp01 as TrendingUp, RefreshCw01 as Loader2, SearchLg as Search, FilterLines as Filter, DotsHorizontal as MoreVertical, LayoutGrid01 as GridIcon, List as ListIcon, Clock, Download01 as Download, File02 as DocumentIcon, Trash01 as Trash, FileSearch02 } from '@untitledui/icons';
 import { LaboratoryCard, LaboratoryStatus } from "@/components/LaboratoryCard";
+import { LabRemovalModal } from "@/components/LabRemovalModal";
 import { CounterAnimation } from "@/components/CounterAnimation";
 import { MetricCarousel } from "@/components/MetricCarousel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -46,6 +47,7 @@ import { Tabs, TabsList, TabItem, TabPanel, TabsTab } from "@/components/ui/tabs
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getLaboratoriesForBranch } from "@/services/preCountDB";
 import { cyclicInventoryService, CyclicInventoryStats } from "@/services/cyclicInventoryService";
+import { requestsService } from "@/services/requestsService";
 import { useUser } from "@/contexts/UserContext";
 import { usePrefetchLabInventory } from "@/hooks/useInventoryQueries";
 import { useIcons } from "@/lib/icon-context";
@@ -129,6 +131,10 @@ export default function CyclicInventory() {
   const [selectedEditLab, setSelectedEditLab] = useState("");
   const [selectedEditLabObj, setSelectedEditLabObj] = useState<{ label: string, value: string } | null>(null);
 
+  // Lab Removal Request State
+  const [removalModalOpen, setRemovalModalOpen] = useState(false);
+  const [removalLabData, setRemovalLabData] = useState<{ labName: string; category?: string; round?: number } | null>(null);
+
   const loadLabs = useCallback(async () => {
     if (!user?.branchSheet) {
       setIsLoading(false);
@@ -137,6 +143,21 @@ export default function CyclicInventory() {
     setIsLoading(true);
 
     try {
+      // 0. Obtener lista de bajas aprobadas para esta sucursal
+      const approvedBajas = await requestsService.getApprovedBajas(user.branchSheet);
+
+      // Helper para verificar si un laboratorio/rubro fue dado de baja
+      const checkIsDischarged = (labName: string, categoryName?: string) => {
+        const normLab = labName.trim().toUpperCase();
+        const normCat = (categoryName || '').trim().toUpperCase();
+        return approvedBajas.some(b => {
+          if (b.targetName !== normLab) return false;
+          if (!b.category || b.category === "BAJA TOTAL" || b.category === "TODOS" || b.category === "GENERAL") return true;
+          const allowedCats = b.category.split(',').map(c => c.trim().toUpperCase());
+          return allowedCats.includes(normCat);
+        });
+      };
+
       // 1. Obtener lista maestra de laboratorios (Autorizados para esta sucursal)
       const allowedLabs = await getLaboratoriesForBranch(user.branchSheet);
 
@@ -160,7 +181,10 @@ export default function CyclicInventory() {
       });
 
       // 3. Unir datos: Unión de Inventario Activo (desde branch_laboratories) + Lista Maestra (para pendientes)
-      const mergedData: CyclicInventoryStats[] = [...activeInventoryStats];
+      const mergedData: CyclicInventoryStats[] = activeInventoryStats.map(stat => ({
+        ...stat,
+        isDischarged: checkIsDischarged(stat.labName, stat.category)
+      }));
 
       // Crear un Set de búsqueda para evitar duplicados (Clave: Nombre|Categoría)
       const activeLabsSet = new Set(activeInventoryStats.map(s => `${s.labName.trim().toUpperCase()}|${normalizeString(s.category || '')}`));
@@ -187,7 +211,8 @@ export default function CyclicInventory() {
             negativeUnits: 0,
             positiveUnits: 0,
             netUnits: 0,
-            round: labInfo.round
+            round: labInfo.round,
+            isDischarged: checkIsDischarged(labInfo.name, labInfo.category)
           });
         }
       });
@@ -261,14 +286,15 @@ export default function CyclicInventory() {
     }
   }, [navigate]);
 
-  // Calcula la cantidad total de laboratorios por categoría
+  // Calcula la cantidad total de laboratorios activos por categoría
   const categoryCounts = useMemo(() => {
     const counts = new Map<string, number>();
     CATEGORIES.forEach(cat => counts.set(cat, 0));
 
-    // Usamos mapa temporal para agrupar únicos de todo el dataset
+    // Usamos mapa temporal para agrupar únicos de todo el dataset (solo activos)
     const groupedLocal = new Map<string, CyclicInventoryStats>();
     laboratories.forEach(lab => {
+      if (lab.isDischarged) return; // No contar laboratorios dados de baja
       const key = lab.labName.trim().toUpperCase();
       if (!groupedLocal.has(key)) {
         groupedLocal.set(key, lab);
@@ -282,7 +308,6 @@ export default function CyclicInventory() {
   }, [laboratories]);
 
   // Agrupar laboratorios por nombre para eliminar duplicados
-  // IMPORTANTE: NO sumar valores - solo tomar la primera entrada para evitar contar duplicados
   const groupedLaboratories = useMemo(() => {
     // Primero, filtrar por la categoría seleccionada
     const filteredByCategory = categoryFilter
@@ -295,12 +320,11 @@ export default function CyclicInventory() {
     filteredByCategory.forEach(lab => {
       const key = lab.labName.trim().toUpperCase();
 
-      // Only add if not already present (take first entry, ignore duplicates)
       if (!grouped.has(key)) {
         grouped.set(key, { ...lab });
+      } else if (lab.isDischarged) {
+        grouped.get(key)!.isDischarged = true;
       }
-      // If duplicate exists, we IGNORE it instead of summing
-      // This prevents counting duplicate products multiple times
     });
 
     return Array.from(grouped.values());
@@ -319,22 +343,25 @@ export default function CyclicInventory() {
     return uniqueLabNames.map(name => ({ label: name, value: name }));
   }, [uniqueLabNames]);
 
-  // Estadísticas del Panel - Usando laboratorios agrupados
-  const totalLabs = groupedLaboratories.length;
-  const controlledLabs = groupedLaboratories.filter(l => l.status === 'controlado').length;
-  const pendingLabs = groupedLaboratories.filter(l => l.status === 'pendiente').length;
-  const inProgressLabs = groupedLaboratories.filter(l => l.status === 'por_controlar').length;
+  // Laboratorios activos (sin baja) para métricas, conteos y avance
+  const activeLabs = useMemo(() => groupedLaboratories.filter(l => !l.isDischarged), [groupedLaboratories]);
 
-  // Estadísticas Financieras (Global - todos los laboratorios agrupados)
-  const totalDifference = groupedLaboratories.reduce((acc, curr) => acc + curr.differenceValue, 0);
-  const totalNegative = groupedLaboratories.reduce((acc, curr) => acc + curr.negativeValue, 0);
-  const totalPositive = groupedLaboratories.reduce((acc, curr) => acc + curr.positiveValue, 0);
+  // Estadísticas del Panel - Usando laboratorios activos
+  const totalLabs = activeLabs.length;
+  const controlledLabs = activeLabs.filter(l => l.status === 'controlado').length;
+  const pendingLabs = activeLabs.filter(l => l.status === 'pendiente').length;
+  const inProgressLabs = activeLabs.filter(l => l.status === 'por_controlar').length;
+
+  // Estadísticas Financieras (Global - laboratorios activos)
+  const totalDifference = activeLabs.reduce((acc, curr) => acc + curr.differenceValue, 0);
+  const totalNegative = activeLabs.reduce((acc, curr) => acc + curr.negativeValue, 0);
+  const totalPositive = activeLabs.reduce((acc, curr) => acc + curr.positiveValue, 0);
   const totalAbsoluteDifference = totalPositive + Math.abs(totalNegative);
 
   // Calcular Totales de Unidades para porcentajes de tendencia
-  const totalSystemUnits = groupedLaboratories.reduce((acc, curr) => acc + curr.totalSystemUnits, 0);
-  const totalNegativeUnits = groupedLaboratories.reduce((acc, curr) => acc + curr.negativeUnits, 0);
-  const totalPositiveUnits = groupedLaboratories.reduce((acc, curr) => acc + curr.positiveUnits, 0);
+  const totalSystemUnits = activeLabs.reduce((acc, curr) => acc + curr.totalSystemUnits, 0);
+  const totalNegativeUnits = activeLabs.reduce((acc, curr) => acc + curr.negativeUnits, 0);
+  const totalPositiveUnits = activeLabs.reduce((acc, curr) => acc + curr.positiveUnits, 0);
 
   const calculateTrend = (value: number, total: number) => {
     if (total === 0) return { value: 0, isPositive: true };
@@ -906,7 +933,18 @@ export default function CyclicInventory() {
           </TabsList>
 
         {/* Toolbar de Acciones */}
-        <div className="flex items-center gap-3 flex-1 justify-end">
+        <div className="flex items-center gap-2.5 flex-1 justify-end">
+          {/* Botón de Solicitudes antes del buscador */}
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => navigate('/solicitudes')}
+            className="bg-surface-5 shadow-surface-5 rounded-lg group shrink-0"
+            title="Ver Solicitudes"
+          >
+            <FileSearch02 className="text-muted-foreground group-hover:text-foreground transition-colors" />
+          </Button>
+
           {/* Barra de búsqueda fija como InputGroup */}
           <InputGroup className="max-w-[240px] md:max-w-xs w-full">
             <InputField
@@ -1088,8 +1126,25 @@ export default function CyclicInventory() {
                       differenceValue={lab.differenceValue}
                       status={lab.status}
                       progress={lab.progress}
-                      onClick={() => navigate(`/inventario-ciclico/${encodeURIComponent(lab.labName)}`)}
-                      onMouseEnter={() => prefetchLab(user?.branchSheet || "", lab.labName)}
+                      isDischarged={lab.isDischarged}
+                      onClick={() => {
+                        if (lab.isDischarged) {
+                          notify.warning("Laboratorio Desactivado", "Este laboratorio fue dado de baja mediante solicitud aprobada.");
+                          return;
+                        }
+                        navigate(`/inventario-ciclico/${encodeURIComponent(lab.labName)}`);
+                      }}
+                      onMouseEnter={() => {
+                        if (!lab.isDischarged) prefetchLab(user?.branchSheet || "", lab.labName);
+                      }}
+                      onRequestRemoval={(name) => {
+                        setRemovalLabData({
+                          labName: name,
+                          category: categoryFilter,
+                          round: 1
+                        });
+                        setRemovalModalOpen(true);
+                      }}
                     />
                   ))}
                 </div>
@@ -1114,20 +1169,37 @@ export default function CyclicInventory() {
                         {renderedLabs.map((lab) => (
                           <TableRow
                             key={lab.labName}
-                            className="cursor-pointer border-t border-border/40 first:border-none"
-                            onClick={() => navigate(`/inventario-ciclico/${encodeURIComponent(lab.labName)}`)}
+                            className={cn(
+                              "border-t border-border/40 first:border-none",
+                              lab.isDischarged ? "opacity-50 cursor-not-allowed select-none bg-muted/10" : "cursor-pointer"
+                            )}
+                            onClick={() => {
+                              if (lab.isDischarged) {
+                                notify.warning("Laboratorio Desactivado", "Este laboratorio fue dado de baja mediante solicitud aprobada.");
+                                return;
+                              }
+                              navigate(`/inventario-ciclico/${encodeURIComponent(lab.labName)}`);
+                            }}
                           >
                             <TableCell className="pl-6 whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]">
-                              <span className="font-semibold text-foreground/90">{lab.labName}</span>
+                              <span className={cn("font-semibold", lab.isDischarged ? "text-muted-foreground line-through" : "text-foreground/90")}>
+                                {lab.labName}
+                              </span>
                             </TableCell>
                             <TableCell className="text-center">
                               <div className="flex justify-center">
-                                <div className={cn(
-                                  "size-1.5 rounded-full shadow-sm",
-                                  lab.status === 'controlado' ? "bg-emerald-500" :
-                                    lab.status === 'por_controlar' ? "bg-blue-500" :
-                                      "bg-amber-500"
-                                )} />
+                                {lab.isDischarged ? (
+                                  <Badge variant="outline" color="rose" size="sm" className="text-[10px] uppercase font-semibold border-rose-500/30 text-rose-500 bg-rose-500/10">
+                                    Baja
+                                  </Badge>
+                                ) : (
+                                  <div className={cn(
+                                    "size-1.5 rounded-full shadow-sm",
+                                    lab.status === 'controlado' ? "bg-emerald-500" :
+                                      lab.status === 'por_controlar' ? "bg-blue-500" :
+                                        "bg-amber-500"
+                                  )} />
+                                )}
                               </div>
                             </TableCell>
                             <TableCell className="text-right">
@@ -1377,6 +1449,20 @@ export default function CyclicInventory() {
           </Form>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Solicitud de Baja de Laboratorio */}
+      {removalLabData && (
+        <LabRemovalModal
+          open={removalModalOpen}
+          onOpenChange={setRemovalModalOpen}
+          labName={removalLabData.labName}
+          category={removalLabData.category}
+          branchName={user?.branchSheet}
+          onSuccess={() => {
+            loadLabs();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -34,6 +34,7 @@ import { notify } from "@/lib/notifications";
 export function AppLayout() {
   const { windows, activeWindowId } = useWindowManager();
   const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
+  const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
   const isNative = Capacitor.isNativePlatform();
   const navigate = useNavigate();
   const { user, logout } = useUser();
@@ -160,41 +161,34 @@ export function AppLayout() {
   }, [user, navigate, logout, labs, activeRounds]);
 
   return (
-    <SurfaceProvider value={1}>
+    <SurfaceProvider value={2}>
       <div className={cn(
-        "isolate relative flex h-screen w-full overflow-hidden transition-all duration-500 bg-surface-1 text-foreground"
+        "isolate relative flex h-screen w-full overflow-hidden text-foreground",
+        isTauri ? "bg-surface-2" : "bg-transparent"
       )}>
-        <div className={cn("flex-1 h-full relative p-0", !isElectron && "lg:p-2")}>
-          {/* Outer container - Flat on mobile, framed on desktop */}
+        <div className={cn(
+          "flex-1 h-full w-full relative flex flex-col overflow-hidden bg-surface-2 shadow-2xl",
+          isTauri ? "rounded-none border-0" : "rounded-none lg:rounded-[28px] border border-border/20"
+        )}>
+          {/* Header inside outer container */}
+          <div className="hidden lg:block px-3.5 pt-2.5 pb-1">
+            <DesktopHeader />
+          </div>
+
+          {/* The Wrapper Box (Behind Sidebar and Content) */}
           <Elevated
             offset={1}
-            className={cn(
-              "relative h-full w-full overflow-hidden flex flex-col rounded-none lg:rounded-3xl",
-              isElectron && "!bg-transparent !shadow-none !border-none"
-            )}
+            className="flex-1 lg:mx-3.5 lg:mb-3.5 lg:mt-0 lg:rounded-2xl border border-border/10 overflow-hidden flex p-0 gap-0 relative"
           >
-            {/* Header inside outer container */}
-            <div className={cn(
-              "hidden lg:block",
-              isElectron ? "px-2 pt-1 pb-0" : "px-2 pt-1"
-            )}>
-              <DesktopHeader />
+            <div className="hidden lg:block">
+              <AppSidebar />
             </div>
 
-            {/* The Wrapper Box (Behind Sidebar and Content) */}
+            {/* Main-content - Top-most Floating Dashboard Box (Framed on Desktop, Full on Mobile) */}
             <Elevated
               offset={1}
-              className="flex-1 lg:mx-4 lg:mb-4 lg:mt-0 lg:rounded-2xl border border-border/5 overflow-hidden flex p-0 gap-0 relative"
+              className="flex-1 lg:m-2.5 lg:rounded-xl border border-black/[0.03] dark:border-white/[0.03] overflow-hidden flex flex-col z-10 transition-all duration-300"
             >
-              <div className="hidden lg:block">
-                <AppSidebar />
-              </div>
-
-              {/* Main-content - Top-most Floating Dashboard Box (Framed on Desktop, Full on Mobile) */}
-              <Elevated
-                offset={1}
-                className="flex-1 lg:m-2.5 lg:rounded-xl border border-black/[0.03] dark:border-white/[0.03] overflow-hidden flex flex-col z-10 transition-all duration-300"
-              >
                 <ScrollArea id="main-content" className="flex-1 w-full relative h-full">
                   <ScrollAreaViewport 
                     className="w-full relative lg:px-0 no-scrollbar" 
@@ -245,11 +239,10 @@ export function AppLayout() {
             </div>
             {!isNative && <TopAppBar />}
             <SyncStatus />
-          </Elevated>
+          </div>
+          <AppUpdater />
         </div>
-        <AppUpdater />
-      </div>
-      <CommandPalette
+        <CommandPalette
         open={isSearchOpen}
         onOpenChange={setIsSearchOpen}
         items={commandItems}

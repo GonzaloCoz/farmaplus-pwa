@@ -4,10 +4,18 @@ if (savedTheme === "dark") {
   document.documentElement.classList.add("dark");
 }
 
-// Registrar clase si estamos en Electron
-const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
-if (isElectron) {
-  document.documentElement.classList.add("is-electron");
+// Detectar entorno Tauri Desktop
+const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+if (isTauri) {
+  document.documentElement.classList.add("is-tauri");
+  // Si venimos de un navegador previo, limpiar cualquier service worker residual
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (const registration of registrations) {
+        registration.unregister();
+      }
+    });
+  }
 }
 
 import ReactDOM from "react-dom/client";
@@ -20,7 +28,6 @@ import React from "react";
 import { Capacitor } from "@capacitor/core";
 
 // En APK nativo, arrancar directamente en el Colector de Datos
-// ponytail: hash redirect — lo más simple sin tocar el router
 if (Capacitor.isNativePlatform() && !window.location.hash.startsWith('#/stock/pre-count')) {
   window.location.hash = '#/stock/pre-count';
 }
@@ -34,8 +41,7 @@ root.render(
   </React.StrictMode>
 );
 
-// Solo registrar el Service Worker si NO estamos en una plataforma nativa (iOS/Android Capacitor)
-// Esto evita conflictos con el esquema interno de Capacitor y mejora la compatibilidad
-if (!Capacitor.isNativePlatform()) {
+// Solo registrar el Service Worker si NO estamos en Tauri ni Capacitor
+if (!Capacitor.isNativePlatform() && !isTauri) {
   register();
 }

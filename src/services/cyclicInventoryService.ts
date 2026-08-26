@@ -123,18 +123,30 @@ export const cyclicInventoryService = {
     // Save inventory (Upsert)
     saveInventory: async (branchName: string, labName: string, items: CyclicItem[]) => {
         try {
-            // Deduplicate items by trimmed EAN to guarantee unique keys in RPC batches
+            // Deduplicate items using IDProducto / EAN to preserve all products with EAN 0
             const uniqueMap = new Map<string, CyclicItem>();
             for (const item of items) {
-                const cleanEan = String(item.ean || '').trim();
+                let cleanEan = String(item.ean || '').trim();
+                const cleanIdProd = String(item.id_producto || '').trim();
+
+                // Si el EAN es 0, vacío o s/n, usamos el IDProducto como identificador único
+                if (!cleanEan || cleanEan === '0' || cleanEan === '00' || cleanEan.toLowerCase() === 's/n') {
+                    if (cleanIdProd) {
+                        cleanEan = cleanIdProd;
+                    }
+                }
                 if (!cleanEan) continue;
-                if (!uniqueMap.has(cleanEan)) {
-                    uniqueMap.set(cleanEan, item);
+
+                const uniqueKey = cleanIdProd ? `IDP_${cleanIdProd}` : cleanEan;
+
+                if (!uniqueMap.has(uniqueKey)) {
+                    uniqueMap.set(uniqueKey, { ...item, ean: cleanEan });
                 } else {
-                    const existing = uniqueMap.get(cleanEan)!;
-                    uniqueMap.set(cleanEan, {
+                    const existing = uniqueMap.get(uniqueKey)!;
+                    uniqueMap.set(uniqueKey, {
                         ...existing,
                         ...item,
+                        ean: cleanEan,
                         systemQuantity: item.systemQuantity ?? existing.systemQuantity,
                         countedQuantity: item.countedQuantity ?? existing.countedQuantity,
                         status: existing.status !== 'pending' ? existing.status : (item.status || existing.status)

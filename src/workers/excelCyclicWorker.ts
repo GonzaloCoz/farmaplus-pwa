@@ -118,9 +118,14 @@ self.onmessage = async (e: MessageEvent) => {
         // 4. Lógica de Procesamiento (Sincronización Maestra - MODO MERGE)
         const finalItems: any[] = [...currentItems];
         
-        const eanMap = new Map();
+        const eanMap = new Map<string, number>();
+        const idProdMap = new Map<string, number>();
+
         finalItems.forEach((item, index) => {
-            eanMap.set(String(item.ean).trim(), index);
+            const itemEan = String(item.ean || '').trim();
+            if (itemEan) eanMap.set(itemEan, index);
+            const itemIdProd = String(item.id_producto || '').trim();
+            if (itemIdProd) idProdMap.set(itemIdProd, index);
         });
 
         // ponytail: mapear dinámicamente cabeceras de Excel para soportar variaciones de columnas (Plex, preconteo, etc)
@@ -156,9 +161,15 @@ self.onmessage = async (e: MessageEvent) => {
             
             const id_producto = row[idProductoIndex] ? String(row[idProductoIndex]).trim() : '';
 
-            // Inventario Cíclico: EAN único desde columna C, sin split ni expansión.
-            const ean = String(row[eanIndex] || '').trim();
-            if (!ean) continue;
+            // Si el EAN es 0, vacío o s/n, usamos el IDProducto como identificador único para que no choquen entre sí
+            const rawEan = String(row[eanIndex] || '').trim();
+            let effectiveEan = rawEan;
+            if (!effectiveEan || effectiveEan === '0' || effectiveEan === '00' || effectiveEan.toLowerCase() === 's/n' || effectiveEan.toLowerCase() === 'sin barra') {
+                if (id_producto) {
+                    effectiveEan = id_producto;
+                }
+            }
+            if (!effectiveEan) continue;
 
             const category = normalizeStringWorker(row[categoryIndex]?.toString() || 'Varios');
             if (category) excelCategoriesSet.add(category.toUpperCase());
@@ -166,27 +177,37 @@ self.onmessage = async (e: MessageEvent) => {
             const rawCost = row[costIndex];
             const costValue = Math.round((Number(rawCost) || 0) * 100) / 100;
 
-            if (eanMap.has(ean)) {
-                const index = eanMap.get(ean);
-                const existingItem = { ...finalItems[index] };
+            // Determinar si ya existe el ítem:
+            // 1. Por IDProducto (si existe en ambos)
+            // 2. Por effectiveEan
+            let existingIndex = -1;
+            if (id_producto && idProdMap.has(id_producto)) {
+                existingIndex = idProdMap.get(id_producto)!;
+            } else if (eanMap.has(effectiveEan)) {
+                existingIndex = eanMap.get(effectiveEan)!;
+            }
+
+            if (existingIndex !== -1) {
+                const existingItem = { ...finalItems[existingIndex] };
                 const newSystemQty = Number(row[qtyIndex]) || 0;
 
-                finalItems[index] = {
+                finalItems[existingIndex] = {
                     ...existingItem,
                     name: name,
+                    ean: effectiveEan,
                     systemQuantity: newSystemQty,
                     countedQuantity: existingItem.status === 'pending' ? newSystemQty : existingItem.countedQuantity,
                     cost: costValue,
                     category: category,
-                    id_producto: id_producto
+                    id_producto: id_producto || existingItem.id_producto
                 };
                 
                 updatedCount++;
             } else {
-                // EAN nuevo: agregar como pendiente
+                // Producto nuevo: agregar como pendiente
                 const newItem = {
                     id: self.crypto.randomUUID ? self.crypto.randomUUID() : Math.random().toString(36).substring(2),
-                    ean: ean,
+                    ean: effectiveEan,
                     name: name,
                     systemQuantity: Number(row[qtyIndex]) || 0,
                     countedQuantity: Number(row[qtyIndex]) || 0,
@@ -197,7 +218,11 @@ self.onmessage = async (e: MessageEvent) => {
                     id_producto: id_producto
                 };
                 finalItems.push(newItem);
-                eanMap.set(ean, finalItems.length - 1);
+                const newIdx = finalItems.length - 1;
+                eanMap.set(effectiveEan, newIdx);
+                if (id_producto) {
+                    idProdMap.set(id_producto, newIdx);
+                }
                 addedCount++;
             }
         }

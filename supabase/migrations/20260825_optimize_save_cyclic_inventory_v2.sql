@@ -14,16 +14,26 @@ BEGIN
     RETURN;
   END IF;
 
-  -- 1. Bulk Upsert Products (deduplicated by EAN)
+  -- 1. Bulk Upsert Products (deduplicated by EAN / IDProducto)
   WITH parsed_products AS (
     SELECT 
-      TRIM(x.ean) AS ean,
+      CASE 
+        WHEN TRIM(x.ean) IN ('0', '00', '', 's/n', 'S/N') AND NULLIF(TRIM(x.id_producto), '') IS NOT NULL 
+        THEN TRIM(x.id_producto)
+        ELSE TRIM(x.ean)
+      END AS ean,
       x.name,
       COALESCE(x.cost, 0) AS cost,
       COALESCE(NULLIF(TRIM(x.category), ''), 'Varios') AS category,
       v_lab AS laboratory,
       x.id_producto,
-      ROW_NUMBER() OVER (PARTITION BY TRIM(x.ean)) AS rn
+      ROW_NUMBER() OVER (
+        PARTITION BY CASE 
+          WHEN TRIM(x.ean) IN ('0', '00', '', 's/n', 'S/N') AND NULLIF(TRIM(x.id_producto), '') IS NOT NULL 
+          THEN TRIM(x.id_producto)
+          ELSE TRIM(x.ean)
+        END
+      ) AS rn
     FROM jsonb_to_recordset(p_items) AS x(
       ean TEXT,
       name TEXT,
@@ -31,7 +41,7 @@ BEGIN
       category TEXT,
       id_producto TEXT
     )
-    WHERE x.ean IS NOT NULL AND TRIM(x.ean) != ''
+    WHERE (x.ean IS NOT NULL AND TRIM(x.ean) != '') OR (x.id_producto IS NOT NULL AND TRIM(x.id_producto) != '')
   )
   INSERT INTO public.products (ean, name, cost, category, laboratory, id_producto)
   SELECT 
@@ -48,10 +58,14 @@ BEGIN
     cost = EXCLUDED.cost,
     id_producto = COALESCE(EXCLUDED.id_producto, products.id_producto);
 
-  -- 2. Bulk Upsert Inventories with active rounds resolution (deduplicated by EAN)
+  -- 2. Bulk Upsert Inventories with active rounds resolution (deduplicated by EAN / IDProducto)
   WITH raw_items AS (
     SELECT 
-      TRIM(x.ean) AS ean,
+      CASE 
+        WHEN TRIM(x.ean) IN ('0', '00', '', 's/n', 'S/N') AND NULLIF(TRIM(x.id_producto), '') IS NOT NULL 
+        THEN TRIM(x.id_producto)
+        ELSE TRIM(x.ean)
+      END AS ean,
       COALESCE(x.counted_quantity, x.system_quantity, 0) AS counted_qty,
       COALESCE(x.system_quantity, 0) AS system_qty,
       COALESCE(NULLIF(TRIM(x.status), ''), 'pending') AS status,
@@ -60,7 +74,13 @@ BEGIN
       COALESCE(NULLIF(TRIM(x.category), ''), 'Varios') AS category,
       x.shortage_id,
       x.surplus_id,
-      ROW_NUMBER() OVER (PARTITION BY TRIM(x.ean)) AS rn
+      ROW_NUMBER() OVER (
+        PARTITION BY CASE 
+          WHEN TRIM(x.ean) IN ('0', '00', '', 's/n', 'S/N') AND NULLIF(TRIM(x.id_producto), '') IS NOT NULL 
+          THEN TRIM(x.id_producto)
+          ELSE TRIM(x.ean)
+        END
+      ) AS rn
     FROM jsonb_to_recordset(p_items) AS x(
       ean TEXT,
       counted_quantity INTEGER,
@@ -70,9 +90,10 @@ BEGIN
       readjustment_reason TEXT,
       category TEXT,
       shortage_id TEXT,
-      surplus_id TEXT
+      surplus_id TEXT,
+      id_producto TEXT
     )
-    WHERE x.ean IS NOT NULL AND TRIM(x.ean) != ''
+    WHERE (x.ean IS NOT NULL AND TRIM(x.ean) != '') OR (x.id_producto IS NOT NULL AND TRIM(x.id_producto) != '')
   ),
   deduped_raw_items AS (
     SELECT * FROM raw_items WHERE rn = 1

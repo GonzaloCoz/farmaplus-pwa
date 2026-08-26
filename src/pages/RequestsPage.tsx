@@ -336,7 +336,7 @@ export default function SmartAnalystPage({
                                         e.stopPropagation();
                                         setEditItem(row);
                                         setEditSelectedStatus(row.status);
-                                        setEditReason(row.reason || "Stock 0 en Plex / Sin existencias");
+                                        setEditReason(row.reason || "Stock 0 en Plex / No hay datos para mostrar");
                                         setEditCustomReason("");
                                         setEditComments(row.referenceSub || "");
                                     }}
@@ -606,7 +606,7 @@ export default function SmartAnalystPage({
                 <DialogContent size="lg">
                     <div className="space-y-4">
                         <DialogHeader>
-                            <DialogTitle>
+                        <DialogTitle>
                                 {isAdmin 
                                     ? `Editar Estado de ${editItem?.reference}` 
                                     : `Re-editar Solicitud: ${editItem?.reference}`
@@ -638,8 +638,8 @@ export default function SmartAnalystPage({
                                 <Select value={editReason} onValueChange={setEditReason}>
                                     <SelectTrigger placeholder="Seleccionar motivo..." className="h-9 text-xs w-full" />
                                     <SelectContent className="max-h-[220px]">
-                                        <SelectItem index={0} value="Stock 0 en Plex / Sin existencias" className="text-xs">
-                                            Stock 0 en Plex / Sin existencias
+                                        <SelectItem index={0} value="Stock 0 en Plex / No hay datos para mostrar" className="text-xs">
+                                            Stock 0 en Plex / No hay datos para mostrar
                                         </SelectItem>
                                         <SelectItem index={1} value="Laboratorio discontinuado / no se comercializa" className="text-xs">
                                             Laboratorio discontinuado / no se comercializa

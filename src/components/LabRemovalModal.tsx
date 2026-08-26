@@ -27,7 +27,7 @@ interface LabRemovalModalProps {
 }
 
 const PRESET_REASONS = [
-    "Stock 0 en Plex / Sin existencias",
+    "Stock 0 en Plex / No hay datos para mostrar",
     "Laboratorio discontinuado / no se comercializa",
     "Asignación incorrecta de rubro",
     "Laboratorio duplicado en el listado",

@@ -123,8 +123,28 @@ export const cyclicInventoryService = {
     // Save inventory (Upsert)
     saveInventory: async (branchName: string, labName: string, items: CyclicItem[]) => {
         try {
+            // Deduplicate items by trimmed EAN to guarantee unique keys in RPC batches
+            const uniqueMap = new Map<string, CyclicItem>();
+            for (const item of items) {
+                const cleanEan = String(item.ean || '').trim();
+                if (!cleanEan) continue;
+                if (!uniqueMap.has(cleanEan)) {
+                    uniqueMap.set(cleanEan, item);
+                } else {
+                    const existing = uniqueMap.get(cleanEan)!;
+                    uniqueMap.set(cleanEan, {
+                        ...existing,
+                        ...item,
+                        systemQuantity: item.systemQuantity ?? existing.systemQuantity,
+                        countedQuantity: item.countedQuantity ?? existing.countedQuantity,
+                        status: existing.status !== 'pending' ? existing.status : (item.status || existing.status)
+                    });
+                }
+            }
+            const dedupedItems = Array.from(uniqueMap.values());
+
             // Prepare items payload for the RPC function with dual casing for bulletproof SQL matching
-            const rpcItems = items.map(item => {
+            const rpcItems = dedupedItems.map(item => {
                 const counted = (item.countedQuantity !== undefined && item.countedQuantity !== null)
                     ? item.countedQuantity 
                     : (item.systemQuantity ?? 0);

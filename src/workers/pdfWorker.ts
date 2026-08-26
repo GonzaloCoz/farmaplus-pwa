@@ -309,7 +309,7 @@ self.onmessage = async (e: MessageEvent) => {
                 };
                 updatedCount++;
             } else {
-                finalItems.push({
+                const newItem = {
                     id: self.crypto.randomUUID ? self.crypto.randomUUID() : Math.random().toString(36).substring(2),
                     ean: ep.ean,
                     name: ep.name,
@@ -319,7 +319,9 @@ self.onmessage = async (e: MessageEvent) => {
                     status: 'pending',
                     category: ep.category,
                     wasReadjusted: false,
-                });
+                };
+                finalItems.push(newItem);
+                eanMap.set(ep.ean, finalItems.length - 1);
                 addedCount++;
             }
         }

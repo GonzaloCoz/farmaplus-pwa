@@ -184,7 +184,7 @@ self.onmessage = async (e: MessageEvent) => {
                 updatedCount++;
             } else {
                 // EAN nuevo: agregar como pendiente
-                finalItems.push({
+                const newItem = {
                     id: self.crypto.randomUUID ? self.crypto.randomUUID() : Math.random().toString(36).substring(2),
                     ean: ean,
                     name: name,
@@ -195,7 +195,9 @@ self.onmessage = async (e: MessageEvent) => {
                     category: category,
                     wasReadjusted: false,
                     id_producto: id_producto
-                });
+                };
+                finalItems.push(newItem);
+                eanMap.set(ean, finalItems.length - 1);
                 addedCount++;
             }
         }

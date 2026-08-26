@@ -14,29 +14,41 @@ BEGIN
     RETURN;
   END IF;
 
-  -- 1. Bulk Upsert Products
+  -- 1. Bulk Upsert Products (deduplicated by EAN)
+  WITH parsed_products AS (
+    SELECT 
+      TRIM(x.ean) AS ean,
+      x.name,
+      COALESCE(x.cost, 0) AS cost,
+      COALESCE(NULLIF(TRIM(x.category), ''), 'Varios') AS category,
+      v_lab AS laboratory,
+      x.id_producto,
+      ROW_NUMBER() OVER (PARTITION BY TRIM(x.ean)) AS rn
+    FROM jsonb_to_recordset(p_items) AS x(
+      ean TEXT,
+      name TEXT,
+      cost NUMERIC,
+      category TEXT,
+      id_producto TEXT
+    )
+    WHERE x.ean IS NOT NULL AND TRIM(x.ean) != ''
+  )
   INSERT INTO public.products (ean, name, cost, category, laboratory, id_producto)
   SELECT 
-    TRIM(x.ean),
-    x.name,
-    COALESCE(x.cost, 0),
-    COALESCE(NULLIF(TRIM(x.category), ''), 'Varios'),
-    v_lab,
-    x.id_producto
-  FROM jsonb_to_recordset(p_items) AS x(
-    ean TEXT,
-    name TEXT,
-    cost NUMERIC,
-    category TEXT,
-    id_producto TEXT
-  )
-  WHERE x.ean IS NOT NULL AND TRIM(x.ean) != ''
+    ean,
+    name,
+    cost,
+    category,
+    laboratory,
+    id_producto
+  FROM parsed_products
+  WHERE rn = 1
   ON CONFLICT (ean) DO UPDATE SET
     category = EXCLUDED.category,
     cost = EXCLUDED.cost,
     id_producto = COALESCE(EXCLUDED.id_producto, products.id_producto);
 
-  -- 2. Bulk Upsert Inventories with active rounds resolution
+  -- 2. Bulk Upsert Inventories with active rounds resolution (deduplicated by EAN)
   WITH raw_items AS (
     SELECT 
       TRIM(x.ean) AS ean,
@@ -47,7 +59,8 @@ BEGIN
       x.readjustment_reason,
       COALESCE(NULLIF(TRIM(x.category), ''), 'Varios') AS category,
       x.shortage_id,
-      x.surplus_id
+      x.surplus_id,
+      ROW_NUMBER() OVER (PARTITION BY TRIM(x.ean)) AS rn
     FROM jsonb_to_recordset(p_items) AS x(
       ean TEXT,
       counted_quantity INTEGER,
@@ -60,6 +73,9 @@ BEGIN
       surplus_id TEXT
     )
     WHERE x.ean IS NOT NULL AND TRIM(x.ean) != ''
+  ),
+  deduped_raw_items AS (
+    SELECT * FROM raw_items WHERE rn = 1
   ),
   rounds_map AS (
     SELECT 
@@ -90,7 +106,7 @@ BEGIN
         WHEN v_lab = '_CONFIG_' THEN 1
         ELSE COALESCE(rm.round_val, gr.val, 1)
       END AS resolved_round
-    FROM raw_items r
+    FROM deduped_raw_items r
     CROSS JOIN global_round gr
     LEFT JOIN rounds_map rm ON rm.cat_upper = UPPER(TRIM(r.category))
   )

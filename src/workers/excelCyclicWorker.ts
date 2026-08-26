@@ -115,20 +115,8 @@ self.onmessage = async (e: MessageEvent) => {
             return;
         }
 
-        // 4. Lógica de Procesamiento (Sincronización Maestra - MODO MERGE)
-        const finalItems: any[] = [...currentItems];
-        
-        const eanMap = new Map<string, number>();
-        const idProdMap = new Map<string, number>();
-
-        finalItems.forEach((item, index) => {
-            const itemEan = String(item.ean || '').trim();
-            if (itemEan) eanMap.set(itemEan, index);
-            const itemIdProd = String(item.id_producto || '').trim();
-            if (itemIdProd) idProdMap.set(itemIdProd, index);
-        });
-
-        // ponytail: mapear dinámicamente cabeceras de Excel para soportar variaciones de columnas (Plex, preconteo, etc)
+        // 4. Lógica de Procesamiento (Sincronización Maestra)
+        // Mapear dinámicamente cabeceras de Excel para soportar variaciones de columnas (Plex, preconteo, etc)
         const headers = Array.isArray(data[0]) ? data[0].map(h => String(h || '').trim().toLowerCase()) : [];
         const getIndex = (names: string[], fallback: number) => {
             const idx = headers.findIndex(h => names.includes(h));
@@ -140,13 +128,29 @@ self.onmessage = async (e: MessageEvent) => {
         const qtyIndex = getIndex(['cantidad', 'cant', 'stock', 'sistema', 'systemquantity', 'system_quantity', 'cantidad_sistema'], 4);
         const categoryIndex = getIndex(['rubro', 'categoria', 'category'], 9);
         
-        // Inventario Cíclico: Priorizar Columna K (índice 10: Precio / Precio Venta) que es uniforme para todas las sucursales
+        // Priorizar Columna K (índice 10: Precio / Precio Venta)
         const costIndex = getIndex(['precio', 'price', 'precio_venta', 'precio_publico', 'pvp', 'precio_lista', 'costo', 'cost'], 10);
         
-        // Inventario Cíclico: ignorar columna Q (CodigosBarra) - se reserva para inventarios nocturnos.
-        // Usar SOLO la columna C (codebar, índice 2) como EAN único por producto.
+        // Columna C (Codebar, índice 2) y Columna P (CodigosBarra, índice 15)
         const eanIndex = getIndex(['codebar', 'codigobarra', 'barras', 'código de barras', 'ean'], 2);
+        const codigosBarraIndex = getIndex(['codigosbarra', 'codigos_barra', 'codigos', 'codigos barra', 'codigos_barras', 'codigos de barra'], 15);
 
+        // Lookup maps de items existentes en base de datos para preservar el conteo si ya fue auditado
+        const existingByIdProd = new Map<string, any>();
+        const existingByEan = new Map<string, any>();
+        const existingByName = new Map<string, any>();
+
+        (currentItems || []).forEach((item: any) => {
+            const itemEan = String(item.ean || '').trim();
+            const itemIdProd = String(item.id_producto || '').trim();
+            const itemName = normalizeStringWorker(item.name || '');
+
+            if (itemIdProd) existingByIdProd.set(itemIdProd, item);
+            if (itemEan && itemEan !== '0' && itemEan !== '00') existingByEan.set(itemEan, item);
+            if (itemName) existingByName.set(itemName, item);
+        });
+
+        const finalItems: any[] = [];
         let addedCount = 0;
         let updatedCount = 0;
 
@@ -161,14 +165,31 @@ self.onmessage = async (e: MessageEvent) => {
             
             const id_producto = row[idProductoIndex] ? String(row[idProductoIndex]).trim() : '';
 
-            // Si el EAN es 0, vacío o s/n, usamos el IDProducto como identificador único para que no choquen entre sí
+            // 1. Resolver código de barras (EAN)
             const rawEan = String(row[eanIndex] || '').trim();
-            let effectiveEan = rawEan;
-            if (!effectiveEan || effectiveEan === '0' || effectiveEan === '00' || effectiveEan.toLowerCase() === 's/n' || effectiveEan.toLowerCase() === 'sin barra') {
-                if (id_producto) {
-                    effectiveEan = id_producto;
+            let effectiveEan = '';
+
+            if (rawEan && rawEan !== '0' && rawEan !== '00' && rawEan.toLowerCase() !== 's/n' && rawEan.toLowerCase() !== 'sin barra' && !rawEan.toUpperCase().includes('E+')) {
+                effectiveEan = rawEan;
+            }
+
+            // 2. Si Column C es 0 o inválida, buscar en Columna P (CodigosBarra: ej. "0-7506195102640" o "75046330-7506295399957-7506309846330")
+            if (!effectiveEan && codigosBarraIndex !== -1 && row[codigosBarraIndex] !== undefined && row[codigosBarraIndex] !== null) {
+                const barcodesStr = String(row[codigosBarraIndex]).trim();
+                // Separar por guiones, comas, barras o espacios
+                const parts = barcodesStr.split(/[-–,/ ]+/).map(p => p.trim()).filter(Boolean);
+                // Buscar el primer código de barras válido que no sea '0' ni notación científica
+                const validPart = parts.find(p => p !== '0' && p !== '00' && p.length >= 6 && !p.toUpperCase().includes('E+'));
+                if (validPart) {
+                    effectiveEan = validPart;
                 }
             }
+
+            // 3. Si aún no hay EAN, usar IDProducto como clave única irrepetible
+            if (!effectiveEan && id_producto) {
+                effectiveEan = id_producto;
+            }
+
             if (!effectiveEan) continue;
 
             const category = normalizeStringWorker(row[categoryIndex]?.toString() || 'Varios');
@@ -176,56 +197,79 @@ self.onmessage = async (e: MessageEvent) => {
 
             const rawCost = row[costIndex];
             const costValue = Math.round((Number(rawCost) || 0) * 100) / 100;
+            const newSystemQty = Number(row[qtyIndex]) || 0;
 
-            // Determinar si ya existe el ítem:
-            // 1. Por IDProducto (si existe en ambos)
-            // 2. Por effectiveEan
-            let existingIndex = -1;
-            if (id_producto && idProdMap.has(id_producto)) {
-                existingIndex = idProdMap.get(id_producto)!;
-            } else if (eanMap.has(effectiveEan)) {
-                existingIndex = eanMap.get(effectiveEan)!;
+            // Buscar si ya existía en la base de datos
+            let existingItem: any = null;
+            if (id_producto && existingByIdProd.has(id_producto)) {
+                existingItem = existingByIdProd.get(id_producto);
+            } else if (existingByEan.has(effectiveEan)) {
+                existingItem = existingByEan.get(effectiveEan);
+            } else if (existingByName.has(normalizeStringWorker(name))) {
+                existingItem = existingByName.get(normalizeStringWorker(name));
             }
 
-            if (existingIndex !== -1) {
-                const existingItem = { ...finalItems[existingIndex] };
-                const newSystemQty = Number(row[qtyIndex]) || 0;
+            // Verificar si este producto ya fue procesado en una fila previa de este mismo Excel
+            const duplicateIdx = finalItems.findIndex(item => 
+                (id_producto && item.id_producto === id_producto) || 
+                (item.ean === effectiveEan)
+            );
 
-                finalItems[existingIndex] = {
-                    ...existingItem,
+            if (duplicateIdx !== -1) {
+                // Fila repetida en el mismo Excel: actualizar datos
+                const currentFinal = finalItems[duplicateIdx];
+                finalItems[duplicateIdx] = {
+                    ...currentFinal,
                     name: name,
+                    systemQuantity: newSystemQty,
+                    cost: costValue || currentFinal.cost,
+                    id_producto: id_producto || currentFinal.id_producto
+                };
+                updatedCount++;
+            } else if (existingItem) {
+                // Producto ya existente en DB: preservar su progreso de conteo
+                finalItems.push({
+                    ...existingItem,
+                    id: existingItem.id || (self.crypto.randomUUID ? self.crypto.randomUUID() : Math.random().toString(36).substring(2)),
                     ean: effectiveEan,
+                    name: name,
                     systemQuantity: newSystemQty,
                     countedQuantity: existingItem.status === 'pending' ? newSystemQty : existingItem.countedQuantity,
                     cost: costValue,
                     category: category,
                     id_producto: id_producto || existingItem.id_producto
-                };
-                
+                });
                 updatedCount++;
             } else {
                 // Producto nuevo: agregar como pendiente
-                const newItem = {
+                finalItems.push({
                     id: self.crypto.randomUUID ? self.crypto.randomUUID() : Math.random().toString(36).substring(2),
                     ean: effectiveEan,
                     name: name,
-                    systemQuantity: Number(row[qtyIndex]) || 0,
-                    countedQuantity: Number(row[qtyIndex]) || 0,
+                    systemQuantity: newSystemQty,
+                    countedQuantity: newSystemQty,
                     cost: costValue,
                     status: 'pending',
                     category: category,
                     wasReadjusted: false,
                     id_producto: id_producto
-                };
-                finalItems.push(newItem);
-                const newIdx = finalItems.length - 1;
-                eanMap.set(effectiveEan, newIdx);
-                if (id_producto) {
-                    idProdMap.set(id_producto, newIdx);
-                }
+                });
                 addedCount++;
             }
         }
+
+        // Preservar ítems que ya fueron auditados (controlados o ajustados) si no estaban en el Excel
+        (currentItems || []).forEach((dbItem: any) => {
+            if (dbItem.status === 'controlled' || dbItem.status === 'adjusted') {
+                const inFinal = finalItems.some(f => 
+                    (dbItem.id_producto && f.id_producto === dbItem.id_producto) ||
+                    (f.ean === dbItem.ean)
+                );
+                if (!inFinal) {
+                    finalItems.push(dbItem);
+                }
+            }
+        });
 
         self.postMessage({
             success: true,

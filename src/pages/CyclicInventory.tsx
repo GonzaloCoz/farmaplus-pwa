@@ -52,7 +52,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useUser } from "@/contexts/UserContext";
 import { usePrefetchLabInventory } from "@/hooks/useInventoryQueries";
 import { useIcons } from "@/lib/icon-context";
-import { supabase } from "@/integrations/supabase/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectButton } from "@/components/ui/select";
 import {
   Combobox,

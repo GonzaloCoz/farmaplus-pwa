@@ -338,7 +338,8 @@ export function TrendsChartWidget({ type = "positive" }: TrendsChartWidgetProps)
   }, [chartData, defaultData.value, valueSpring]);
 
   useMotionValueEvent(valueSpring, "change", (latest) => {
-    setSpringValue(Math.round(Number(latest)));
+    const rounded = Math.round(Number(latest));
+    setSpringValue((prev) => (prev !== rounded ? rounded : prev));
   });
 
   // ── Chart config: neutral bars ──

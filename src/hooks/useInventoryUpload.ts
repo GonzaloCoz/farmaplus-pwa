@@ -229,9 +229,6 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
             else if (mismatchData.electronData) {
                 const dbItems = await cyclicInventoryService.getLabInventory(branchName, targetLab);
                 const rows = mismatchData.electronData.rows;
-                const finalItems = [...dbItems];
-                const eanMap = new Map();
-                finalItems.forEach((item, index) => eanMap.set(String(item.ean).trim(), index));
 
                 // ponytail: mapear dinámicamente cabeceras de Excel
                 const headers = Array.isArray(rows[0]) ? rows[0].map(h => String(h || '').trim().toLowerCase()) : [];
@@ -244,13 +241,25 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 const nameIndex = getIndex(['producto', 'detalle', 'name', 'nombre', 'descripcion', 'descrip'], 3);
                 const qtyIndex = getIndex(['cantidad', 'cant', 'stock', 'sistema', 'systemquantity', 'system_quantity', 'cantidad_sistema'], 4);
                 const categoryIndex = getIndex(['rubro', 'categoria', 'category'], 9);
-                
-                // Inventario Cíclico: Priorizar Columna K (índice 10: Precio / Precio Venta) que es uniforme para todas las sucursales
                 const costIndex = getIndex(['precio', 'price', 'precio_venta', 'precio_publico', 'pvp', 'precio_lista', 'costo', 'cost'], 10);
-                
-                const codigosBarraIndex = -1; // Inventario Cíclico: ignorar columna Q (CodigosBarra)
                 const eanIndex = getIndex(['codebar', 'codigobarra', 'barras', 'código de barras', 'ean'], 2);
+                const codigosBarraIndex = getIndex(['codigosbarra', 'codigos_barra', 'codigos', 'codigos barra', 'codigos_barras', 'codigos de barra'], 15);
 
+                const existingByIdProd = new Map<string, any>();
+                const existingByEan = new Map<string, any>();
+                const existingByName = new Map<string, any>();
+
+                (dbItems || []).forEach((item: any) => {
+                    const itemEan = String(item.ean || '').trim();
+                    const itemIdProd = String(item.id_producto || '').trim();
+                    const itemName = normalizeString(item.name || '');
+
+                    if (itemIdProd) existingByIdProd.set(itemIdProd, item);
+                    if (itemEan && itemEan !== '0' && itemEan !== '00') existingByEan.set(itemEan, item);
+                    if (itemName) existingByName.set(itemName, item);
+                });
+
+                const finalItems: CyclicItem[] = [];
                 let addedCount = 0;
                 let updatedCount = 0;
 
@@ -262,36 +271,77 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                     if (!name) continue;
                     
                     const id_producto = row[idProductoIndex] ? String(row[idProductoIndex]).trim() : '';
-                    // Inventario Cíclico: usar SOLO la columna C (Codebar, índice 2) como EAN único.
-                    // NO usar columna Q (CodigosBarra) ni hacer split('-').
-                    const ean = String(row[eanIndex] || '').trim();
-                    if (!ean) continue;
+                    const rawEan = String(row[eanIndex] || '').trim();
+                    let effectiveEan = '';
+
+                    if (rawEan && rawEan !== '0' && rawEan !== '00' && rawEan.toLowerCase() !== 's/n' && rawEan.toLowerCase() !== 'sin barra' && !rawEan.toUpperCase().includes('E+')) {
+                        effectiveEan = rawEan;
+                    }
+
+                    if (!effectiveEan && codigosBarraIndex !== -1 && row[codigosBarraIndex] !== undefined && row[codigosBarraIndex] !== null) {
+                        const barcodesStr = String(row[codigosBarraIndex]).trim();
+                        const parts = barcodesStr.split(/[-–,/ ]+/).map(p => p.trim()).filter(Boolean);
+                        const validPart = parts.find(p => p !== '0' && p !== '00' && p.length >= 6 && !p.toUpperCase().includes('E+'));
+                        if (validPart) {
+                            effectiveEan = validPart;
+                        }
+                    }
+
+                    if (!effectiveEan && id_producto) {
+                        effectiveEan = id_producto;
+                    }
+
+                    if (!effectiveEan) continue;
 
                     let category = normalizeString(row[categoryIndex]?.toString() || 'Varios').toUpperCase();
                     const rawCost = row[costIndex];
                     const costValue = Math.round((Number(rawCost) || 0) * 100) / 100;
+                    const newSystemQty = Number(row[qtyIndex]) || 0;
 
-                    if (eanMap.has(ean)) {
-                        const index = eanMap.get(ean);
-                        const existingItem = { ...finalItems[index] };
-                        const newSystemQty = Number(row[qtyIndex]) || 0;
-                        finalItems[index] = {
+                    let existingItem: any = null;
+                    if (id_producto && existingByIdProd.has(id_producto)) {
+                        existingItem = existingByIdProd.get(id_producto);
+                    } else if (existingByEan.has(effectiveEan)) {
+                        existingItem = existingByEan.get(effectiveEan);
+                    } else if (existingByName.has(normalizeString(name))) {
+                        existingItem = existingByName.get(normalizeString(name));
+                    }
+
+                    const duplicateIdx = finalItems.findIndex(item => 
+                        (id_producto && item.id_producto === id_producto) || 
+                        (item.ean === effectiveEan)
+                    );
+
+                    if (duplicateIdx !== -1) {
+                        const currentFinal = finalItems[duplicateIdx];
+                        finalItems[duplicateIdx] = {
+                            ...currentFinal,
+                            name: name,
+                            systemQuantity: newSystemQty,
+                            cost: costValue || currentFinal.cost,
+                            id_producto: id_producto || currentFinal.id_producto
+                        };
+                        updatedCount++;
+                    } else if (existingItem) {
+                        finalItems.push({
                             ...existingItem,
+                            id: existingItem.id || crypto.randomUUID(),
+                            ean: effectiveEan,
                             name: name,
                             systemQuantity: newSystemQty,
                             countedQuantity: existingItem.status === 'pending' ? newSystemQty : existingItem.countedQuantity,
                             cost: costValue,
                             category: category,
-                            id_producto: id_producto
-                        };
+                            id_producto: id_producto || existingItem.id_producto
+                        });
                         updatedCount++;
                     } else {
                         finalItems.push({
                             id: crypto.randomUUID(),
-                            ean: ean,
+                            ean: effectiveEan,
                             name: name,
-                            systemQuantity: Number(row[qtyIndex]) || 0,
-                            countedQuantity: Number(row[qtyIndex]) || 0,
+                            systemQuantity: newSystemQty,
+                            countedQuantity: newSystemQty,
                             cost: costValue,
                             status: 'pending',
                             category: category,
@@ -301,6 +351,18 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                         addedCount++;
                     }
                 }
+
+                (dbItems || []).forEach((dbItem: any) => {
+                    if (dbItem.status === 'controlled' || dbItem.status === 'adjusted') {
+                        const inFinal = finalItems.some(f => 
+                            (dbItem.id_producto && f.id_producto === dbItem.id_producto) ||
+                            (f.ean === dbItem.ean)
+                        );
+                        if (!inFinal) {
+                            finalItems.push(dbItem);
+                        }
+                    }
+                });
 
                 const excelCategoriesFromRows: string[] = Array.from(new Set<string>(
                     (rows || []).slice(1)
@@ -353,6 +415,13 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
         setIsUploading(true);
         let mergedCurrentItems: CyclicItem[] = [];
 
+        const getItemKey = (item: { id_producto?: string; ean: string }) => {
+            const idProd = String(item.id_producto || '').trim();
+            const ean = String(item.ean || '').trim();
+            if (idProd && (ean === '0' || ean === '00' || !ean || ean === idProd)) return `IDP_${idProd}`;
+            return ean || `IDP_${idProd}`;
+        };
+
         if (mode === 'merge') {
             mergedCurrentItems = [...currentItems];
             try {
@@ -367,14 +436,14 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                         }
                     }
 
-                    const reactItemMap = new Map(currentItems.map(i => [String(i.ean).trim(), i]));
+                    const reactItemMap = new Map(currentItems.map(i => [getItemKey(i), i]));
                     const merged: CyclicItem[] = dbItems.map(dbItem => {
-                        const reactVersion = reactItemMap.get(String(dbItem.ean).trim());
+                        const reactVersion = reactItemMap.get(getItemKey(dbItem));
                         return reactVersion || dbItem;
                     });
                     currentItems.forEach(rItem => {
-                        const ean = String(rItem.ean).trim();
-                        if (!merged.find(m => String(m.ean).trim() === ean)) {
+                        const key = getItemKey(rItem);
+                        if (!merged.find(m => getItemKey(m) === key)) {
                             merged.push(rItem);
                         }
                     });

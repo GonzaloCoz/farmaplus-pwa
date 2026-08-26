@@ -48,6 +48,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { getLaboratoriesForBranch } from "@/services/preCountDB";
 import { cyclicInventoryService, CyclicInventoryStats } from "@/services/cyclicInventoryService";
 import { requestsService } from "@/services/requestsService";
+import { supabase } from "@/integrations/supabase/client";
 import { useUser } from "@/contexts/UserContext";
 import { usePrefetchLabInventory } from "@/hooks/useInventoryQueries";
 import { useIcons } from "@/lib/icon-context";
@@ -242,6 +243,18 @@ export default function CyclicInventory() {
 
   useEffect(() => {
     loadLabs();
+
+    // Suscripción Realtime para actualizar la vista de laboratorios cuando se apruebe o rechace una solicitud
+    const channel = supabase
+      .channel('cyclic-inventory-requests-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, () => {
+        loadLabs();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [loadLabs]);
 
   // Obtener estado de bloqueo

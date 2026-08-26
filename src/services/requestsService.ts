@@ -127,26 +127,38 @@ export const requestsService = {
      * Aprobar una solicitud
      */
     approveRequest: async (requestId: string, reviewedBy: string): Promise<boolean> => {
-        const local = localStorage.getItem(LOCAL_STORAGE_KEY);
-        const list: RequestItem[] = local ? JSON.parse(local) : INITIAL_DEMO_REQUESTS;
-        const target = list.find(r => r.id === requestId);
+        const reviewedAt = new Date().toISOString();
 
-        if (!target) return false;
-
-        target.status = 'approved';
-        target.reviewedBy = reviewedBy;
-        target.reviewedAt = new Date().toISOString();
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list));
-
-        // Actualizar en Supabase
+        // 1. Actualizar en Supabase
         try {
-            await (supabase as any).from('requests').update({
+            const { error } = await (supabase as any).from('requests').update({
                 status: 'approved',
                 reviewed_by: reviewedBy,
-                reviewed_at: target.reviewedAt
+                reviewed_at: reviewedAt
             }).eq('id', requestId);
+
+            if (error) {
+                console.error("Error al actualizar estado en Supabase:", error);
+            }
         } catch (e) {
-            console.warn("Error al actualizar estado en Supabase:", e);
+            console.warn("Error de red al actualizar en Supabase:", e);
+        }
+
+        // 2. Actualizar caché local de respaldo si existe
+        const local = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (local) {
+            try {
+                const list: RequestItem[] = JSON.parse(local);
+                const target = list.find(r => r.id === requestId);
+                if (target) {
+                    target.status = 'approved';
+                    target.reviewedBy = reviewedBy;
+                    target.reviewedAt = reviewedAt;
+                    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list));
+                }
+            } catch (err) {
+                console.warn("Error actualizando cache local:", err);
+            }
         }
 
         return true;
@@ -158,9 +170,9 @@ export const requestsService = {
     getApprovedBajas: async (branchName?: string): Promise<{ targetName: string; category?: string }[]> => {
         const all = await requestsService.getRequests(branchName);
         return all
-            .filter(r => r.type === 'Baja de Laboratorio' && r.status === 'approved')
+            .filter(r => (r.type === 'Baja de Laboratorio' || !r.type) && r.status === 'approved')
             .map(r => ({
-                targetName: r.targetName.trim().toUpperCase(),
+                targetName: (r.targetName || '').trim().toUpperCase(),
                 category: r.category ? r.category.trim().toUpperCase() : undefined
             }));
     },
@@ -169,27 +181,40 @@ export const requestsService = {
      * Rechazar una solicitud
      */
     rejectRequest: async (requestId: string, reviewedBy: string, rejectionReason?: string): Promise<boolean> => {
-        const local = localStorage.getItem(LOCAL_STORAGE_KEY);
-        const list: RequestItem[] = local ? JSON.parse(local) : INITIAL_DEMO_REQUESTS;
-        const target = list.find(r => r.id === requestId);
+        const reviewedAt = new Date().toISOString();
 
-        if (!target) return false;
-
-        target.status = 'rejected';
-        target.reviewedBy = reviewedBy;
-        target.reviewedAt = new Date().toISOString();
-        target.rejectionReason = rejectionReason;
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list));
-
+        // 1. Actualizar en Supabase
         try {
-            await (supabase as any).from('requests').update({
+            const { error } = await (supabase as any).from('requests').update({
                 status: 'rejected',
                 reviewed_by: reviewedBy,
-                reviewed_at: target.reviewedAt,
+                reviewed_at: reviewedAt,
                 rejection_reason: rejectionReason
             }).eq('id', requestId);
+
+            if (error) {
+                console.error("Error al actualizar rechazo en Supabase:", error);
+            }
         } catch (e) {
-            console.warn("Error al actualizar estado en Supabase:", e);
+            console.warn("Error de red al actualizar rechazo en Supabase:", e);
+        }
+
+        // 2. Actualizar caché local de respaldo
+        const local = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (local) {
+            try {
+                const list: RequestItem[] = JSON.parse(local);
+                const target = list.find(r => r.id === requestId);
+                if (target) {
+                    target.status = 'rejected';
+                    target.reviewedBy = reviewedBy;
+                    target.reviewedAt = reviewedAt;
+                    target.rejectionReason = rejectionReason;
+                    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list));
+                }
+            } catch (err) {
+                console.warn("Error actualizando cache local:", err);
+            }
         }
 
         return true;
@@ -199,27 +224,41 @@ export const requestsService = {
      * Actualizar estado de una solicitud
      */
     updateRequestStatus: async (requestId: string, newStatus: RequestStatus, reviewedBy?: string): Promise<boolean> => {
-        const local = localStorage.getItem(LOCAL_STORAGE_KEY);
-        const list: RequestItem[] = local ? JSON.parse(local) : INITIAL_DEMO_REQUESTS;
-        const target = list.find(r => r.id === requestId);
+        const reviewedAt = reviewedBy ? new Date().toISOString() : undefined;
 
-        if (!target) return false;
-
-        target.status = newStatus;
-        if (reviewedBy) {
-            target.reviewedBy = reviewedBy;
-            target.reviewedAt = new Date().toISOString();
-        }
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list));
-
+        // 1. Actualizar en Supabase
         try {
-            await (supabase as any).from('requests').update({
-                status: newStatus,
-                reviewed_by: reviewedBy,
-                reviewed_at: target.reviewedAt
-            }).eq('id', requestId);
+            const updatePayload: any = { status: newStatus };
+            if (reviewedBy) {
+                updatePayload.reviewed_by = reviewedBy;
+                updatePayload.reviewed_at = reviewedAt;
+            }
+
+            const { error } = await (supabase as any).from('requests').update(updatePayload).eq('id', requestId);
+            if (error) {
+                console.error("Error al actualizar estado en Supabase:", error);
+            }
         } catch (e) {
-            console.warn("Error al actualizar estado en Supabase:", e);
+            console.warn("Error de red al actualizar en Supabase:", e);
+        }
+
+        // 2. Actualizar caché local de respaldo
+        const local = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (local) {
+            try {
+                const list: RequestItem[] = JSON.parse(local);
+                const target = list.find(r => r.id === requestId);
+                if (target) {
+                    target.status = newStatus;
+                    if (reviewedBy) {
+                        target.reviewedBy = reviewedBy;
+                        target.reviewedAt = reviewedAt;
+                    }
+                    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list));
+                }
+            } catch (err) {
+                console.warn("Error actualizando cache local:", err);
+            }
         }
 
         return true;
@@ -229,23 +268,33 @@ export const requestsService = {
      * Actualizar detalles/motivo de una solicitud (por la sucursal)
      */
     updateRequestDetails: async (requestId: string, reason: string, comments?: string): Promise<boolean> => {
-        const local = localStorage.getItem(LOCAL_STORAGE_KEY);
-        const list: RequestItem[] = local ? JSON.parse(local) : INITIAL_DEMO_REQUESTS;
-        const target = list.find(r => r.id === requestId);
-
-        if (!target) return false;
-
-        target.reason = reason;
-        if (comments !== undefined) target.comments = comments;
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list));
-
+        // 1. Actualizar en Supabase
         try {
-            await (supabase as any).from('requests').update({
-                reason: reason,
-                comments: comments
-            }).eq('id', requestId);
+            const updatePayload: any = { reason };
+            if (comments !== undefined) updatePayload.comments = comments;
+
+            const { error } = await (supabase as any).from('requests').update(updatePayload).eq('id', requestId);
+            if (error) {
+                console.error("Error al actualizar motivo en Supabase:", error);
+            }
         } catch (e) {
-            console.warn("Error al actualizar motivo en Supabase:", e);
+            console.warn("Error de red al actualizar motivo en Supabase:", e);
+        }
+
+        // 2. Actualizar caché local de respaldo
+        const local = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (local) {
+            try {
+                const list: RequestItem[] = JSON.parse(local);
+                const target = list.find(r => r.id === requestId);
+                if (target) {
+                    target.reason = reason;
+                    if (comments !== undefined) target.comments = comments;
+                    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(list));
+                }
+            } catch (err) {
+                console.warn("Error actualizando cache local:", err);
+            }
         }
 
         return true;

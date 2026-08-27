@@ -62,7 +62,7 @@ export default defineConfig(({ mode }) => {
             },
             {
               name: 'Inventarios',
-              url: `${base}cyclic-inventory`,
+              url: `${base}inventario-ciclico`,
               icons: [{ src: 'icon.png', sizes: '192x192' }]
             }
           ],
@@ -70,7 +70,6 @@ export default defineConfig(({ mode }) => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-          globIgnores: ['**/bg.svg', '**/default_products.xlsx'],
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB limit for regular assets
           navigateFallback: 'index.html',
           runtimeCaching: [
@@ -132,7 +131,7 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       strictPort: true,
       watch: {
-        ignored: ['**/src-tauri/**', '**/android/**', '**/dist/**']
+        ignored: ['**/src-tauri/**', '**/dist/**']
       }
     },
     build: {
@@ -140,12 +139,14 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks: {
             'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-            'ui-vendor': [
-              '@base-ui-components/react',
-            ],
+            'animation-vendor': ['framer-motion', 'motion'],
+            'tanstack-vendor': ['@tanstack/react-query', '@tanstack/react-table', '@tanstack/react-virtual'],
+            'three-vendor': ['three', '@react-three/fiber', '@react-three/drei'],
+            'ui-vendor': ['@base-ui-components/react', '@base-ui/react'],
+            'icons-vendor': ['@untitledui/icons', 'lucide-react'],
             'supabase': ['@supabase/supabase-js'],
             'charts': ['recharts'],
-            'utils': ['date-fns', 'clsx', 'tailwind-merge'],
+            'utils': ['date-fns', 'clsx', 'tailwind-merge', 'zod', 'zustand'],
           },
         },
         onwarn(warning, warn) {
@@ -165,7 +166,6 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: {
       entries: [
         'index.html',
-        '!android/**',
         '!dist/**',
       ],
       include: [

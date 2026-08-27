@@ -174,7 +174,7 @@ export default function StockImport() {
   // Bloquear acceso para sucursales y zonales (y redirigir a Zebra si es móvil)
   useEffect(() => {
     if (isMobile) {
-      navigate('/stock/recount-mobile', { replace: true });
+      navigate('/stock/recuento-movil', { replace: true });
       return;
     }
     if (user?.role === 'branch' || user?.role === 'mod') {

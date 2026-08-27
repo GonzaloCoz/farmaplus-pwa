@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Capacitor } from '@capacitor/core';
 import { useUser } from '@/contexts/UserContext';
 import {
     Accordion,
@@ -64,308 +63,18 @@ import JsBarcode from 'jsbarcode';
 import { enhancedProductCache } from '@/services/enhancedProductCache';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useHaptic } from '@/hooks/useHaptic';
-import { useAndroidBackButton } from '@/hooks/useAndroidBackButton';
 import { useTheme } from '@/hooks/useTheme';
 import { Switch } from '@/components/ui/switch';
 
 
-// --- Coss UI Drawer Components (Local Registry Simulation) ---
-function DrawerPanel({ className, children, ...props }: any) {
-    return (
-        <DrawerContent className={cn("p-0 rounded-t-[20px] max-h-[90vh]", className)} showBar {...props}>
-            <div className="flex-1 overflow-y-auto custom-scrollbar py-2">
-                {children}
-            </div>
-        </DrawerContent>
-    );
-}
+import { PreCountSettingsMenu as SettingsMenu } from '@/components/precount/PreCountSettingsMenu';
+import { 
+    FinishSessionDialog, 
+    NoZoneDialog, 
+    AddSectorDialog, 
+    QuantityDrawer 
+} from '@/components/precount/PreCountDialogs';
 
-function DrawerMenu({ className, children, ...props }: any) {
-    return <div className={cn("flex flex-col", className)} {...props}>{children}</div>;
-}
-
-function DrawerMenuGroup({ className, children, ...props }: any) {
-    return <div className={cn("flex flex-col", className)} {...props}>{children}</div>;
-}
-
-function DrawerMenuGroupLabel({ className, children, ...props }: any) {
-    return (
-        <div className={cn("px-5 pt-3 pb-1 text-[12px] font-medium text-muted-foreground/40", className)} {...props}>
-            {children}
-        </div>
-    );
-}
-
-function DrawerMenuItem({ className, children, icon, isSelected, variant = "ghost", indent = false, ...props }: any) {
-    return (
-        <Button
-            variant="ghost"
-            className={cn(
-                "justify-start h-9 px-5 gap-2 font-normal w-full rounded-none hover:bg-accent/30 transition-none",
-                isSelected && "text-foreground font-medium",
-                variant === "destructive" && "text-destructive hover:text-destructive hover:bg-destructive/5",
-                className
-            )}
-            {...props}
-        >
-            <div className="flex shrink-0 items-center justify-center size-4">
-                {isSelected ? <Check className="size-3.5 stroke-[2.5]" /> : (icon || (indent && <div className="size-4" />))}
-            </div>
-            <span className="flex-1 text-left text-[14px] truncate">{children}</span>
-        </Button>
-    );
-}
-
-function DrawerMenuSeparator({ className, ...props }: any) {
-    return <div className={cn("h-px bg-border/40 my-2 mx-0", className)} {...props} />;
-}
-
-// Responsive Settings Menu based on p-drawer-13 pattern
-function SettingsMenu({
-    highSpeedMode,
-    setHighSpeedMode,
-    isManualMode,
-    setIsManualMode,
-    autoSave,
-    setAutoSave,
-    sortOrder,
-    setSortOrder,
-    isZenMode,
-    setIsZenMode,
-    handleResetSector,
-    handleExportTXT,
-    handleFinishClick,
-    accessMode
-}: any) {
-    const { theme, toggleTheme } = useTheme();
-    const { logout } = useUser();
-    const isMobile = useMediaQuery("(max-width: 768px)");
-
-    const trigger = (
-        <Button variant="outline" size="icon" className="h-10 w-10 shrink-0">
-            <Settings className="size-4" />
-        </Button>
-    );
-
-    if (isMobile) {
-        return (
-            <Drawer>
-                <DrawerTrigger asChild>
-                    {trigger}
-                </DrawerTrigger>
-                <DrawerPanel className="pb-10">
-                    <DrawerMenu>
-                        <DrawerMenuGroup>
-                            <DrawerMenuGroupLabel>Modo de lectura</DrawerMenuGroupLabel>
-                            <DrawerMenuItem
-                                isSelected={highSpeedMode && !isManualMode}
-                                indent
-                                onClick={() => { setHighSpeedMode(true); setIsManualMode(false); }}
-                            >
-                                Alta velocidad (+1)
-                            </DrawerMenuItem>
-                            <DrawerMenuItem
-                                isSelected={!highSpeedMode && !isManualMode}
-                                indent
-                                onClick={() => { setHighSpeedMode(false); setIsManualMode(false); }}
-                            >
-                                Ingreso de cantidad
-                            </DrawerMenuItem>
-                            {accessMode !== 'salon' && (
-                                <DrawerMenuItem
-                                    isSelected={isManualMode}
-                                    indent
-                                    onClick={() => setIsManualMode(!isManualMode)}
-                                >
-                                    Teclado manual
-                                </DrawerMenuItem>
-                            )}
-                        </DrawerMenuGroup>
-
-                        <DrawerMenuSeparator />
-
-                        <DrawerMenuGroup>
-                            <DrawerMenuGroupLabel>Configuración</DrawerMenuGroupLabel>
-                            <DrawerMenuItem
-                                icon={autoSave ? <CheckCircle className="size-4 text-primary" /> : <div className="size-4 border border-muted-foreground/30 rounded-sm" />}
-                                onClick={() => setAutoSave(!autoSave)}
-                            >
-                                Auto guardado
-                            </DrawerMenuItem>
-                        </DrawerMenuGroup>
-
-                        <DrawerMenuSeparator />
-
-                        <DrawerMenuGroup>
-                            <DrawerMenuGroupLabel>Apariencia</DrawerMenuGroupLabel>
-                            <div className="flex items-center justify-between px-5 h-9">
-                                <span className="text-[14px]">Modo oscuro</span>
-                                <Switch
-                                    checked={theme === 'dark'}
-                                    onCheckedChange={toggleTheme}
-                                    className="[--thumb-size:--spacing(4)] sm:[--thumb-size:--spacing(3)]"
-                                />
-                            </div>
-                        </DrawerMenuGroup>
-
-                        <DrawerMenuSeparator />
-
-                        <DrawerMenuGroup>
-                            <DrawerMenuGroupLabel>Filtros de orden</DrawerMenuGroupLabel>
-                            <DrawerMenuItem
-                                isSelected={sortOrder === 'name_asc'}
-                                indent
-                                onClick={() => setSortOrder('name_asc')}
-                            >
-                                Nombre: A a la Z
-                            </DrawerMenuItem>
-                            <DrawerMenuItem
-                                isSelected={sortOrder === 'name_desc'}
-                                indent
-                                onClick={() => setSortOrder('name_desc')}
-                            >
-                                Nombre: Z a la A
-                            </DrawerMenuItem>
-                            <DrawerMenuItem
-                                isSelected={sortOrder === 'qty_desc'}
-                                indent
-                                onClick={() => setSortOrder('qty_desc')}
-                            >
-                                Cantidad: Mayor a menor
-                            </DrawerMenuItem>
-                            <DrawerMenuItem
-                                isSelected={sortOrder === 'qty_asc'}
-                                indent
-                                onClick={() => setSortOrder('qty_asc')}
-                            >
-                                Cantidad: Menor a mayor
-                            </DrawerMenuItem>
-                        </DrawerMenuGroup>
-
-                        <DrawerMenuSeparator />
-
-                        <DrawerMenuGroup>
-                            <DrawerMenuGroupLabel>Acciones</DrawerMenuGroupLabel>
-                            <DrawerMenuItem
-                                icon={<RefreshCcw className="size-4" />}
-                                onClick={handleResetSector}
-                            >
-                                Reiniciar sector
-                            </DrawerMenuItem>
-                            <DrawerMenuItem
-                                icon={<Download className="size-4" />}
-                                onClick={handleExportTXT}
-                            >
-                                Exportar TXT
-                            </DrawerMenuItem>
-                        </DrawerMenuGroup>
-
-                        <DrawerMenuSeparator />
-
-                        <DrawerMenuGroup>
-                            <DrawerMenuGroupLabel>Zona de peligro</DrawerMenuGroupLabel>
-                            <DrawerClose asChild>
-                                <DrawerMenuItem
-                                    variant="destructive"
-                                    icon={<LogOut className="size-4" />}
-                                    onClick={handleFinishClick}
-                                >
-                                    Finalizar sesión
-                                </DrawerMenuItem>
-                            </DrawerClose>
-                            {Capacitor.isNativePlatform() && (
-                                <DrawerClose asChild>
-                                    <DrawerMenuItem
-                                        variant="destructive"
-                                        icon={<LogOut className="size-4" />}
-                                        onClick={async () => {
-                                            if (confirm("¿Estás seguro de que deseas cerrar sesión?")) {
-                                                await logout();
-                                            }
-                                        }}
-                                    >
-                                        Cerrar sesión
-                                    </DrawerMenuItem>
-                                </DrawerClose>
-                            )}
-                        </DrawerMenuGroup>
-                    </DrawerMenu>
-                </DrawerPanel>
-            </Drawer>
-        );
-    }
-
-    return (
-        <DropdownMenu>
-            <DropdownTrigger render={trigger} />
-            <DropdownContent align="end" className="w-56">
-                <DropdownLabel>Modo de lectura</DropdownLabel>
-                <MenuItem
-                    index={0}
-                    label="Alta velocidad (+1)"
-                    checked={highSpeedMode && !isManualMode}
-                    onSelect={() => { setHighSpeedMode(true); setIsManualMode(false); }}
-                />
-                <MenuItem
-                    index={1}
-                    label="Ingreso de cantidad"
-                    checked={!highSpeedMode && !isManualMode}
-                    onSelect={() => { setHighSpeedMode(false); setIsManualMode(false); }}
-                />
-                <MenuItem
-                    index={2}
-                    label="Teclado manual"
-                    checked={isManualMode}
-                    onSelect={() => setIsManualMode(!isManualMode)}
-                />
-                <DropdownSeparator />
-                <DropdownLabel>Interfaz</DropdownLabel>
-                <MenuItem
-                    index={3}
-                    label="Modo zen (Expandido)"
-                    checked={isZenMode}
-                    onSelect={() => setIsZenMode(!isZenMode)}
-                />
-                <MenuItem
-                    index={4}
-                    label="Modo oscuro"
-                    checked={theme === 'dark'}
-                    onSelect={toggleTheme}
-                />
-                <DropdownSeparator />
-                <DropdownLabel>Acciones</DropdownLabel>
-                <MenuItem
-                    index={5}
-                    icon={Download}
-                    label="Exportar TXT"
-                    onSelect={handleExportTXT}
-                />
-                <DropdownSeparator />
-                <DropdownLabel>Peligro</DropdownLabel>
-                <MenuItem
-                    index={6}
-                    icon={CheckCircle}
-                    label="Finalizar sesión"
-                    onSelect={handleFinishClick}
-                    className="text-destructive focus:text-destructive"
-                />
-                {Capacitor.isNativePlatform() && (
-                    <MenuItem
-                        index={7}
-                        icon={LogOut}
-                        label="Cerrar sesión"
-                        onSelect={async () => {
-                            if (confirm("¿Estás seguro de que deseas cerrar sesión?")) {
-                                await logout();
-                            }
-                        }}
-                        className="text-destructive focus:text-destructive"
-                    />
-                )}
-            </DropdownContent>
-        </DropdownMenu>
-    );
-}
 
 import { playSound } from '@/utils/soundUtils';
 import { Label } from '@/components/ui/label';
@@ -925,39 +634,6 @@ export default function PreCount() {
         () => session ? db.locations.where('session_id').equals(session.id).toArray() : [],
         [session]
     );
-
-    // Handle Android hardware back button
-    useAndroidBackButton({
-        onBack: () => {
-            // Priority: Close active overlays first
-            if (showQtyDrawer) {
-                setShowQtyDrawer(false);
-                return true;
-            }
-            if (showLocationSummary) {
-                setShowLocationSummary(false);
-                return true;
-            }
-            if (showAdmin) {
-                setShowAdmin(false);
-                return true;
-            }
-            if (showNoZoneDialog) {
-                setShowNoZoneDialog(false);
-                return true;
-            }
-
-            // If in counting step, go back to config
-            if (step === 'counting') {
-                setStep('config');
-                return true;
-            }
-
-            // Return false to let globalApp back handling take over (navigate -1)
-            return false;
-        },
-        isEnabled: step !== 'config' || showAdmin // Only override when not on first step or admin open
-    });
 
     const isActiveLocationClosed = sessionLocations?.find(l => l.location_tag === activeLocation)?.status === 'closed';
 
@@ -2133,27 +1809,10 @@ export default function PreCount() {
                     <Button
                         variant="outline"
                         className="flex-1 font-bold h-11 rounded-xl shadow-none border-border/40"
-                        onClick={async () => {
-                            if (Capacitor.isNativePlatform()) {
-                                if (confirm("¿Estás seguro de que deseas cerrar sesión?")) {
-                                    await logout();
-                                }
-                            } else {
-                                navigate('/stock');
-                            }
-                        }}
+                        onClick={() => navigate('/stock')}
                     >
-                        {Capacitor.isNativePlatform() ? (
-                            <>
-                                <LogOut className="size-4 mr-2 text-destructive" />
-                                <span className="text-destructive">Cerrar Sesión</span>
-                            </>
-                        ) : (
-                            <>
-                                <ArrowLeft className="size-4 mr-2" />
-                                Retroceder
-                            </>
-                        )}
+                        <ArrowLeft className="size-4 mr-2" />
+                        Retroceder
                     </Button>
                     <Button
                         variant={selectedProfile ? "default" : "outline"}
@@ -3399,138 +3058,35 @@ export default function PreCount() {
             </motion.div>
 
 
-            {/* Finalizar Confirmation Dialog */}
-            <Dialog open={showFinishDialog} onOpenChange={setShowFinishDialog}>
-                <DialogPopup className="sm:max-w-sm">
-                    <Form className="contents" onSubmit={(e) => { e.preventDefault(); handleConfirmFinish(); }}>
-                        <DialogHeader>
-                            <DialogTitle>Finalizar Sesión</DialogTitle>
-                            <DialogDescription>
-                                ¿Estás seguro de que deseas finalizar esta sesión? Se guardará el registro de {totalProducts} productos y {totalUnits} unidades.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <div className="px-6 py-4">
-                            <Field>
-                                <FieldLabel>Contraseña</FieldLabel>
-                                <Input
-                                    type="password"
-                                    value={finishPassword}
-                                    onChange={(e) => {
-                                        setFinishPassword(e.target.value);
-                                        setFinishPasswordError('');
-                                    }}
-                                    placeholder="Ingresa la contraseña para confirmar"
-                                    autoFocus
-                                />
-                                {finishPasswordError && (
-                                    <p className="text-xs text-destructive mt-1.5 font-medium">{finishPasswordError}</p>
-                                )}
-                            </Field>
-                        </div>
-                        <DialogFooter>
-                            <DialogClose render={<Button type="button" variant="ghost" />}>
-                                Cancelar
-                            </DialogClose>
-                            <Button type="submit" disabled={!finishPassword.trim()}>
-                                <CheckCircle className="w-4 h-4" />
-                                Confirmar y Finalizar
-                            </Button>
-                        </DialogFooter>
-                    </Form>
-                </DialogPopup>
-            </Dialog>
+            {/* Modales y Drawers Modulares */}
+            <FinishSessionDialog
+                open={showFinishDialog}
+                onOpenChange={setShowFinishDialog}
+                totalProducts={totalProducts}
+                totalUnits={totalUnits}
+                finishPassword={finishPassword}
+                setFinishPassword={setFinishPassword}
+                finishPasswordError={finishPasswordError}
+                setFinishPasswordError={setFinishPasswordError}
+                onConfirmFinish={handleConfirmFinish}
+            />
 
-            {/* Diálogo de advertencia: No hay Zona seleccionada */}
-            <Dialog open={showNoZoneDialog} onOpenChange={setShowNoZoneDialog}>
-                <DialogPopup className="max-w-[90vw] rounded-lg sm:max-w-[425px]">
-                    <DialogHeader>
-                        <div className="mx-auto w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mb-2">
-                            <MapPin className="size-6 text-amber-600" />
-                        </div>
-                        <DialogTitle className="text-center text-xl">Zona no seleccionada</DialogTitle>
-                        <DialogDescription className="text-center">
-                            Debes seleccionar o escanear una <span className="font-bold text-foreground">Zona</span> antes de empezar a contar productos.
-                        </DialogDescription>
-                    </DialogHeader>
+            <NoZoneDialog
+                open={showNoZoneDialog}
+                onOpenChange={setShowNoZoneDialog}
+                onOpenSectorSelector={() => {
+                    document.getElementById('sector-selector-trigger')?.click();
+                }}
+            />
 
-                    <div className="py-4 space-y-4">
-                        <div className="p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground leading-relaxed">
-                            <p className="font-semibold text-foreground mb-1">¿Por qué es necesario?</p>
-                            Para mantener el inventario ordenado, cada producto leído debe asignarse a un sector físico (Ej: GO-01, CA-05).
-                        </div>
+            <AddSectorDialog
+                open={showAddSectorDialog}
+                onOpenChange={setShowAddSectorDialog}
+                newSectorName={newSectorName}
+                setNewSectorName={setNewSectorName}
+                onAddSector={handleLocationScan}
+            />
 
-                        <div className="flex flex-col gap-2">
-                            <p className="text-xs font-medium px-1">Acciones rápidas:</p>
-                            <Button
-                                variant="outline"
-                                className="justify-start h-11 px-4 rounded-xl"
-                                onClick={() => {
-                                    setShowNoZoneDialog(false);
-                                    document.getElementById('sector-selector-trigger')?.click();
-                                }}
-                            >
-                                <Filter className="size-4 mr-3 text-primary" />
-                                Seleccionar Zona de la lista
-                            </Button>
-                        </div>
-                    </div>
-
-                    <DialogFooter>
-                        <Button
-                            className="w-full h-11 rounded-xl bg-primary text-primary-foreground font-bold"
-                            onClick={() => setShowNoZoneDialog(false)}
-                        >
-                            Entendido
-                        </Button>
-                    </DialogFooter>
-                </DialogPopup>
-            </Dialog>
-
-            {/* Modal para añadir nuevo sector - Coss UI Pattern */}
-            <Dialog open={showAddSectorDialog} onOpenChange={setShowAddSectorDialog}>
-                <DialogPopup className="sm:max-w-sm">
-                    <DialogHeader>
-                        <DialogTitle>Nueva Zona / Sector</DialogTitle>
-                        <DialogDescription>
-                            Ingresa el código de la nueva zona de conteo (Ej: GO-01, CA-02).
-                        </DialogDescription>
-                    </DialogHeader>
-                    <Form 
-                        onSubmit={(e) => {
-                            e.preventDefault();
-                            if (newSectorName) {
-                                handleLocationScan(newSectorName);
-                                setNewSectorName('');
-                                setShowAddSectorDialog(false);
-                            }
-                        }} 
-                        className="contents"
-                    >
-                        <DialogPanel className="grid gap-4">
-                            <Field>
-                                <FieldLabel>Código del Sector</FieldLabel>
-                                <Input 
-                                    autoFocus
-                                    value={newSectorName} 
-                                    onChange={(e) => setNewSectorName(e.target.value.toUpperCase())} 
-                                    placeholder="Ej: GO-01" 
-                                    className="uppercase font-bold"
-                                />
-                            </Field>
-                        </DialogPanel>
-                        <DialogFooter>
-                            <DialogClose render={<Button variant="ghost" />}>
-                                Cancelar
-                            </DialogClose>
-                            <Button type="submit" disabled={!newSectorName}>
-                                Agregar
-                            </Button>
-                        </DialogFooter>
-                    </Form>
-                </DialogPopup>
-            </Dialog>
-
-            {/* Nuevo Flow de Cierre de Zona (Nested Drawers) */}
             <LocationClosingDrawer
                 isOpen={showLocationSummary}
                 onOpenChange={setShowLocationSummary}
@@ -3539,45 +3095,25 @@ export default function PreCount() {
                 onConfirm={confirmCloseLocation}
             />
 
-            {/* Teclado Numérico Virtual (Bottom Drawer) */}
-            <Drawer
+            <QuantityDrawer
                 open={showQtyDrawer}
-                onOpenChange={(open) => {
-                    setShowQtyDrawer(open);
-                    // Al cerrar sin confirmar, resetear cantidad a 1
-                    if (!open) setQuantity(0);
+                onOpenChange={setShowQtyDrawer}
+                quantity={quantity}
+                setQuantity={setQuantity}
+                productName={selectedProduct?.name}
+                productEAN={selectedProduct?.ean || manualEAN}
+                onConfirm={async () => {
+                    setShowQtyDrawer(false);
+                    if (editingItemId) {
+                        await updateItem(editingItemId, quantity);
+                        setEditingItemId(null);
+                        setManualEAN('');
+                        setSelectedProduct(null);
+                    } else {
+                        await handleAddProduct();
+                    }
                 }}
-                shouldScaleBackground={false}
-            >
-                <DrawerContent className="outline-none max-h-[92dvh]">
-                    {/* Sin drag bar — igual al p-drawer-2 del diseño */}
-                    <DrawerHeader className="sr-only">
-                        <DrawerTitle>Ingresar Cantidad</DrawerTitle>
-                        <DrawerDescription>
-                            Usá el teclado numérico para ingresar la cantidad del producto.
-                        </DrawerDescription>
-                    </DrawerHeader>
-                    <NumericKeyboard
-                        value={quantity}
-                        onChange={setQuantity}
-                        productName={selectedProduct?.name}
-                        productEAN={selectedProduct?.ean || manualEAN}
-                        onConfirm={async () => {
-                            setShowQtyDrawer(false);
-                            if (editingItemId) {
-                                await updateItem(editingItemId, quantity);
-                                setEditingItemId(null);
-                                setManualEAN('');
-                                setSelectedProduct(null);
-                                // notify.success("Actualizado", "Cantidad actualizada correctamente");
-                            } else {
-                                await handleAddProduct();
-                            }
-                        }}
-                        onClose={() => setShowQtyDrawer(false)}
-                    />
-                </DrawerContent>
-            </Drawer>
+            />
         </div>
     );
 }

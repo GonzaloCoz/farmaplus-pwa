@@ -60,7 +60,7 @@ export function WindowTabs({ onSearchClick }: WindowTabsProps) {
             <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto no-scrollbar py-2 -my-2 px-1 -mx-1">
                 {windows.map((win) => {
                     const isActive = win.id === activeWindowId;
-                    const isSpecialGreen = win.path === "/inventory-reminder";
+                    const isSpecialGreen = win.path === "/recordatorio-inventario";
                     const { icon: tabIcon } = getTabMetaForPath(win.path);
                     const Icon = tabIcon ?? <FileText size={16} />;
 

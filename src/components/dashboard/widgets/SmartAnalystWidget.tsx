@@ -32,7 +32,7 @@ export function SmartAnalystWidget() {
         if (!isAdmin) {
             notify.info("Próximamente", "La herramienta de Control de Vencimiento estará disponible muy pronto.", { id: 'blocked-feature' });
         } else {
-            navigate('/smart-analyst');
+            navigate('/control-vencimiento');
         }
     };
 
@@ -154,7 +154,7 @@ export function SmartAnalystWidget() {
                             className="w-full h-8 text-xs mt-auto"
                             size="sm"
                             variant="outline"
-                            onClick={() => navigate('/smart-analyst')}
+                            onClick={() => navigate('/control-vencimiento')}
                         >
                             Ver Detalles <ArrowRight className="w-3 h-3 ml-2" />
                         </Button>

@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { fontWeights } from "@/lib/font-weight";
 
 import { useUser } from "@/contexts/UserContext";
+import { useBranchesQuery } from "@/hooks/useBranchesQuery";
 
 const DUMMY_SETTINGS: Array<{ id: string; title: string; value: string }> = [];
 
@@ -93,21 +94,11 @@ export function NotificationsMenu() {
 
   // Admin Announcement State
   const [showAnnouncementDialog, setShowAnnouncementDialog] = useState(false);
-  const [branches, setBranches] = useState<string[]>([]);
+  const { data: branchesData } = useBranchesQuery();
+  const branches = useMemo(() => (branchesData || []).map(b => b.name), [branchesData]);
   const [selectedBranch, setSelectedBranch] = useState("");
   const [announcementMessage, setAnnouncementMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
-
-  useEffect(() => {
-    if (user?.username === 'gcoz') {
-      loadBranches();
-    }
-  }, [user]);
-
-  const loadBranches = async () => {
-    const { data } = await supabase.from('branches').select('name').order('name');
-    if (data) setBranches(data.map(b => b.name));
-  };
 
   // Filtered notifications by tab
   const filteredNotifications = useMemo(() => {

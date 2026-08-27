@@ -25,7 +25,6 @@ import { WindowRouter } from "@/components/WindowRouter";
 import { getTabMetaForPath } from "@/config/tabConfig";
 import { ScrollArea, ScrollAreaViewport, ScrollAreaScrollbar } from "@/components/ui/scroll-area";
 import { AppUpdater } from "@/components/AppUpdater";
-import { Capacitor } from "@capacitor/core";
 import { SurfaceProvider } from "@/lib/surface-context";
 import { Elevated } from "@/lib/elevated";
 import { FeedbackWidget } from "@/components/motion/feedback-widget";
@@ -33,9 +32,7 @@ import { notify } from "@/lib/notifications";
 
 export function AppLayout() {
   const { windows, activeWindowId } = useWindowManager();
-  const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
   const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
-  const isNative = Capacitor.isNativePlatform();
   const navigate = useNavigate();
   const { user, logout } = useUser();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -154,7 +151,7 @@ export function AppLayout() {
         hint: l.category.toUpperCase(),
         icon: BarChartIcon,
         keywords: ["laboratorio", l.name.toLowerCase(), "control", "inventario", l.category.toLowerCase()],
-        onSelect: () => navigate(`/cyclic-inventory/${encodeURIComponent(l.name)}`),
+        onSelect: () => navigate(`/inventario-ciclico/${encodeURIComponent(l.name)}`),
       }));
 
     return [...items, ...labItems];
@@ -235,9 +232,9 @@ export function AppLayout() {
             </Elevated>
 
             <div className="sticky bottom-0 z-10">
-              {!isNative && <BottomNavBar />}
+              <BottomNavBar />
             </div>
-            {!isNative && <TopAppBar />}
+            <TopAppBar />
             <SyncStatus />
           </div>
           <AppUpdater />

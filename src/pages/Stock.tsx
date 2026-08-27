@@ -24,20 +24,6 @@ export default function Stock() {
             showOnDesktop: true
         },
         {
-            title: 'Colector de Datos',
-            badge: 'ALPHA PREVIEW',
-            badgeDesc: 'Plex Direct Sync',
-            description: 'Nueva versión con conexión directa TCP a Plex (sin Excel), sesiones instantáneas por PIN y recuento en tiempo real.',
-            icon: Zap,
-            path: '/stock/colector-alpha',
-            color: 'blue',
-            gradient: 'from-blue-600/25 via-indigo-600/15 to-purple-600/5',
-            borderClass: 'border-blue-500/30 hover:border-blue-500/60 shadow-blue-500/5',
-            badgeClass: 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
-            showOnMobile: true,
-            showOnDesktop: true
-        },
-        {
             title: 'Conectar Zebra a Recuento',
             badge: null,
             description: 'Ingresa el PIN de acceso para contar productos en una sesión de recuento guiada por la PC.',

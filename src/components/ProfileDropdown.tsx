@@ -45,7 +45,7 @@ export function ProfileDropdown() {
 
     const handleSettings = () => {
         setOpen(false);
-        navigate("/settings");
+        navigate("/configuracion");
     };
 
     const initials = getInitials();

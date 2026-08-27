@@ -1,5 +1,4 @@
 import { HashRouter, Route, Routes, Outlet, useLocation, Navigate } from "react-router-dom";
-import { Capacitor } from "@capacitor/core";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, lazy, Suspense, useState, useRef } from "react";
@@ -28,7 +27,6 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Stock = lazy(() => import("./pages/Stock"));
 const PreCount = lazy(() => import("./pages/PreCount"));
-const PreCountAlpha = lazy(() => import("./pages/PreCountAlpha"));
 const StockImport = lazy(() => import("./pages/StockImport"));
 const StockRecountMobile = lazy(() => import("./pages/StockRecountMobile"));
 const ExpirationControl = lazy(() => import("./pages/ExpirationControl"));
@@ -37,7 +35,6 @@ const CyclicInventoryDetail = lazy(() => import("./pages/CyclicInventoryDetail")
 
 const Reports = lazy(() => import("./pages/Reports"));
 const Settings = lazy(() => import("./pages/Settings"));
-const AnimationsDemo = lazy(() => import("./pages/AnimationsDemo"));
 const Login = lazy(() => import("./pages/Login"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const AdminBranches = lazy(() => import("./pages/AdminBranches"));
@@ -51,6 +48,8 @@ const TrainingCenter = lazy(() => import("./pages/TrainingCenter"));
 const PostDetail = lazy(() => import("./pages/PostDetail"));
 const AdminEditor = lazy(() => import("./pages/AdminEditor"));
 const DataCollectorPage = lazy(() => import("./pages/DataCollectorPage"));
+const RequestsPage = lazy(() => import("./pages/RequestsPage"));
+const ReportDetail = lazy(() => import("@/components/ReportDetail"));
 
 
 const queryClient = new QueryClient({
@@ -95,8 +94,6 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
 
 const AppRoutes = () => {
   const location = useLocation();
-  useAndroidBackButton();
-  const isNative = Capacitor.isNativePlatform();
 
   return (
     <Routes location={location} key={location.pathname}>
@@ -118,25 +115,22 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       >
-        {isNative ? (
-          <>
+        <Route
+          index
+          element={
+            <Suspense fallback={<DashboardSkeleton />}>
+              <PageTransition>
+                <Dashboard />
+              </PageTransition>
+            </Suspense>
+          }
+        />
             <Route
-              index
-              element={<Navigate to="/collector" replace />}
-            />
-            <Route
-              path="*"
-              element={<Navigate to="/collector" replace />}
-            />
-          </>
-        ) : (
-          <>
-            <Route
-              index
+              path="solicitudes"
               element={
                 <Suspense fallback={<DashboardSkeleton />}>
                   <PageTransition>
-                    <Dashboard />
+                    <RequestsPage />
                   </PageTransition>
                 </Suspense>
               }
@@ -162,18 +156,6 @@ const AppRoutes = () => {
               }
             />
             <Route
-              path="stock/colector-alpha"
-              element={
-                <Suspense fallback={<DashboardSkeleton />}>
-                  <PageTransition>
-                    <PreCountAlpha />
-                  </PageTransition>
-                </Suspense>
-              }
-            />
-            <Route path="stock/pre-count" element={<Navigate to="/stock/colector" replace />} />
-            <Route path="colector-alpha" element={<Navigate to="/stock/colector-alpha" replace />} />
-            <Route
               path="stock/recuento-movil"
               element={
                 <Suspense fallback={<DashboardSkeleton />}>
@@ -183,7 +165,6 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
-            <Route path="stock/recount-mobile" element={<Navigate to="/stock/recuento-movil" replace />} />
             <Route
               path="stock/control-vencimiento"
               element={
@@ -194,7 +175,16 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
-            <Route path="stock/expiration-control" element={<Navigate to="/stock/control-vencimiento" replace />} />
+            <Route
+              path="stock/importar"
+              element={
+                <Suspense fallback={<DashboardSkeleton />}>
+                  <PageTransition>
+                    <StockImport />
+                  </PageTransition>
+                </Suspense>
+              }
+            />
             <Route
               path="inventario-ciclico"
               element={
@@ -205,7 +195,6 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
-            <Route path="cyclic-inventory" element={<Navigate to="/inventario-ciclico" replace />} />
             <Route
               path="inventario-ciclico/:id"
               element={
@@ -227,7 +216,16 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
-            <Route path="reports" element={<Navigate to="/reportes" replace />} />
+            <Route
+              path="reportes/:reportId"
+              element={
+                <Suspense fallback={<PageSkeleton />}>
+                  <PageTransition>
+                    <ReportDetail />
+                  </PageTransition>
+                </Suspense>
+              }
+            />
             <Route
               path="comparativa"
               element={
@@ -240,7 +238,6 @@ const AppRoutes = () => {
                 </AdminRoute>
               }
             />
-            <Route path="comparison" element={<Navigate to="/comparativa" replace />} />
             <Route
               path="configuracion"
               element={
@@ -251,18 +248,6 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
-            <Route path="settings" element={<Navigate to="/configuracion" replace />} />
-            <Route
-              path="demo-animaciones"
-              element={
-                <Suspense fallback={<DashboardSkeleton />}>
-                  <PageTransition>
-                    <AnimationsDemo />
-                  </PageTransition>
-                </Suspense>
-              }
-            />
-            <Route path="animations-demo" element={<Navigate to="/demo-animaciones" replace />} />
             <Route
               path="admin/auditoria"
               element={
@@ -275,7 +260,6 @@ const AppRoutes = () => {
                 </AdminRoute>
               }
             />
-            <Route path="admin/audit" element={<Navigate to="/admin/auditoria" replace />} />
 
             <Route
               path="admin/usuarios"
@@ -289,7 +273,6 @@ const AppRoutes = () => {
                 </AdminRoute>
               }
             />
-            <Route path="admin/users" element={<Navigate to="/admin/usuarios" replace />} />
             <Route
               path="admin/sucursales"
               element={
@@ -302,7 +285,6 @@ const AppRoutes = () => {
                 </AdminRoute>
               }
             />
-            <Route path="admin/branches" element={<Navigate to="/admin/sucursales" replace />} />
             <Route
               path="control-vencimiento"
               element={
@@ -313,7 +295,6 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
-            <Route path="smart-analyst" element={<Navigate to="/control-vencimiento" replace />} />
             <Route
               path="recordatorio-inventario"
               element={
@@ -324,7 +305,6 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
-            <Route path="inventory-reminder" element={<Navigate to="/recordatorio-inventario" replace />} />
             <Route
               path="foro"
               element={
@@ -365,19 +345,9 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
-          </>
-        )}
-      </Route>
+        </Route>
       <Route
-        path="/collector"
-        element={
-          <Suspense fallback={<DashboardSkeleton />}>
-            <DataCollectorPage />
-          </Suspense>
-        }
-      />
-      <Route
-        path="/data-collector"
+        path="/colector"
         element={
           <Suspense fallback={<DashboardSkeleton />}>
             <DataCollectorPage />
@@ -402,7 +372,6 @@ const AppRoutes = () => {
 
 
 import { WindowManagerProvider } from "./contexts/WindowManagerContext";
-import { useAndroidBackButton } from "./hooks/useAndroidBackButton";
 
 // Toggle to temporarily pause/suspend the entire application UI
 const MAINTENANCE_MODE = false;

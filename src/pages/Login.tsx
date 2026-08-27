@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useUser } from "@/contexts/UserContext";
 import { HelpCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import Beams from "@/components/ui/Beams";
+const Beams = React.lazy(() => import("@/components/ui/Beams"));
 import { InputGroup, InputField } from "@/components/ui/input-group";
 import { StatefulButton, type ButtonState } from "@/components/ui/stateful-button";
 import { useIcons } from "@/lib/icon-context";
@@ -128,16 +128,18 @@ export default function Login() {
             <div className="hidden lg:block lg:w-[58%] xl:w-[62%] h-full relative overflow-hidden bg-black">
                 {/* 3D Beams Background from React Bits */}
                 <div className="absolute inset-0 z-0">
-                    <Beams
-                        beamWidth={1.5}
-                        beamHeight={20}
-                        beamNumber={12}
-                        lightColor="#ffffff"
-                        speed={1.5}
-                        noiseIntensity={2.5}
-                        scale={0.2}
-                        rotation={-12}
-                    />
+                    <React.Suspense fallback={<div className="w-full h-full bg-black animate-pulse" />}>
+                        <Beams
+                            beamWidth={1.5}
+                            beamHeight={20}
+                            beamNumber={12}
+                            lightColor="#ffffff"
+                            speed={1.5}
+                            noiseIntensity={2.5}
+                            scale={0.2}
+                            rotation={-12}
+                        />
+                    </React.Suspense>
                 </div>
 
                 {/* Dark Vignette Overlay */}

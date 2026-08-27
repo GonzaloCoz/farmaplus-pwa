@@ -21,7 +21,8 @@
         "resizable": true,
         "fullscreen": false,
         "decorations": false,
-        "shadow": true
+        "shadow": true,
+        "additionalBrowserArgs": "--enable-gpu-rasterization --enable-zero-copy --ignore-gpu-blocklist --disable-features=CalculateNativeWinOcclusion"
       }
     ],
     "security": {
@@ -37,7 +38,20 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["xlsx", "xls", "csv"],
+        "name": "Planilla de Inventario Farmaplus",
+        "description": "Abrir archivo de stock en Farmaplus Desktop",
+        "role": "Viewer"
+      }
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
   },
   "plugins": {
     "updater": {

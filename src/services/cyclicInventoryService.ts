@@ -718,23 +718,66 @@ export const cyclicInventoryService = {
                 }
             }
 
-            // 2. Fetch summary metrics directly from PostgreSQL RPC (Server-side aggregated)
-            const { data: rpcData, error: rpcError } = await (supabase as any).rpc('get_branch_monitor_summaries', {
-                p_timeframe: timeframe || 'all',
-                p_round: targetRound,
-                p_show_previous: showPrevious
-            });
-
+            // 2. Fetch summary metrics directly from branch_laboratories table in parallel batches (Round 2)
             const rpcMap: Record<string, any> = {};
-            if (rpcData && !rpcError && Array.isArray(rpcData)) {
-                rpcData.forEach((row: any) => {
+            const totalPages = 55;
+            const batchPromises = [];
+            for (let i = 0; i < totalPages; i++) {
+                batchPromises.push(
+                    (supabase as any)
+                        .from('branch_laboratories')
+                        .select('branch_name, status, controlled_items, progress_percentage, positive_units, negative_units, positive_value, negative_value, total_items, last_updated')
+                        .eq('round', targetRound)
+                        .range(i * 1000, (i + 1) * 1000 - 1)
+                        .then((r: any) => r.data || [])
+                );
+            }
+
+            const batchResults = await Promise.all(batchPromises);
+            const allLabRows = batchResults.flat();
+
+            if (allLabRows && allLabRows.length > 0) {
+                allLabRows.forEach((row: any) => {
                     const normB = normalizeString(row.branch_name || '');
-                    if (normB) rpcMap[normB] = row;
+                    if (!normB) return;
+                    if (!rpcMap[normB]) {
+                        rpcMap[normB] = {
+                            branch_name: row.branch_name,
+                            inventory_units: 0,
+                            difference_units: 0,
+                            positive_diff_units: 0,
+                            negative_diff_units: 0,
+                            adjustments_value: 0,
+                            absolute_deviation_value: 0,
+                            controlled_labs_count: 0,
+                            active_labs_count: 0,
+                            total_labs_count: 0,
+                            total_controlled_items: 0,
+                            total_items_sum: 0,
+                            weighted_progress_sum: 0,
+                            updated_at: row.last_updated
+                        };
+                    }
+                    const bData = rpcMap[normB];
+                    bData.total_labs_count += 1;
+                    if (row.status === 'completed' || (row.progress_percentage || 0) >= 100) {
+                        bData.controlled_labs_count += 1;
+                    }
+                    if ((row.controlled_items || 0) > 0 || (row.progress_percentage || 0) > 0 || row.status !== 'pending') {
+                        bData.active_labs_count += 1;
+                    }
+                    bData.positive_diff_units += Number(row.positive_units) || 0;
+                    bData.negative_diff_units += Number(row.negative_units) || 0;
+                    bData.difference_units += (Number(row.positive_units) || 0) - (Number(row.negative_units) || 0);
+                    bData.inventory_units += Number(row.total_items) || 0;
+                    bData.adjustments_value += (Number(row.positive_value) || 0) - (Number(row.negative_value) || 0);
+                    bData.absolute_deviation_value += (Number(row.positive_value) || 0) + (Number(row.negative_value) || 0);
+                    bData.weighted_progress_sum += Number(row.progress_percentage) || 0;
                 });
             }
 
             // 3. Fetch branch configuration for deployment date and assigned days
-            const { data: configData } = await supabase
+            const { data: configData } = await (supabase as any)
                 .from('inventories')
                 .select('branch_name, ean, quantity, round')
                 .eq('laboratory', '_CONFIG_')
@@ -742,7 +785,7 @@ export const cyclicInventoryService = {
 
             const branchConfigs: Record<string, { startDate: string | null, days: number, rounds: Record<string, number> }> = {};
             if (configData) {
-                configData.forEach(c => {
+                configData.forEach((c: any) => {
                     const normalized = normalizeString(c.branch_name || '');
                     if (!branchConfigs[normalized]) {
                         branchConfigs[normalized] = { startDate: null, days: 0, rounds: { GENERAL: 1 } };
@@ -758,7 +801,7 @@ export const cyclicInventoryService = {
                     }
                 });
 
-                configData.forEach(c => {
+                configData.forEach((c: any) => {
                     const normalized = normalizeString(c.branch_name || '');
                     if (c.ean === 'CONFIG_START_DATE') {
                         if (c.round === targetRound || !branchConfigs[normalized].startDate) {
@@ -776,16 +819,16 @@ export const cyclicInventoryService = {
                 });
             }
 
-            // 4. Map over ALL branches using exact RPC metrics
+            // 4. Map over ALL branches using exact metrics matching the widgets
             const finalResult = branchNames.map(branchName => {
                 const normalizedSearch = normalizeString(branchName);
                 const row = rpcMap[normalizedSearch];
 
                 const activeLabsCount = Number(row?.active_labs_count) || 0;
                 const controlledLabsCount = Number(row?.controlled_labs_count) || 0;
-                const totalLabsMaster = Number(row?.total_labs_count) || 120;
+                const totalLabsMaster = Number(row?.total_labs_count) || 0;
 
-                // % Avance = Active labs / Master total labs (Matching Supabase test query)
+                // % Avance = Active labs / Total assigned labs (Exactamente igual que los widgets)
                 let progress = 0;
                 if (totalLabsMaster > 0 && activeLabsCount > 0) {
                     progress = Number(((activeLabsCount / totalLabsMaster) * 100).toFixed(1));

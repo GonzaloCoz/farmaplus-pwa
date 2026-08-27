@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import { useBranchesQuery } from "@/hooks/useBranchesQuery";
 
 // Action translations
 const ACTION_TRANSLATIONS: Record<string, string> = {
@@ -56,8 +57,8 @@ const getTranslatedEntity = (entity: string) => ENTITY_TRANSLATIONS[entity] || e
 export default function AdminAudit() {
     const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
-    const [logs, setLogs] = useState<any[]>([]);
-    const [branches, setBranches] = useState<any[]>([]);
+    const { data: branchesData } = useBranchesQuery();
+    const branches = useMemo(() => branchesData || [], [branchesData]);
     const [profiles, setProfiles] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -120,11 +121,7 @@ export default function AdminAudit() {
 
     const fetchInitialData = async () => {
         try {
-            const [{ data: bData }, { data: pData }] = await Promise.all([
-                supabase.from('branches').select('id, name').order('name'),
-                supabase.from('profiles').select('id, full_name, username')
-            ]);
-            setBranches(bData || []);
+            const { data: pData } = await supabase.from('profiles').select('id, full_name, username');
             setProfiles(pData || []);
         } catch (e) {
             console.error("Error fetching initial data", e);

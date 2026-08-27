@@ -648,7 +648,7 @@ export default function Reports() {
                   ) : (
                     <div className="space-y-4 pb-10">
                       {filteredReports.map((report) => (
-                        <Link to={`/reports/${report.id}`} key={report.id} className="block group">
+                        <Link to={`/reportes/${report.id}`} key={report.id} className="block group">
                           <Card className="p-5 cursor-pointer hover:shadow-md transition-all border-l-4 border-l-transparent hover:border-l-primary bg-card/50 backdrop-blur-sm rounded-lg border border-border/50 overflow-hidden relative">
                             <div className="flex items-start justify-between relative z-10">
                               <div className="flex-1">

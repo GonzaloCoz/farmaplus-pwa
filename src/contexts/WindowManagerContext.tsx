@@ -34,8 +34,10 @@ export const WindowManagerProvider: React.FC<{ children: React.ReactNode }> = ({
     const lastProcessedPath = useRef(location.pathname);
 
     const [windows, setWindows] = useState<WindowInstance[]>(() => {
-        let initialPath = window.location.pathname === '/' ? '/' : window.location.pathname;
+        let hashPath = typeof window !== 'undefined' && window.location.hash ? window.location.hash.replace(/^#/, '') : '';
+        let initialPath = hashPath || location.pathname || '/';
         if (initialPath === '/login' || initialPath === '/logout') initialPath = '/';
+        if (!initialPath.startsWith('/')) initialPath = '/' + initialPath;
 
         const { title, icon } = getTabMetaForPath(initialPath);
         return [{
@@ -121,17 +123,17 @@ export const WindowManagerProvider: React.FC<{ children: React.ReactNode }> = ({
 
                 if (hasUpcoming) {
                     setWindows(prev => {
-                        const exists = prev.find(w => w.path === '/inventory-reminder');
+                        const exists = prev.find(w => w.path === '/recordatorio-inventario');
                         if (exists) {
-                            if (prev[0].path === '/inventory-reminder') return prev;
-                            const other = prev.filter(w => w.path !== '/inventory-reminder');
+                            if (prev[0].path === '/recordatorio-inventario') return prev;
+                            const other = prev.filter(w => w.path !== '/recordatorio-inventario');
                             return [exists, ...other];
                         }
 
-                        const meta = getTabMetaForPath('/inventory-reminder');
+                        const meta = getTabMetaForPath('/recordatorio-inventario');
                         const reminderWindow: WindowInstance = {
                             id: 'system-reminder',
-                            path: '/inventory-reminder',
+                            path: '/recordatorio-inventario',
                             title: meta.title,
                             icon: meta.icon,
                             isClosable: false
@@ -140,7 +142,7 @@ export const WindowManagerProvider: React.FC<{ children: React.ReactNode }> = ({
                     });
                 } else {
                     setWindows(prev => {
-                        const newWins = prev.filter(w => w.path !== '/inventory-reminder');
+                        const newWins = prev.filter(w => w.path !== '/recordatorio-inventario');
                         if (activeWindowId === 'system-reminder' && newWins.length > 0) {
                             setActiveWindowId(newWins[0].id);
                         }

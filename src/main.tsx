@@ -25,11 +25,16 @@ import { register } from "./registerServiceWorker.ts";
 import { InstallPWAProvider } from "./contexts/InstallPWAContext.tsx";
 import React from "react";
 
-import { Capacitor } from "@capacitor/core";
-
-// En APK nativo, arrancar directamente en el Colector de Datos
-if (Capacitor.isNativePlatform() && !window.location.hash.startsWith('#/stock/pre-count')) {
-  window.location.hash = '#/stock/pre-count';
+// Normalizar rutas directas en la web para evitar duplicados como /solicitudes/#/solicitudes
+if (typeof window !== 'undefined' && !isTauri) {
+  const pathname = window.location.pathname;
+  if (pathname && pathname !== '/' && !pathname.endsWith('index.html')) {
+    const directPath = pathname;
+    const currentHash = window.location.hash ? window.location.hash.replace(/^#/, '') : '';
+    const targetRoute = currentHash || directPath;
+    const cleanRoute = targetRoute.startsWith('/') ? targetRoute : `/${targetRoute}`;
+    window.history.replaceState(null, '', `/#${cleanRoute}`);
+  }
 }
 
 const root = ReactDOM.createRoot(document.getElementById("root")!);
@@ -41,7 +46,7 @@ root.render(
   </React.StrictMode>
 );
 
-// Solo registrar el Service Worker si NO estamos en Tauri ni Capacitor
-if (!Capacitor.isNativePlatform() && !isTauri) {
+// Solo registrar el Service Worker si NO estamos en Tauri Desktop
+if (!isTauri) {
   register();
 }

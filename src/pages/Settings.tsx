@@ -697,7 +697,7 @@ export default function Settings() {
                       <Button
                         variant="outline"
                         className="flex-1 justify-start"
-                        onClick={() => navigate('/admin/users')}
+                        onClick={() => navigate('/admin/usuarios')}
                       >
                         <Users className="mr-2 h-4 w-4" />
                         Gestión de Usuarios

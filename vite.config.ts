@@ -143,7 +143,7 @@ export default defineConfig(({ mode }) => {
             'animation-vendor': ['framer-motion', 'motion'],
             'tanstack-vendor': ['@tanstack/react-query', '@tanstack/react-table', '@tanstack/react-virtual'],
             'three-vendor': ['three', '@react-three/fiber', '@react-three/drei'],
-            'ui-vendor': ['@base-ui-components/react', '@base-ui/react'],
+            'ui-vendor': ['@base-ui/react'],
             'icons-vendor': ['@untitledui/icons', 'lucide-react'],
             'supabase': ['@supabase/supabase-js'],
             'charts': ['recharts'],

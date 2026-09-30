@@ -2,14 +2,13 @@ import { HashRouter, Route, Routes, Outlet, useLocation, Navigate } from "react-
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, lazy, Suspense, useState, useRef } from "react";
-import { AnimatePresence } from "framer-motion";
+import { AnimatePresence, MotionConfig } from "framer-motion";
 
 import { AppLayout } from "./components/AppLayout";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster as SileoToaster } from "@/components/ui/sileo";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
-import { InstallPrompt } from "@/components/InstallPrompt";
 import { PageTransition } from "./components/PageTransition";
 import { SnackbarProvider } from "@/contexts/SnackbarContext";
 import { UserProvider, useUser } from "./contexts/UserContext";
@@ -27,7 +26,6 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Stock = lazy(() => import("./pages/Stock"));
 const PreCount = lazy(() => import("./pages/PreCount"));
-const StockImport = lazy(() => import("./pages/StockImport"));
 const StockRecountMobile = lazy(() => import("./pages/StockRecountMobile"));
 const ExpirationControl = lazy(() => import("./pages/ExpirationControl"));
 const CyclicInventory = lazy(() => import("./pages/CyclicInventory"));
@@ -43,7 +41,6 @@ const AdminAudit = lazy(() => import("./pages/AdminAudit"));
 
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
 const BranchComparison = lazy(() => import("./pages/BranchComparison"));
-const InventoryReminder = lazy(() => import("./pages/InventoryReminder"));
 const TrainingCenter = lazy(() => import("./pages/TrainingCenter"));
 const PostDetail = lazy(() => import("./pages/PostDetail"));
 const AdminEditor = lazy(() => import("./pages/AdminEditor"));
@@ -176,16 +173,6 @@ const AppRoutes = () => {
               }
             />
             <Route
-              path="stock/importar"
-              element={
-                <Suspense fallback={<DashboardSkeleton />}>
-                  <PageTransition>
-                    <StockImport />
-                  </PageTransition>
-                </Suspense>
-              }
-            />
-            <Route
               path="inventario-ciclico"
               element={
                 <Suspense fallback={<DashboardSkeleton />}>
@@ -295,16 +282,7 @@ const AppRoutes = () => {
                 </Suspense>
               }
             />
-            <Route
-              path="recordatorio-inventario"
-              element={
-                <Suspense fallback={<DashboardSkeleton />}>
-                  <PageTransition>
-                    <InventoryReminder />
-                  </PageTransition>
-                </Suspense>
-              }
-            />
+
             <Route
               path="foro"
               element={
@@ -712,34 +690,35 @@ const App = () => {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <SnackbarProvider>
-          <NotificationPreferencesProvider>
-            <UserProvider>
-              <NotificationProvider>
-                <SileoToaster position="bottom-right" options={{ roundness: 12 }} />
-                <Sonner />
-                <OfflineIndicator />
-                <InstallPrompt />
-                <ErrorBoundary>
-                  <HashRouter 
-                    future={{
-                      v7_startTransition: true,
-                      v7_relativeSplatPath: true,
-                    }}
-                  >
-                    <WindowManagerProvider>
-                      <AppRoutes />
-                    </WindowManagerProvider>
-                  </HashRouter>
-                </ErrorBoundary>
-              </NotificationProvider>
-            </UserProvider>
-          </NotificationPreferencesProvider>
-        </SnackbarProvider>
-      </TooltipProvider>
-    </QueryClientProvider>
+    <MotionConfig reducedMotion="user">
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <SnackbarProvider>
+            <NotificationPreferencesProvider>
+              <UserProvider>
+                <NotificationProvider>
+                  <SileoToaster position="bottom-right" options={{ roundness: 12 }} />
+                  <Sonner />
+                  <OfflineIndicator />
+                  <ErrorBoundary>
+                    <HashRouter 
+                      future={{
+                        v7_startTransition: true,
+                        v7_relativeSplatPath: true,
+                      }}
+                    >
+                      <WindowManagerProvider>
+                        <AppRoutes />
+                      </WindowManagerProvider>
+                    </HashRouter>
+                  </ErrorBoundary>
+                </NotificationProvider>
+              </UserProvider>
+            </NotificationPreferencesProvider>
+          </SnackbarProvider>
+        </TooltipProvider>
+      </QueryClientProvider>
+    </MotionConfig>
   );
 };
 

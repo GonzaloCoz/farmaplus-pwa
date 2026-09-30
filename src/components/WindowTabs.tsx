@@ -35,45 +35,74 @@ export function WindowTabs({ onSearchClick }: WindowTabsProps) {
     return (
         <div className="flex items-center w-full h-full gap-1.5 px-2">
 
-            {/* Back / Forward */}
-            <Button variant="ghost" size="icon" title="Atrás" style={noDrag} onClick={() => window.history.back()} className={surfaceClasses(3)}>
-                <ArrowLeft />
-            </Button>
-            <Button variant="ghost" size="icon" title="Adelante" style={noDrag} onClick={() => window.history.forward()} className={surfaceClasses(3)}>
-                <ArrowRight />
-            </Button>
+            {/* Back / Forward Group */}
+            <div className="flex items-center gap-1 shrink-0">
+                <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    title="Atrás"
+                    style={noDrag}
+                    onClick={() => window.history.back()}
+                    className={cn("h-[34px] w-[34px] rounded-lg shrink-0", surfaceClasses(3))}
+                >
+                    <ArrowLeft className="w-4 h-4" />
+                </Button>
+                <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    title="Adelante"
+                    style={noDrag}
+                    onClick={() => window.history.forward()}
+                    className={cn("h-[34px] w-[34px] rounded-lg shrink-0", surfaceClasses(3))}
+                >
+                    <ArrowRight className="w-4 h-4" />
+                </Button>
+            </div>
 
-            {/* Search */}
-            <Button variant="ghost" size="lg" leadingIcon={Search} style={noDrag} onClick={onSearchClick} className={surfaceClasses(3)}>
-                Buscar
-            </Button>
+            {/* Action Group: Buscar & Nueva */}
+            <div className="flex items-center gap-1.5 shrink-0 ml-0.5">
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    leadingIcon={Search}
+                    style={noDrag}
+                    onClick={onSearchClick}
+                    className={cn("h-[34px] ps-2.5 pe-3 rounded-lg text-xs font-medium gap-1.5 shrink-0", surfaceClasses(3))}
+                >
+                    Buscar
+                </Button>
 
-            {/* Nueva ventana */}
-            <Button variant="ghost" size="lg" leadingIcon={Plus} style={noDrag} onClick={() => openWindow("/", undefined, undefined, true)} className={surfaceClasses(3)}>
-                Nueva
-            </Button>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    leadingIcon={Plus}
+                    style={noDrag}
+                    onClick={() => openWindow("/", undefined, undefined, true)}
+                    className={cn("h-[34px] ps-2.5 pe-3 rounded-lg text-xs font-medium gap-1.5 shrink-0", surfaceClasses(3))}
+                >
+                    Nueva
+                </Button>
+            </div>
 
             {/* Divider */}
-            <div className="w-px h-5 bg-border/40 shrink-0 mx-1" />
+            <div className="w-px h-4.5 bg-border/40 shrink-0 mx-1" />
 
             {/* Window tabs */}
-            <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto no-scrollbar py-2 -my-2 px-1 -mx-1">
+            <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto no-scrollbar py-2 -my-2 px-1 -mx-1">
                 {windows.map((win) => {
                     const isActive = win.id === activeWindowId;
-                    const isSpecialGreen = win.path === "/recordatorio-inventario";
                     const { icon: tabIcon } = getTabMetaForPath(win.path);
-                    const Icon = tabIcon ?? <FileText size={16} />;
+                    const Icon = tabIcon ?? <FileText className="w-4 h-4" />;
 
-                    const buttonContent = (
+                    return (
                         <Button
                             key={win.id}
-                            variant={isActive ? "ghost" : "ghost"}
-                            size="lg"
+                            variant="ghost"
+                            size="sm"
                             style={noDrag}
                             onClick={() => { setActiveWindow(win.id); navigate(win.path); }}
                             className={cn(
-                                "group cursor-pointer shrink-0 max-w-[200px]",
-                                isSpecialGreen && "bg-[#0e5e4d] text-white hover:bg-[#0c5041]",
+                                "group cursor-pointer shrink-0 max-w-[210px] h-[34px] ps-2.5 pe-2 rounded-lg text-xs font-medium gap-1.5",
                                 isActive && surfaceClasses(3)
                             )}
                             trailingIcon={win.isClosable !== false ? function CloseTabIcon() {
@@ -82,30 +111,31 @@ export function WindowTabs({ onSearchClick }: WindowTabsProps) {
                                         role="button"
                                         tabIndex={0}
                                         aria-label={`Cerrar ${win.title}`}
-                                        className="cursor-pointer opacity-0 group-hover:opacity-50 hover:!opacity-100 hover:!text-red-500 transition-all inline-flex items-center justify-center shrink-0 ml-1.5 w-[11px] h-[11px] p-0"
+                                        className="cursor-pointer opacity-0 group-hover:opacity-80 hover:!opacity-100 hover:text-red-500 transition-all inline-flex items-center justify-center shrink-0 ml-1 w-3.5 h-3.5 p-0 rounded-sm hover:bg-black/5 dark:hover:bg-white/10 text-muted-foreground"
                                         onClick={(e) => { e.stopPropagation(); closeWindow(win.id); }}
                                         onKeyDown={(e) => e.key === "Enter" && closeWindow(win.id)}
                                     >
-                                        <svg width="100%" height="100%" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <path d="M17 7L7 17M7 7L17 17" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"/>
-                                        </svg>
+                                        <XClose className="w-3.5 h-3.5 stroke-[2.2]" />
                                     </span>
                                 );
                             } : undefined}
                         >
                             {Icon}
-                            <span className="truncate block py-1 -my-1">{win.title}</span>
+                            <span className="truncate">{win.title}</span>
                         </Button>
                     );
-
-                    return buttonContent;
                 })}
 
                 {/* More Options */}
                 <DropdownMenu>
                     <DropdownTrigger render={
-                        <Button variant="ghost" size="icon" style={noDrag} className={cn("shrink-0 cursor-pointer", surfaceClasses(3))}>
-                            <DotsHorizontal />
+                        <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            style={noDrag}
+                            className={cn("h-[34px] w-[34px] rounded-lg shrink-0 cursor-pointer", surfaceClasses(3))}
+                        >
+                            <DotsHorizontal className="w-4 h-4" />
                         </Button>
                     } />
                     <DropdownContent align="end">

@@ -53,108 +53,6 @@ import {
   CornerDownRight,
 } from "lucide-react";
 
-// ── Tabler ──────────────────────────────────────────────────
-import {
-  IconChevronRight,
-  IconChevronDown,
-  IconColorPicker,
-  IconX,
-  IconCopy,
-  IconMenu2,
-  IconPoint,
-  IconDeviceDesktop,
-  IconSun,
-  IconMoon,
-  IconSquare,
-  IconCircle,
-  IconLibrary,
-  IconClock,
-  IconStar,
-  IconSettings,
-  IconPlus,
-  IconArrowLeft,
-  IconArrowRight,
-  IconArrowUp,
-  IconSearch,
-  IconLoader2,
-  IconUsers,
-  IconLock,
-  IconMail,
-  IconBell,
-  IconShield,
-  IconPalette,
-  IconBulb,
-  IconRocket,
-  IconHeart,
-  IconBrush,
-  IconBrain,
-  IconGlobe,
-  IconUser,
-  IconPhoto,
-  IconLink,
-  IconCheck,
-  IconRotate2,
-  IconPlayerPlay,
-  IconPlayerPause,
-  IconHome,
-  IconMessageCircle,
-  IconInbox,
-  IconPencil,
-  IconPlayerSkipForward,
-  IconCornerDownRight,
-} from "@tabler/icons-react";
-
-// ── Phosphor ────────────────────────────────────────────────
-import {
-  CaretRight as PhCaretRight,
-  CaretDown as PhCaretDown,
-  Eyedropper as PhEyedropper,
-  X as PhX,
-  Copy as PhCopy,
-  List as PhList,
-  DotOutline as PhDotOutline,
-  Monitor as PhMonitor,
-  Sun as PhSun,
-  Moon as PhMoon,
-  Rectangle as PhRectangle,
-  Circle as PhCircle,
-  Books as PhBooks,
-  Clock as PhClock,
-  Star as PhStar,
-  Gear as PhGear,
-  Plus as PhPlus,
-  ArrowLeft as PhArrowLeft,
-  ArrowRight as PhArrowRight,
-  ArrowUp as PhArrowUp,
-  MagnifyingGlass as PhMagnifyingGlass,
-  Spinner as PhSpinner,
-  Users as PhUsers,
-  Lock as PhLock,
-  Envelope as PhEnvelope,
-  Bell as PhBell,
-  Shield as PhShield,
-  Palette as PhPalette,
-  Lightbulb as PhLightbulb,
-  Rocket as PhRocket,
-  Heart as PhHeart,
-  PaintBrush as PhPaintBrush,
-  Brain as PhBrain,
-  Globe as PhGlobe,
-  User as PhUser,
-  Image as PhImage,
-  Link as PhLink,
-  Check as PhCheck,
-  ArrowCounterClockwise as PhRotateCcw,
-  Play as PhPlay,
-  Pause as PhPause,
-  House as PhHouse,
-  ChatCircle as PhChatCircle,
-  Tray as PhTray,
-  Pencil as PhPencil,
-  SkipForward as PhSkipForward,
-  ArrowElbowDownRight as PhArrowElbowDownRight,
-} from "@phosphor-icons/react";
-
 // ── HugeIcons ───────────────────────────────────────────────
 import { HugeiconsIcon } from "@hugeicons/react";
 import HiChevronRight from "@hugeicons/core-free-icons/ArrowRight01Icon";
@@ -259,7 +157,7 @@ export interface IconComponentProps {
   className?: string;
 }
 
-export type IconComponent = ComponentType<IconComponentProps>;
+export type IconComponent = ComponentType<any>;
 
 export type IconLibrary = "lucide" | "tabler" | "phosphor" | "hugeicons" | "untitledui";
 
@@ -276,7 +174,7 @@ export type IconName =
   | "home" | "message-circle" | "inbox"
   | "pencil" | "skip-forward" | "corner-down-right";
 
-export const iconLibraryOrder: IconLibrary[] = ["lucide", "tabler", "phosphor", "hugeicons", "untitledui"];
+export const iconLibraryOrder: IconLibrary[] = ["lucide", "hugeicons", "untitledui"];
 
 export const iconLibraryLabels: Record<IconLibrary, string> = {
   lucide: "Lucide",
@@ -287,23 +185,6 @@ export const iconLibraryLabels: Record<IconLibrary, string> = {
 };
 
 // ── Adapter Factories ───────────────────────────────────────
-
-// Tabler: `strokeWidth` → `stroke` prop
-function tabler(Icon: ComponentType<{ size?: number; stroke?: number; className?: string }>): IconComponent {
-  return function TablerAdapter({ size, strokeWidth, className }: IconComponentProps) {
-    return <Icon size={size} stroke={strokeWidth} className={className} />;
-  };
-}
-
-// Phosphor: uses filled paths per weight variant, not CSS stroke.
-// Map numeric strokeWidth → discrete weight prop.
-type PhosphorWeight = "thin" | "light" | "regular" | "bold";
-function phosphor(Icon: ComponentType<{ size?: number; weight?: PhosphorWeight; className?: string }>): IconComponent {
-  return function PhosphorAdapter({ size, strokeWidth, className }: IconComponentProps) {
-    const weight: PhosphorWeight = strokeWidth != null && strokeWidth >= 1.75 ? "regular" : "light";
-    return <Icon size={size} weight={weight} className={className} />;
-  };
-}
 
 // HugeIcons: wraps icon definition in HugeiconsIcon renderer
 function hugeicons(iconDef: unknown): IconComponent {
@@ -322,7 +203,7 @@ function hugeicons(iconDef: unknown): IconComponent {
 
 // Untitled UI: standard 24px SVG components — `strokeWidth`/`className` pass
 // through natively; only `size` needs mapping to `width`/`height`.
-function untitledui(Icon: ComponentType<{ width?: number; height?: number; strokeWidth?: number; className?: string }>): IconComponent {
+function untitledui(Icon: ComponentType<any>): IconComponent {
   return function UntitledUiAdapter({ size, strokeWidth, className }: IconComponentProps) {
     return <Icon width={size} height={size} strokeWidth={strokeWidth} className={className} />;
   };
@@ -378,106 +259,6 @@ const lucideMap: Record<IconName, IconComponent> = {
   "pencil": Pencil,
   "skip-forward": SkipForward,
   "corner-down-right": CornerDownRight,
-};
-
-const tablerMap: Record<IconName, IconComponent> = {
-  "chevron-right": tabler(IconChevronRight),
-  "chevron-down": tabler(IconChevronDown),
-  "pipette": tabler(IconColorPicker),
-  "x": tabler(IconX),
-  "copy": tabler(IconCopy),
-  "menu": tabler(IconMenu2),
-  "dot": tabler(IconPoint),
-  "monitor": tabler(IconDeviceDesktop),
-  "sun": tabler(IconSun),
-  "moon": tabler(IconMoon),
-  "rectangle-horizontal": tabler(IconSquare),
-  "circle": tabler(IconCircle),
-  "square-library": tabler(IconLibrary),
-  "clock": tabler(IconClock),
-  "star": tabler(IconStar),
-  "settings": tabler(IconSettings),
-  "plus": tabler(IconPlus),
-  "arrow-left": tabler(IconArrowLeft),
-  "arrow-right": tabler(IconArrowRight),
-  "arrow-up": tabler(IconArrowUp),
-  "search": tabler(IconSearch),
-  "loader": tabler(IconLoader2),
-  "users": tabler(IconUsers),
-  "lock": tabler(IconLock),
-  "mail": tabler(IconMail),
-  "bell": tabler(IconBell),
-  "shield": tabler(IconShield),
-  "palette": tabler(IconPalette),
-  "lightbulb": tabler(IconBulb),
-  "rocket": tabler(IconRocket),
-  "heart": tabler(IconHeart),
-  "paintbrush": tabler(IconBrush),
-  "brain": tabler(IconBrain),
-  "globe": tabler(IconGlobe),
-  "user": tabler(IconUser),
-  "image": tabler(IconPhoto),
-  "link": tabler(IconLink),
-  "check": tabler(IconCheck),
-  "rotate-ccw": tabler(IconRotate2),
-  "play": tabler(IconPlayerPlay),
-  "pause": tabler(IconPlayerPause),
-  "home": tabler(IconHome),
-  "message-circle": tabler(IconMessageCircle),
-  "inbox": tabler(IconInbox),
-  "pencil": tabler(IconPencil),
-  "skip-forward": tabler(IconPlayerSkipForward),
-  "corner-down-right": tabler(IconCornerDownRight),
-};
-
-const phosphorMap: Record<IconName, IconComponent> = {
-  "chevron-right": phosphor(PhCaretRight),
-  "chevron-down": phosphor(PhCaretDown),
-  "pipette": phosphor(PhEyedropper),
-  "x": phosphor(PhX),
-  "copy": phosphor(PhCopy),
-  "menu": phosphor(PhList),
-  "dot": phosphor(PhDotOutline),
-  "monitor": phosphor(PhMonitor),
-  "sun": phosphor(PhSun),
-  "moon": phosphor(PhMoon),
-  "rectangle-horizontal": phosphor(PhRectangle),
-  "circle": phosphor(PhCircle),
-  "square-library": phosphor(PhBooks),
-  "clock": phosphor(PhClock),
-  "star": phosphor(PhStar),
-  "settings": phosphor(PhGear),
-  "plus": phosphor(PhPlus),
-  "arrow-left": phosphor(PhArrowLeft),
-  "arrow-right": phosphor(PhArrowRight),
-  "arrow-up": phosphor(PhArrowUp),
-  "search": phosphor(PhMagnifyingGlass),
-  "loader": phosphor(PhSpinner),
-  "users": phosphor(PhUsers),
-  "lock": phosphor(PhLock),
-  "mail": phosphor(PhEnvelope),
-  "bell": phosphor(PhBell),
-  "shield": phosphor(PhShield),
-  "palette": phosphor(PhPalette),
-  "lightbulb": phosphor(PhLightbulb),
-  "rocket": phosphor(PhRocket),
-  "heart": phosphor(PhHeart),
-  "paintbrush": phosphor(PhPaintBrush),
-  "brain": phosphor(PhBrain),
-  "globe": phosphor(PhGlobe),
-  "user": phosphor(PhUser),
-  "image": phosphor(PhImage),
-  "link": phosphor(PhLink),
-  "check": phosphor(PhCheck),
-  "rotate-ccw": phosphor(PhRotateCcw),
-  "play": phosphor(PhPlay),
-  "pause": phosphor(PhPause),
-  "home": phosphor(PhHouse),
-  "message-circle": phosphor(PhChatCircle),
-  "inbox": phosphor(PhTray),
-  "pencil": phosphor(PhPencil),
-  "skip-forward": phosphor(PhSkipForward),
-  "corner-down-right": phosphor(PhArrowElbowDownRight),
 };
 
 const hugeiconsMap: Record<IconName, IconComponent> = {
@@ -537,7 +318,6 @@ const untitleduiMap: Record<IconName, IconComponent> = {
   "x": untitledui(UuiX),
   "copy": untitledui(UuiCopy),
   "menu": untitledui(UuiMenu),
-  // No bare dot in the set — reuse Circle (matches HugeIcons' dot handling).
   "dot": untitledui(UuiCircle),
   "monitor": untitledui(UuiMonitor),
   "sun": untitledui(UuiSun),
@@ -564,7 +344,6 @@ const untitleduiMap: Record<IconName, IconComponent> = {
   "rocket": untitledui(UuiRocket),
   "heart": untitledui(UuiHeart),
   "paintbrush": untitledui(UuiBrush),
-  // No brain icon in the free set — CpuChip01 carries the "intelligence" metaphor.
   "brain": untitledui(UuiCpuChip),
   "globe": untitledui(UuiGlobe),
   "user": untitledui(UuiUser),
@@ -572,8 +351,6 @@ const untitleduiMap: Record<IconName, IconComponent> = {
   "link": untitledui(UuiLink),
   "check": untitledui(UuiCheck),
   "rotate-ccw": untitledui(UuiRotateCcw),
-  // Only enclosed Pause variants exist; fall back to Lucide for a bare pair
-  // (matches HugeIcons' play/pause handling).
   "play": Play,
   "pause": Pause,
   "home": untitledui(UuiHome),
@@ -584,12 +361,10 @@ const untitleduiMap: Record<IconName, IconComponent> = {
   "corner-down-right": untitledui(UuiCornerDownRight),
 };
 
-// ── Unified Map ─────────────────────────────────────────────
-
 export const iconMap: Record<IconLibrary, Record<IconName, IconComponent>> = {
   lucide: lucideMap,
-  tabler: tablerMap,
-  phosphor: phosphorMap,
+  tabler: lucideMap,
+  phosphor: lucideMap,
   hugeicons: hugeiconsMap,
   untitledui: untitleduiMap,
 };

@@ -57,33 +57,20 @@ export function UpcomingInventoriesWidget({ onDateClick }: Props) {
 
             setInventories(upcoming);
 
-            // Generate Week Strip
-            const startOfWeek = new Date(currentDate);
-            startOfWeek.setDate(currentDate.getDate() - currentDate.getDay() + 1); // Start Monday. Adjust if needed.
-
-            const days = [];
-            const weekLetters = ['D', 'L', 'M', 'M', 'J', 'V', 'S']; // ES naming or EN? User image shows S M T W T F S
-            // Let's use user image style S M T W T F S (EN) or ES? User speaks spanish. L M M J V S D usually.
-            // Reference image has 'S M T W...' (EN). But app is ES.
-            // Let's stick to ES initials: D L M M J V S
-            const esLetters = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
-
-            // We generate 7 days starting from Sunday or Monday? 
-            // Javascript getDay() 0=Sunday.
-            // Let's create a view of [Sun, Mon, Tue, Wed, Thu, Fri, Sat] to match standard calendar view
             const layoutStart = new Date(currentDate);
             layoutStart.setDate(currentDate.getDate() - currentDate.getDay()); // Sunday start
 
+            const days = [];
             for (let i = 0; i < 7; i++) {
                 const d = new Date(layoutStart);
                 d.setDate(layoutStart.getDate() + i);
                 const iso = d.toISOString().slice(0, 10);
                 const isToday = iso === todayStr;
-                // Check if ANY event exists on this day (past or future)
                 const hasEvent = events.some((e: any) => e.date === iso);
+                const dayLetter = d.toLocaleDateString('es-AR', { weekday: 'narrow' }).toUpperCase();
 
                 days.push({
-                    day: esLetters[i], // D, L, M ...
+                    day: dayLetter,
                     date: d.getDate(),
                     iso,
                     hasEvent,
@@ -99,7 +86,7 @@ export function UpcomingInventoriesWidget({ onDateClick }: Props) {
         }
     };
 
-    if (isLoading) return <WidgetSkeleton variant="analyst" />;
+    if (isLoading) return <WidgetSkeleton variant="calendar" />;
 
     return (
         <div className="p-0 h-full flex flex-col relative overflow-hidden">

@@ -1,11 +1,11 @@
-import { useState, memo, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, memo, useCallback, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, AlertTriangle } from '@untitledui/icons';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
-import { notify } from '@/lib/notifications';
-import { Table, type TableColumn } from '@/components/motion/table';
+import { FluidCheckbox } from '@/components/ui/fluid-checkbox';
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
+import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import {
     Dialog,
     DialogContent,
@@ -15,8 +15,10 @@ import {
     DialogFooter,
     DialogClose,
 } from '@/components/ui/dialog';
-import { Frame, FramePanel, FrameFooter } from '@/components/ui/frame';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Table, type TableColumn } from '@/components/motion/table';
+import { cn } from '@/lib/utils';
+import { notify } from '@/lib/notifications';
+import { Search, X, CheckCircle } from 'lucide-react';
 
 export interface CyclicItem {
     id: string;
@@ -32,6 +34,7 @@ export interface CyclicItem {
     shortageId?: string;
     surplusId?: string;
     readjustmentReason?: string;
+    id_producto?: string;
 }
 
 interface PopoverRowCellProps {
@@ -49,7 +52,6 @@ const PopoverRowCell = memo(function PopoverRowCell({
     const [qty, setQty] = useState(item.countedQuantity.toString());
     const [reason, setReason] = useState(item.readjustmentReason || '');
 
-    // Sync input value when item countedQuantity changes or popover opens
     useEffect(() => {
         if (open) {
             setQty(item.countedQuantity.toString());
@@ -58,7 +60,6 @@ const PopoverRowCell = memo(function PopoverRowCell({
     }, [open, item.countedQuantity, item.readjustmentReason]);
 
     const handleSave = () => {
-        // Business rule check
         if (item.status === 'adjusted' && !isExcelUploaded) {
             notify.error(
                 "Acción bloqueada", 
@@ -88,11 +89,11 @@ const PopoverRowCell = memo(function PopoverRowCell({
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger render={
-                <div className="flex items-center min-w-0 cursor-pointer group/cell py-1 select-none">
+                <div className="flex items-center min-w-0 cursor-pointer group/cell py-0.5 select-none">
                     <div className="flex flex-col gap-0.5 min-w-0">
-                            <div className="font-medium text-[14px] truncate max-w-[200px] sm:max-w-xs md:max-w-md group-hover/cell:text-primary transition-colors">
-                                {item.name}
-                            </div>
+                        <span className="font-medium text-xs truncate max-w-[200px] sm:max-w-xs md:max-w-md group-hover/cell:text-primary transition-colors">
+                            {item.name}
+                        </span>
                         {item.wasReadjusted && (
                             <span className="text-[10px] text-muted-foreground/60 font-medium whitespace-nowrap">
                                 Ajuste Anterior
@@ -108,22 +109,22 @@ const PopoverRowCell = memo(function PopoverRowCell({
             >
                 <div className="space-y-4">
                     <div>
-                        <p className="text-base font-semibold text-foreground truncate">
+                        <p className="text-sm font-semibold text-foreground truncate">
                             {item.name}
                         </p>
-                        <p className="text-sm text-muted-foreground mt-0.5">
+                        <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
                             EAN: {item.ean}
                         </p>
                     </div>
 
                     <div className="flex flex-col gap-2.5">
-                        <label className="flex items-center justify-between gap-3 text-sm font-medium text-foreground">
+                        <label className="flex items-center justify-between gap-3 text-xs font-medium text-foreground">
                             <span className="text-muted-foreground">Stock Sistema</span>
-                            <span className="font-semibold text-foreground bg-muted/40 px-3 py-1 rounded-lg w-32 text-right">
+                            <span className="font-semibold text-foreground bg-muted/40 px-3 py-1 rounded-lg w-28 text-right">
                                 {item.systemQuantity} u.
                             </span>
                         </label>
-                        <label className="flex items-center justify-between gap-3 text-sm font-medium text-foreground">
+                        <label className="flex items-center justify-between gap-3 text-xs font-medium text-foreground">
                             <span className="text-muted-foreground">Cantidad Física</span>
                             <input
                                 type="number"
@@ -135,7 +136,7 @@ const PopoverRowCell = memo(function PopoverRowCell({
                                     }
                                 }}
                                 autoFocus
-                                className="h-8 w-32 rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary/20 text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                className="h-8 w-28 rounded-lg border border-border bg-background px-3 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary/20 text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                 placeholder="0"
                                 min="0"
                             />
@@ -150,7 +151,7 @@ const PopoverRowCell = memo(function PopoverRowCell({
                                     <select
                                         value={reason}
                                         onChange={(e) => setReason(e.target.value)}
-                                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary/20 cursor-pointer"
+                                        className="h-8 w-full rounded-lg border border-border bg-background px-2 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary/20 cursor-pointer"
                                     >
                                         <option value="" disabled>Seleccionar motivo...</option>
                                         <option value="Error de ingreso/recepción">Error de ingreso/recepción</option>
@@ -169,14 +170,14 @@ const PopoverRowCell = memo(function PopoverRowCell({
                         <Button 
                             variant="ghost"
                             onClick={() => setOpen(false)}
-                            className="h-8 text-sm font-medium hover:bg-muted/50 rounded-lg"
+                            className="h-7 text-xs font-medium hover:bg-muted/50 rounded-lg"
                         >
                             Cancelar
                         </Button>
                         <Button 
                             variant="default"
                             onClick={handleSave}
-                            className="h-8 text-sm font-semibold rounded-lg"
+                            className="h-7 text-xs font-semibold rounded-lg"
                         >
                             Guardar
                         </Button>
@@ -200,6 +201,9 @@ interface CyclicInventoryListProps {
         shortage: string;
         surplus: string;
     };
+    className?: string;
+    actions?: React.ReactNode;
+    tabsSlot?: React.ReactNode;
 }
 
 export const CyclicInventoryList = memo(function CyclicInventoryList({
@@ -211,30 +215,68 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
     readOnly = false,
     isPending = false,
     isExcelUploaded = false,
-    lastAdjustmentIds
+    lastAdjustmentIds,
+    className,
+    actions,
+    tabsSlot
 }: CyclicInventoryListProps) {
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [editQuantity, setEditQuantity] = useState('');
-    const [editReason, setEditReason] = useState('');
-
-    // Multi-select state (BEUI Table uses string[])
+    const [searchValue, setSearchValue] = useState("");
+    const deferredSearch = React.useDeferredValue(searchValue);
+    const [selectedDiffFilter, setSelectedDiffFilter] = useState("all");
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [showBulkConfirm, setShowBulkConfirm] = useState(false);
 
-    const handleStartEdit = useCallback((item: CyclicItem) => {
-        // REGLA DE NEGOCIO: Bloqueo de Re-ajuste si no hay Excel nuevo
-        if (item.status === 'adjusted' && !isExcelUploaded) {
-            notify.error(
-                "Acción bloqueada", 
-                "Para realizar un re-ajuste de productos ya finalizados, primero debes cargar el Excel de sistema actualizado."
-            );
-            return;
-        }
+    // O(1) set for selected ids
+    const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
-        setEditingId(item.id);
-        setEditQuantity(item.countedQuantity.toString());
-        setEditReason(item.readjustmentReason || '');
-    }, [isExcelUploaded]);
+    // Filter items
+    const filteredItems = useMemo(() => {
+        const term = deferredSearch.toLowerCase().trim();
+        const hasTerm = term.length > 0;
+        const filterDiff = selectedDiffFilter;
+
+        // Fast path: avoid filtering if no conditions active
+        if (!hasTerm && filterDiff === "all") return items;
+
+        return items.filter(item => {
+            // Search filter
+            if (hasTerm) {
+                const matchName = item.name.toLowerCase().includes(term);
+                const matchEan = item.ean.includes(term);
+                if (!matchName && !matchEan) return false;
+            }
+
+            // Difference filter
+            const diff = item.countedQuantity - item.systemQuantity;
+            if (filterDiff === "diff" && diff === 0) return false;
+            if (filterDiff === "nodiff" && diff !== 0) return false;
+
+            return true;
+        });
+    }, [items, deferredSearch, selectedDiffFilter]);
+
+    // Multi-select handlers
+    const isAllSelected = useMemo(() => {
+        return filteredItems.length > 0 && filteredItems.every(i => selectedSet.has(i.id));
+    }, [filteredItems, selectedSet]);
+
+    const isSomeSelected = useMemo(() => {
+        return selectedIds.length > 0 && !isAllSelected;
+    }, [selectedIds.length, isAllSelected]);
+
+    const handleToggleAll = useCallback(() => {
+        if (isAllSelected) {
+            setSelectedIds([]);
+        } else {
+            setSelectedIds(filteredItems.map(i => i.id));
+        }
+    }, [isAllSelected, filteredItems]);
+
+    const handleToggleRow = useCallback((id: string) => {
+        setSelectedIds(prev =>
+            prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+        );
+    }, []);
 
     const handleBulkConfirm = useCallback(() => {
         if (onBulkCheck && selectedIds.length > 0) {
@@ -244,216 +286,345 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
         }
     }, [onBulkCheck, selectedIds]);
 
-    // Table Column Definitions
-    const columns = useMemo(() => {
-        const baseCols: TableColumn<CyclicItem>[] = [
-            {
-                key: 'updatedAt',
-                header: 'Fecha',
-                width: '100px',
-                cell: (item) => (
-                    <span className="text-[13px] font-medium text-muted-foreground whitespace-nowrap">
-                        {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() : '--/--'}
-                    </span>
-                )
-            },
-            {
-                key: 'name',
-                header: 'Producto',
-                width: '320px',
-                cell: (item) => readOnly ? (
-                    <div className="flex items-center min-w-0 py-1 select-none">
-                        <span className="font-medium text-[14px] truncate max-w-[200px] sm:max-w-xs md:max-w-md text-foreground">
-                            {item.name}
-                        </span>
+    // Table Columns
+    const columns = useMemo<TableColumn<CyclicItem>[]>(() => {
+        const cols: TableColumn<CyclicItem>[] = [];
+
+        // Checkbox column
+        if (!readOnly) {
+            cols.push({
+                key: "select",
+                header: (
+                    <div className="flex items-center justify-center">
+                        <FluidCheckbox
+                            checked={isAllSelected}
+                            indeterminate={isSomeSelected}
+                            onToggle={handleToggleAll}
+                            className="size-4"
+                        />
                     </div>
-                ) : (
-                    <PopoverRowCell
-                        item={item}
-                        isExcelUploaded={isExcelUploaded}
-                        onUpdateQuantity={onUpdateQuantity}
-                    />
-                )
-            },
-            {
-                key: 'category',
-                header: 'Rubro',
-                width: '120px',
-                cell: (item) => (
-                    <span className="text-[13px] font-medium text-muted-foreground whitespace-nowrap uppercase">
-                        {item.category || 'Varios'}
-                    </span>
-                )
-            },
-            {
-                key: 'ean',
-                header: 'Ean',
-                width: '140px',
-                cell: (item) => (
-                    <div 
-                        className="flex items-center gap-1.5 group/ean cursor-copy select-none text-[13px] text-muted-foreground/80 leading-tight hover:text-primary hover:underline transition-colors"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            navigator.clipboard.writeText(item.ean);
-                            notify.success("Código Copiado", `El EAN ${item.ean} se copió al portapapeles.`);
-                        }}
-                    >
-                        <span>{item.ean}</span>
+                ),
+                width: "44px",
+                cell: (row) => (
+                    <div className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                        <FluidCheckbox
+                            checked={selectedSet.has(row.id)}
+                            onToggle={() => handleToggleRow(row.id)}
+                            className="size-4"
+                        />
                     </div>
-                )
-            },
-            {
-                key: 'cost',
-                header: 'Precio',
-                width: '110px',
-                cell: (item) => (
-                    <span className="text-[13px] font-medium text-foreground tabular-nums">
-                        ${item.cost.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ),
+            });
+        }
+
+        // EAN
+        cols.push({
+            key: "ean",
+            header: "Código EAN",
+            sortable: true,
+            width: "130px",
+            sortValue: (row) => row.ean,
+            cell: (row) => (
+                <div 
+                    className="flex items-center gap-1.5 group/ean cursor-pointer select-none text-xs tabular-nums text-muted-foreground hover:text-primary transition-colors"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(row.ean);
+                        notify.success("Código Copiado", `EAN ${row.ean}`);
+                    }}
+                    title="Clic para copiar EAN"
+                >
+                    <span>{row.ean}</span>
+                </div>
+            )
+        });
+
+        // Producto
+        cols.push({
+            key: "name",
+            header: "Producto",
+            sortable: true,
+            width: "280px",
+            sortValue: (row) => row.name,
+            cell: (row) => readOnly ? (
+                <div className="flex items-center min-w-0 py-0.5 select-none">
+                    <span className="font-medium text-xs truncate max-w-[220px] sm:max-w-xs md:max-w-sm text-foreground">
+                        {row.name}
                     </span>
-                )
-            },
-            {
-                key: 'countedQuantity',
-                header: 'Físico / Sistema',
-                width: '140px',
-                cell: (item) => {
-                    const hasDiff = item.countedQuantity - item.systemQuantity !== 0;
+                </div>
+            ) : (
+                <PopoverRowCell
+                    item={row}
+                    isExcelUploaded={isExcelUploaded}
+                    onUpdateQuantity={onUpdateQuantity}
+                />
+            )
+        });
+
+        // Rubro
+        cols.push({
+            key: "category",
+            header: "Rubro",
+            sortable: true,
+            width: "120px",
+            sortValue: (row) => row.category || '',
+            cell: (row) => (
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-tight truncate block">
+                    {row.category || 'Varios'}
+                </span>
+            )
+        });
+
+        // Precio
+        cols.push({
+            key: "cost",
+            header: "Precio",
+            sortable: true,
+            width: "100px",
+            sortValue: (row) => row.cost,
+            cell: (row) => (
+                <span className="text-xs font-medium text-foreground tabular-nums">
+                    ${row.cost.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+            )
+        });
+
+        // Cantidad (Físico)
+        cols.push({
+            key: "quantity",
+            header: "Cantidad",
+            sortable: true,
+            width: "85px",
+            sortValue: (row) => row.countedQuantity,
+            cell: (row) => (
+                <span className="text-xs font-semibold tabular-nums text-foreground">
+                    {row.countedQuantity}
+                </span>
+            )
+        });
+
+        // Columnas exclusivas para vistas Controlados y Ajustados (ocultas en Pendientes)
+        if (!isPending) {
+            // Sist / Dif
+            cols.push({
+                key: "sistDif",
+                header: "Sist / Dif",
+                sortable: true,
+                width: "115px",
+                sortValue: (row) => row.countedQuantity - row.systemQuantity,
+                cell: (row) => {
+                    const diff = row.countedQuantity - row.systemQuantity;
+                    const hasDiff = diff !== 0;
+
                     return (
-                        <div className="flex items-center justify-start gap-1.5 text-[14px] tabular-nums">
-                            {isPending ? (
-                                <span className="text-muted-foreground/10">—</span>
+                        <div className="flex items-center justify-start gap-1.5 text-xs tabular-nums">
+                            <span className="text-muted-foreground font-medium">
+                                {row.systemQuantity}
+                            </span>
+                            <span className="text-muted-foreground/60">/</span>
+                            {hasDiff ? (
+                                <Badge 
+                                    variant="outline" 
+                                    size="compact"
+                                    color={diff > 0 ? "green" : "red"}
+                                    className="font-bold tabular-nums"
+                                >
+                                    {diff > 0 ? `+${diff}` : diff}
+                                </Badge>
                             ) : (
-                                <span className={cn("font-medium", hasDiff && "text-destructive-foreground")}>
-                                    {item.countedQuantity}
-                                </span>
+                                <span className="text-muted-foreground/60 font-medium text-xs">–</span>
                             )}
-                            <span className="text-muted-foreground/30 px-0.5">/</span>
-                            <span className="text-muted-foreground/30 font-medium">{item.systemQuantity}</span>
                         </div>
                     );
                 }
-            }
-        ];
+            });
 
-        if (!isPending) {
-            baseCols.push(
-                {
-                    key: 'id',
-                    header: 'Id',
-                    width: '100px',
-                    cell: (item) => {
-                        const diff = item.countedQuantity - item.systemQuantity;
-                        const val = diff < 0 ? item.shortageId : diff > 0 ? item.surplusId : null;
-                        return val ? (
-                            <Badge variant="outline">
-                                {val.split(',')[0]}
-                            </Badge>
-                        ) : (
-                            <span className="text-muted-foreground/10">—</span>
-                        );
-                    }
-                },
-                {
-                    key: 'difference',
-                    header: 'Diferencia',
-                    width: '120px',
-                    cell: (item) => {
-                        const diff = item.countedQuantity - item.systemQuantity;
-                        return diff === 0 ? (
-                            <span className="text-muted-foreground/30 text-[13px] pl-4">–</span>
-                        ) : (
-                            <Badge variant="outline">
-                                <span
-                                    aria-hidden="true"
-                                    className={cn("size-1.5 rounded-full", diff > 0 ? "bg-emerald-500" : "bg-red-500")}
-                                />
-                                {diff > 0 ? '+' : ''}{diff}
-                            </Badge>
-                        );
-                    }
-                },
-                {
-                    key: 'totalValue',
-                    header: 'Total ($)',
-                    width: '130px',
-                    cell: (item) => {
-                        const diff = item.countedQuantity - item.systemQuantity;
-                        const diffValue = diff * item.cost;
-                        return (
-                            <p className={cn(
-                                "text-[14px] font-medium tabular-nums",
-                                diffValue === 0 ? "text-muted-foreground" : diffValue > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
-                            )}>
-                                {diffValue < 0 && '-'}${Math.abs(diffValue).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                            </p>
-                        );
-                    }
+            cols.push({
+                key: "differenceValue",
+                header: "Total ($)",
+                sortable: true,
+                width: "110px",
+                sortValue: (row) => (row.countedQuantity - row.systemQuantity) * row.cost,
+                cell: (row) => {
+                    const diff = row.countedQuantity - row.systemQuantity;
+                    const diffValue = diff * row.cost;
+                    return (
+                        <p className={cn(
+                            "text-xs font-medium tabular-nums",
+                            diffValue === 0 ? "text-muted-foreground/40" : diffValue > 0 ? "text-emerald-600 dark:text-emerald-400 font-semibold" : "text-red-600 dark:text-red-400 font-semibold"
+                        )}>
+                            {diffValue === 0 ? "–" : `${diffValue < 0 ? '-' : '+'}$${Math.abs(diffValue).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                        </p>
+                    );
                 }
-            );
+            });
+
+            cols.push({
+                key: "idAjuste",
+                header: "Id Ajuste",
+                sortable: true,
+                width: "100px",
+                sortValue: (row) => row.shortageId || row.surplusId || '',
+                cell: (row) => {
+                    const diff = row.countedQuantity - row.systemQuantity;
+                    const val = diff < 0 ? row.shortageId : diff > 0 ? row.surplusId : null;
+                    return val ? (
+                        <Badge variant="outline" size="default" className="text-xs font-medium tabular-nums">
+                            {val.split(',')[0]}
+                        </Badge>
+                    ) : (
+                        <span className="text-muted-foreground/20 text-xs">—</span>
+                    );
+                }
+            });
         }
 
-        return baseCols;
-    }, [isPending, isExcelUploaded, readOnly, onUpdateQuantity]);
+        return cols;
+    }, [
+        readOnly, 
+        isAllSelected, 
+        isSomeSelected, 
+        handleToggleAll, 
+        selectedSet, 
+        handleToggleRow, 
+        isExcelUploaded, 
+        onUpdateQuantity, 
+        isPending
+    ]);
 
     return (
-        <>
-            <div className="w-full flex-1 relative bg-surface-5 shadow-surface-5 rounded-2xl border border-border/40 overflow-hidden flex flex-col h-[650px]">
-            <Table
-                data={items}
-                columns={columns}
-                getRowId={(row) => row.id}
-                selectable={!readOnly}
-                selectedRowIds={selectedIds}
-                onSelectionChange={setSelectedIds}
-                height={600}
-                rowHeight={56}
-                onRowClick={readOnly ? undefined : handleStartEdit}
-                className="border-none"
-            />
+        <div className={cn("w-full flex-1 flex flex-col min-h-0", className)}>
+            {/* Contenedor exterior estilo Fluid */}
+            <div className="w-full bg-surface-2/60 dark:bg-surface-2/40 border border-border/40 rounded-[24px] p-[2px] transition-all duration-200 shadow-xs">
+                {/* Recuadro interior blanco/más claro */}
+                <div className="w-full bg-white dark:bg-surface-3 border border-border/40 rounded-[22px] p-2 sm:p-3 shadow-xs min-h-[560px] flex flex-col relative">
+                    
+                    {/* Barra de controles: Buscador + Filtros */}
+                    <div className="sticky top-0 z-30 bg-white/95 dark:bg-surface-3/95 backdrop-blur-md -mx-2 sm:-mx-3 -mt-2 sm:-mt-3 px-3 sm:px-4 py-3 rounded-t-[22px] border-b border-border/40 flex flex-wrap items-center justify-between gap-3 transition-colors shadow-2xs">
+                        <div className="flex flex-wrap items-center gap-3">
+                            {/* Buscador */}
+                            <InputGroup className="w-[180px] h-8 rounded-lg border border-border bg-transparent hover:bg-hover transition-all duration-80 focus-within:ring-1 focus-within:ring-[color:var(--focus-ring,#6B97FF)] shadow-none shrink-0">
+                                <InputGroupAddon className="pl-2.5 pr-1.5 text-muted-foreground">
+                                    <Search className="size-3.5 shrink-0" />
+                                </InputGroupAddon>
+                                <InputGroupInput
+                                    placeholder="Buscar producto o EAN…"
+                                    value={searchValue}
+                                    onChange={(e) => setSearchValue(e.target.value)}
+                                    className="h-full text-xs font-sans pr-2 placeholder:text-muted-foreground"
+                                />
+                                {searchValue && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSearchValue("")}
+                                        className="pr-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                                    >
+                                        <X className="size-3 shrink-0" />
+                                    </button>
+                                )}
+                            </InputGroup>
 
-            <AnimatePresence>
-                {selectedIds.length > 0 && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden border-t border-input/40 bg-muted/5"
-                    >
-                        <div className="flex items-center justify-between px-6 py-3 h-14">
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-muted-foreground">
-                                    {selectedIds.length} {selectedIds.length === 1 ? 'producto seleccionado' : 'productos seleccionados'}
-                                </span>
+
+                            {/* Filtro por Diferencia */}
+                            <div className="w-[140px]">
+                                <Select value={selectedDiffFilter} onValueChange={setSelectedDiffFilter}>
+                                    <SelectTrigger placeholder="Diferencia" className="w-full min-w-0 h-8 text-xs font-sans rounded-lg" />
+                                    <SelectContent className="max-h-[220px]">
+                                        <SelectItem index={0} value="all" className="font-sans text-xs">Todos los ítems</SelectItem>
+                                        <SelectItem index={1} value="diff" className="font-sans text-xs">Solo con diferencia</SelectItem>
+                                        <SelectItem index={2} value="nodiff" className="font-sans text-xs">Sin diferencia</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
-                            <div className="flex items-center gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setSelectedIds([])}
-                                    className="relative z-10 flex h-8 items-center justify-center px-3 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground bg-transparent hover:bg-hover active:scale-[0.98] transition-all duration-80 outline-none cursor-pointer"
-                                >
-                                    Deseleccionar
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowBulkConfirm(true)}
-                                    className="relative z-10 flex h-8 items-center justify-center gap-1.5 px-3 rounded-lg text-[13px] font-semibold text-background bg-foreground hover:bg-foreground/90 active:scale-[0.98] transition-all duration-80 outline-none cursor-pointer shadow-sm"
-                                >
-                                    <CheckCircle className="size-3.5" />
-                                    Confirmar sin diferencia
-                                </button>
-                            </div>
+
+                            {/* Tabs de estado (Pendientes, Controlados, Ajustados, Historial) al lado derecho del select */}
+                            {tabsSlot}
                         </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-        </div>
 
+                        {/* Botones de acción alineados a la derecha de la barra de la tabla */}
+                        {actions && (
+                            <div className="flex items-center gap-1.5 shrink-0 ml-auto flex-wrap justify-end">
+                                {actions}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Tabla de Productos */}
+                    <div className="flex-1 w-full overflow-hidden rounded-b-[18px]">
+                        <Table
+                            data={filteredItems}
+                            columns={columns}
+                            getRowId={(row) => row.id}
+                            resizable
+                            reorderable
+                            defaultSort={null}
+                            height={520}
+                            rowHeight={40}
+                            dense={true}
+                            overscan={5}
+                            headerClassName="bg-white dark:bg-[#252525] dark:bg-surface-3 shadow-2xs"
+                            emptyState={
+                                <div className="flex flex-col items-center justify-center p-12 text-muted-foreground text-xs gap-1.5">
+                                    <span className="font-semibold text-foreground text-sm">
+                                        {searchValue ? "No se encontraron productos coincidentes" : "No hay productos registrados en este estado"}
+                                    </span>
+                                    <span className="text-muted-foreground text-xs">
+                                        {searchValue 
+                                            ? "Probá ajustando la búsqueda o los filtros seleccionados." 
+                                            : "Los productos cargados aparecerán en esta tabla."}
+                                    </span>
+                                </div>
+                            }
+                            className="rounded-xl border-none w-full bg-transparent"
+                        />
+                    </div>
+
+                    {/* Barra de Acciones por Lote (Bottom Bar) */}
+                    <AnimatePresence>
+                        {selectedIds.length > 0 && !readOnly && (
+                            <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                className="overflow-hidden border-t border-border/40 mt-2 bg-muted/5 rounded-b-xl"
+                            >
+                                <div className="flex items-center justify-between px-4 py-2.5">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-medium text-muted-foreground">
+                                            {selectedIds.length} {selectedIds.length === 1 ? 'producto seleccionado' : 'productos seleccionados'}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedIds([])}
+                                            className="flex h-7 items-center justify-center px-2.5 rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground bg-transparent hover:bg-hover active:scale-[0.98] transition-all outline-none cursor-pointer"
+                                        >
+                                            Deseleccionar
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowBulkConfirm(true)}
+                                            className="flex h-7 items-center justify-center gap-1.5 px-3 rounded-lg text-xs font-semibold text-background bg-foreground hover:bg-foreground/90 active:scale-[0.98] transition-all outline-none cursor-pointer shadow-sm"
+                                        >
+                                            <CheckCircle className="size-3.5" />
+                                            Confirmar sin diferencia
+                                        </button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
+            </div>
+
+            {/* Modal de confirmación masiva */}
             <Dialog open={showBulkConfirm} onOpenChange={(open) => !open && setShowBulkConfirm(false)}>
                 <DialogContent size="lg">
                     <DialogHeader>
                         <DialogTitle>Confirmar acción</DialogTitle>
                         <DialogDescription>
-                            ¿Confirmar que los siguientes {selectedIds.length} productos no presentan diferencia con el sistema?
+                            ¿Confirmar que los {selectedIds.length} productos seleccionados no presentan diferencia con el sistema?
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
@@ -466,6 +637,6 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </>
+        </div>
     );
 });

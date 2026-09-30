@@ -2,6 +2,9 @@
 
 import {
   forwardRef,
+  isValidElement,
+  type ButtonHTMLAttributes,
+  type ReactElement,
   type ReactNode,
   type HTMLAttributes,
 } from "react";
@@ -11,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useIcon } from "@/lib/icon-context";
 import { spring } from "@/lib/springs";
 import { useShape } from "@/lib/shape-context";
+import { useSize, useSizeVariant } from "@/lib/size-context";
 import { SurfaceProvider, useSurface } from "@/lib/surface-context";
 import { surfaceClasses } from "@/lib/surface-classes";
 import { Button } from "@/components/ui/button";
@@ -46,18 +50,70 @@ function Dialog({
   );
 }
 
-const DialogTrigger = DialogPrimitive.Trigger;
-const DialogClose = DialogPrimitive.Close;
+// Trigger and Close compose either way — `render={<Button/>}` (the
+// library's composition API, shared with DropdownTrigger) or Radix-style
+// `asChild` with a single child element — so one snippet works everywhere.
+// Plain button attributes, which both the trigger and the close accept —
+// their state-typed render/className/style function forms stay off the
+// public surface.
+interface DialogSlotProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  /** Element to render as the control, e.g. a Button. */
+  render?: ReactElement;
+  /** Compose onto the single child element instead. */
+  asChild?: boolean;
+  nativeButton?: boolean;
+}
+
+function slotRender(
+  render: ReactElement | undefined,
+  asChild: boolean | undefined,
+  children: ReactNode
+) {
+  if (render) return render;
+  return asChild && isValidElement(children) ? (children as ReactElement) : undefined;
+}
+
+const DialogTrigger = forwardRef<HTMLButtonElement, DialogSlotProps>(
+  ({ render, asChild, children, ...props }, ref) => {
+    const el = slotRender(render, asChild, children);
+    return el ? (
+      <DialogPrimitive.Trigger ref={ref} render={el} {...props} />
+    ) : (
+      <DialogPrimitive.Trigger ref={ref} {...props}>
+        {children}
+      </DialogPrimitive.Trigger>
+    );
+  }
+);
+DialogTrigger.displayName = "DialogTrigger";
+
+const DialogClose = forwardRef<HTMLButtonElement, DialogSlotProps>(
+  ({ render, asChild, children, ...props }, ref) => {
+    const el = slotRender(render, asChild, children);
+    return el ? (
+      <DialogPrimitive.Close ref={ref} render={el} {...props} />
+    ) : (
+      <DialogPrimitive.Close ref={ref} {...props}>
+        {children}
+      </DialogPrimitive.Close>
+    );
+  }
+);
+DialogClose.displayName = "DialogClose";
 
 interface DialogContentProps extends HTMLAttributes<HTMLDivElement> {
-  size?: "sm" | "lg";
+  /** Width: sm 400, lg 540, xl 880 (each one notch narrower in compact
+   *  regions). `xl` is the canvas for composed layouts — a sidebar beside
+   *  a panel — which usually pair it with `className="p-0"` and a fixed
+   *  height. */
+  size?: "sm" | "lg" | "xl";
   /** Portal target. When set, the overlay and panel render inside this element
    *  (positioned `absolute`) instead of covering the viewport (`fixed`). Pair
    *  with a `position: relative; overflow: hidden` container — and usually
    *  `<Dialog modal={false}>` — to scope a dialog to a bounded region, e.g. a
    *  docs preview. Defaults to the document body / full-viewport behaviour. */
   container?: HTMLElement | null;
-  /** Whether to show the absolute-positioned top-right close X button. Defaults to true. */
+  /** Whether to render the built-in top-right close button. Defaults to true. */
   showCloseButton?: boolean;
 }
 
@@ -67,6 +123,9 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
     const shape = useShape();
     const substrate = useSurface();
     const dialogLevel = Math.min(substrate + DIALOG_OFFSET, 8);
+    // The size ladder narrows the dialog one notch in compact regions —
+    // width only, the padding stays put (see /docs/sizes).
+    const compact = useSize().variant === "compact";
 
     // No `if (!open) return null` here — Base UI's `<DialogPrimitive.Popup>`
     // handles mount/unmount itself, and waits for the framer-motion opacity
@@ -120,9 +179,7 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
                 // Base UI's props first (data attrs, refs, role, etc.)…
                 {...rest}
                 // …then the consumer's `<DialogContent>` props (className,
-                // event handlers, data-*, etc.) land on the visible motion.div
-                // — matching the Radix flavour, which spreads `...props` onto
-                // the Content primitive that becomes the motion.div via asChild.
+                // event handlers, data-*, etc.) land on the visible motion.div.
                 {...(props as Omit<
                   React.HTMLAttributes<HTMLDivElement>,
                   | "onDrag"
@@ -137,8 +194,9 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
                   "left-1/2 top-1/2 z-50 w-[calc(100%-2rem)]",
                   surfaceClasses(dialogLevel),
                   "p-6 focus:outline-none",
-                  size === "sm" && "max-w-[400px]",
-                  size === "lg" && "max-w-[540px]",
+                  size === "sm" && (compact ? "max-w-[360px]" : "max-w-[400px]"),
+                  size === "lg" && (compact ? "max-w-[480px]" : "max-w-[540px]"),
+                  size === "xl" && (compact ? "max-w-[800px]" : "max-w-[880px]"),
                   shape.container,
                   className
                 )}
@@ -203,26 +261,41 @@ function DialogFooter({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
 const DialogTitle = forwardRef<
   HTMLHeadingElement,
   HTMLAttributes<HTMLHeadingElement>
->(({ className, ...props }, ref) => (
-  <DialogPrimitive.Title
-    ref={ref}
-    className={cn("text-[16px] text-foreground leading-tight", className)}
-    style={{ fontVariationSettings: "'wght' 700" }}
-    {...props}
-  />
-));
+>(({ className, ...props }, ref) => {
+  // The title role of the type scale — see /docs/sizes.
+  const compact = useSizeVariant() === "compact";
+  return (
+    <DialogPrimitive.Title
+      ref={ref}
+      className={cn(
+        compact ? "text-[15px]" : "text-[16px]",
+        "text-foreground leading-tight",
+        className
+      )}
+      style={{ fontVariationSettings: "'wght' 700" }}
+      {...props}
+    />
+  );
+});
 DialogTitle.displayName = "DialogTitle";
 
 const DialogDescription = forwardRef<
   HTMLParagraphElement,
   HTMLAttributes<HTMLParagraphElement>
->(({ className, ...props }, ref) => (
-  <DialogPrimitive.Description
-    ref={ref}
-    className={cn("text-[13px] text-muted-foreground", className)}
-    {...props}
-  />
-));
+>(({ className, ...props }, ref) => {
+  const compact = useSizeVariant() === "compact";
+  return (
+    <DialogPrimitive.Description
+      ref={ref}
+      className={cn(
+        compact ? "text-[12px]" : "text-[13px]",
+        "text-muted-foreground",
+        className
+      )}
+      {...props}
+    />
+  );
+});
 DialogDescription.displayName = "DialogDescription";
 
 const DialogPopup = DialogContent;
@@ -247,3 +320,4 @@ export {
   DialogPopup,
   DialogPanel,
 };
+export type { DialogSlotProps as DialogTriggerProps, DialogSlotProps as DialogCloseProps };

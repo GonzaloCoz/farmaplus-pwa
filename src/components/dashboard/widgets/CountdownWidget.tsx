@@ -137,26 +137,27 @@ export function CountdownWidget({
 
     return (
         <div className="h-full flex flex-col overflow-hidden relative group/card">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 px-5 pt-4 pb-0 text-foreground">
-                <CardTitle className="text-lg font-medium tracking-tight">
+            {/* Header: compact, single-line alignment with dropdown and actions */}
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 px-5 pt-3.5 pb-1 text-foreground">
+                <CardTitle className="text-sm font-semibold tracking-tight text-foreground truncate mr-2">
                     Plazo de Inventario
                 </CardTitle>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 shrink-0">
                     {/* Timeframe Dropdown */}
                     {assignedDays > 0 && (
                         <div className="relative z-50">
                             <select 
                                 value={timeframe} 
                                 onChange={(e) => setTimeframe(e.target.value as any)}
-                                onPointerDown={(e) => e.stopPropagation()} // Stop drag sensor propagation
-                                className="appearance-none pr-7 pl-3 py-1 text-xs font-semibold bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-full text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+                                onPointerDown={(e) => e.stopPropagation()}
+                                className="appearance-none pr-6 pl-2.5 py-0.5 text-xs font-medium bg-muted/60 hover:bg-muted border border-border/50 rounded-full text-foreground focus:outline-none focus:ring-1 focus:ring-primary/30 cursor-pointer transition-colors"
                             >
                                 <option value="cycle">Ciclo</option>
                                 <option value="month">Este Mes</option>
                                 <option value="week">Esta Semana</option>
                             </select>
-                            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500 dark:text-gray-400">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="m6 9 6 6 6-6"/>
                                 </svg>
                             </div>
@@ -166,7 +167,7 @@ export function CountdownWidget({
                     {/* Lock Status Indicator */}
                     {isLocked && (
                         <div className="flex items-center text-destructive" title={lockReason === 'manual' ? 'Bloqueado manualmente' : 'Bloqueado por vencimiento'}>
-                            <Lock className="h-4.5 w-4.5" />
+                            <Lock className="h-4 w-4" />
                         </div>
                     )}
 
@@ -177,8 +178,8 @@ export function CountdownWidget({
                                 <Button 
                                     variant="secondary" 
                                     size="icon-sm"
-                                    onPointerDown={(e) => e.stopPropagation()} // Stop drag sensor propagation
-                                    className="relative z-50 opacity-0 group-hover/card:opacity-100 transition-opacity"
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    className="relative z-50 opacity-0 group-hover/card:opacity-100 transition-opacity h-6 w-6"
                                     title="Acciones de plazo"
                                 >
                                     <DotsHorizontal />
@@ -207,36 +208,27 @@ export function CountdownWidget({
                 </div>
             </CardHeader>
 
-            <CardContent className="flex flex-col justify-between flex-1 px-5 pb-3 pt-0.5 @sm:pb-3.5 @sm:pt-1 gap-1 @sm:gap-2">
-                {/* Main value percentage and target indicators */}
-                <div className="flex flex-col gap-0.5">
-                    <Tooltip content="Porcentaje real de avance en la carga de inventario para el periodo seleccionado.">
-                        <div className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-gray-50 leading-none cursor-help w-max">
-                            {assignedDays > 0 ? `${stats.activeProgress.toFixed(1)}%` : '--%'}
-                        </div>
-                    </Tooltip>
-                    
-                    <div className="flex justify-between items-center mt-0.5">
-                        {/* Delta percentage VS expected target */}
-                        <Tooltip content="Diferencia (desvío) entre tu progreso real actual y el progreso objetivo esperado para hoy. Un valor negativo indica retraso.">
-                            <div className={cn(
-                                "text-xs font-normal cursor-help",
-                                stats.deltaPercent >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"
-                            )}>
-                                {assignedDays > 0 ? (
-                                    stats.deltaPercent >= 0 ? `+${stats.deltaPercent.toFixed(0)}% vs. objetivo` : `${stats.deltaPercent.toFixed(0)}% vs. objetivo`
-                               ) : '-- vs. objetivo'}
+            <CardContent className="flex flex-col justify-between flex-1 px-5 pb-3.5 pt-0.5">
+                {/* Main value and target indicators */}
+                <div className="flex flex-col">
+                    <div className="flex items-baseline justify-between">
+                        {/* Real Progress percentage */}
+                        <Tooltip content="Porcentaje real de avance en la carga de inventario para el periodo seleccionado.">
+                            <div className="text-3xl font-extrabold tracking-tight text-foreground leading-none tabular-nums cursor-help">
+                                {assignedDays > 0 ? `${stats.activeProgress.toFixed(1)}%` : '--%'}
                             </div>
                         </Tooltip>
-                        
+
                         {/* Target badge */}
                         {assignedDays > 0 && (
-                            <Tooltip content="Progreso objetivo esperado que se debió haber alcanzado hoy para cumplir la meta a tiempo.">
-                                <div className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground cursor-help">
-                                    <span className="hidden @xs:inline">{stats.deltaPercent >= 0 ? 'Sobre el objetivo' : 'Bajo el objetivo'}</span>
+                            <Tooltip content="Progreso objetivo esperado que se debió haber alcanzado hoy según el calendario.">
+                                <div className="flex items-center gap-1 text-xs text-muted-foreground tabular-nums cursor-help">
+                                    <span className="text-[11px] text-muted-foreground/80">Meta</span>
                                     <span className={cn(
-                                        "px-1.5 py-0.5 rounded-md text-[10px] font-bold text-white",
-                                        stats.deltaPercent >= 0 ? "bg-emerald-600 dark:bg-emerald-500" : "bg-red-600 dark:bg-red-500"
+                                        "px-1.5 py-0.5 rounded text-[11px] font-semibold tabular-nums",
+                                        stats.deltaPercent >= 0 
+                                            ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" 
+                                            : "bg-red-500/15 text-red-600 dark:text-red-400"
                                     )}>
                                         {stats.activeTarget}%
                                     </span>
@@ -244,20 +236,34 @@ export function CountdownWidget({
                             </Tooltip>
                         )}
                     </div>
+
+                    {/* Delta percentage VS expected target */}
+                    <Tooltip content="Diferencia entre tu progreso real actual y la meta esperada para hoy. Un valor positivo indica adelanto; negativo, retraso.">
+                        <div className={cn(
+                            "text-xs font-medium tabular-nums cursor-help mt-1",
+                            stats.deltaPercent >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"
+                        )}>
+                            {assignedDays > 0 ? (
+                                stats.deltaPercent >= 0 
+                                    ? `+${stats.deltaPercent.toFixed(0)}% vs. objetivo` 
+                                    : `${stats.deltaPercent.toFixed(0)}% vs. objetivo`
+                            ) : '-- vs. objetivo'}
+                        </div>
+                    </Tooltip>
                 </div>
 
                 {/* Notched Gauge and Pointer */}
-                <div className="relative w-full py-0.5">
+                <div className="relative w-full pt-1 pb-0.5">
                     {/* Dynamic Pointer Triangle */}
                     {assignedDays > 0 && stats.activeProgress > 0 && (
                         <div
                             className={cn(
-                                "absolute top-[-5px] -translate-x-1/2 transition-all duration-700 pointer-events-none z-20",
-                                stats.status === 'behind' ? 'text-red-500' : stats.status === 'ahead' ? 'text-blue-500' : 'text-emerald-500'
+                                "absolute top-[-2px] -translate-x-1/2 transition-all duration-700 pointer-events-none z-20",
+                                stats.status === 'behind' ? 'text-red-500' : 'text-emerald-500'
                             )}
-                            style={{ left: `${stats.activeProgress}%` }}
+                            style={{ left: `${Math.min(98.5, Math.max(1.5, stats.activeProgress))}%` }}
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="9" height="9" viewBox="0 0 24 24" fill="currentColor" className="rotate-180">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="currentColor" className="rotate-180">
                                 <path d="M12 3l10 18H2L12 3z" />
                             </svg>
                         </div>
@@ -273,24 +279,24 @@ export function CountdownWidget({
                         useGradient={true}
                         activeGradient={["#ef4444", "#22c55e"] as const}
                         inactiveFillOpacity={0.12}
-                        linearHeight={12}
+                        linearHeight={10}
                     />
 
                     {/* Progress Labels */}
-                    <div className="flex justify-between text-xs font-normal text-muted-foreground mt-1">
+                    <div className="flex justify-between text-[11px] font-normal text-muted-foreground mt-0.5">
                         <span>Atrasado</span>
                         <span>Óptimo</span>
                     </div>
                 </div>
 
-                {/* Days remaining info / stats */}
-                <Tooltip content="Días asignados totales para este periodo y días calendario que restan antes de que finalice.">
-                    <div className="flex flex-col @sm:flex-row @sm:justify-between @sm:items-center gap-1 px-0.5 mt-0.5 cursor-help w-full">
-                        <span className="text-muted-foreground text-xs font-normal text-left text-balance">Días de inventario:</span>
-                        <div className="text-xs font-normal text-muted-foreground text-left @sm:text-right text-balance">
-                            <span className="font-semibold text-gray-900 dark:text-gray-50">{stats.activeRemaining} restantes</span>
-                            <span className="mx-1 text-gray-300 dark:text-zinc-700">/</span>
-                            <span className="text-gray-500 dark:text-gray-400">{stats.activeAssigned} asignados</span>
+                {/* Days remaining info footer */}
+                <Tooltip content="Días de inventario asignados totales y días calendario restantes antes de que finalice el periodo.">
+                    <div className="flex items-center justify-between pt-2 border-t border-border/40 text-xs cursor-help w-full">
+                        <span className="text-muted-foreground text-[11px] font-normal">Días restantes:</span>
+                        <div className="text-[11px] font-normal text-muted-foreground tabular-nums">
+                            <span className="font-semibold text-foreground">{stats.activeRemaining}</span>
+                            <span className="mx-1 text-muted-foreground/40">/</span>
+                            <span>{stats.activeAssigned} asignados</span>
                         </div>
                     </div>
                 </Tooltip>

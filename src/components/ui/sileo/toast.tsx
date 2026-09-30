@@ -122,7 +122,7 @@ const buildSileoItem = (
 		...merged,
 		id,
 		instanceId: generateId(),
-		position: merged.position ?? fallbackPosition ?? store.position,
+		position: merged.position ?? fallbackPosition,
 		autoExpandDelayMs: auto.expandDelayMs,
 		autoCollapseDelayMs: auto.collapseDelayMs,
 	};
@@ -134,7 +134,8 @@ const createToast = (options: InternalSileoOptions) => {
 
 	const id = merged.id ?? "sileo-default";
 	const prev = live.find((t) => t.id === id);
-	const item = buildSileoItem(merged, id, prev?.position);
+	const fallbackPos = options.position ? undefined : prev?.position;
+	const item = buildSileoItem(merged, id, fallbackPos);
 
 	if (prev) {
 		store.update((p) => p.map((t) => (t.id === id ? item : t)));
@@ -206,6 +207,10 @@ export const sileo = {
 
 	dismiss: dismissToast,
 
+	setPosition: (position: SileoPosition) => {
+		store.position = position;
+	},
+
 	clear: (position?: SileoPosition) =>
 		store.update((prev) =>
 			position ? prev.filter((t) => t.position !== position) : [],
@@ -253,6 +258,11 @@ export function Toaster({
 	options,
 	theme,
 }: SileoToasterProps) {
+	store.position = position;
+	if (options !== undefined) {
+		store.options = options;
+	}
+
 	const resolvedTheme = useResolvedTheme(theme);
 	const [toasts, setToasts] = useState<SileoItem[]>(store.toasts);
 	const [activeId, setActiveId] = useState<string>();

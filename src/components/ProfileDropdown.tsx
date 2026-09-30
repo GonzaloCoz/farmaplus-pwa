@@ -1,27 +1,13 @@
-import {
-    DropdownMenu,
-    DropdownTrigger,
-    DropdownContent,
-    DropdownLabel,
-    DropdownSeparator,
-    MenuItem,
-} from "@/components/ui/dropdown";
-import { Settings01 as Settings, LogOut01 as LogOut } from '@untitledui/icons';
-import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 import { surfaceClasses } from "@/lib/surface-classes";
 import { useUser } from "@/contexts/UserContext";
-import { useNavigate } from "react-router-dom";
 import { useState } from "react";
-import { CURRENT_APP_VERSION } from "@/hooks/useAppVersion";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
+import { SettingsDialog } from "@/components/dialog-sidebar/settings-dialog";
 
 export function ProfileDropdown() {
-    const { theme, toggleTheme } = useTheme();
-    const { user, logout } = useUser();
-    const navigate = useNavigate();
-    const [open, setOpen] = useState(false);
+    const { user } = useUser();
+    const [showSettingsDialog, setShowSettingsDialog] = useState(false);
     const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
 
     const getInitials = () => {
@@ -37,80 +23,30 @@ export function ProfileDropdown() {
         return user.name.charAt(0).toUpperCase();
     };
 
-    const handleLogout = () => {
-        setOpen(false);
-        logout();
-        navigate("/login");
-    };
-
-    const handleSettings = () => {
-        setOpen(false);
-        navigate("/configuracion");
-    };
-
     const initials = getInitials();
 
     return (
-        <DropdownMenu open={open} onOpenChange={setOpen}>
-            <DropdownTrigger render={
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    className={cn(
-                        "group shrink-0 cursor-pointer overflow-hidden",
-                        surfaceClasses(3)
-                    )}
-                    style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
-                >
-                    <div className="h-full w-full flex items-center justify-center text-[11px] font-bold text-current">
-                        {initials}
-                    </div>
-                </Button>
-            } />
-            <DropdownContent
-                align="end"
-                sideOffset={8}
-                className="w-64"
+        <>
+            <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowSettingsDialog(true)}
+                className={cn(
+                    "h-[34px] w-[34px] rounded-lg group shrink-0 cursor-pointer overflow-hidden",
+                    surfaceClasses(3)
+                )}
+                style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
+                title="Configuración"
             >
-                <DropdownLabel className="px-3 py-2 flex flex-col gap-0.5">
-                    <span className="font-semibold text-foreground truncate">{user?.name || "Usuario"}</span>
-                    <span className="text-[11px] text-muted-foreground truncate">@{user?.username || "user"}</span>
-                </DropdownLabel>
-
-                <DropdownSeparator />
-
-                <MenuItem
-                    index={0}
-                    icon={Settings}
-                    label="Configuración"
-                    onSelect={handleSettings}
-                />
-
-                <div className="relative flex h-9 items-center justify-between px-3 outline-none">
-                    <span className="text-[13px] text-muted-foreground">Modo oscuro</span>
-                    <Switch
-                        checked={theme === 'dark'}
-                        onCheckedChange={toggleTheme}
-                    />
+                <div className="h-full w-full flex items-center justify-center text-[11px] font-bold text-current">
+                    {initials}
                 </div>
+            </Button>
 
-                <DropdownSeparator />
-
-                <MenuItem
-                    index={1}
-                    icon={LogOut}
-                    label="Cerrar Sesión"
-                    onSelect={handleLogout}
-                    className="text-destructive focus:text-destructive"
-                />
-
-                <DropdownSeparator />
-
-                <div className="px-3 py-1.5 text-[10px] text-muted-foreground/60 select-none">
-                    {CURRENT_APP_VERSION}
-                </div>
-            </DropdownContent>
-        </DropdownMenu>
+            {/* Diálogo de Configuración con Sidebar interno */}
+            <SettingsDialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog} />
+        </>
     );
 }
+
 

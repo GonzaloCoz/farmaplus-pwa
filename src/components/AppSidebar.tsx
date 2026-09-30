@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { HomeSmile as Home, Upload01 as Upload, BarChart01 as BarChart3, Clock, File02 as FileText, TrendUp01 as TrendingUp, FileSearch02 } from '@untitledui/icons';
 import { NavLink } from "@/components/NavLink";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -7,16 +6,7 @@ import { ScrollArea, ScrollAreaViewport, ScrollAreaScrollbar } from "@/component
 import { useUser } from "@/contexts/UserContext";
 import { notify } from "@/lib/notifications";
 import { surfaceClasses } from "@/lib/surface-classes";
-
-const menuItems = [
-  { title: "Inicio", url: "/", icon: Home },
-  { title: "Stock", url: "/stock", icon: Upload },
-  { title: "Control de Vencimiento", url: "/control-vencimiento", icon: Clock },
-  { title: "Inventarios Cíclicos", url: "/inventario-ciclico", icon: BarChart3 },
-  { title: "Solicitudes", url: "/solicitudes", icon: FileSearch02 },
-  { title: "Comparativa", url: "/comparativa", icon: TrendingUp, roles: ['admin'] as const },
-  { title: "Reportes", url: "/reportes", icon: FileText, roles: ['admin', 'mod'] as const },
-];
+import { SIDEBAR_MENU_ITEMS, type NavItemConfig } from "@/config/navigation";
 
 interface AppSidebarMenuItemProps {
   item: {
@@ -83,11 +73,14 @@ export function AppSidebar() {
   const { user } = useUser();
 
   const filteredMenuItems = useMemo(() => {
-    return menuItems.filter(item => {
+    return SIDEBAR_MENU_ITEMS.filter(item => {
+      if ((item as any).onlyUsername) {
+        return user?.username?.toLowerCase() === (item as any).onlyUsername;
+      }
       if (!item.roles) return true;
       return user?.role ? (item.roles as readonly string[]).includes(user.role) : false;
     });
-  }, [user?.role]);
+  }, [user?.role, user?.username]);
 
   return (
     <aside className="hidden lg:flex flex-col bg-transparent h-full w-[64px] pl-2 relative overflow-hidden">

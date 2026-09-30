@@ -34,30 +34,8 @@ self.onmessage = async (e: MessageEvent) => {
         rows.forEach((row) => {
             if (!row || !row[0]) return; // Requiere Columna A
 
-            // ponytail: default cost to 0 and name laboratory/rubro to SAP for SAP profile since it is not supplied in the input format
-            if (profile === 'sap') {
-                const idProducto = String(row[0]).trim();
-                const ean = String(row[1] || '').trim();
-                if (!ean) return;
-
-                const name = String(row[2] || 'Sin Nombre').trim();
-                const systemStock = Number(row[3]) || 0;
-                
-                catalog.push({
-                    ean,
-                    eans: [ean],
-                    isPrimaryEan: true,
-                    id_producto: idProducto,
-                    name,
-                    systemStock,
-                    cost: 0,
-                    salePrice: 0,
-                    laboratory: 'SAP',
-                    rubro: 'Depósito'
-                });
-            } else {
-                const idProducto = String(row[0]).trim();
-                const rawEans = String(row[15] || '').trim(); // Columna P
+            const idProducto = String(row[0]).trim();
+            const rawEans = String(row[15] || '').trim(); // Columna P
                 
                 let eanList = rawEans.split('-').map((e: string) => e.trim()).filter((e: string) => e.length > 0);
                 
@@ -91,7 +69,6 @@ self.onmessage = async (e: MessageEvent) => {
                         rubro
                     });
                 });
-            }
         });
 
         self.postMessage({

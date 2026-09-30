@@ -15,34 +15,40 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { fontWeights } from "@/lib/font-weight";
 import { shapeMap } from "@/lib/shape-context";
+import { useSize } from "@/lib/size-context";
+import { useRegisterFluidHoverItem } from "@/hooks/use-fluid-hover";
 
 // MenuItem is only used inside Dropdown, which opts out of the global pill
 // shape — see dropdown.tsx for the rationale.
 const shape = shapeMap.rounded;
 
 // ---------------------------------------------------------------------------
-// Dropdown context — THE single shared context for both dropdown flavors.
+// Dropdown context — the single shared context for every Dropdown build.
 //
-// It lives here (the file both flavor registry entries ship) rather than in
-// either dropdown module so that (a) MenuItem stays primitive-free and
-// self-contained for registry consumers, and (b) the two flavors can render
-// side by side (e.g. /compare-bases) — each provides this same context
-// object, so MenuItem resolves whichever provider actually wraps it instead
-// of guessing from a global flavor switch. Both dropdown flavors re-export
-// useDropdown from here, keeping their public API unchanged.
+// It lives here rather than in the dropdown module so that (a) MenuItem stays
+// primitive-free and self-contained, and (b) dropdowns built on different
+// primitives (Radix, Base UI) can render side by side — each provides this
+// same context object, so MenuItem resolves whichever provider actually
+// wraps it. The dropdown module re-exports useDropdown from here, keeping
+// its public API unchanged.
 // ---------------------------------------------------------------------------
 
 /** What MenuItem hands to the popup's primitive wrapper. `element` is the
- *  styled row div (visuals + proximity registration, no children); `children`
- *  is the row content (icon, label, check). The flavor wraps them in its own
- *  Item / RadioItem, so MenuItem itself stays primitive-free. */
+ *  styled row div (visuals + fluid hover registration, no children); `children`
+ *  is the row content (icon, label, check). The dropdown wraps them in its
+ *  own Item / RadioItem primitive, so MenuItem itself stays primitive-free. */
 export interface MenuItemRenderOptions {
   /** Radio-style option (boolean `checked` on MenuItem) vs plain action item. */
   radio: boolean;
+  /** Checkbox-style option: a boolean `checked` inside a multiple-selection
+   *  dropdown (`checkedIndices`). Takes precedence over `radio`. */
+  checkbox: boolean;
+  /** The item's checked state (radio and checkbox items). */
+  checked?: boolean;
   /** The item's index — doubles as the radio value. */
   value: number;
   disabled?: boolean;
-  label: string;
+  label: ReactNode;
   closeOnClick: boolean;
   element: ReactElement;
   children: ReactNode;
@@ -52,11 +58,15 @@ export interface DropdownContextValue {
   registerItem: (index: number, element: HTMLElement | null) => void;
   activeIndex: number | null;
   checkedIndex?: number;
+  /** Multiple selection (`checkedIndices` on the dropdown): rows are
+   *  checkbox items and activating one keeps the menu open by default. */
+  multiple?: boolean;
+  checkedIndices?: number[];
   /** True when items render inside a Menu popup (DropdownContent), where the
    *  primitive's Item / RadioItem own roles, roving highlight, typeahead,
    *  and activation. MenuItem switches its rendering accordingly. */
   inMenu?: boolean;
-  /** Popup-only: wraps a MenuItem's styled div in this flavor's menu-item
+  /** Popup-only: wraps a MenuItem's styled div in the dropdown's menu-item
    *  primitive. Absent in the inline Dropdown panel, where MenuItem renders
    *  its own ARIA menuitem div. */
   renderMenuItem?: (opts: MenuItemRenderOptions) => ReactElement;
@@ -75,11 +85,11 @@ export function useDropdownMaybe() {
   return useContext(DropdownContext);
 }
 
-interface MenuItemProps extends HTMLAttributes<HTMLDivElement> {
+export interface MenuItemProps extends HTMLAttributes<HTMLDivElement> {
   /** Optional leading icon. When omitted, the row renders text-only with no
    *  reserved icon column. */
-  icon?: React.ComponentType<any>;
-  label: string;
+  icon?: IconComponent | React.ComponentType<any>;
+  label: ReactNode;
   index: number;
   /** When a boolean, the item is a radio-style option (role="menuitemradio"
    *  with aria-checked). When undefined, it is a plain action item
@@ -110,13 +120,17 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
   ) => {
     const internalRef = useRef<HTMLDivElement>(null);
     const hasMounted = useRef(false);
-    const { registerItem, activeIndex, checkedIndex, renderMenuItem } =
-      useDropdown();
+    const {
+      registerItem,
+      activeIndex,
+      checkedIndex,
+      multiple,
+      checkedIndices,
+      renderMenuItem,
+    } = useDropdown();
+    const isCheckbox = !!multiple && typeof checked === "boolean";
 
-    useEffect(() => {
-      registerItem(index, internalRef.current);
-      return () => registerItem(index, null);
-    }, [index, registerItem]);
+    useRegisterFluidHoverItem(registerItem, index, internalRef);
 
     useEffect(() => {
       hasMounted.current = true;
@@ -124,6 +138,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
 
     const isActive = activeIndex === index;
     const skipAnimation = !hasMounted.current;
+    const sizeClasses = useSize();
 
     const mergeRef = (node: HTMLDivElement | null) => {
       (internalRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
@@ -140,8 +155,10 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
 
     const itemClassName = cn(
       // Fixed height (was py-2 around a 19.5px line box ≈ 35.5px) so the
-      // text-box trim on the label doesn't shrink the row.
-      `relative z-10 flex h-9 items-center gap-2 ${shape.item} px-2 cursor-pointer outline-none`,
+      // text-box trim on the label doesn't shrink the row. shrink-0 because
+      // menu popups are max-height flex columns — without it a long list
+      // compresses rows to fit instead of scrolling.
+      `relative z-10 flex ${sizeClasses.control} shrink-0 items-center ${sizeClasses.gap} ${shape.item} ${sizeClasses.itemPx} cursor-pointer outline-none`,
       disabled && "opacity-50 pointer-events-none",
       className
     );
@@ -151,10 +168,10 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
         {Icon && (
           <span className="inline-grid">
             <span className="col-start-1 row-start-1 invisible">
-              <Icon size={16} strokeWidth={2} />
+              <Icon size={sizeClasses.icon} strokeWidth={2} />
             </span>
             <Icon
-              size={16}
+              size={sizeClasses.icon}
               strokeWidth={isActive || checked ? 2 : 1.5}
               className={cn(
                 "col-start-1 row-start-1 transition-[color,stroke-width] duration-80",
@@ -167,7 +184,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
         )}
         {/* Both stacked spans carry the text-box trim so the invisible bold
             sizer and the visible label keep identical boxes. */}
-        <span className="inline-grid flex-1 text-[13px]">
+        <span className={cn("inline-grid flex-1", sizeClasses.text)}>
           <span
             className="col-start-1 row-start-1 invisible [text-box:trim-both_cap_alphabetic]"
             style={{ fontVariationSettings: fontWeights.semibold }}
@@ -195,8 +212,8 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
           {checked && (
             <motion.svg
               key="check"
-              width={16}
-              height={16}
+              width={sizeClasses.icon}
+              height={sizeClasses.icon}
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -227,23 +244,26 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
     );
 
     if (renderMenuItem) {
-      // Inside DropdownContent, the flavor's menu-item primitive (supplied by
-      // the surrounding DropdownContent through context) owns the role,
+      // Inside DropdownContent, the menu-item primitive (supplied by the
+      // surrounding DropdownContent through context) owns the role,
       // aria-checked, tabIndex, roving highlight, typeahead, and Enter/Space/
       // click activation (activation synthesizes a click, so handleActivate
       // also fires for keyboard). The styled div carries the Fluid
-      // Functionalism visuals and the proximity-hover registration; MenuItem
+      // Functionalism visuals and the fluid-hover registration; MenuItem
       // itself imports no primitive.
       return renderMenuItem({
-        radio: typeof checked === "boolean",
+        radio: !isCheckbox && typeof checked === "boolean",
+        checkbox: isCheckbox,
+        checked,
         value: index,
         disabled,
         label,
-        closeOnClick: closeOnClick ?? true,
+        // Toggling one of several stays open; picking one of one closes.
+        closeOnClick: closeOnClick ?? !multiple,
         element: (
           <div
             ref={mergeRef}
-            data-proximity-index={index}
+            data-fluid-hover-index={index}
             aria-label={label}
             onClick={handleActivate}
             className={itemClassName}
@@ -257,10 +277,18 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
     return (
       <div
         ref={mergeRef}
-        data-proximity-index={index}
+        data-fluid-hover-index={index}
         // Disabled items are never the roving tab stop.
-        tabIndex={!disabled && index === (checkedIndex ?? 0) ? 0 : -1}
-        role={typeof checked === "boolean" ? "menuitemradio" : "menuitem"}
+        tabIndex={
+          !disabled && index === (checkedIndex ?? checkedIndices?.[0] ?? 0) ? 0 : -1
+        }
+        role={
+          isCheckbox
+            ? "menuitemcheckbox"
+            : typeof checked === "boolean"
+              ? "menuitemradio"
+              : "menuitem"
+        }
         aria-checked={typeof checked === "boolean" ? checked : undefined}
         aria-disabled={disabled || undefined}
         aria-label={label}

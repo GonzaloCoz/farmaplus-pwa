@@ -58,6 +58,7 @@ export interface OutdatedWarningData {
 
 export function useInventoryUpload({ labName, branchName, currentItems, onItemsUpdated }: UseInventoryUploadProps) {
     const [isUploading, setIsUploading] = useState(false);
+    const [isSyncingMysql, setIsSyncingMysql] = useState(false);
     const [showMismatchDialog, setShowMismatchDialog] = useState(false);
     const [mismatchData, setMismatchData] = useState<MismatchData | null>(null);
 
@@ -887,8 +888,76 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
         }
     };
 
+    const handleMysqlSync = async () => {
+        if (isUploading || isSyncingMysql) return;
+
+        if (user?.role === 'branch') {
+            try {
+                const config = await cyclicInventoryService.getBranchConfig(branchName);
+                const lockStatus = await cyclicInventoryService.isInventoryLocked(
+                    branchName,
+                    config.days,
+                    config.startDate
+                );
+
+                if (lockStatus.isLocked) {
+                    const reason = lockStatus.reason === 'manual'
+                        ? 'El inventario ha sido bloqueado manualmente'
+                        : 'El plazo de inventario ha vencido';
+                    notify.error('Inventario Bloqueado', `${reason}. No puedes sincronizar en este momento.`);
+                    return;
+                }
+            } catch (error) {
+                console.error('Error checking lock status:', error);
+            }
+        }
+
+        setIsSyncingMysql(true);
+
+        try {
+            const { fetchCyclicLabStockFromMysql } = await import('@/services/mysqlTauriBridge');
+
+            // Leer los items actuales más recientes desde DB para merge seguro
+            let mergedCurrentItems: CyclicItem[] = currentItems;
+            try {
+                const dbItems = await cyclicInventoryService.getLabInventory(branchName, labName);
+                if (dbItems && dbItems.length > 0) {
+                    mergedCurrentItems = dbItems;
+                }
+            } catch (e) {
+                console.warn("Using React state for current items:", e);
+            }
+
+            const result = await fetchCyclicLabStockFromMysql(branchName, labName, mergedCurrentItems);
+
+            if (!result.success) {
+                notify.error("Error al sincronizar", result.message);
+                return;
+            }
+
+            onItemsUpdated(result.items);
+
+            await cyclicInventoryService.purgeAndSaveLabInventory(branchName, labName, result.items);
+
+            notify.success(
+                "Sincronización Exitosa",
+                `Se sincronizaron ${result.items.length} productos desde Plex (${result.totalUnits} unidades en stock).`
+            );
+        } catch (err: any) {
+            console.error("Error in MySQL Sync:", err);
+            notify.error(
+                "Fallo de Conexión",
+                err?.message || err?.toString() || "No se pudo conectar con el servidor MySQL de Plex."
+            );
+        } finally {
+            setIsSyncingMysql(false);
+        }
+    };
+
     return {
         isUploading,
+        isSyncingMysql,
+        handleMysqlSync,
         handleFileUpload,
         handleElectronImport,
         showMismatchDialog,

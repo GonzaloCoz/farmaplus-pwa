@@ -1,44 +1,95 @@
 
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useUser } from '@/contexts/UserContext';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
+import { requestsService } from '@/services/requestsService';
 import { getProductCount } from "@/services/preCountDB";
 import { auditService } from "@/services/auditService";
 
 export function useDashboardMetrics() {
     const { user } = useUser();
     const queryClient = useQueryClient();
+    const branch = user?.branchSheet || user?.branchName;
 
     // 1. Fetch Inventories & Config using React Query
-    const { data: inventories = [], isLoading: isLoadingInventories } = useQuery({
-        queryKey: ['cyclic-inventories', user?.branchName],
+    const { data: rawInventories = [], isLoading: isLoadingInventories } = useQuery({
+        queryKey: ['cyclic-inventories', branch],
         queryFn: async () => {
-            if (!user?.branchName) return [];
+            if (!branch) return [];
             try {
-                return await cyclicInventoryService.getAllCyclicInventories(user.branchName);
+                return await cyclicInventoryService.getAllCyclicInventories(branch);
             } catch (error) {
                 console.error("Error loading inventories:", error);
                 return [];
             }
         },
-        enabled: !!user?.branchName,
+        enabled: !!branch,
         staleTime: 1000 * 60 * 5, // 5 minutes cache
         placeholderData: keepPreviousData,
     });
 
-    const { data: config = {}, isLoading: isLoadingConfig } = useQuery({
-        queryKey: ['branch-config', user?.branchName],
+    // Fetch approved bajas for this branch
+    const { data: approvedBajas = [] } = useQuery({
+        queryKey: ['approved-bajas', branch],
         queryFn: async () => {
-            if (!user?.branchName) return {};
+            if (!branch) return [];
             try {
-                return await cyclicInventoryService.getBranchConfig(user.branchName);
+                return await requestsService.getApprovedBajas(branch);
+            } catch (err) {
+                console.error("Error loading approved bajas in useDashboardMetrics:", err);
+                return [];
+            }
+        },
+        enabled: !!branch,
+        staleTime: 1000 * 60 * 5,
+        placeholderData: keepPreviousData,
+    });
+
+    const bajaMap = useMemo(() => {
+        const map = new Map<string, Set<string> | true>();
+        for (const b of approvedBajas) {
+            const lab = (b.targetName || '').trim().toUpperCase();
+            if (!b.category || b.category === "BAJA TOTAL" || b.category === "TODOS" || b.category === "GENERAL") {
+                map.set(lab, true);
+            } else {
+                const cats = b.category.split(',').map(c => c.trim().toUpperCase());
+                const existing = map.get(lab);
+                if (existing !== true) {
+                    if (existing instanceof Set) {
+                        cats.forEach(c => existing.add(c));
+                    } else {
+                        map.set(lab, new Set(cats));
+                    }
+                }
+            }
+        }
+        return map;
+    }, [approvedBajas]);
+
+    const checkIsDischarged = useCallback((labName: string, categoryName?: string) => {
+        if (bajaMap.size === 0) return false;
+        const normLab = (labName || '').trim().toUpperCase();
+        const match = bajaMap.get(normLab);
+        if (match === true) return true;
+        if (match instanceof Set && categoryName) {
+            return match.has(categoryName.trim().toUpperCase());
+        }
+        return false;
+    }, [bajaMap]);
+
+    const { data: config = {}, isLoading: isLoadingConfig } = useQuery({
+        queryKey: ['branch-config', branch],
+        queryFn: async () => {
+            if (!branch) return {};
+            try {
+                return await cyclicInventoryService.getBranchConfig(branch);
             } catch (error) {
                 console.error("Error loading config:", error);
                 return {};
             }
         },
-        enabled: !!user?.branchName,
+        enabled: !!branch,
         staleTime: 1000 * 60 * 30, // 30 minutes cache
         placeholderData: keepPreviousData,
     });
@@ -52,7 +103,8 @@ export function useDashboardMetrics() {
                 return 0;
             }
         },
-        staleTime: 1000 * 60 * 60, // 1 hour
+        staleTime: 1000 * 60 * 60 * 24, // 24 hours
+        gcTime: 1000 * 60 * 60 * 24,
     });
 
     // Fetch lock status
@@ -133,7 +185,15 @@ export function useDashboardMetrics() {
         await toggleLockMutation.mutateAsync({ branch: user.branchName, isLocked });
     };
 
-    // Filter to active rounds only for computing current cycle metrics and progress
+    // Map inventories with isDischarged flag based on approved bajas
+    const inventories = useMemo(() => {
+        return rawInventories.map((inv: any) => ({
+            ...inv,
+            isDischarged: checkIsDischarged(inv.labName, inv.category)
+        }));
+    }, [rawInventories, checkIsDischarged]);
+
+    // Filter to active rounds only for computing current cycle metrics and progress (excluding discharged labs)
     const activeInventories = useMemo(() => {
         if (!inventories.length || !config) return [];
         
@@ -141,6 +201,7 @@ export function useDashboardMetrics() {
         const generalRound = rounds['GENERAL'] || 1;
         
         return inventories.filter((lab: any) => {
+            if (lab.isDischarged) return false;
             const catNorm = (lab.category || 'VARIOS').toUpperCase();
             const activeRound = rounds[catNorm] || generalRound;
             return (lab.round || 1) === activeRound;
@@ -207,6 +268,7 @@ export function useDashboardMetrics() {
         isLocked: lockStatus.isLocked,
         lockReason: lockStatus.reason,
         toggleLock,
-        isLoading
+        isLoading,
+        checkIsDischarged
     };
 }

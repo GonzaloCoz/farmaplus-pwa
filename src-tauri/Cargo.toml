@@ -25,6 +25,9 @@ tauri-plugin-shell = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tokio = { version = "1.43", features = ["full"] }
+mysql = { version = "25" }
+flate2 = { version = "1.0", features = ["rust_backend"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 [profile.release]
 opt-level = "z"

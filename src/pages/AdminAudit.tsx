@@ -60,6 +60,7 @@ export default function AdminAudit() {
     const { data: branchesData } = useBranchesQuery();
     const branches = useMemo(() => branchesData || [], [branchesData]);
     const [profiles, setProfiles] = useState<any[]>([]);
+    const [logs, setLogs] = useState<AuditLogEntry[]>([]);
     const [loading, setLoading] = useState(true);
 
     // Filters
@@ -224,9 +225,9 @@ export default function AdminAudit() {
                             <SelectValue>Todas las sucursales</SelectValue>
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="all">Todas las sucursales</SelectItem>
-                            {branches.map(b => (
-                                <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                            <SelectItem value="all" index={0}>Todas las sucursales</SelectItem>
+                            {branches.map((b, idx) => (
+                                <SelectItem key={b.id} value={b.id} index={idx + 1}>{b.name}</SelectItem>
                             ))}
                         </SelectContent>
                     </Select>
@@ -327,7 +328,8 @@ export default function AdminAudit() {
                                             </TableCell>
                                             <TableCell>
                                                 <Badge
-                                                    variant={log.action.includes('DELETE') || log.action.includes('REMOVE') || log.action.includes('PURGE') ? 'destructive' : 'outline'}
+                                                    variant="outline"
+                                                    color={log.action.includes('DELETE') || log.action.includes('REMOVE') || log.action.includes('PURGE') ? 'red' : 'gray'}
                                                     className="rounded-lg text-[10px] px-2 py-0 h-5 font-bold uppercase tracking-tight"
                                                 >
                                                     {getTranslatedAction(log.action)}

@@ -13,9 +13,9 @@ import {
 
 type ShapeVariant = "pill" | "rounded";
 
-const shapeOrder: ShapeVariant[] = ["rounded", "pill"];
-
 interface ShapeClasses {
+  /** The variant these classes belong to — handy for conditionals. */
+  variant: ShapeVariant;
   item: string;
   bg: string;
   focusRing: string;
@@ -32,20 +32,19 @@ interface ShapeClasses {
 
 const shapeMap: Record<ShapeVariant, ShapeClasses> = {
   pill: {
-    item: "rounded-[20px]",
-    bg: "rounded-[20px]",
-    // +2px over `item` because the focus ring sits 2px outside the element
-    // (top/left -2, width/height +4); this keeps the corners concentric so a
-    // pill element gets a pill ring (matches the rounded-mode 8px→10px bump).
-    focusRing: "rounded-[22px]",
-    mergedBg: "rounded-2xl",
-    container: "rounded-3xl",
-    button: "rounded-[20px]",
-    input: "rounded-[20px]",
-    bgRadius: 20,
-    mergedRadius: 16,
+    variant: "rounded",
+    item: "rounded-lg",
+    bg: "rounded-lg",
+    focusRing: "rounded-[10px]",
+    mergedBg: "rounded-lg",
+    container: "rounded-xl",
+    button: "rounded-lg",
+    input: "rounded-lg",
+    bgRadius: 8,
+    mergedRadius: 8,
   },
   rounded: {
+    variant: "rounded",
     item: "rounded-lg",
     bg: "rounded-lg",
     focusRing: "rounded-[10px]",
@@ -110,24 +109,16 @@ function ShapeProvider({
     [transitionShape]
   );
 
-  // Global keyboard shortcut: R to cycle radius
+  // Publish the current element radius as a CSS custom property so plain-CSS
+  // consumers that can't read React context stay in sync with the shape
+  // system — e.g. the @layer base :focus-visible fallback ring in
+  // globals.css. Set on <html> so portalled content sees it too.
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "r" && e.key !== "R") return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) return;
-      e.preventDefault();
-      transitionShape(() => {
-        setShapeState((prev) => {
-          const idx = shapeOrder.indexOf(prev);
-          return shapeOrder[(idx + 1) % shapeOrder.length];
-        });
-      });
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [transitionShape]);
+    document.documentElement.style.setProperty(
+      "--shape-input-radius",
+      `${shapeMap[shape].bgRadius}px`
+    );
+  }, [shape]);
 
   const value = useMemo(
     () => ({ shape, setShape, classes: shapeMap[shape] }),

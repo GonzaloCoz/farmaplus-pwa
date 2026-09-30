@@ -2,6 +2,7 @@
 
 import {
   Children,
+  cloneElement,
   useRef,
   useState,
   useEffect,
@@ -9,7 +10,6 @@ import {
   useContext,
   forwardRef,
   isValidElement,
-  cloneElement,
   type ReactNode,
   type HTMLAttributes,
 } from "react";
@@ -19,8 +19,10 @@ import { Radio as RadioPrimitive } from "@base-ui/react/radio";
 import { cn } from "@/lib/utils";
 import { spring } from "@/lib/springs";
 import { fontWeights } from "@/lib/font-weight";
-import { useProximityHover } from "@/hooks/use-proximity-hover";
+import { useFluidHover, useRegisterFluidHoverItem } from "@/hooks/use-fluid-hover";
 import { useShape } from "@/lib/shape-context";
+import { SizeProvider, useSize, type SizeVariant } from "@/lib/size-context";
+import { FluidHoverHighlight } from "@/components/ui/fluid-hover-highlight";
 
 interface RadioGroupContextValue {
   registerItem: (index: number, element: HTMLElement | null) => void;
@@ -47,28 +49,26 @@ interface RadioGroupProps extends Omit<HTMLAttributes<HTMLDivElement>, "onSelect
   selectedIndex?: number;
   value?: string;
   onValueChange?: (value: string) => void;
+  /** Pins the group's rows to one step of the size ladder (default 36px,
+   *  compact 28px — see /docs/sizes). Omitted, it follows the surrounding
+   *  SizeProvider. */
+  size?: SizeVariant;
 }
 
 const RadioGroup = forwardRef<HTMLDivElement, RadioGroupProps>(
-  ({ children, selectedIndex, value, onValueChange, className, ...props }, ref) => {
+  ({ children, selectedIndex, value, onValueChange, size, className, ...props }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const childValues = Children.toArray(children)
       .filter(isValidElement)
       .map((child) => (child.props as { value?: string }).value);
+    const hover = useFluidHover(containerRef);
     const {
       activeIndex,
       setActiveIndex,
       itemRects,
-      sessionRef,
       handlers,
       registerItem,
-      measureItems,
-    } = useProximityHover(containerRef);
-
-    const childrenLength = Array.isArray(children) ? children.length : (children ? 1 : 0);
-    useEffect(() => {
-      measureItems();
-    }, [measureItems, childrenLength]);
+    } = hover;
 
     const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
     const resolvedSelectedIndex =
@@ -82,20 +82,10 @@ const RadioGroup = forwardRef<HTMLDivElement, RadioGroupProps>(
         .filter(isValidElement)
         .some((child) => (child.props as { selected?: boolean }).selected === true);
 
-    const activeRect = activeIndex !== null ? itemRects[activeIndex] : null;
     const focusRect = focusedIndex !== null ? itemRects[focusedIndex] : null;
     const selectedRect =
       resolvedSelectedIndex >= 0 ? itemRects[resolvedSelectedIndex] : null;
-    const isHoveringOther =
-      activeIndex !== null && activeIndex !== resolvedSelectedIndex;
     const shape = useShape();
-
-    const indexedChildren = Children.map(children, (child, i) => {
-      if (isValidElement(child) && typeof child.type !== "string") {
-        return cloneElement(child, { index: i } as Record<string, unknown>);
-      }
-      return child;
-    });
 
     const content = (
       <div
@@ -107,10 +97,11 @@ const RadioGroup = forwardRef<HTMLDivElement, RadioGroupProps>(
         onMouseEnter={handlers.onMouseEnter}
         onMouseMove={handlers.onMouseMove}
         onMouseLeave={handlers.onMouseLeave}
+        onClick={handlers.onClick}
         onFocus={(e) => {
           const indexAttr = (e.target as HTMLElement)
-            .closest("[data-proximity-index]")
-            ?.getAttribute("data-proximity-index");
+            .closest("[data-fluid-hover-index]")
+            ?.getAttribute("data-fluid-hover-index");
           if (indexAttr != null) {
             const idx = Number(indexAttr);
             setActiveIndex(idx);
@@ -129,7 +120,7 @@ const RadioGroup = forwardRef<HTMLDivElement, RadioGroupProps>(
           // carries role="radio", so a bare [role="radio"] selector matches
           // twice per row and arrows land on the invisible control.
           const items = Array.from(
-            containerRef.current?.querySelectorAll("[data-proximity-index]") ?? []
+            containerRef.current?.querySelectorAll("[data-fluid-hover-index]") ?? []
           ) as HTMLElement[];
           const currentIdx = items.indexOf(e.target as HTMLElement);
           if (currentIdx === -1) return;
@@ -178,7 +169,7 @@ const RadioGroup = forwardRef<HTMLDivElement, RadioGroupProps>(
               left: selectedRect.left,
               width: selectedRect.width,
               height: selectedRect.height,
-              opacity: isHoveringOther ? 0.8 : 1,
+              opacity: 1,
             }}
             transition={{
               ...spring.moderate,
@@ -188,33 +179,10 @@ const RadioGroup = forwardRef<HTMLDivElement, RadioGroupProps>(
         )}
 
         {/* Hover background */}
-        <AnimatePresence>
-          {activeRect && (
-            <motion.div
-              key={sessionRef.current}
-              className={`absolute ${shape.bg} bg-hover pointer-events-none`}
-              initial={{
-                opacity: 0,
-                top: activeRect.top,
-                left: activeRect.left,
-                width: activeRect.width,
-                height: activeRect.height,
-              }}
-              animate={{
-                opacity: 1,
-                top: activeRect.top,
-                left: activeRect.left,
-                width: activeRect.width,
-                height: activeRect.height,
-              }}
-              exit={{ opacity: 0, transition: spring.fast.exit }}
-              transition={{
-                ...spring.fast,
-                opacity: { duration: 0.08 },
-              }}
-            />
-          )}
-        </AnimatePresence>
+        <FluidHoverHighlight
+          hover={hover}
+          className={shape.bg}
+        />
 
         {/* Focus ring */}
         <AnimatePresence>
@@ -237,7 +205,15 @@ const RadioGroup = forwardRef<HTMLDivElement, RadioGroupProps>(
           )}
         </AnimatePresence>
 
-        {indexedChildren}
+        {Children.map(children, (child, idx) => {
+          if (isValidElement(child)) {
+            return cloneElement(child, {
+              index: (child.props as { index?: number }).index ?? idx,
+              ...child.props,
+            } as any);
+          }
+          return child;
+        })}
       </div>
     );
 
@@ -247,8 +223,12 @@ const RadioGroup = forwardRef<HTMLDivElement, RadioGroupProps>(
     // parent RadioGroup context; without it, Base UI crashes on context reads.
     // The wrapper just doesn't forward changes when the consumer doesn't ask
     // to be notified.
+    // A size prop pins every row in the group to one ladder step.
+    const withSize = (node: ReactNode) =>
+      size ? <SizeProvider size={size}>{node}</SizeProvider> : node;
+
     if (value !== undefined) {
-      return (
+      return withSize(
         <RadioGroupContext.Provider
           value={{
             registerItem,
@@ -268,7 +248,7 @@ const RadioGroup = forwardRef<HTMLDivElement, RadioGroupProps>(
       );
     }
 
-    return (
+    return withSize(
       <RadioGroupContext.Provider
         value={{
           registerItem,
@@ -291,10 +271,11 @@ interface RadioItemProps extends HTMLAttributes<HTMLDivElement> {
   selected?: boolean;
   onSelect?: () => void;
   value?: string;
+  children?: ReactNode;
 }
 
 const RadioItem = forwardRef<HTMLDivElement, RadioItemProps>(
-  ({ label, children, index = 0, selected, onSelect, value, className, ...props }, ref) => {
+  ({ label, index = 0, selected, onSelect, value, children, className, ...props }, ref) => {
     const internalRef = useRef<HTMLDivElement>(null);
     const hasMounted = useRef(false);
     const {
@@ -306,10 +287,7 @@ const RadioItem = forwardRef<HTMLDivElement, RadioItemProps>(
       hasSelection,
     } = useRadioGroupContext();
 
-    useEffect(() => {
-      registerItem(index, internalRef.current);
-      return () => registerItem(index, null);
-    }, [index, registerItem]);
+    useRegisterFluidHoverItem(registerItem, index, internalRef);
 
     useEffect(() => {
       hasMounted.current = true;
@@ -318,6 +296,8 @@ const RadioItem = forwardRef<HTMLDivElement, RadioItemProps>(
     const isActive = activeIndex === index;
     const skipAnimation = !hasMounted.current;
     const shape = useShape();
+    const sizeClasses = useSize();
+    const compact = sizeClasses.variant === "compact";
     const isSelected =
       value !== undefined && selectedValue !== undefined
         ? selectedValue === value
@@ -330,8 +310,6 @@ const RadioItem = forwardRef<HTMLDivElement, RadioItemProps>(
       onSelect?.();
     };
 
-    const resolvedLabel = label ?? children;
-
     return (
       <div
         ref={(node) => {
@@ -339,13 +317,28 @@ const RadioItem = forwardRef<HTMLDivElement, RadioItemProps>(
           if (typeof ref === "function") ref(node);
           else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
         }}
+        data-fluid-hover-index={index}
+        // Roving tabindex: selected item is the tab stop; with no selection the
+        // first item takes it so the group stays keyboard-reachable.
+        tabIndex={isSelected ? 0 : !hasSelection && index === 0 ? 0 : -1}
+        role="radio"
+        aria-checked={isSelected}
+        aria-label={label}
         onClick={handleSelect}
-        // Base UI's roving tabindex: with no selection, focus lands on the
-        // first item so you can move with arrow keys. If there is a selection,
-        // focus lands directly on the selected item.
-        tabIndex={
-          isSelected ? 0 : !hasSelection && index === 0 ? 0 : -1
-        }
+        onMouseDown={(e) => {
+          // Clicking the 15px radio circle would natively focus the hidden
+          // primitive (nearest focusable ancestor of the click target), after
+          // which arrow-key nav dead-zones: the group keydown handler can't
+          // find the target among the row wrappers. Prevent the native focus
+          // move (click still fires) and land focus on the row instead. Skip
+          // genuinely interactive children so we don't hijack their focus.
+          const interactive = (e.target as HTMLElement).closest(
+            'button:not([tabindex="-1"]), a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          );
+          if (interactive && interactive !== e.currentTarget) return;
+          e.preventDefault();
+          e.currentTarget.focus();
+        }}
         onKeyDown={(e) => {
           if (e.key === " " || e.key === "Enter") {
             e.preventDefault();
@@ -353,19 +346,21 @@ const RadioItem = forwardRef<HTMLDivElement, RadioItemProps>(
           }
         }}
         className={cn(
-          "group relative flex items-center gap-3 px-3 py-2 cursor-pointer focus-visible:outline-none",
+          // Fixed height (was py-1.5 around a 19.5px line box ≈ 31.5px) so the
+          // text-box trim on the label doesn't shrink the row.
+          `relative z-10 flex ${sizeClasses.control} items-center ${sizeClasses.gap} ${shape.item} ${sizeClasses.px} cursor-pointer outline-none`,
           className
         )}
         {...props}
       >
-        {/* Proximity hover indicator */}
+        {/* Radio circle */}
         <div
-          data-proximity-index={index}
-          className="absolute inset-0 z-0 pointer-events-none"
-        />
-
-        {/* Radio ring */}
-        <div className="relative z-10 w-[18px] h-[18px] rounded-full shrink-0 bg-background transition-all duration-80">
+          className={cn(
+            "relative shrink-0",
+            compact ? "w-[14px] h-[14px]" : "w-[16px] h-[16px]"
+          )}
+        >
+          {/* Border */}
           <div
             className={cn(
               "absolute inset-0 rounded-full border-solid transition-all duration-80",
@@ -389,23 +384,26 @@ const RadioItem = forwardRef<HTMLDivElement, RadioItemProps>(
                 exit={{ opacity: 0, scale: 0.3, transition: { duration: 0.04 } }}
                 transition={spring.fast}
               >
-                <div className="w-[8px] h-[8px] rounded-full bg-foreground" />
+                <div
+                  className={cn(
+                    "rounded-full bg-foreground",
+                    compact ? "w-[7px] h-[7px]" : "w-[8px] h-[8px]"
+                  )}
+                />
               </motion.div>
             )}
           </AnimatePresence>
         </div>
 
         {/* Label */}
-        {/* Both stacked spans carry the text-box trim so the invisible bold
-            sizer and the visible label keep identical boxes. */}
-        {resolvedLabel && (
-          <span className="inline-grid text-[13px]">
+        {(label || children) && (
+          <span className={cn("inline-grid", sizeClasses.text)}>
             <span
               className="col-start-1 row-start-1 invisible [text-box:trim-both_cap_alphabetic]"
               style={{ fontVariationSettings: fontWeights.semibold }}
               aria-hidden="true"
             >
-              {resolvedLabel}
+              {label ?? children}
             </span>
             <span
               className={cn(
@@ -420,7 +418,7 @@ const RadioItem = forwardRef<HTMLDivElement, RadioItemProps>(
                   : fontWeights.normal,
               }}
             >
-              {resolvedLabel}
+              {label ?? children}
             </span>
           </span>
         )}

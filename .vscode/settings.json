@@ -1,4 +1,11 @@
 {
     "css.lint.unknownAtRules": "ignore",
-    "java.configuration.updateBuildConfiguration": "interactive"
+    "java.configuration.updateBuildConfiguration": "interactive",
+    "cSpell.ignorePaths": [
+        "**/src-tauri/**",
+        "**/*.toml",
+        "**/Cargo.lock",
+        "**/.gemini/**",
+        "**/brain/**"
+    ]
 }

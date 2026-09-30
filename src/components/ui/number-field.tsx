@@ -1,5 +1,5 @@
 import * as React from "react";
-import { NumberField as BaseNumberField } from "@base-ui-components/react/number-field";
+import { NumberField as BaseNumberField } from "@base-ui/react/number-field";
 import { Minus, Plus } from '@untitledui/icons';
 
 import { cn } from "@/lib/utils";

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useUser } from "@/contexts/UserContext";
@@ -11,7 +11,6 @@ import { GlobalSearchInput } from "@/components/dashboard/GlobalSearchInput";
 import { WidgetRenderer } from "@/components/dashboard/WidgetRenderer";
 import { WidgetErrorBoundary } from "@/components/dashboard/WidgetErrorBoundary";
 import { ConfigDialog } from "@/components/dashboard/ConfigDialog";
-import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 import { hasPermission } from "@/config/permissions";
 
 const containerVariants = {
@@ -42,14 +41,6 @@ export default function Dashboard() {
 
   const { visibleWidgets } = useDashboardLayout(user?.branchName);
 
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-
-  useEffect(() => {
-    if (!isLoading) {
-      setHasLoadedOnce(true);
-    }
-  }, [isLoading]);
-
   // Local UI State
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [cycleFilter, setCycleFilter] = useState<'current' | 'previous'>('current');
@@ -74,10 +65,6 @@ export default function Dashboard() {
       return true;
     });
   }, [visibleWidgets, user]);
-
-  if (isLoading && !hasLoadedOnce) {
-    return <DashboardSkeleton />;
-  }
 
   return (
     <motion.div
@@ -120,6 +107,7 @@ export default function Dashboard() {
                   onToggleLock={toggleLock}
                   cycleFilter={cycleFilter}
                   onCycleFilterChange={setCycleFilter}
+                  isLoading={isLoading}
                 />
               </WidgetErrorBoundary>
             </WidgetContainer>

@@ -348,12 +348,23 @@ export function BranchesTableWidget({
 
     const isSingleBranchView = user?.role === 'branch';
 
+    const targetBranchesList = useMemo(() => {
+        if (isSingleBranchView && user?.branchName) {
+            return [user.branchName];
+        }
+        if (availableBranches && availableBranches.length > 0 && availableBranches.length < 50) {
+            return availableBranches;
+        }
+        return undefined;
+    }, [isSingleBranchView, user?.branchName, availableBranches]);
+
     const { data: branchSummaries = [], isLoading: loading } = useQuery({
-        queryKey: ['branch-summaries-lite', availableBranches, timeframeFilter, cycleFilter],
+        queryKey: ['branch-summaries-lite', targetBranchesList, availableBranches, timeframeFilter, cycleFilter],
         queryFn: async () => {
             const data = await cyclicInventoryService.getBranchesSummaryLite(
                 cycleFilter === 'previous' ? 'all' : timeframeFilter,
-                cycleFilter === 'previous'
+                cycleFilter === 'previous',
+                targetBranchesList
             );
             return data.filter(branch => {
                 if (!availableBranches || availableBranches.length === 0) return true;

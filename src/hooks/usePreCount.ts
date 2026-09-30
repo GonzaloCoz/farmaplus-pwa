@@ -38,6 +38,7 @@ function expandCatalogToDbProducts(catalog: any[], sessionId: string) {
                 cost: p.cost || 0,
                 salePrice: p.salePrice || 0,
                 laboratory: p.laboratory || '',
+                rubro: p.rubro || p.category || '',
                 stock: p.systemStock || 0,
                 id_producto: p.id_producto || '',
                 session_id: sessionId
@@ -72,7 +73,7 @@ interface UsePreCountReturn {
     connectedDevices: ConnectedDevice[];
     receivedFiles: ReceivedFile[];
     startSession: (sector: string, masterCatalog?: any[], syncPin?: string, profile?: 'sucursal' | 'sap') => Promise<void>;
-    resumeSession: (session: PreCountSession) => Promise<void>;
+    resumeSession: (session: PreCountSession, showNotification?: boolean) => Promise<void>;
     deleteSession: (id: string) => Promise<void>;
     addItem: (ean: string, productName: string, quantity: number, id_producto?: string, location_tag?: string) => Promise<void>;
     updateItem: (id: string, quantity: number) => Promise<void>;
@@ -104,6 +105,11 @@ export interface ReceivedFile {
 
 export function usePreCount(): UsePreCountReturn {
     const [session, setSession] = useState<PreCountSession | null>(null);
+    const sessionRef = useRef<PreCountSession | null>(session);
+    useEffect(() => {
+        sessionRef.current = session;
+    }, [session]);
+
     const [errorCount, setErrorCount] = useState(0);
     const [availableSessions, setAvailableSessions] = useState<PreCountSession[]>([]);
     const [connectedDevices, setConnectedDevices] = useState<ConnectedDevice[]>([]);
@@ -127,19 +133,48 @@ export function usePreCount(): UsePreCountReturn {
         [session?.id]
     ) || [];
 
-    // Initial Load
+    // Initial Load / Wakeup Resume
     useEffect(() => {
         const init = async () => {
             if (!user) return; // Wait for user context
             try {
+                // 1. Inmediata restauración offline / local desde Dexie para que el usuario nunca vea la pantalla de PIN al desbloquear
+                const lastSessionId = typeof localStorage !== 'undefined' 
+                    ? (localStorage.getItem('last_precount_session_id') || localStorage.getItem('precount_session_id')) 
+                    : null;
+                
+                if (lastSessionId) {
+                    try {
+                        const localSess = await db.sessions.get(lastSessionId);
+                        if (localSess && localSess.status === 'active') {
+                            sessionRef.current = localSess as any;
+                            setSession(localSess as any);
+                        }
+                    } catch (e) {
+                        console.warn('[usePreCount] Error al cargar sesión local desde Dexie:', e);
+                    }
+                }
+
+                // 2. Consulta y actualización remota con Supabase
                 const sessions = await getActiveSessions({ 
                     branchId: user.branchId, 
                     role: user.role 
                 });
                 setAvailableSessions(sessions);
+
+                if (lastSessionId) {
+                    const found = sessions.find(s => s.id === lastSessionId && s.status === 'active');
+                    if (found) {
+                        sessionRef.current = found;
+                        setSession(found);
+                    }
+                }
             } catch (error) {
                 console.error('Error initializing pre-count:', error);
-                notify.error("Error de conexión", "No se pudo cargar el colector");
+                // Si ya teníamos una sesión activa restaurada de Dexie, no alarmar al usuario
+                if (!sessionRef.current) {
+                    notify.error("Error de conexión", "No se pudo cargar el colector");
+                }
             } finally {
                 setIsLoading(false);
             }
@@ -169,16 +204,34 @@ export function usePreCount(): UsePreCountReturn {
         const DEBOUNCE_MS = 300;
 
         const sessionsChannel = supabase
-            .channel('public:precount_sessions_ui')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'precount_sessions' }, async (payload) => {
+            .channel(`public:precount_sessions_ui_${activeSessionId || 'global'}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'precount_sessions' }, async (payload: any) => {
                 if (debounceTimer) clearTimeout(debounceTimer);
                 debounceTimer = setTimeout(async () => {
                     const sessions = await getActiveSessions({ branchId: user?.branchId, role: user?.role });
                     setAvailableSessions(sessions);
 
-                    if (session && payload.eventType === 'DELETE' && payload.old.id === session.id) {
-                        setSession(null);
-                        notify.info("Sesión eliminada", "La sesión actual fue eliminada desde otro dispositivo");
+                    const currentActiveId = sessionRef.current?.id;
+                    if (currentActiveId) {
+                        if (payload.eventType === 'DELETE' && payload.old?.id === currentActiveId) {
+                            sessionRef.current = null;
+                            setSession(null);
+                            if (typeof localStorage !== 'undefined') {
+                                localStorage.removeItem('last_precount_session_id');
+                                localStorage.removeItem('precount_session_id');
+                                sessionStorage.removeItem('active_precount_session_id');
+                            }
+                            notify.info("Sesión eliminada", "La sesión actual fue eliminada desde otro dispositivo");
+                        } else if (payload.eventType === 'UPDATE' && payload.new?.id === currentActiveId && payload.new?.status === 'completed') {
+                            sessionRef.current = null;
+                            setSession(null);
+                            if (typeof localStorage !== 'undefined') {
+                                localStorage.removeItem('last_precount_session_id');
+                                localStorage.removeItem('precount_session_id');
+                                sessionStorage.removeItem('active_precount_session_id');
+                            }
+                            notify.info("Sesión finalizada", "El inventario ha sido finalizado por el Administrador");
+                        }
                     }
                 }, DEBOUNCE_MS);
             })
@@ -216,11 +269,25 @@ export function usePreCount(): UsePreCountReturn {
             }
         };
 
+        const handleLocalDeviceJoined = (e: any) => {
+            const payload = e.detail;
+            if (!payload?.deviceId) return;
+            setConnectedDevices(prev => {
+                const exists = prev.find(d => d.deviceId === payload.deviceId);
+                if (exists) {
+                    return prev.map(d => d.deviceId === payload.deviceId ? payload : d);
+                }
+                return [...prev, payload];
+            });
+        };
+        window.addEventListener('precount:device_joined' as any, handleLocalDeviceJoined);
+
         if (session) {
             fetchExistingFiles(session.id);
-            // Presence tracking
-            presenceChannel = supabase
-                .channel(`precount_presence:${session.id}`)
+
+            // File Transfer Channel & Device Joined Broadcast
+            channelRef.current = supabase
+                .channel(`precount_sync:${session.id}`)
                 .on('broadcast', { event: 'device_joined' }, ({ payload }: any) => {
                     console.log(`[Sync] Device joined:`, payload);
                     setConnectedDevices(prev => {
@@ -231,11 +298,6 @@ export function usePreCount(): UsePreCountReturn {
                         return [...prev, payload];
                     });
                 })
-                .subscribe();
-
-            // File Transfer Channel — broadcast is just a notification ping
-            channelRef.current = supabase
-                .channel(`precount_sync:${session.id}`)
                 .on('broadcast', { event: 'device_finalized' }, (message: any) => {
                     const payload = message.payload || message;
                     console.log(`[Sync] Broadcast ping received:`, payload);
@@ -372,15 +434,13 @@ export function usePreCount(): UsePreCountReturn {
         }
 
         return () => {
+            window.removeEventListener('precount:device_joined' as any, handleLocalDeviceJoined);
             if (debounceTimer) clearTimeout(debounceTimer);
             supabase.removeChannel(sessionsChannel);
             if (itemsChannel) supabase.removeChannel(itemsChannel);
             if (channelRef.current) {
                 supabase.removeChannel(channelRef.current);
                 channelRef.current = null;
-            }
-            if (presenceChannel) {
-                supabase.removeChannel(presenceChannel);
             }
             if (filesChannel) {
                 supabase.removeChannel(filesChannel);
@@ -518,8 +578,10 @@ export function usePreCount(): UsePreCountReturn {
         setIsLoading(true);
         try {
             const newSession = await createSession(sector, user.branchId, masterCatalog, syncPin, profile);
+            sessionRef.current = newSession;
             setSession(newSession);
             localStorage.setItem('last_precount_session_id', newSession.id);
+            localStorage.setItem('precount_session_id', newSession.id);
             sessionStorage.setItem('active_precount_session_id', newSession.id);
             
             // Guardar productos del catálogo maestro localmente en db.precount_products
@@ -563,19 +625,13 @@ export function usePreCount(): UsePreCountReturn {
         const idToUse = explicitSessionId || session?.id;
         if (!idToUse) return;
         
-        const deviceId = localStorage.getItem('precount_device_id') || `dev-${Math.random().toString(36).substring(7)}`;
-        const deviceName = localStorage.getItem('precount_device_name') || 'Zebra';
-        
         try {
-            const channel = supabase.channel(`precount_presence:${idToUse}`);
-            await channel.subscribe(async (status) => {
-                if (status === 'SUBSCRIBED') {
-                    await channel.send({
-                        type: 'broadcast',
-                        event: 'device_joined',
-                        payload: { deviceId, deviceName, joinedAt: Date.now() }
-                    });
-                }
+            const { emitDeviceTelemetry } = await import('@/services/deviceTelemetry');
+            await emitDeviceTelemetry({
+                sessionId: idToUse,
+                currentLocation: null,
+                totalScanned: totalUnits || 0,
+                totalSkus: totalProducts || 0,
             });
         } catch (err) {
             console.error('Error announcing presence:', err);
@@ -585,15 +641,28 @@ export function usePreCount(): UsePreCountReturn {
 
 
     // Resume session
-    const resumeSession = async (sessionToResume: PreCountSession) => {
+    const resumeSession = async (sessionToResume: PreCountSession, showNotification = true) => {
         try {
+            sessionRef.current = sessionToResume;
             setSession(sessionToResume);
             localStorage.setItem('last_precount_session_id', sessionToResume.id);
+            localStorage.setItem('precount_session_id', sessionToResume.id);
+            sessionStorage.setItem('active_precount_session_id', sessionToResume.id);
             setErrorCount(sessionToResume.errorCount || 0);
-            notify.success("Sesión retomada", `Sucursal: ${sessionToResume.sector}`);
+
+            const isInsideCollector = typeof window !== 'undefined' && 
+                (window.location.hash.includes('stock/colector') || window.location.pathname.includes('stock/colector'));
+
+            if (showNotification && isInsideCollector) {
+                notify.success("Sesión retomada", `Sucursal: ${sessionToResume.sector}`);
+            }
         } catch (error) {
             console.error('Error resuming session:', error);
-            notify.error("Error", "No se pudo conectar a la sesión");
+            const isInsideCollector = typeof window !== 'undefined' && 
+                (window.location.hash.includes('stock/colector') || window.location.pathname.includes('stock/colector'));
+            if (isInsideCollector) {
+                notify.error("Error", "No se pudo conectar a la sesión");
+            }
         }
     };
 
@@ -604,7 +673,31 @@ export function usePreCount(): UsePreCountReturn {
         try {
             await deleteSessionDB(id);
             await db.precount_products.where('session_id').equals(id).delete();
-            if (session?.id === id) setSession(null);
+            if (sessionRef.current?.id === id) {
+                sessionRef.current = null;
+                setSession(null);
+            }
+
+            // Limpieza exhaustiva de claves de sesión y caché de terminales en localStorage
+            if (typeof window !== 'undefined') {
+                try {
+                    localStorage.removeItem('last_precount_session_id');
+                    localStorage.removeItem('precount_session_id');
+                    sessionStorage.removeItem('active_precount_session_id');
+
+                    const keysToRemove: string[] = [];
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const k = localStorage.key(i);
+                        if (k && (k.startsWith('precount_monitor_cache_') || k.startsWith('precount_active_terminal_') || k.includes(id))) {
+                            keysToRemove.push(k);
+                        }
+                    }
+                    keysToRemove.forEach(k => localStorage.removeItem(k));
+                } catch {}
+
+                window.dispatchEvent(new CustomEvent('precount:session_deleted', { detail: { sessionId: id } }));
+            }
+
             notify.success("Sesión eliminada", "La sesión ha sido eliminada correctamente");
         } catch (error) {
             console.error('Error deleting session:', error);
@@ -626,12 +719,34 @@ export function usePreCount(): UsePreCountReturn {
                 id_producto,
                 location_tag
             });
+
+            // Guardar copia offline ultrarrápida en SQLite local de Tauri (%APPDATA%/com.farmaplus.desktop/data/stock_local.db)
+            try {
+                const { recordLocalScan } = await import('@/services/tauriLocalDb');
+                await recordLocalScan(session.id, ean, quantity, location_tag);
+            } catch (err) {
+                console.debug('[LocalDB] recordLocalScan skipped:', err);
+            }
+
+            // Emitir telemetría liviana a la PC Admin (sin saturar con productos individuales)
+            try {
+                const { emitDeviceTelemetry } = await import('@/services/deviceTelemetry');
+                await emitDeviceTelemetry({
+                    sessionId: session.id,
+                    currentLocation: location_tag || null,
+                    totalScanned: totalUnits + quantity,
+                    totalSkus: totalProducts + 1,
+                });
+            } catch (err) {
+                console.debug('[Telemetry] emitDeviceTelemetry error:', err);
+            }
+
             playSound('success');
         } catch (error) {
             console.error('Error adding item:', error);
             notify.error("Error", "No se pudo agregar el producto");
         }
-    }, [session]);
+    }, [session, totalUnits, totalProducts]);
 
     // Actualizar item
     const updateItem = useCallback(async (id: string, quantity: number) => {
@@ -659,6 +774,14 @@ export function usePreCount(): UsePreCountReturn {
     const finishSession = async () => {
         if (!session) return;
         try {
+            // Vaciar y sincronizar inmediatamente cualquier producto pendiente en cola
+            try {
+                const { syncManager } = await import('@/services/syncManager');
+                await syncManager.flushNow();
+            } catch (syncErr) {
+                console.warn('[PreCount] Error en flushNow antes de finalizar:', syncErr);
+            }
+
             await endSession(session.id);
             
             // Bridge to Dashboard Progress
@@ -668,8 +791,13 @@ export function usePreCount(): UsePreCountReturn {
             }
 
             await db.precount_products.where('session_id').equals(session.id).delete();
+            sessionRef.current = null;
             setSession(null);
-            localStorage.removeItem('last_precount_session_id');
+            if (typeof localStorage !== 'undefined') {
+                localStorage.removeItem('last_precount_session_id');
+                localStorage.removeItem('precount_session_id');
+                sessionStorage.removeItem('active_precount_session_id');
+            }
             notify.success("Sesión finalizada", "La sesión se cerró y finalizó");
         } catch (error) {
             console.error('Error finishing session:', error);

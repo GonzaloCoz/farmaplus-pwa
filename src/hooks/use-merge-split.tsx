@@ -3,17 +3,17 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { spring } from "@/lib/springs";
-import type { ItemRect } from "@/hooks/use-proximity-hover";
+import type { ItemRect } from "@/hooks/use-fluid-hover";
 
 // Run the layout effect on the client (where it must fire before paint, so a
 // merge/split shows on the first frame) and a no-op-safe useEffect on the server.
 const useIsoLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
-// Edge spring for the selected-bg merge/split: spring.settle (critically damped
-// moderate) so converging edges meet exactly instead of overshooting. On a merge
+// Edge spring for the selected-bg merge/split: spring.moderate (critically
+// damped) so converging edges meet exactly instead of overshooting. On a merge
 // the inner corners trail by `cornerDelay`, staying rounded until the halves meet.
-const mergeSpring = spring.settle;
+const mergeSpring = spring.moderate;
 const cornerDelay = 0.07;
 // A boundary resolves after its motion finishes (merge → swap to one block;
 // split → drop), driven by a duration timer rather than onAnimationComplete —
@@ -43,6 +43,44 @@ export interface SelBlock extends Rect {
 // A contiguous run of selected/checked rows, with a stable id so framer-motion
 // can morph it across renders rather than exit+re-enter.
 export type Run = { start: number; end: number; id: number };
+
+/**
+ * Groups checked row indices into contiguous runs with ids that survive
+ * re-renders: a run keeps its id while any of its rows was in a run last
+ * render, so framer morphs a growing/shrinking block instead of swapping it.
+ * Feed the result to useMergeSplitBlocks.
+ */
+export function useSelectionRuns(checkedIndices: readonly number[]): Run[] {
+  const prevGroupMap = useRef(new Map<number, number>());
+  const groupIdCounter = useRef(0);
+
+  const runs: { start: number; end: number }[] = [];
+  const sorted = [...checkedIndices].sort((a, b) => a - b);
+  for (const idx of sorted) {
+    const last = runs[runs.length - 1];
+    if (last && idx === last.end + 1) last.end = idx;
+    else runs.push({ start: idx, end: idx });
+  }
+
+  const usedIds = new Set<number>();
+  const nextGroupMap = new Map<number, number>();
+  const result = runs.map((run) => {
+    let stableId: number | null = null;
+    for (let i = run.start; i <= run.end; i++) {
+      const prevId = prevGroupMap.current.get(i);
+      if (prevId !== undefined && !usedIds.has(prevId)) {
+        stableId = prevId;
+        break;
+      }
+    }
+    const id = stableId ?? ++groupIdCounter.current;
+    usedIds.add(id);
+    for (let i = run.start; i <= run.end; i++) nextGroupMap.set(i, id);
+    return { ...run, id };
+  });
+  prevGroupMap.current = nextGroupMap;
+  return result;
+}
 
 // One in-flight merge or split; geometry is recomputed from the live runs each
 // render so rapid toggles redirect instead of freezing.
@@ -315,17 +353,14 @@ export function useMergeSplitBlocks(
 }
 
 // Renders the selected-background blocks produced by useMergeSplitBlocks — one
-// per run, or two abutting halves mid merge/split. `dimmed` drops the opacity to
-// 0.8 (when the user is hovering a non-selected row) to match the standalone
-// hover indicator; a block's own `opacity` override (e.g. the commit ghost)
-// always wins. Corners are driven numerically so merge/split can straighten and
+// per run, or two abutting halves mid merge/split. A block's own `opacity`
+// override (e.g. the commit ghost) applies; otherwise blocks render fully
+// opaque. Corners are driven numerically so merge/split can straighten and
 // re-round individual corners.
 export function SelectionBackgrounds({
   blocks,
-  dimmed,
 }: {
   blocks: SelBlock[];
-  dimmed: boolean;
 }) {
   return (
     <AnimatePresence>
@@ -333,7 +368,7 @@ export function SelectionBackgrounds({
         const corner = b.delayCorners
           ? { ...mergeSpring, delay: b.cornerDelay ?? cornerDelay }
           : mergeSpring;
-        const opacity = b.opacity ?? (dimmed ? 0.8 : 1);
+        const opacity = b.opacity ?? 1;
         return (
           <motion.div
             key={b.key}

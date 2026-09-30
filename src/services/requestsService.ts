@@ -167,15 +167,32 @@ export const requestsService = {
     /**
      * Obtener laboratorios con baja aprobada para una sucursal
      */
-    getApprovedBajas: async (branchName?: string): Promise<{ targetName: string; category?: string }[]> => {
+    getApprovedBajas: async (branchName?: string): Promise<{ targetName: string; category?: string; branchName?: string }[]> => {
         const all = await requestsService.getRequests(branchName);
         return all
             .filter(r => (r.type === 'Baja de Laboratorio' || !r.type) && r.status === 'approved')
             .map(r => ({
                 targetName: (r.targetName || '').trim().toUpperCase(),
-                category: r.category ? r.category.trim().toUpperCase() : undefined
+                category: r.category ? r.category.trim().toUpperCase() : undefined,
+                branchName: r.branchName
             }));
     },
+
+    /**
+     * Obtener laboratorios con solicitud de baja pendiente de aprobación para una sucursal
+     */
+    getPendingBajas: async (branchName?: string): Promise<{ targetName: string; category?: string; branchName?: string; reason?: string }[]> => {
+        const all = await requestsService.getRequests(branchName);
+        return all
+            .filter(r => (r.type === 'Baja de Laboratorio' || !r.type) && r.status === 'pending')
+            .map(r => ({
+                targetName: (r.targetName || '').trim().toUpperCase(),
+                category: r.category ? r.category.trim().toUpperCase() : undefined,
+                branchName: r.branchName,
+                reason: r.reason
+            }));
+    },
+
 
     /**
      * Rechazar una solicitud

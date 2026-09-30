@@ -2,6 +2,8 @@ import { useCallback, useMemo, useState } from "react";
 import type { SortState, TableColumn, TableRow } from "./types";
 import { readSortValue } from "./utils";
 
+const tableCollator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' });
+
 export function useColumnSort<T>({
   rows,
   columns,
@@ -53,7 +55,7 @@ export function useColumnSort<T>({
       if (typeof av === "number" && typeof bv === "number") {
         cmp = av - bv;
       } else {
-        cmp = String(av).localeCompare(String(bv));
+        cmp = tableCollator.compare(String(av), String(bv));
       }
       return sort.direction === "asc" ? cmp : -cmp;
     });

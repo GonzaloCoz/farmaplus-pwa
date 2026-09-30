@@ -422,60 +422,62 @@ export function FeedbackWidget({
               </motion.div>
             </motion.div>
           ) : (
-            <Tooltip>
-              <TooltipTrigger render={
-                <motion.button
-                  key="trigger"
-                  type="button"
-                  initial={
-                    reduce
-                      ? { opacity: 0 }
-                      : {
-                        opacity: 0,
-                        x: -contentOffset,
-                        filter: MORPH_BLUR,
-                      }
+            <motion.div
+              key="trigger-wrapper"
+              initial={
+                reduce
+                  ? { opacity: 0 }
+                  : {
+                    opacity: 0,
+                    x: -contentOffset,
+                    filter: MORPH_BLUR,
                   }
-                  animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-                  exit={
-                    reduce
-                      ? { opacity: 0 }
-                      : {
-                        opacity: 0,
-                        x: -contentOffset,
-                        filter: MORPH_BLUR,
-                      }
+              }
+              animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+              exit={
+                reduce
+                  ? { opacity: 0 }
+                  : {
+                    opacity: 0,
+                    x: -contentOffset,
+                    filter: MORPH_BLUR,
                   }
-                  transition={contentTransition}
-                  onClick={() => {
-                    clearCloseTimer();
-                    setStatus("open");
-                  }}
-                  aria-label={title}
-                  aria-haspopup="dialog"
-                  whileTap={reduce ? undefined : { scale: 0.92 }}
-                  className={cn(
-                    "absolute bottom-0 flex h-10 w-10 items-center justify-center bg-transparent text-current rounded-xl outline-none border border-transparent ring-0 transition-all duration-300",
-                    left ? "left-0" : "right-0",
-                  )}
-                >
-                  <motion.span
-                    initial={
-                      reduce ? false : { rotate: 45, scale: MORPH_SCALE }
-                    }
-                    animate={{ rotate: 0, scale: 1 }}
-                    exit={{ rotate: 45, scale: MORPH_SCALE }}
-                    transition={contentTransition}
-                    className="grid h-[18px] w-[18px] shrink-0 place-items-center [&>svg]:h-full [&>svg]:w-full transition-transform duration-300 group-hover:scale-110"
+              }
+              transition={contentTransition}
+            >
+              <Tooltip>
+                <TooltipTrigger render={
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearCloseTimer();
+                      setStatus("open");
+                    }}
+                    aria-label={title}
+                    aria-haspopup="dialog"
+                    className={cn(
+                      "absolute bottom-0 flex h-10 w-10 items-center justify-center bg-transparent text-current rounded-xl outline-none border border-transparent ring-0 transition-all duration-300",
+                      left ? "left-0" : "right-0",
+                    )}
                   >
-                    {icon ?? <MessageSquare className="h-[18px] w-[18px]" />}
-                  </motion.span>
-                </motion.button>
-              } />
-              <TooltipContent side="right" className="ml-2">
-                Soporte y Feedback
-              </TooltipContent>
-            </Tooltip>
+                    <motion.span
+                      initial={
+                        reduce ? false : { rotate: 45, scale: MORPH_SCALE }
+                      }
+                      animate={{ rotate: 0, scale: 1 }}
+                      exit={{ rotate: 45, scale: MORPH_SCALE }}
+                      transition={contentTransition}
+                      className="grid h-[18px] w-[18px] shrink-0 place-items-center [&>svg]:h-full [&>svg]:w-full transition-transform duration-300 group-hover:scale-110"
+                    >
+                      {icon ?? <MessageSquare className="h-[18px] w-[18px]" />}
+                    </motion.span>
+                  </button>
+                } />
+                <TooltipContent side="right" className="ml-2">
+                  Soporte y Feedback
+                </TooltipContent>
+              </Tooltip>
+            </motion.div>
           )}
         </AnimatePresence>
       </motion.div>

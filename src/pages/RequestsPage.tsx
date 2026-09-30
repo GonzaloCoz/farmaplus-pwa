@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { MasterCatalogItem } from "@/services/preCountDB";
 import { Badge, type BadgeColor } from "@/components/ui/badge";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -92,6 +93,13 @@ export default function SmartAnalystPage({
 }: PreCountListProps) {
     const { user, isLoading } = useUser();
     const isAdmin = user?.role === 'admin';
+    const queryClient = useQueryClient();
+
+    const invalidateDashboardQueries = useCallback(() => {
+        queryClient.invalidateQueries({ queryKey: ['approved-bajas'] });
+        queryClient.invalidateQueries({ queryKey: ['cyclic-inventories'] });
+        queryClient.invalidateQueries({ queryKey: ['branch-summaries-lite'] });
+    }, [queryClient]);
 
     const [searchQuery, setSearchQuery] = useState("");
     const containerRef = useRef<HTMLDivElement>(null);
@@ -131,6 +139,7 @@ export default function SmartAnalystPage({
         const channel = supabase
             .channel('requests-realtime-listener')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, () => {
+                invalidateDashboardQueries();
                 loadRequests();
             })
             .subscribe();
@@ -138,7 +147,7 @@ export default function SmartAnalystPage({
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [loadRequests]);
+    }, [loadRequests, invalidateDashboardQueries]);
 
     const [approveItem, setApproveItem] = useState<SmartAnalystItem | null>(null);
     const [rejectItem, setRejectItem] = useState<SmartAnalystItem | null>(null);
@@ -534,6 +543,7 @@ export default function SmartAnalystPage({
                                 onClick={async () => {
                                     if (approveItem) {
                                         await requestsService.approveRequest(approveItem.id, user?.username || "Admin");
+                                        invalidateDashboardQueries();
                                         await loadRequests();
                                         setApproveItem(null);
                                     }
@@ -588,6 +598,7 @@ export default function SmartAnalystPage({
                                             user?.username || "Admin", 
                                             rejectReasonInput.trim()
                                         );
+                                        invalidateDashboardQueries();
                                         await loadRequests();
                                         setRejectItem(null);
                                         setRejectReasonInput("");
@@ -682,6 +693,7 @@ export default function SmartAnalystPage({
                                                 : editReason;
                                             await requestsService.updateRequestDetails(editItem.id, finalReason, editComments);
                                         }
+                                        invalidateDashboardQueries();
                                         await loadRequests();
                                         setEditItem(null);
                                     }

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import type { SileoPosition } from '@/components/ui/sileo/types';
 
-export type NotificationPosition = 'top-right' | 'bottom-right' | 'bottom-center';
+export type NotificationPosition = SileoPosition;
 export type ReminderType = 'all' | 'center-only' | 'none';
 
 interface NotificationPreferences {

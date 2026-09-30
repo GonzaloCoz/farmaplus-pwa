@@ -5,6 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 import path from "path"
 
 // https://vitejs.dev/config/
+// Cache invalidated after upstream inspection
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const base = mode === 'development' ? '/' : (env.VITE_BASE || './');

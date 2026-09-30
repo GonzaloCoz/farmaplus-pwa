@@ -4,13 +4,57 @@ import { supabase } from '@/integrations/supabase/client';
 export class SyncManager {
     private isSyncing = false;
     private maxRetries = 3;
+    private debounceTimer: NodeJS.Timeout | null = null;
+    private recurringInterval: NodeJS.Timeout | null = null;
+    private pendingItemCount = 0;
+    private autoSaveEnabled = true;
+
+    // Timing constants para evitar saturación de red en sucursales
+    private readonly DEBOUNCE_INTERVAL_MS = 10000; // 10s tras último escaneo
+    private readonly MAX_BATCH_THRESHOLD = 20;     // Disparo forzado al acumular 20 lecturas continuas
+    private readonly RECURRING_INTERVAL_MS = 15000; // Chequeo periódico de rutina cada 15s
 
     constructor() {
-        // Listen to online status changes
-        window.addEventListener('online', () => this.processQueue());
-        window.addEventListener('offline', () => {
-            console.log('App went offline. Sync suspended.');
-        });
+        if (typeof window !== 'undefined') {
+            // Escucha de estado de conexión
+            window.addEventListener('online', () => this.processQueue());
+            window.addEventListener('offline', () => {
+                console.log('[SyncManager] Dispositivo sin conexión. Sincronización en cola suspendida.');
+            });
+
+            // Al cerrar la ventana o salir de la app, forzar guardado de pendientes
+            window.addEventListener('beforeunload', () => {
+                this.flushNow();
+            });
+
+            // Heartbeat periódico de autoguardado en segundo plano (cada 15s)
+            this.recurringInterval = setInterval(() => {
+                if (this.autoSaveEnabled && navigator.onLine && !this.isSyncing) {
+                    this.processQueue();
+                }
+            }, this.RECURRING_INTERVAL_MS);
+        }
+    }
+
+    /**
+     * Activa o desactiva el autoguardado automático periódico hacia Supabase
+     */
+    public setAutoSaveEnabled(enabled: boolean) {
+        this.autoSaveEnabled = enabled;
+        if (enabled && navigator.onLine) {
+            this.processQueue();
+        }
+    }
+
+    /**
+     * Emite un evento en el DOM para que los componentes UI muestren estado de sincronización
+     */
+    private emitSyncStatus(isSyncing: boolean, pendingCount: number) {
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('precount:sync_status', {
+                detail: { isSyncing, pendingCount, timestamp: Date.now() }
+            }));
+        }
     }
 
     async addToQueue(action: Omit<PendingAction, 'id' | 'status' | 'timestamp' | 'retries'>) {
@@ -21,10 +65,58 @@ export class SyncManager {
             retries: 0
         });
 
-        // Try to sync immediately if online
-        if (navigator.onLine) {
-            this.processQueue();
+        // 1. Acciones críticas que no son escaneos rápidos (sesiones, archivos, etc.) -> sincronizar ya
+        if (action.entity !== 'item') {
+            if (navigator.onLine) {
+                this.processQueue();
+            }
+            return;
         }
+
+        // 2. Si el usuario desactivó el autoguardado en ajustes, solo persistir en disco local
+        if (!this.autoSaveEnabled) {
+            return;
+        }
+
+        // 3. Escaneo de productos: Agrupación inteligente por Lote / Tiempo (Debounce)
+        this.pendingItemCount++;
+
+        // Si se acumularon 20 o más productos seguidos sin pausa, enviar inmediatamente
+        if (this.pendingItemCount >= this.MAX_BATCH_THRESHOLD) {
+            if (this.debounceTimer) {
+                clearTimeout(this.debounceTimer);
+                this.debounceTimer = null;
+            }
+            this.pendingItemCount = 0;
+            if (navigator.onLine) {
+                this.processQueue();
+            }
+            return;
+        }
+
+        // Si no se llegó a 20, programar autoguardado debounced (10 segundos tras la última lectura)
+        if (this.debounceTimer) {
+            clearTimeout(this.debounceTimer);
+        }
+        this.debounceTimer = setTimeout(() => {
+            this.pendingItemCount = 0;
+            this.debounceTimer = null;
+            if (navigator.onLine) {
+                this.processQueue();
+            }
+        }, this.DEBOUNCE_INTERVAL_MS);
+    }
+
+    /**
+     * Fuerza el vaciado inmediato de la cola a Supabase (ej: al cerrar zona o terminar turno)
+     */
+    async flushNow(): Promise<void> {
+        if (this.debounceTimer) {
+            clearTimeout(this.debounceTimer);
+            this.debounceTimer = null;
+        }
+        this.pendingItemCount = 0;
+        await this.processQueue();
     }
 
     async processQueue() {
@@ -143,6 +235,15 @@ export class SyncManager {
                     await db.pendingActions.delete(action.id);
                 } catch (error: any) {
                     console.error('Individual sync failed:', error);
+                    // If conflict (duplicate key), session is already present on server
+                    if (action.entity === 'session' && (error?.code === '23505' || error?.status === 409)) {
+                        console.log(`[SyncManager] Session ${action.data?.id} already exists on Supabase. Marking as synced.`);
+                        if (action.data?.id) {
+                            await db.sessions.update(action.data.id, { synced: 1 });
+                        }
+                        await db.pendingActions.delete(action.id);
+                        continue;
+                    }
                     await db.pendingActions.update(action.id, { 
                         status: 'failed', 
                         error: error.message || 'Action error' 
@@ -151,6 +252,12 @@ export class SyncManager {
             }
         } finally {
             this.isSyncing = false;
+            try {
+                const remaining = await db.pendingActions.where('status').anyOf('pending', 'failed').count();
+                this.emitSyncStatus(false, remaining);
+            } catch {
+                this.emitSyncStatus(false, 0);
+            }
         }
     }
 
@@ -158,11 +265,20 @@ export class SyncManager {
         const { entity, type, data } = action;
 
         if (entity === 'session') {
-            const { synced, ...sessionData } = data; // Strip local-only fields
+            const { synced, master_catalog, totalProducts, totalUnits, errorCount, ...sessionData } = data; // Strip local-only fields
 
             if (type === 'create') {
-                const { error } = await supabase.from('precount_sessions').insert(sessionData);
-                if (error) throw error;
+                const { error } = await supabase.from('precount_sessions').upsert(sessionData, { onConflict: 'id' });
+                if (error) {
+                    const pgError = error as any;
+                    if (pgError.code === '23505' || pgError.status === 409) {
+                        const { id, ...updates } = sessionData;
+                        const { error: updateErr } = await supabase.from('precount_sessions').update(updates).eq('id', id);
+                        if (updateErr) throw updateErr;
+                    } else {
+                        throw error;
+                    }
+                }
             } else if (type === 'update') {
                 const { id, ...updates } = sessionData;
                 const { error } = await supabase.from('precount_sessions').update(updates).eq('id', id);

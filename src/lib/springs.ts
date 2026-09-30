@@ -11,7 +11,7 @@ export const spring = {
   moderate: {
     type: "spring" as const,
     duration: 0.16,
-    bounce: 0.08,
+    bounce: 0,
     exit: { duration: 0.12 },
   },
   settle: {

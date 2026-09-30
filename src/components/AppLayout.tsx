@@ -2,7 +2,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { BottomNavBar } from "../BottomNavBar";
 import { TopAppBar } from "@/components/TopAppBar";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { HomeSmile as Home, Scan, BarChart01 as BarChart2, CheckCircle, User01 as User, LayoutGrid01 as Beaker, Box, LayersTwo01 as Layers, LayoutGrid01 as LayoutDashboard, Database01 as Database, Clipboard as ClipboardList, LayoutGrid01 as Package, File02 as FileText, Settings01 as Settings, LifeBuoy02 } from '@untitledui/icons';
+import { HomeSmile as Home, Scan, BarChart01 as BarChart2, CheckCircle, User01 as User, LayoutGrid01 as Beaker, Box, LayersTwo01 as Layers, LayoutGrid01 as LayoutDashboard, Database01 as Database, Clipboard as ClipboardList, LayoutGrid01 as Package, File02 as FileText, Settings01 as Settings } from '@untitledui/icons';
 import { DesktopHeader } from "@/components/DesktopHeader";
 import { SyncStatus } from "@/components/SyncStatus";
 import { useWindowManager } from "@/contexts/WindowManagerContext";
@@ -18,16 +18,16 @@ import {
   Scale as ScaleIcon,
   Clock as ClockIcon,
   LogOut as LogOutIcon,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { WindowRouter } from "@/components/WindowRouter";
+import { GitCompareArrows } from "@/config/navigation";
 import { getTabMetaForPath } from "@/config/tabConfig";
 import { ScrollArea, ScrollAreaViewport, ScrollAreaScrollbar } from "@/components/ui/scroll-area";
 import { AppUpdater } from "@/components/AppUpdater";
 import { SurfaceProvider } from "@/lib/surface-context";
 import { Elevated } from "@/lib/elevated";
-import { FeedbackWidget } from "@/components/motion/feedback-widget";
 import { notify } from "@/lib/notifications";
 
 export function AppLayout() {
@@ -38,6 +38,18 @@ export function AppLayout() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [labs, setLabs] = useState<{ name: string, category: string, round: number }[]>([]);
   const [activeRounds, setActiveRounds] = useState<Record<string, number>>({});
+  const [visitedWindowIds, setVisitedWindowIds] = useState<Set<string>>(() => new Set(activeWindowId ? [activeWindowId] : []));
+
+  useEffect(() => {
+    if (activeWindowId) {
+      setVisitedWindowIds(prev => {
+        if (prev.has(activeWindowId)) return prev;
+        const next = new Set(prev);
+        next.add(activeWindowId);
+        return next;
+      });
+    }
+  }, [activeWindowId]);
 
   useEffect(() => {
     const handleOpen = () => setIsSearchOpen(true);
@@ -46,12 +58,19 @@ export function AppLayout() {
   }, []);
 
   useEffect(() => {
+    // Only load command palette lab items when the palette is actually opened
+    if (!isSearchOpen) return;
+
     const branch = user?.branchSheet || user?.branchName;
     if (!branch) {
       setLabs([]);
       setActiveRounds({});
       return;
     }
+
+    // Avoid refetching if already loaded for this branch
+    if (labs.length > 0) return;
+
     Promise.all([
       getLaboratoriesForBranch(branch),
       cyclicInventoryService.getBranchConfig(branch)
@@ -59,7 +78,7 @@ export function AppLayout() {
       setLabs(labsData || []);
       setActiveRounds(configData?.rounds || {});
     });
-  }, [user?.branchSheet, user?.branchName, isSearchOpen]);
+  }, [user?.branchSheet, user?.branchName, isSearchOpen, labs.length]);
 
   const commandItems = useMemo(() => {
     const items = [
@@ -77,7 +96,7 @@ export function AppLayout() {
         label: "Inventarios Cíclicos",
         group: "Navegación",
         hint: "Ajustes e inventario",
-        icon: BarChartIcon,
+        icon: GitCompareArrows,
         keywords: ["inventario", "ciclico", "stock"],
         onSelect: () => navigate("/inventario-ciclico"),
       },
@@ -158,17 +177,17 @@ export function AppLayout() {
   }, [user, navigate, logout, labs, activeRounds]);
 
   return (
-    <SurfaceProvider value={2}>
+    <SurfaceProvider value={1}>
       <div className={cn(
         "isolate relative flex h-screen w-full overflow-hidden text-foreground",
-        isTauri ? "bg-surface-2" : "bg-transparent"
+        isTauri ? "bg-surface-1" : "bg-transparent"
       )}>
         <div className={cn(
-          "flex-1 h-full w-full relative flex flex-col overflow-hidden bg-surface-2 shadow-2xl",
+          "flex-1 h-full w-full relative flex flex-col overflow-hidden bg-surface-1 shadow-2xl",
           isTauri ? "rounded-none border-0" : "rounded-none lg:rounded-[28px] border border-border/20"
         )}>
           {/* Header inside outer container */}
-          <div className="hidden lg:block px-3.5 pt-2.5 pb-1">
+          <div className={cn(isTauri ? "block" : "hidden lg:block", "px-3.5 pt-2.5 pb-1")}>
             <DesktopHeader />
           </div>
 
@@ -190,27 +209,32 @@ export function AppLayout() {
                   <ScrollAreaViewport 
                     className="w-full relative lg:px-0 no-scrollbar" 
                   >
-                    {/* Render windows as isolated instances */}
-                    {windows.map((win) => (
-                      <div
-                        key={win.id}
-                        className={cn(
-                          "absolute inset-0 w-full h-full transition-opacity duration-300 overflow-y-auto custom-scrollbar md:no-scrollbar",
-                          activeWindowId === win.id ? "opacity-100 z-10" : "opacity-0 pointer-events-none z-0"
-                        )}
-                        style={{ 
-                          paddingTop: 'calc(var(--total-header-height) * var(--is-mobile, 1))',
-                          paddingLeft: 'var(--safe-left)',
-                          paddingRight: 'var(--safe-right)' 
-                        }}
-                      >
-                        <WindowRouter
-                          initialPath={win.path}
-                          currentPath={win.path}
-                          onPathChange={() => { }} // No-op, sync handled by useEffect
-                        />
-                      </div>
-                    ))}
+                    {/* Render windows as isolated instances (lazy mounted on first visit) */}
+                    {windows.map((win) => {
+                      const isVisited = visitedWindowIds.has(win.id) || activeWindowId === win.id;
+                      if (!isVisited) return null;
+
+                      return (
+                        <div
+                          key={win.id}
+                          className={cn(
+                            "absolute inset-0 w-full h-full transition-opacity duration-300 overflow-y-auto custom-scrollbar md:no-scrollbar",
+                            activeWindowId === win.id ? "opacity-100 z-10" : "opacity-0 pointer-events-none z-0"
+                          )}
+                          style={{ 
+                            paddingTop: 'calc(var(--total-header-height) * var(--is-mobile, 1))',
+                            paddingLeft: 'var(--safe-left)',
+                            paddingRight: 'var(--safe-right)' 
+                          }}
+                        >
+                          <WindowRouter
+                            initialPath={win.path}
+                            currentPath={win.path}
+                            onPathChange={() => { }} // No-op, sync handled by useEffect
+                          />
+                        </div>
+                      );
+                    })}
 
                     {/* Fallback for cases where no windows exist yet */}
                     {windows.length === 0 && <div className="p-4"><Outlet /></div>}
@@ -219,16 +243,6 @@ export function AppLayout() {
                 </ScrollArea>
               </Elevated>
 
-              {/* Support & Feedback Widget floating inside sidebar */}
-              <FeedbackWidget
-                position="bottom-left"
-                icon={<LifeBuoy02 className="h-[18px] w-[18px] transition-transform duration-300" />}
-                className="hidden lg:block !absolute !bottom-6 !left-4"
-                onSubmit={async (data) => {
-                  console.log("Feedback received:", data.message);
-                  notify.success("Feedback Enviado", "¡Muchas gracias por tus comentarios!");
-                }}
-              />
             </Elevated>
 
             <div className="sticky bottom-0 z-10">

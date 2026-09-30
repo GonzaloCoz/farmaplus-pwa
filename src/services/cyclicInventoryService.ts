@@ -5,6 +5,7 @@ import { getAllBranchLabCounts } from './preCountDB';
 import { getProductCountByLab } from './productService';
 import { Zonal } from "@/config/zonales";
 import { normalizeString } from "@/lib/utils";
+import { requestsService } from './requestsService';
 import {
     CyclicItemSchema,
     CyclicInventoryStatsSchema,
@@ -36,6 +37,8 @@ export interface CyclicInventoryStats {
     systemValue?: number;
     round?: number;
     isDischarged?: boolean;
+    hasPendingRemoval?: boolean;
+    pendingRemovalReason?: string;
 }
 
 export interface CyclicItem {
@@ -686,60 +689,158 @@ export const cyclicInventoryService = {
                     round: row.round || 1
                 };
 
-                // Enterprise Validation
-                const result = CyclicInventoryStatsSchema.safeParse(mappedStats);
-                if (!result.success) {
-                    console.error(`Validation Error for lab ${row.laboratory}:`, result.error.format());
-                    return mappedStats as CyclicInventoryStats;
-                }
-                return result.data as CyclicInventoryStats;
+                return mappedStats as CyclicInventoryStats;
             });
     },
 
-    // Get Super-Lite summary for ALL branches (Admin View)
-    // Uses server-side RPC get_branch_monitor_summaries (Replicating exact Supabase test query metrics)
-    getBranchesSummaryLite: async (timeframe: string = 'all', showPrevious: boolean = false): Promise<any[]> => {
+    // Get Super-Lite summary for ALL branches (Admin View) or target branches
+    // Uses direct aggregated metrics from branch_laboratories with pre-indexed baja filters
+    getBranchesSummaryLite: async (
+        timeframe: string = 'all',
+        showPrevious: boolean = false,
+        targetBranches?: string[]
+    ): Promise<any[]> => {
         try {
             const targetRound = showPrevious ? 1 : 2;
 
-            // 1. Fetch complete list of branch names
-            const { data: dbBranches, error: branchesError } = await supabase
-                .from('branches')
-                .select('name');
+            // Cache for normalized branch strings to avoid re-running expensive regexes millions of times
+            const normBranchCache = new Map<string, string>();
+            const getNormBranch = (name: string): string => {
+                let norm = normBranchCache.get(name);
+                if (!norm) {
+                    norm = normalizeString(name || '');
+                    normBranchCache.set(name, norm);
+                }
+                return norm;
+            };
 
+            // 1. Fetch complete list of branch names
             let branchNames: string[] = [];
-            if (dbBranches && dbBranches.length > 0) {
-                branchNames = dbBranches.map(b => b.name);
+            if (targetBranches && targetBranches.length > 0) {
+                branchNames = targetBranches;
             } else {
-                console.warn("[Monitor] Warning fetching branches list:", branchesError);
-                const { data: labBranches } = await supabase.from('branch_laboratories').select('branch_name');
-                if (labBranches && labBranches.length > 0) {
-                    branchNames = Array.from(new Set(labBranches.map((b: any) => b.branch_name).filter(Boolean)));
+                const { data: dbBranches, error: branchesError } = await supabase
+                    .from('branches')
+                    .select('name');
+
+                if (dbBranches && dbBranches.length > 0) {
+                    branchNames = dbBranches.map(b => b.name);
+                } else {
+                    console.warn("[Monitor] Warning fetching branches list:", branchesError);
+                    const { data: labBranches } = await supabase.from('branch_laboratories').select('branch_name');
+                    if (labBranches && labBranches.length > 0) {
+                        branchNames = Array.from(new Set(labBranches.map((b: any) => b.branch_name).filter(Boolean)));
+                    }
                 }
             }
 
-            // 2. Fetch summary metrics directly from branch_laboratories table in parallel batches (Round 2)
-            const rpcMap: Record<string, any> = {};
-            const totalPages = 55;
-            const batchPromises = [];
-            for (let i = 0; i < totalPages; i++) {
-                batchPromises.push(
-                    (supabase as any)
-                        .from('branch_laboratories')
-                        .select('branch_name, status, controlled_items, progress_percentage, positive_units, negative_units, positive_value, negative_value, total_items, last_updated')
-                        .eq('round', targetRound)
-                        .range(i * 1000, (i + 1) * 1000 - 1)
-                        .then((r: any) => r.data || [])
-                );
+            // Fetch approved bajas across branches to exclude discharged laboratories
+            let approvedBajas: { targetName: string; category?: string; branchName?: string }[] = [];
+            try {
+                approvedBajas = await requestsService.getApprovedBajas();
+            } catch (err) {
+                console.warn("Could not fetch approved bajas in getBranchesSummaryLite:", err);
             }
 
-            const batchResults = await Promise.all(batchPromises);
-            const allLabRows = batchResults.flat();
+            // Pre-index approved bajas for instantaneous O(1) checks
+            // Key: `${normBranch}::${normLab}` -> Set<normCat> | true (true means complete lab discharge)
+            const bajasMap = new Map<string, Set<string> | true>();
+            for (const b of (approvedBajas || [])) {
+                const bBranchKey = b.branchName ? getNormBranch(b.branchName) : '*';
+                const bLabKey = (b.targetName || '').trim().toUpperCase();
+                const key = `${bBranchKey}::${bLabKey}`;
+                
+                if (!b.category || b.category === "BAJA TOTAL" || b.category === "TODOS" || b.category === "GENERAL") {
+                    bajasMap.set(key, true);
+                } else {
+                    const allowedCats = b.category.split(',').map(c => c.trim().toUpperCase());
+                    const existing = bajasMap.get(key);
+                    if (existing !== true) {
+                        if (existing instanceof Set) {
+                            allowedCats.forEach(c => existing.add(c));
+                        } else {
+                            bajasMap.set(key, new Set(allowedCats));
+                        }
+                    }
+                }
+            }
+
+            const isDischarged = (normB: string, labName: string, catName?: string): boolean => {
+                if (bajasMap.size === 0) return false;
+                const labUpper = (labName || '').trim().toUpperCase();
+                const specificKey = `${normB}::${labUpper}`;
+                const globalKey = `*::${labUpper}`;
+
+                const bajaSpecific = bajasMap.get(specificKey);
+                const bajaGlobal = bajasMap.get(globalKey);
+
+                if (bajaSpecific === true || bajaGlobal === true) return true;
+                const catUpper = (catName || '').trim().toUpperCase();
+                if (bajaSpecific instanceof Set && catUpper && bajaSpecific.has(catUpper)) return true;
+                if (bajaGlobal instanceof Set && catUpper && bajaGlobal.has(catUpper)) return true;
+                return false;
+            };
+
+            // 2. Fetch summary metrics directly from branch_laboratories table
+            const rpcMap: Record<string, any> = {};
+            const pageSize = 1000;
+            
+            const normalizedTargets = targetBranches && targetBranches.length > 0
+                ? Array.from(new Set(targetBranches.map(b => getNormBranch(b)).filter(Boolean)))
+                : null;
+
+            let baseQuery = (supabase as any)
+                .from('branch_laboratories')
+                .select('branch_name, laboratory, category, status, controlled_items, progress_percentage, positive_units, negative_units, positive_value, negative_value, total_items, last_updated', { count: 'exact' })
+                .eq('round', targetRound);
+
+            if (normalizedTargets && normalizedTargets.length > 0) {
+                baseQuery = baseQuery.in('branch_name', normalizedTargets);
+            }
+
+            // First page with exact count to avoid firing empty requests
+            const { data: firstPage, count: totalCount } = await baseQuery.range(0, pageSize - 1);
+
+            let allLabRows: any[] = firstPage || [];
+            if (totalCount && totalCount > pageSize) {
+                const remainingPages = Math.ceil(totalCount / pageSize);
+                // Concurrency batch size of 6 to prevent saturating the browser network queue
+                const batchSize = 6;
+                for (let i = 1; i < remainingPages; i += batchSize) {
+                    const chunkPromises = [];
+                    for (let j = i; j < Math.min(i + batchSize, remainingPages); j++) {
+                        let pageQuery = (supabase as any)
+                            .from('branch_laboratories')
+                            .select('branch_name, laboratory, category, status, controlled_items, progress_percentage, positive_units, negative_units, positive_value, negative_value, total_items, last_updated')
+                            .eq('round', targetRound);
+
+                        if (normalizedTargets && normalizedTargets.length > 0) {
+                            pageQuery = pageQuery.in('branch_name', normalizedTargets);
+                        }
+
+                        chunkPromises.push(
+                            pageQuery
+                                .range(j * pageSize, (j + 1) * pageSize - 1)
+                                .then((r: any) => r.data || [])
+                        );
+                    }
+                    const chunkData = await Promise.all(chunkPromises);
+                    for (const d of chunkData) {
+                        allLabRows = allLabRows.concat(d);
+                    }
+                }
+            }
 
             if (allLabRows && allLabRows.length > 0) {
                 allLabRows.forEach((row: any) => {
-                    const normB = normalizeString(row.branch_name || '');
+                    const normB = getNormBranch(row.branch_name || '');
                     if (!normB) return;
+
+                    // Omitir laboratorios con baja aprobada para que no afecten el total ni el conteo de pendientes/activos
+                    if (isDischarged(normB, row.laboratory, row.category)) {
+                        return;
+                    }
+
                     if (!rpcMap[normB]) {
                         rpcMap[normB] = {
                             branch_name: row.branch_name,
@@ -786,7 +887,7 @@ export const cyclicInventoryService = {
             const branchConfigs: Record<string, { startDate: string | null, days: number, rounds: Record<string, number> }> = {};
             if (configData) {
                 configData.forEach((c: any) => {
-                    const normalized = normalizeString(c.branch_name || '');
+                    const normalized = getNormBranch(c.branch_name || '');
                     if (!branchConfigs[normalized]) {
                         branchConfigs[normalized] = { startDate: null, days: 0, rounds: { GENERAL: 1 } };
                     }
@@ -802,7 +903,7 @@ export const cyclicInventoryService = {
                 });
 
                 configData.forEach((c: any) => {
-                    const normalized = normalizeString(c.branch_name || '');
+                    const normalized = getNormBranch(c.branch_name || '');
                     if (c.ean === 'CONFIG_START_DATE') {
                         if (c.round === targetRound || !branchConfigs[normalized].startDate) {
                             if (c.quantity) {
@@ -821,7 +922,7 @@ export const cyclicInventoryService = {
 
             // 4. Map over ALL branches using exact metrics matching the widgets
             const finalResult = branchNames.map(branchName => {
-                const normalizedSearch = normalizeString(branchName);
+                const normalizedSearch = getNormBranch(branchName);
                 const row = rpcMap[normalizedSearch];
 
                 const activeLabsCount = Number(row?.active_labs_count) || 0;

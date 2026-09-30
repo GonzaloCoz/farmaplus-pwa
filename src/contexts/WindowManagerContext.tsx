@@ -3,7 +3,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getTabMetaForPath } from '@/config/tabConfig';
 import { useUser } from './UserContext';
-import { calendarService } from '@/services/calendarService';
 
 export interface WindowInstance {
     id: string;
@@ -108,54 +107,7 @@ export const WindowManagerProvider: React.FC<{ children: React.ReactNode }> = ({
         }
     }, [location.pathname, activeWindowId, windows]);
 
-    // 3. Auto-inject Inventory Reminder
-    useEffect(() => {
-        let isMounted = true;
-        async function checkReminders() {
-            if (!user?.branchName || user.role === 'admin') return;
 
-            try {
-                const events = await calendarService.getEvents(user.branchName, false);
-                if (!isMounted) return;
-                
-                const today = new Date().toISOString().split('T')[0];
-                const hasUpcoming = events.some(e => e.date >= today);
-
-                if (hasUpcoming) {
-                    setWindows(prev => {
-                        const exists = prev.find(w => w.path === '/recordatorio-inventario');
-                        if (exists) {
-                            if (prev[0].path === '/recordatorio-inventario') return prev;
-                            const other = prev.filter(w => w.path !== '/recordatorio-inventario');
-                            return [exists, ...other];
-                        }
-
-                        const meta = getTabMetaForPath('/recordatorio-inventario');
-                        const reminderWindow: WindowInstance = {
-                            id: 'system-reminder',
-                            path: '/recordatorio-inventario',
-                            title: meta.title,
-                            icon: meta.icon,
-                            isClosable: false
-                        };
-                        return [reminderWindow, ...prev];
-                    });
-                } else {
-                    setWindows(prev => {
-                        const newWins = prev.filter(w => w.path !== '/recordatorio-inventario');
-                        if (activeWindowId === 'system-reminder' && newWins.length > 0) {
-                            setActiveWindowId(newWins[0].id);
-                        }
-                        return newWins;
-                    });
-                }
-            } catch (error) {
-                console.error("Error injectando recordatorio:", error);
-            }
-        }
-        checkReminders();
-        return () => { isMounted = false; };
-    }, [user?.branchName, user?.role]); // removed activeWindowId from deps to avoid re-triggering reorder on every switch
 
     const openWindow = useCallback((path: string, title?: string, icon?: React.ReactNode, forceNew: boolean = true) => {
         const id = uuidv4();

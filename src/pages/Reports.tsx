@@ -31,7 +31,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import jsPDF from 'jspdf';
 import JsBarcode from 'jsbarcode';
 import * as XLSX from "xlsx";
-import html2canvas from "html2canvas";
+import * as htmlToImage from "html-to-image";
 import { ReportTemplate } from "@/components/ReportTemplate";
 import { Badge } from "@/components/ui/badge";
 import { PageLayout } from "@/components/layout/PageLayout";
@@ -334,14 +334,14 @@ export default function Reports() {
     setTimeout(async () => {
       if (reportTemplateRef.current) {
         try {
-          const canvas = await html2canvas(reportTemplateRef.current, {
-            scale: 2,
+          const dataUrl = await htmlToImage.toPng(reportTemplateRef.current, {
+            pixelRatio: 2,
             backgroundColor: "#ffffff",
           });
 
           const link = document.createElement("a");
           link.download = `Reporte_${report.name}_${report.date}.png`;
-          link.href = canvas.toDataURL("image/png");
+          link.href = dataUrl;
           link.click();
 
           notify.success("Operación exitosa", "Imagen generada correctamente");
@@ -552,7 +552,7 @@ export default function Reports() {
                                 {report.responsible}
                               </div>
                             </div>
-                            <Badge variant="secondary" className="px-3 py-1 rounded-lg bg-primary/10 text-primary border-none font-mono text-sm">
+                            <Badge variant="solid" className="px-3 py-1 rounded-lg bg-primary/10 text-primary border-none font-mono text-sm">
                               {report.stats.totalUnits} u.
                             </Badge>
                           </div>

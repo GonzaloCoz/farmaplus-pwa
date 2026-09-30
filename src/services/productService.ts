@@ -143,6 +143,59 @@ export async function getProductByEAN(ean: string): Promise<Product | undefined>
     }
 }
 
+// Get product by EAN or Product ID (checks cache, EAN RPC, and direct Supabase fallback)
+export async function getProductByEanOrId(code: string): Promise<Product | undefined> {
+    if (!code || !code.trim()) return undefined;
+    const clean = code.trim();
+
+    try {
+        // 1. Try getProductByEAN first (fast cache + RPC)
+        const byEan = await getProductByEAN(clean);
+        if (byEan) return byEan;
+
+        // 2. Query Supabase directly by id_producto OR ean
+        const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .or(`id_producto.eq.${clean},ean.eq.${clean}`)
+            .limit(1)
+            .maybeSingle();
+
+        if (error) {
+            console.error('Error fetching product by EAN or ID:', error);
+            return undefined;
+        }
+
+        if (data) {
+            const product: Product = {
+                ean: data.ean,
+                name: data.name,
+                cost: data.cost || 0,
+                salePrice: (data as any).sale_price || 0,
+                category: data.category || undefined,
+                laboratory: data.laboratory || undefined,
+                stock: (data as any).stock || 0,
+                id_producto: data.id_producto || undefined
+            };
+
+            // Cache for future use
+            try {
+                const { enhancedProductCache } = await import('./enhancedProductCache');
+                enhancedProductCache.set(product).catch(() => {});
+            } catch {
+                // Ignore cache import error
+            }
+
+            return product;
+        }
+
+        return undefined;
+    } catch (error) {
+        console.error('Error in getProductByEanOrId:', error);
+        return undefined;
+    }
+}
+
 // Add multiple products (upsert to avoid duplicates)
 export async function addProducts(products: Product[]): Promise<void> {
     try {
@@ -219,8 +272,8 @@ export async function getLaboratoriesForBranch(branchName: string): Promise<{ na
             page++;
         }
 
-        // Deduplicate and normalize in-memory to be extra safe
-        const uniqueLabs = new Map<string, string>();
+        // Deduplicate and normalize in-memory directly without JSON stringify/parse
+        const uniqueLabs = new Map<string, { name: string, category: string, round: number }>();
         allData.forEach(item => {
             const name = (item.laboratory || '').trim();
             const cat = normalizeString(item.category || 'VARIOS');
@@ -228,12 +281,12 @@ export async function getLaboratoriesForBranch(branchName: string): Promise<{ na
             if (name) {
                 const key = `${name.toUpperCase()}|${cat}|${round}`;
                 if (!uniqueLabs.has(key)) {
-                    uniqueLabs.set(key, JSON.stringify({ name, category: cat, round }));
+                    uniqueLabs.set(key, { name, category: cat, round });
                 }
             }
         });
 
-        return Array.from(uniqueLabs.values()).map(v => JSON.parse(v));
+        return Array.from(uniqueLabs.values());
     } catch (error) {
         console.error('Error in getLaboratoriesForBranch:', error);
         return [];

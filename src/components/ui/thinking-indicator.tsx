@@ -4,6 +4,7 @@ import { forwardRef, useState, useEffect, type HTMLAttributes } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { fontWeights } from "@/lib/font-weight";
+import { useSize, type SizeVariant } from "@/lib/size-context";
 
 const circleA =
   "M 12 8 C 14.21 8 16 9.79 16 12 C 16 14.21 14.21 16 12 16 C 9.79 16 8 14.21 8 12 C 8 9.79 9.79 8 12 8 Z";
@@ -14,32 +15,40 @@ const infinity =
 const circleB =
   "M 12 16 C 14.21 16 16 14.21 16 12 C 16 9.79 14.21 8 12 8 C 9.79 8 8 9.79 8 12 C 8 14.21 9.79 16 12 16 Z";
 
-const words = ["Pensando...", "Planificando...", "Analizando...", "Redactando..."];
+const words = ["Cargando...", "Sincronizando...", "Conectando..."];
 
 interface ThinkingIndicatorProps extends HTMLAttributes<HTMLDivElement> {
   /** Show the morphing circle⇄infinity glyph before the label. Set to `false`
    *  for a text-only indicator (e.g. inline before a streamed reply). */
   showIcon?: boolean;
-  /** Set to `false` to render only the morphing icon. */
+  /** Show the animated text label. Set to `false` for an icon-only indicator. */
   showText?: boolean;
-  /** Dimensions of the morphing SVG icon. Defaults to 20. */
+  /** Custom icon size in px. */
   iconSize?: number;
+  /** Step on the size ladder. Wins over the surrounding SizeProvider. */
+  size?: SizeVariant;
+  /** Custom static or single label, e.g. "Cargando..." o "-" */
+  label?: string;
+  /** Custom list of cycling words */
+  words?: string[];
 }
 
 const ThinkingIndicator = forwardRef<HTMLDivElement, ThinkingIndicatorProps>(
-  ({ className, showIcon = true, showText = true, iconSize = 20, ...props }, ref) => {
+  ({ className, showIcon = true, showText = true, iconSize, size, label, words: customWords, ...props }, ref) => {
+  const compactStep = useSize(size).variant === "compact";
+  const wordsList = customWords && customWords.length > 0 ? customWords : label ? [label] : words;
   const [index, setIndex] = useState(0);
   // Reduced motion drops the infinite glyph morph and the word cycling — a
   // static glyph and label carry the same meaning without the movement.
   const reduceMotion = useReducedMotion() ?? false;
 
   useEffect(() => {
-    if (reduceMotion) return;
+    if (reduceMotion || wordsList.length <= 1) return;
     const interval = setInterval(() => {
-      setIndex((i) => (i + 1) % words.length);
-    }, 4000);
+      setIndex((i) => (i + 1) % wordsList.length);
+    }, 2500);
     return () => clearInterval(interval);
-  }, [reduceMotion]);
+  }, [reduceMotion, wordsList.length]);
 
   return (
     <div
@@ -51,12 +60,12 @@ const ThinkingIndicator = forwardRef<HTMLDivElement, ThinkingIndicatorProps>(
       {/* Static announcement — the cycling word display below is aria-hidden
           so screen readers hear one "Thinking…" instead of a re-announcement
           every 4 seconds. */}
-      <span className="sr-only">Pensando…</span>
+      <span className="sr-only">Thinking…</span>
       {showIcon && (
         <motion.svg
           aria-hidden
-          width={iconSize}
-          height={iconSize}
+          width={iconSize ?? (compactStep ? 18 : 20)}
+          height={iconSize ?? (compactStep ? 18 : 20)}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -69,6 +78,8 @@ const ThinkingIndicator = forwardRef<HTMLDivElement, ThinkingIndicatorProps>(
             <path d={infinity} />
           ) : (
             <motion.path
+              d={circleA}
+              initial={{ d: circleA }}
               animate={{
                 d: [circleA, infinity, circleB, infinity, circleA],
               }}
@@ -87,26 +98,29 @@ const ThinkingIndicator = forwardRef<HTMLDivElement, ThinkingIndicatorProps>(
       {showText && (
         <span
           aria-hidden="true"
-          className="inline-grid text-[13px] overflow-hidden"
+          className={cn(
+            "inline-grid overflow-hidden",
+            compactStep ? "text-[12px]" : "text-[13px]"
+          )}
           style={{ fontVariationSettings: fontWeights.medium }}
         >
           <span className="col-start-1 row-start-1 invisible shimmer-text">
-            {words.reduce((a, b) => (a.length >= b.length ? a : b))}
+            {wordsList.reduce((a, b) => (a.length >= b.length ? a : b))}
           </span>
           {reduceMotion ? (
             <span className="col-start-1 row-start-1 shimmer-text">
-              {words[0]}
+              {wordsList[0]}
             </span>
           ) : (
             <AnimatePresence mode="popLayout" initial={false}>
               <motion.span
-                key={words[index]}
+                key={wordsList[index % wordsList.length]}
                 className="col-start-1 row-start-1 shimmer-text"
                 initial={{ y: "80%", opacity: 0 }}
                 animate={{ y: 0, opacity: 1, transition: { duration: 0.24, ease: [0.4, 0, 0.2, 1] } }}
                 exit={{ y: "-80%", opacity: 0, transition: { duration: 0.16, ease: [0.4, 0, 0.2, 1] } }}
               >
-                {words[index]}
+                {wordsList[index % wordsList.length]}
               </motion.span>
             </AnimatePresence>
           )}

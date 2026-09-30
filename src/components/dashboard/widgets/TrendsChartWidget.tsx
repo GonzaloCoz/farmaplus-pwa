@@ -23,6 +23,7 @@ import { CardHeader, CardTitle } from "@/components/ui/card";
 import { useTheme } from "@/hooks/useTheme";
 import { Tooltip as BaseTooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { normalizeString } from "@/lib/utils";
+import { WidgetSkeleton } from "../WidgetSkeleton";
 
 // Extra top margin so the units badge is never clipped at the top of the chart
 const CHART_TOP_MARGIN = 28;
@@ -42,26 +43,7 @@ export function TrendsChartWidget({ type = "positive" }: TrendsChartWidgetProps)
   // ref to always have the last hovered index available synchronously on click
   const lastHoveredRef = React.useRef<number | null>(null);
   
-  const [isDark, setIsDark] = React.useState(false);
-
-  // ── Sync with document dark class dynamically using MutationObserver ──
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    
-    // Initial check
-    setIsDark(document.documentElement.classList.contains("dark"));
-
-    const observer = new MutationObserver(() => {
-      setIsDark(document.documentElement.classList.contains("dark"));
-    });
-
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-
-    return () => observer.disconnect();
-  }, []);
+  const isDark = theme === "dark" || (typeof document !== "undefined" && document.documentElement.classList.contains("dark"));
 
   // ── Determine badge colors based on theme and metric type ──
   const getBadgeColors = React.useCallback((metricType: "positive" | "negative") => {
@@ -368,11 +350,7 @@ export function TrendsChartWidget({ type = "positive" }: TrendsChartWidgetProps)
 
   // ── Loading ──
   if (isLoading || isLiveLoading) {
-    return (
-      <div className="h-full flex items-center justify-center p-6 min-h-[180px]">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <WidgetSkeleton variant="chart" />;
   }
 
   // ── Empty ──
@@ -501,7 +479,8 @@ export function TrendsChartWidget({ type = "positive" }: TrendsChartWidgetProps)
               tickLine={false}
               tickMargin={10}
               axisLine={false}
-              tickFormatter={(value: string) => value.slice(0, 3)}
+              interval={0}
+              tickFormatter={(value: string) => (typeof value === 'string' ? value.slice(0, 3) : '')}
             />
 
             <Tooltip cursor={false} content={() => null} />

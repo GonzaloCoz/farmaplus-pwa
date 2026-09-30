@@ -1,9 +1,11 @@
 import { sileo } from "@/components/ui/sileo";
+import type { SileoPosition } from "@/components/ui/sileo/types";
 
 interface NotifyOptions {
     duration?: number;
     id?: string | number;
     description?: string;
+    position?: SileoPosition;
     action?: {
         label: string;
         onClick: () => void;
@@ -17,6 +19,7 @@ export const notify = {
             title,
             description: message || options?.description,
             duration: options?.duration,
+            position: options?.position,
             button: options?.action ? {
                 title: options.action.label,
                 onClick: options.action.onClick,
@@ -29,6 +32,7 @@ export const notify = {
             title,
             description: message || options?.description,
             duration: options?.duration,
+            position: options?.position,
             button: options?.action ? {
                 title: options.action.label,
                 onClick: options.action.onClick,
@@ -41,6 +45,7 @@ export const notify = {
             title,
             description: message || options?.description,
             duration: options?.duration,
+            position: options?.position,
             button: options?.action ? {
                 title: options.action.label,
                 onClick: options.action.onClick,
@@ -53,6 +58,7 @@ export const notify = {
             title,
             description: message || options?.description,
             duration: options?.duration,
+            position: options?.position,
             button: options?.action ? {
                 title: options.action.label,
                 onClick: options.action.onClick,

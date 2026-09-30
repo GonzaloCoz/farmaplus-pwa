@@ -24,6 +24,8 @@ export type TableColumn<T> = {
   editable?: boolean;
   /** Value used for sorting. Falls back to `row[key]`. */
   sortValue?: (row: T) => string | number;
+  /** Number of columns this cell should span horizontally for a given row. */
+  colSpan?: (row: T) => number;
 };
 
 export type InsertPosition = "before" | "after";
@@ -63,8 +65,8 @@ export interface TableProps<T> {
   onDeleteColumn?: (columnKey: string, index: number) => void;
   /** Fixed row height in px — required for virtualization. */
   rowHeight?: number;
-  /** Scroll viewport height in px. */
-  height?: number;
+  /** Scroll viewport height in px, or CSS value like "100%". */
+  height?: number | string;
   /** Rows rendered above/below the viewport. */
   overscan?: number;
   /** Fires when the viewport scrolls near the bottom — load the next page. */
@@ -76,6 +78,9 @@ export interface TableProps<T> {
   emptyState?: ReactNode;
   className?: string;
   onRowClick?: (row: T) => void;
+  /** When true, reduces cell padding and gaps for a compact table presentation. */
+  dense?: boolean;
+  headerClassName?: string;
 }
 
 /** A data row paired with its stable id. */

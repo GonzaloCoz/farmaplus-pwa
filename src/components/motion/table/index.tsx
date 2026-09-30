@@ -54,6 +54,8 @@ export function Table<T>({
   emptyState = "No data",
   className,
   onRowClick,
+  dense = false,
+  headerClassName,
 }: TableProps<T>) {
   const reduce = useReducedMotion();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -174,15 +176,15 @@ export function Table<T>({
   return (
     <div
       className={cn(
-        "w-full overflow-hidden border border-border bg-background text-sm",
+        "w-full h-full flex flex-col overflow-hidden bg-transparent text-sm",
         className,
       )}
     >
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="overflow-auto"
-        style={{ height }}
+        className="overflow-auto flex-1 h-full min-h-0"
+        style={typeof height === "number" ? { height } : height && height !== "100%" ? { height } : undefined}
       >
         <table
           className={cn("border-collapse", sized ? "w-max min-w-full" : "min-w-full")}
@@ -226,6 +228,8 @@ export function Table<T>({
             activeColumn={hasColumnMenu ? activeColumn : null}
             onColumnActivate={hasColumnMenu ? activateColumn : undefined}
             onColumnDeactivate={hasColumnMenu ? deactivateColumn : undefined}
+            dense={dense}
+            headerClassName={headerClassName}
           />
 
           <tbody>
@@ -273,9 +277,10 @@ export function Table<T>({
                       onPointerLeave={hasRowMenu ? deactivateRow : undefined}
                       onClick={onRowClick ? () => onRowClick(entry.row) : undefined}
                       className={cn(
-                        "border-border/60 border-b transition-colors",
+                        "border-border/40 border-b transition-colors",
+                        (entry.row as any)?.isAdding && "relative z-10 overflow-visible",
                         "data-[selected=true]:bg-primary/5",
-                        "hover:bg-muted/50",
+                        "hover:bg-zinc-500/5 dark:hover:bg-white/5",
                         onRowClick && "cursor-pointer",
                       )}
                     >
@@ -290,28 +295,46 @@ export function Table<T>({
                           </div>
                         </td>
                       ) : null}
-                      {orderedColumns.map((column, colIndex) => (
-                        <td
-                          key={column.key}
-                          className={cn(
-                            "truncate text-foreground pl-2.5",
-                            alignText(column.align),
-                            colIndex === orderedColumns.length - 1 ? "pr-6" : "pr-2.5",
-                          )}
-                        >
-                          {!column.cell && column.editable ? (
-                            <EditableCell
-                              value={String(readCell(entry.row, column) ?? "")}
-                              label={`${column.key} for row ${vItem.index + 1}`}
-                              onChange={(next) =>
-                                onCellEdit?.(entry.id, column.key, next)
-                              }
-                            />
-                          ) : (
-                            readCell(entry.row, column)
-                          )}
-                        </td>
-                      ))}
+                      {(() => {
+                        let skipCount = 0;
+                        return orderedColumns.map((column, colIndex) => {
+                          if (skipCount > 0) {
+                            skipCount--;
+                            return null;
+                          }
+                          const span = column.colSpan ? column.colSpan(entry.row) : 1;
+                          if (span > 1) {
+                            skipCount = span - 1;
+                          }
+                          return (
+                            <td
+                              key={column.key}
+                              colSpan={span > 1 ? span : undefined}
+                              className={cn(
+                                span > 1 || (entry.row as any)?.isAdding ? "overflow-visible relative" : "truncate",
+                                "text-foreground",
+                                dense ? "px-1.5 text-xs" : "pl-2.5",
+                                alignText(column.align),
+                                colIndex === orderedColumns.length - 1
+                                  ? (dense ? "pr-2" : "pr-6")
+                                  : (dense ? "pr-1.5" : "pr-2.5"),
+                              )}
+                            >
+                              {!column.cell && column.editable ? (
+                                <EditableCell
+                                  value={String(readCell(entry.row, column) ?? "")}
+                                  label={`${column.key} for row ${vItem.index + 1}`}
+                                  onChange={(next) =>
+                                    onCellEdit?.(entry.id, column.key, next)
+                                  }
+                                />
+                              ) : (
+                                readCell(entry.row, column)
+                              )}
+                            </td>
+                          );
+                        });
+                      })()}
                     </tr>
                   );
                 })}

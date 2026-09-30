@@ -2,16 +2,16 @@ import { NavLink } from "react-router-dom";
 import { useMemo, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { LayoutGrid01 as LayoutGrid, Upload01 as Upload, File02 as FileText, Box as Package, BarChart01 as BarChart3 } from '@untitledui/icons';
 import { useUser } from "@/contexts/UserContext";
 import { ZebraIcon } from "@/components/icons/ZebraIcon";
+import { BOTTOM_NAV_ITEMS } from "@/config/navigation";
 
-const navItems = [
-    { to: "/", icon: LayoutGrid, label: "Inicio" },
-    { to: "/stock", icon: Upload, label: "Stock" },
-    { to: "/inventario-ciclico", icon: FileText, label: "Cíclico" },
-    { to: "/reportes", icon: BarChart3, label: "Reportes", roles: ['admin', 'mod'] as const },
-];
+const navItems = BOTTOM_NAV_ITEMS.map((item) => ({
+    to: item.url,
+    icon: item.icon,
+    label: item.shortLabel || item.title,
+    roles: item.roles,
+}));
 
 export function BottomNavBar() {
     const { user } = useUser();
@@ -30,7 +30,7 @@ export function BottomNavBar() {
     // Filtrar items según el rol del usuario
     const filteredNavItems = useMemo(() => {
         return navItems.filter(item => {
-            if (!('roles' in item)) return true;
+            if (!item.roles) return true;
             return user?.role ? (item.roles as readonly string[]).includes(user.role) : false;
         });
     }, [user?.role]);

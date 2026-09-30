@@ -1,16 +1,17 @@
 "use client";
 
 import {
-  useRef,
-  useState,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  createContext,
-  useContext,
-  forwardRef,
   Children,
   cloneElement,
+  forwardRef,
+  useRef,
+  useEffect,
+  useState,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  createContext,
+  useContext,
   isValidElement,
   type ComponentPropsWithoutRef,
   type ReactNode,
@@ -22,9 +23,10 @@ import { cn } from "@/lib/utils";
 import { spring } from "@/lib/springs";
 import { fontWeights } from "@/lib/font-weight";
 import { useShape } from "@/lib/shape-context";
+import { SizeProvider, useSize, type SizeVariant } from "@/lib/size-context";
 import { useSurface } from "@/lib/surface-context";
 import { surfaceClasses } from "@/lib/surface-classes";
-import { useProximityHover } from "@/hooks/use-proximity-hover";
+import { useFluidHover } from "@/hooks/use-fluid-hover";
 
 /* ─────────────────────── Contexts ─────────────────────── */
 
@@ -63,6 +65,10 @@ interface TabsProps
   selectedIndex?: number;
   onSelect?: (index: number) => void;
   defaultValue?: string;
+  /** Pins the segmented control to one step of the size ladder (default 36px
+   *  outer, compact 28px — see /docs/sizes). Omitted, it follows the
+   *  surrounding SizeProvider. */
+  size?: SizeVariant;
 }
 
 const Tabs = forwardRef<HTMLDivElement, TabsProps>(
@@ -73,6 +79,7 @@ const Tabs = forwardRef<HTMLDivElement, TabsProps>(
       selectedIndex,
       onSelect,
       defaultValue,
+      size,
       children,
       ...props
     },
@@ -119,7 +126,7 @@ const Tabs = forwardRef<HTMLDivElement, TabsProps>(
       [onValueChange, onSelect, valueOrder, value, selectedIndex]
     );
 
-    return (
+    const root = (
       <TabsValueOrderContext.Provider
         value={{
           valueOrder,
@@ -144,6 +151,9 @@ const Tabs = forwardRef<HTMLDivElement, TabsProps>(
         </TabsPrimitive.Root>
       </TabsValueOrderContext.Provider>
     );
+
+    // A size prop pins the whole compound (list + items) to one ladder step.
+    return size ? <SizeProvider size={size}>{root}</SizeProvider> : root;
   }
 );
 
@@ -158,6 +168,7 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const isMouseInside = useRef(false);
     const shape = useShape();
+    const sizeClasses = useSize();
     const substrate = useSurface();
     const indicatorLevel = Math.min(substrate + 3, 8);
     const valueOrderCtx = useContext(TabsValueOrderContext);
@@ -181,7 +192,7 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
       handlers,
       registerItem,
       measureItems,
-    } = useProximityHover(containerRef, { axis: "x" });
+    } = useFluidHover(containerRef, { axis: "x" });
 
     const registerTab = useCallback(
       (index: number, _value: string, el: HTMLElement | null) => {
@@ -260,7 +271,7 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
           onFocus={(e) => {
             const trigger = (e.target as HTMLElement).closest('[role="tab"]');
             if (!trigger) return;
-            const indexAttr = trigger.getAttribute("data-proximity-index");
+            const indexAttr = trigger.getAttribute("data-fluid-hover-index");
             if (indexAttr != null) {
               const idx = Number(indexAttr);
               setHoveredIndex(idx);
@@ -276,7 +287,11 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
             setHoveredIndex(null);
           }}
           className={cn(
-            "relative inline-flex items-center gap-0.5 p-1 select-none bg-muted",
+            // segmentPad + segmentItem add up to the ladder's control height
+            // (36px default, 28px compact) so the segmented control's outer
+            // box lines up with buttons, selects, and inputs beside it.
+            "relative inline-flex items-center gap-0.5 select-none bg-muted",
+            sizeClasses.segmentPad,
             shape.container,
             className
           )}
@@ -286,15 +301,15 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
           {selectedRect && (
             <motion.div
               className={cn(
-                "absolute pointer-events-none",
+                "absolute top-0 left-0 pointer-events-none will-change-transform",
                 surfaceClasses(indicatorLevel),
                 shape.bg
               )}
               initial={false}
               animate={{
-                left: selectedRect.left,
+                x: selectedRect.left,
+                y: selectedRect.top,
                 width: selectedRect.width,
-                top: selectedRect.top,
                 height: selectedRect.height,
                 opacity: isHovering ? 0.85 : 1,
               }}
@@ -310,29 +325,29 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
             {hoverRect && !isHoveringSelected && selectedRect && (
               <motion.div
                 className={cn(
-                  "absolute pointer-events-none bg-hover",
+                  "absolute top-0 left-0 pointer-events-none bg-hover will-change-transform",
                   shape.bg
                 )}
                 initial={{
-                  left: selectedRect.left,
+                  x: selectedRect.left,
+                  y: selectedRect.top,
                   width: selectedRect.width,
-                  top: selectedRect.top,
                   height: selectedRect.height,
                   opacity: 0,
                 }}
                 animate={{
-                  left: hoverRect.left,
+                  x: hoverRect.left,
+                  y: hoverRect.top,
                   width: hoverRect.width,
-                  top: hoverRect.top,
                   height: hoverRect.height,
                   opacity: 0.4,
                 }}
                 exit={
                   !isMouseInside.current && selectedRect
                     ? {
-                        left: selectedRect.left,
+                        x: selectedRect.left,
+                        y: selectedRect.top,
                         width: selectedRect.width,
-                        top: selectedRect.top,
                         height: selectedRect.height,
                         opacity: 0,
                         transition: {
@@ -390,6 +405,7 @@ interface TabItemProps
   value: string;
   icon?: IconComponent;
   label?: string;
+  children?: ReactNode;
   /** @internal Auto-assigned by TabsList. */
   _index?: number;
 }
@@ -397,6 +413,7 @@ interface TabItemProps
 const TabItem = forwardRef<HTMLButtonElement, TabItemProps>(
   ({ value, icon: Icon, label, children, _index = 0, className, onClick, ...props }, ref) => {
     const internalRef = useRef<HTMLButtonElement>(null);
+    const sizeClasses = useSize();
     const { registerTab, hoveredIndex, selectedValue, setOptimisticIdx } = useTabsList();
 
     useEffect(() => {
@@ -444,25 +461,30 @@ const TabItem = forwardRef<HTMLButtonElement, TabItemProps>(
             ).current = node as HTMLButtonElement | null;
         }}
         value={value}
-        data-proximity-index={_index}
+        data-fluid-hover-index={_index}
         className={cn(
           // Fixed height (not py) so the text-box trim below doesn't shrink
           // the tab — browsers without text-box support render identically.
-          "relative z-10 flex h-8 items-center gap-2 px-3 cursor-pointer bg-transparent border-none outline-none",
+          "relative z-10 flex items-center px-3 cursor-pointer bg-transparent border-none outline-none",
+          sizeClasses.segmentItem,
+          sizeClasses.gap,
           className
         )}
         {...props}
       >
         {IconComponent && (
           <IconComponent
-            size={16}
+            size={sizeClasses.icon}
             strokeWidth={isActive ? 2 : 1.5}
-            className="transition-[color,stroke-width] duration-80"
+            className={cn(
+              "transition-[color,stroke-width] duration-80",
+              isActive ? "text-foreground" : "text-muted-foreground"
+            )}
           />
         )}
         {/* Both stacked spans carry the text-box trim so the invisible bold
             sizer and the visible label keep identical boxes. */}
-        <span className="inline-grid text-[13px] whitespace-nowrap">
+        <span className={cn("inline-grid whitespace-nowrap", sizeClasses.text)}>
           <span
             className="col-start-1 row-start-1 invisible [text-box:trim-both_cap_alphabetic]"
             style={{ fontVariationSettings: fontWeights.semibold }}

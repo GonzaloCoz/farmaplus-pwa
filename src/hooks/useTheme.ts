@@ -47,10 +47,20 @@ export function useTheme() {
         setThemeModeState(mode);
         localStorage.setItem(THEME_STORAGE_KEY, mode);
         applyTheme(mode);
+        window.dispatchEvent(new Event('theme-change'));
     };
 
     useEffect(() => {
         applyTheme(themeMode);
+
+        const handleStorageOrCustom = () => {
+            const stored = (localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode) || 'system';
+            setThemeModeState(stored);
+            applyTheme(stored);
+        };
+
+        window.addEventListener('theme-change', handleStorageOrCustom);
+        window.addEventListener('storage', handleStorageOrCustom);
 
         // Listen for system theme changes
         const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -71,6 +81,8 @@ export function useTheme() {
         }
 
         return () => {
+            window.removeEventListener('theme-change', handleStorageOrCustom);
+            window.removeEventListener('storage', handleStorageOrCustom);
             mediaQuery.removeEventListener('change', handleChange);
             if (interval) clearInterval(interval);
         };

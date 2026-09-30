@@ -166,7 +166,7 @@ export function NotificationsMenu() {
             variant="ghost"
             size="icon"
             aria-label="Notificaciones"
-            className={cn("shrink-0 cursor-pointer relative", surfaceClasses(3))}
+            className={cn("h-[34px] w-[34px] rounded-lg shrink-0 cursor-pointer relative", surfaceClasses(3))}
             style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
           >
             <Bell className={`w-5 h-5 ${unreadCount > 0 ? 'text-accent' : 'text-current'}`} />

@@ -38,6 +38,26 @@ dist-ssr
 .env.*
 oracle_key.pem
 supabase/.temp/
+test2.json.gz
+*.xlsx
+*.xls
+*.db
+*.sqlite
+*.sqlite3
+
+# Plex folder & scripts (strictly ignored)
+/plex/
+plex/
+
+# Android & Zebra Mobile Builds, Keystores & Apps
+android/
+/android/
+zebra/
+/zebra/
+*.apk
+*.aab
+*.keystore
+*.jks
 
 # Agent specific
 .agents/

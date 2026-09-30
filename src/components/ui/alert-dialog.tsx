@@ -1,5 +1,5 @@
 import * as React from "react";
-import { AlertDialog as BaseAlertDialog } from "@base-ui-components/react/alert-dialog";
+import { AlertDialog as BaseAlertDialog } from "@base-ui/react/alert-dialog";
 
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";

@@ -1,12 +1,12 @@
 import { lazy, Suspense } from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { DashboardSkeleton } from "./DashboardSkeleton";
 import { PageTransition } from "./PageTransition";
+import { useUser } from "@/contexts/UserContext";
 
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Stock = lazy(() => import("@/pages/Stock"));
 const PreCount = lazy(() => import("@/pages/PreCount"));
-const StockImport = lazy(() => import("@/pages/StockImport"));
 const StockRecountMobile = lazy(() => import("@/pages/StockRecountMobile"));
 const ExpirationControl = lazy(() => import("@/pages/ExpirationControl"));
 const CyclicInventory = lazy(() => import("@/pages/CyclicInventory"));
@@ -19,14 +19,17 @@ const SmartAnalystPage = lazy(() => import("@/pages/SmartAnalystPage"));
 const AdminAudit = lazy(() => import("@/pages/AdminAudit"));
 const AdminUsers = lazy(() => import("@/pages/AdminUsers"));
 const BranchComparison = lazy(() => import("@/pages/BranchComparison"));
-const InventoryReminder = lazy(() => import("@/pages/InventoryReminder"));
 const TrainingCenter = lazy(() => import("../pages/TrainingCenter"));
 const PostDetail = lazy(() => import("../pages/PostDetail"));
 const AdminEditor = lazy(() => import("../pages/AdminEditor"));
 const RequestsPage = lazy(() => import("@/pages/RequestsPage"));
 const DataCollectorPage = lazy(() => import("@/pages/DataCollectorPage"));
+const LiveSalesTerminal = lazy(() => import("@/pages/LiveSalesTerminal"));
 
 export function WindowRouter({ currentPath }: { initialPath: string, currentPath: string, onPathChange: (path: string) => void }) {
+    const { user } = useUser();
+    const isGcoz = user?.username?.toLowerCase() === 'gcoz';
+
     return (
         <Suspense fallback={<DashboardSkeleton />}>
             <PageTransition key={currentPath}>
@@ -34,13 +37,13 @@ export function WindowRouter({ currentPath }: { initialPath: string, currentPath
                     {/* Inicio & Core */}
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/solicitudes" element={<RequestsPage />} />
+                    <Route path="/terminal-ventas" element={isGcoz ? <LiveSalesTerminal /> : <Navigate to="/" replace />} />
 
                     {/* Stock */}
-                    <Route path="/stock" element={<Stock />} />
+                    <Route path="/stock" element={<Navigate to="/stock/colector" replace />} />
                     <Route path="/stock/colector" element={<PreCount />} />
                     <Route path="/stock/recuento-movil" element={<StockRecountMobile />} />
                     <Route path="/stock/control-vencimiento" element={<ExpirationControl />} />
-                    <Route path="/stock/importar" element={<StockImport />} />
                     <Route path="/colector" element={<DataCollectorPage />} />
 
                     {/* Inventario Cíclico */}
@@ -58,9 +61,8 @@ export function WindowRouter({ currentPath }: { initialPath: string, currentPath
                     <Route path="/admin/usuarios" element={<AdminUsers />} />
                     <Route path="/admin/sucursales" element={<AdminBranches />} />
 
-                    {/* Vencimientos & Recordatorio */}
+                    {/* Vencimientos */}
                     <Route path="/control-vencimiento" element={<SmartAnalystPage />} />
-                    <Route path="/recordatorio-inventario" element={<InventoryReminder />} />
 
                     {/* Foro / Capacitación */}
                     <Route path="/foro" element={<TrainingCenter />} />

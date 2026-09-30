@@ -23,6 +23,7 @@ interface LabRemovalModalProps {
     labName: string;
     category?: string;
     branchName?: string;
+    round?: number;
     onSuccess?: () => void;
 }
 
@@ -40,13 +41,14 @@ export function LabRemovalModal({
     labName,
     category = "MEDICAMENTOS",
     branchName,
+    round,
     onSuccess
 }: LabRemovalModalProps) {
     const { user } = useUser();
     
     // Rubros detectados dinámicamente para este laboratorio
     const [availableRubros, setAvailableRubros] = useState<string[]>([]);
-    const [selectedRubros, setSelectedRubros] = useState<string[]>([]);
+    const [selectedRubro, setSelectedRubro] = useState<string>("TOTAL");
     const [rubroError, setRubroError] = useState<string | null>(null);
 
     // Motivos y observaciones
@@ -111,11 +113,11 @@ export function LabRemovalModal({
                     setAvailableRubros(catList);
                     // Por defecto seleccionar el rubro en el que se hizo click o el único existente
                     if (category && catList.includes(category.toUpperCase())) {
-                        setSelectedRubros([category.toUpperCase()]);
+                        setSelectedRubro(category.toUpperCase());
                     } else if (catList.length === 1) {
-                        setSelectedRubros([catList[0]]);
+                        setSelectedRubro(catList[0]);
                     } else {
-                        setSelectedRubros(["TOTAL"]);
+                        setSelectedRubro("TOTAL");
                     }
                 }
             } catch (e) {
@@ -123,7 +125,7 @@ export function LabRemovalModal({
                 if (isMounted) {
                     const fallback = category ? category.toUpperCase() : "MEDICAMENTOS";
                     setAvailableRubros([fallback]);
-                    setSelectedRubros([fallback]);
+                    setSelectedRubro(fallback);
                 }
             }
         };
@@ -141,27 +143,10 @@ export function LabRemovalModal({
         };
     }, [open, labName, targetBranch, category]);
 
-    const handleRubrosChange = (values: string[]) => {
-        setRubroError(null);
-        if (!values || values.length === 0) {
-            setSelectedRubros([]);
-            return;
-        }
-
-        const lastVal = values[values.length - 1];
-        if (lastVal === "TOTAL") {
-            setSelectedRubros(["TOTAL"]);
-            return;
-        }
-
-        const filtered = values.filter(v => v !== "TOTAL");
-        setSelectedRubros(filtered.length > 0 ? filtered : ["TOTAL"]);
-    };
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!selectedRubros || selectedRubros.length === 0) {
+        if (!selectedRubro) {
             setRubroError("Debes seleccionar al menos un rubro.");
             return;
         }
@@ -170,9 +155,9 @@ export function LabRemovalModal({
             ? (customReason.trim() || "Otro motivo") 
             : reason;
 
-        const finalCategory = selectedRubros.includes("TOTAL") 
+        const finalCategory = selectedRubro === "TOTAL" 
             ? "Baja Total" 
-            : selectedRubros.join(", ");
+            : selectedRubro;
 
         setIsSubmitting(true);
         try {
@@ -203,20 +188,20 @@ export function LabRemovalModal({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent size="lg" className="sm:max-w-xl font-sans">
-                <DialogHeader>
+            <DialogContent size="sm" className="sm:max-w-[460px] font-sans">
+                <DialogHeader className="gap-1 mb-2">
                     <DialogTitle className="text-lg font-bold font-sans">
                         Solicitar Baja de Laboratorio
                     </DialogTitle>
-                    <DialogDescription className="text-xs text-muted-foreground mt-1 font-sans">
+                    <DialogDescription className="text-xs text-muted-foreground font-sans">
                         Registra un pedido formal para dar de baja este laboratorio de los ciclos de conteo.
                     </DialogDescription>
                 </DialogHeader>
 
-                <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-2 font-sans">
-                    {/* Información simplificada del laboratorio */}
+                <form onSubmit={handleSubmit} className="flex flex-col gap-4 font-sans">
+                    {/* Información del laboratorio */}
                     <div className="flex flex-col gap-0.5">
-                        <span className="font-bold text-base text-foreground font-sans">
+                        <span className="font-bold text-base text-foreground font-sans tracking-tight">
                             {labName}
                         </span>
                         <span className="text-xs text-muted-foreground font-sans">
@@ -224,16 +209,18 @@ export function LabRemovalModal({
                         </span>
                     </div>
 
-                    {/* Rubros a dar de baja (Mismo Select que Motivos con soporte múltiple) */}
-                    <div className="flex flex-col gap-1.5 pt-1">
+                    {/* Rubros a dar de baja */}
+                    <div className="flex flex-col gap-1.5">
                         <label className="text-xs font-semibold text-foreground font-sans flex items-center justify-between">
                             <span>Rubros a dar de baja:</span>
                             <span className="text-[10px] text-muted-foreground font-normal">Obligatorio</span>
                         </label>
                         <Select 
-                            multiple 
-                            value={selectedRubros} 
-                            onValueChange={handleRubrosChange}
+                            value={selectedRubro} 
+                            onValueChange={(val) => {
+                                setRubroError(null);
+                                if (val) setSelectedRubro(val);
+                            }}
                         >
                             <SelectTrigger placeholder="Seleccionar rubros..." className="h-9 text-xs w-full font-sans" />
                             <SelectContent className="max-h-[220px]">
@@ -255,7 +242,7 @@ export function LabRemovalModal({
                     </div>
 
                     {/* Motivo de la baja */}
-                    <div className="flex flex-col gap-1.5 pt-1">
+                    <div className="flex flex-col gap-1.5">
                         <label className="text-xs font-semibold text-foreground font-sans">
                             Motivo de la baja:
                         </label>
@@ -273,7 +260,7 @@ export function LabRemovalModal({
 
                     {/* Motivo personalizado si seleccionó Otro */}
                     {reason === "Otro motivo (especificar)" && (
-                        <div className="flex flex-col gap-1.5 pt-1 animate-in fade-in-50">
+                        <div className="flex flex-col gap-1.5 animate-in fade-in-50">
                             <label className="text-xs font-semibold text-foreground font-sans">
                                 Especificar motivo:
                             </label>
@@ -288,7 +275,7 @@ export function LabRemovalModal({
                     )}
 
                     {/* Observaciones o detalles */}
-                    <div className="flex flex-col gap-1.5 pt-1">
+                    <div className="flex flex-col gap-1.5">
                         <label className="text-xs font-semibold text-foreground font-sans">
                             Observaciones o detalles: <span className="text-muted-foreground font-normal">(opcional)</span>
                         </label>
@@ -300,14 +287,19 @@ export function LabRemovalModal({
                         />
                     </div>
 
-                    <DialogFooter className="pt-3 gap-2 sm:gap-0">
-                        <DialogClose render={<Button type="button" variant="ghost" className="font-sans text-xs" />}>
+                    <DialogFooter className="mt-4 flex flex-row items-center justify-end gap-2">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => onOpenChange(false)}
+                            className="font-sans text-xs text-muted-foreground hover:text-foreground h-9 px-4 rounded-xl"
+                        >
                             Cancelar
-                        </DialogClose>
+                        </Button>
                         <Button
                             type="submit"
                             disabled={isSubmitting}
-                            className="bg-foreground text-background hover:bg-foreground/90 font-sans text-xs font-semibold px-4 py-2 rounded-xl transition-colors shadow-sm"
+                            className="bg-foreground text-background hover:bg-foreground/90 font-sans text-xs font-semibold h-9 px-4 rounded-xl transition-colors shadow-sm"
                         >
                             {isSubmitting ? "Enviando..." : "Confirmar Solicitud"}
                         </Button>

@@ -103,16 +103,8 @@ const DEFAULT_WIDGETS: Widget[] = [
     }
 ];
 
-export function useDashboardLayout(userId?: string) {
+export function useDashboardLayout(_userId?: string) {
     return {
         visibleWidgets: DEFAULT_WIDGETS,
-        hiddenWidgets: [] as Widget[],
-        isEditMode: false,
-        setIsEditMode: (value: boolean) => {},
-        reorderWidgets: (activeId: string, overId: string) => {},
-        toggleWidgetVisibility: (widgetId: string) => {},
-        updateWidgetSize: (widgetId: string, newSize: any) => {},
-        applyPreset: (widgetIds: string[]) => {},
-        resetLayout: () => {}
     };
 }

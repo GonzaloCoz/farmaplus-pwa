@@ -25,7 +25,7 @@ export function SkeletonRows<T>({
             <td key={column.key} className={cn("text-left pl-2.5", index === columns.length - 1 ? "pr-6" : "pr-2.5")}>
               <div
                 className={cn(
-                  "h-3 animate-pulse rounded-full bg-muted",
+                  "h-3 animate-pulse rounded-full bg-zinc-200/80 dark:bg-white/[0.08]",
                   column.align === "right" ? "ml-auto w-10" : "w-2/3",
                 )}
               />

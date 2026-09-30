@@ -97,7 +97,7 @@ const ScrollArea = forwardRef<
             <div
               data-slot="scroll-area-viewport"
               className={cn(
-                "size-full rounded-[inherit]",
+                "size-full rounded-[inherit] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
                 orientation === "vertical" && "overflow-y-auto",
                 orientation === "horizontal" && "overflow-x-auto",
                 orientation === "both" && "overflow-auto",
@@ -117,7 +117,7 @@ const ScrollArea = forwardRef<
           >
             <ScrollAreaPrimitive.Viewport
               data-slot="scroll-area-viewport"
-              className={cn("size-full rounded-[inherit]", viewportClassName)}
+              className={cn("size-full rounded-[inherit] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", viewportClassName)}
             >
               {/* Content gives Base UI an intrinsic size to measure
                   horizontal overflow against. */}
@@ -157,8 +157,8 @@ const ScrollBar = forwardRef<
         "data-[hovering]:duration-160 data-[scrolling]:duration-160",
         "data-[hovering]:opacity-100 data-[scrolling]:opacity-100",
         "data-[hovering]:delay-0 data-[scrolling]:delay-0",
-        orientation === "vertical" && "top-0 right-0 h-full w-2.5",
-        orientation === "horizontal" && "bottom-0 left-0 h-2.5 w-full flex-col",
+        orientation === "vertical" && "top-0 right-0 h-full w-1.5",
+        orientation === "horizontal" && "bottom-0 left-0 h-1.5 w-full flex-col",
         className
       )}
       {...props}
@@ -166,8 +166,8 @@ const ScrollBar = forwardRef<
       <ScrollAreaPrimitive.Thumb
         data-slot="scroll-area-thumb"
         className={cn(
-          "relative bg-foreground/25 transition-[background-color,width,height] duration-160 ease-in-out",
-          "group-hover/scrollbar:bg-foreground/45 active:!bg-foreground/60",
+          "relative bg-foreground/20 rounded-full transition-[background-color,width,height] duration-160 ease-in-out",
+          "group-hover/scrollbar:bg-foreground/40 active:!bg-foreground/55",
           shape.bg,
           orientation === "vertical" &&
             "mx-auto my-1 w-1 h-[var(--scroll-area-thumb-height)] group-hover/scrollbar:w-1.5",

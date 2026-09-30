@@ -4,7 +4,6 @@ import {
   cloneElement,
   forwardRef,
   isValidElement,
-  Children,
   type ButtonHTMLAttributes,
   type ReactElement,
   type ReactNode,
@@ -14,82 +13,109 @@ import { cva, type VariantProps } from "class-variance-authority";
 import type { IconComponent } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import { useShape } from "@/lib/shape-context";
+import { useSizeVariant } from "@/lib/size-context";
 
 const buttonVariants = cva(
   [
-    "group relative isolate inline-flex items-center justify-center outline-none cursor-pointer min-w-0",
-    "transition-colors duration-80",
-    "disabled:opacity-50 disabled:pointer-events-none",
-    "focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]",
+    "group relative inline-flex items-center justify-center outline-none cursor-pointer select-none whitespace-nowrap",
+    "transition-all duration-80 active:scale-[0.98]",
+    "disabled:opacity-50 disabled:pointer-events-none disabled:cursor-not-allowed",
+    "focus-visible:ring-2 focus-visible:ring-[color:var(--focus-ring,#6B97FF)] focus-visible:ring-offset-1",
+    "[&_svg]:pointer-events-none [&_svg]:shrink-0",
   ],
   {
     variants: {
       variant: {
-        primary: "text-background",
-        secondary: "text-foreground",
-        tertiary: "border border-border text-foreground",
-        ghost: "text-muted-foreground hover:text-foreground",
-        default: "text-background",
-        outline: "border border-border text-foreground",
+        default:
+          "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90",
+        primary:
+          "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90",
+        secondary:
+          "bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80",
+        tertiary:
+          "border border-border bg-transparent text-muted-foreground hover:bg-hover hover:text-foreground",
+        outline:
+          "border border-input bg-background shadow-xs hover:bg-accent hover:text-accent-foreground text-foreground",
+        ghost:
+          "bg-transparent text-muted-foreground hover:bg-hover hover:text-foreground",
+        destructive:
+          "bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20",
+        "destructive-outline":
+          "border border-destructive/20 text-destructive-foreground bg-background shadow-xs hover:bg-destructive/[0.04]",
+        link:
+          "text-primary underline-offset-4 hover:underline bg-transparent",
       },
       size: {
-        sm: "h-7 px-3 text-[12px] gap-1 [&_svg]:h-3.5 [&_svg]:w-3.5 [&_svg]:shrink-0",
-        md: "h-8 px-4 text-[13px] gap-1.5 [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0",
-        lg: "h-9 px-5 text-[14px] gap-1.5 [&_svg]:h-5 [&_svg]:w-5 [&_svg]:shrink-0",
-        "icon-sm": "h-8 w-8 p-0 [&_svg]:h-3.5 [&_svg]:w-3.5 [&_svg]:shrink-0",
-        icon: "h-9 w-9 p-0 [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0",
-        "icon-lg": "h-10 w-10 p-0 [&_svg]:h-5 [&_svg]:w-5 [&_svg]:shrink-0",
-        "icon-xs": "h-6 w-6 p-0 [&_svg]:h-3 [&_svg]:w-3 [&_svg]:shrink-0",
+        default: "h-9 px-4 text-[13px] gap-1.5",
+        compact: "h-7 px-3 text-[12px] gap-1",
+        sm: "h-8 px-3 text-xs gap-1.5",
+        xs: "h-6 px-2 text-[10px] gap-1",
+        lg: "h-10 px-6 text-sm gap-2",
+        xl: "h-12 px-8 text-base gap-2",
+        icon: "size-9 p-0 [&_svg]:size-4",
+        "icon-compact": "size-7 p-0 [&_svg]:size-3.5",
+        "icon-sm": "size-8 p-0 [&_svg]:size-3.5",
+        "icon-xs": "size-6 p-0 [&_svg]:size-3",
+        "icon-lg": "size-10 p-0 [&_svg]:size-5",
+        "icon-xl": "size-12 p-0 [&_svg]:size-6",
       },
       iconLeft: { true: "" },
       iconRight: { true: "" },
     },
     compoundVariants: [
-      { size: "sm", iconLeft: true, className: "pl-[6px]" },
-      { size: "md", iconLeft: true, className: "pl-[10px]" },
-      { size: "lg", iconLeft: true, className: "pl-[14px]" },
-      { size: "sm", iconRight: true, className: "pr-[6px]" },
-      { size: "md", iconRight: true, className: "pr-[10px]" },
-      { size: "lg", iconRight: true, className: "pr-[14px]" },
+      { size: "compact", iconLeft: true, className: "pl-[6px]" },
+      { size: "default", iconLeft: true, className: "pl-[10px]" },
+      { size: "compact", iconRight: true, className: "pr-[6px]" },
+      { size: "default", iconRight: true, className: "pr-[10px]" },
     ],
     defaultVariants: {
-      variant: "primary",
-      size: "md",
+      variant: "default",
+      size: "default",
     },
   }
 );
 
+type ButtonSizeCanonical =
+  | "default"
+  | "compact"
+  | "sm"
+  | "xs"
+  | "lg"
+  | "xl"
+  | "icon"
+  | "icon-compact"
+  | "icon-sm"
+  | "icon-xs"
+  | "icon-lg"
+  | "icon-xl";
+
+type ButtonSize = ButtonSizeCanonical | string;
+
+const legacySizeAliases: Partial<Record<string, ButtonSizeCanonical>> = {
+  sm: "sm",
+  compact: "compact",
+  md: "default",
+  lg: "lg",
+  xl: "xl",
+  "icon-sm": "icon-sm",
+  "icon-compact": "icon-compact",
+  "icon-lg": "icon-lg",
+  "icon-xl": "icon-xl",
+  "icon-xs": "icon-xs",
+  icon: "icon",
+};
+
 interface ButtonProps
   extends ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
-  /** When true, the given single React-element child becomes the rendered element (slot-style). */
+    Omit<VariantProps<typeof buttonVariants>, "size"> {
+  size?: ButtonSize;
   asChild?: boolean;
+  render?: ReactElement;
   loading?: boolean;
-  leadingIcon?: React.ComponentType<any>;
-  trailingIcon?: React.ComponentType<any>;
-  /** Force the visual pressed/held state. Useful when the button drives an
-   *  external open piece of UI (a popover, dropdown, etc.) so it reads as
-   *  engaged while the menu is showing. */
+  leadingIcon?: IconComponent;
+  trailingIcon?: IconComponent;
   active?: boolean;
 }
-
-const bgVariants: Record<string, string> = {
-  primary: "bg-foreground group-hover:bg-foreground/90 group-active:bg-foreground/80",
-  secondary: "bg-accent group-hover:bg-accent/80 group-active:bg-accent",
-  tertiary: "bg-transparent group-hover:bg-hover group-active:bg-active",
-  ghost: "bg-transparent group-hover:bg-hover group-active:bg-active",
-  default: "bg-foreground group-hover:bg-foreground/90 group-active:bg-foreground/80",
-  outline: "bg-transparent group-hover:bg-hover group-active:bg-active",
-};
-
-const activeBgVariants: Record<string, string> = {
-  primary: "bg-foreground/80",
-  secondary: "bg-accent",
-  tertiary: "bg-active",
-  ghost: "bg-active",
-  default: "bg-foreground/80",
-  outline: "bg-active",
-};
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   (
@@ -98,6 +124,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       variant,
       size,
       asChild = false,
+      render,
       loading = false,
       leadingIcon: LeadingIcon,
       trailingIcon: TrailingIcon,
@@ -109,156 +136,121 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     },
     ref
   ) => {
-    // asChild: the user's element becomes the root while the button's internal
-    // structure (bg layer, content wrapper, spinner, icons) survives as its
-    // children — the element's own children become the label. We clone the
-    // element directly instead of routing through ButtonPrimitive's `render`:
-    // Base UI would bolt button semantics (role="button", Space activation)
-    // onto e.g. a link, diverging from the Radix flavour's plain-link output.
-    const asChildElement =
-      asChild && isValidElement(children)
-        ? (children as ReactElement<{
-            children?: ReactNode;
-            className?: string;
-            style?: React.CSSProperties;
-            ref?: React.Ref<HTMLButtonElement>;
-          }>)
-        : null;
-    const label = asChildElement ? asChildElement.props.children : children;
-    const isIconOnly = size === "icon" || size === "icon-sm" || size === "icon-lg";
-    const iconSize = size === "sm" ? 14 : size === "lg" ? 20 : 16;
+    const targetElement = render || (asChild && isValidElement(children) ? (children as ReactElement) : null);
+    const label = targetElement ? targetElement.props.children : children;
 
-    // Extract any leading or trailing icon passed as direct children
-    let resolvedLeadingIcon = LeadingIcon;
-    let resolvedTrailingIcon = TrailingIcon;
-    let resolvedLabel = label;
+    const contextSize = useSizeVariant();
+    const resolvedSize: ButtonSizeCanonical = size
+      ? (legacySizeAliases[size] ?? (size as ButtonSizeCanonical))
+      : contextSize === "compact"
+        ? "compact"
+        : "default";
 
-    if (!isIconOnly && label && typeof label !== "string") {
-      const childrenArray = Children.toArray(label);
-      if (childrenArray.length > 1) {
-        const first = childrenArray[0];
-        const last = childrenArray[childrenArray.length - 1];
+    const isIconOnly =
+      resolvedSize === "icon" ||
+      resolvedSize === "icon-compact" ||
+      resolvedSize === "icon-sm" ||
+      resolvedSize === "icon-xs" ||
+      resolvedSize === "icon-lg" ||
+      resolvedSize === "icon-xl";
 
-        if (!resolvedLeadingIcon && isValidElement(first) && typeof first.type !== "string") {
-          resolvedLeadingIcon = first.type as any;
-          resolvedLabel = childrenArray.slice(1);
-        } else if (!resolvedTrailingIcon && isValidElement(last) && typeof last.type !== "string") {
-          resolvedTrailingIcon = last.type as any;
-          resolvedLabel = childrenArray.slice(0, -1);
-        }
-      }
-    }
+    const isCompact =
+      resolvedSize === "compact" ||
+      resolvedSize === "icon-compact" ||
+      resolvedSize === "sm" ||
+      resolvedSize === "icon-sm";
 
-    const LeadingIconComponent = resolvedLeadingIcon;
-    const TrailingIconComponent = resolvedTrailingIcon;
-
-    // Spinner box tracks the button height (sm is h-7, lg/icon are h-9, …) so
-    // the loading glyph stays proportionate across sizes.
-    const spinnerSizeClass =
-      size === "sm"
-        ? "h-7 w-7"
-        : size === "lg" || size === "icon"
-          ? "h-9 w-9"
-          : size === "icon-lg"
-            ? "h-10 w-10"
-            : "h-8 w-8";
+    const iconSize = isCompact ? 14 : 16;
+    const spinnerSizeClass = isCompact ? "h-4 w-4" : "h-4.5 w-4.5";
     const shape = useShape();
-    const bgClass = active
-      ? activeBgVariants[variant ?? "primary"]
-      : bgVariants[variant ?? "primary"];
-
-    const internals = (
-      <>
-        <span
-          aria-hidden
-          className={cn(
-            "absolute inset-0 rounded-[inherit] transition-[background-color,transform] duration-80 group-active:scale-[0.98]",
-            bgClass
-          )}
-        />
-        <span className="relative inline-flex items-center justify-center gap-[inherit] min-w-0">
-          {loading ? (
-            <>
-              <span className="flex items-center justify-center gap-[inherit] opacity-0">
-                {LeadingIconComponent && !isIconOnly && (
-                  <LeadingIconComponent size={iconSize} strokeWidth={2} />
-                )}
-                {resolvedLabel}
-                {TrailingIconComponent && !isIconOnly && (
-                  <TrailingIconComponent size={iconSize} strokeWidth={2} />
-                )}
-              </span>
-              <span className="absolute inset-0 flex items-center justify-center">
-                <svg
-                  className={spinnerSizeClass}
-                  viewBox="0 0 24 24"
-                  fill="none"
-                >
-                  <path
-                    d="M 12 12 C 14 8.5 19 8.5 19 12 C 19 15.5 14 15.5 12 12 C 10 8.5 5 8.5 5 12 C 5 15.5 10 15.5 12 12 Z"
-                    stroke="currentColor"
-                    strokeWidth="1.125"
-                    strokeLinecap="round"
-                    pathLength="100"
-                    style={{
-                      strokeDasharray: "15 85",
-                      animation: "spinner-move 2s linear infinite, spinner-dash 4s ease-in-out infinite",
-                    }}
-                  />
-                </svg>
-              </span>
-            </>
-          ) : isIconOnly ? (
-            <span className="[&_svg]:stroke-[1.5] [&_svg]:transition-[stroke-width] [&_svg]:duration-80 group-hover:[&_svg]:stroke-[2]">
-              {label}
-            </span>
-          ) : (
-            <>
-              {LeadingIconComponent && (
-                <LeadingIconComponent
-                  size={iconSize}
-                  strokeWidth={1.5}
-                  className="transition-[stroke-width] duration-80 group-hover:stroke-[2]"
-                />
-              )}
-              {/* text-box only applies to block containers, so the trim lives
-                  on the label span (a blockified flex item), not the flex root.
-                  The button's height is fixed (h-*), so this doesn't change
-                  layout — it just centers the cap-to-baseline box optically. */}
-              <span className="[text-box:trim-both_cap_alphabetic] min-w-0">{resolvedLabel}</span>
-              {TrailingIconComponent && (
-                <TrailingIconComponent
-                  size={iconSize}
-                  strokeWidth={1.5}
-                  className="transition-[stroke-width] duration-80 group-hover:stroke-[2]"
-                />
-              )}
-            </>
-          )}
-        </span>
-      </>
-    );
 
     const rootClassName = cn(
       buttonVariants({
-        variant,
-        size,
-        iconLeft: !isIconOnly && !!LeadingIconComponent,
-        iconRight: !isIconOnly && !!TrailingIconComponent,
+        variant: variant as any,
+        size: resolvedSize as any,
+        iconLeft: !isIconOnly && !!LeadingIcon,
+        iconRight: !isIconOnly && !!TrailingIcon,
       }),
       shape.button,
+      active && "bg-active text-foreground",
       className
     );
 
-    if (asChildElement) {
-      const childProps = asChildElement.props;
+    const internals = (
+      <>
+        {loading ? (
+          <>
+            <span className="flex items-center justify-center gap-[inherit] opacity-0">
+              {LeadingIcon && !isIconOnly && (
+                <LeadingIcon size={iconSize} strokeWidth={2} />
+              )}
+              {label}
+              {TrailingIcon && !isIconOnly && (
+                <TrailingIcon size={iconSize} strokeWidth={2} />
+              )}
+            </span>
+            <span className="absolute inset-0 flex items-center justify-center">
+              <svg
+                className={cn("animate-spin text-current", spinnerSizeClass)}
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+            </span>
+          </>
+        ) : isIconOnly ? (
+          <span className="inline-flex items-center justify-center">
+            {label}
+          </span>
+        ) : (
+          <>
+            {LeadingIcon && (
+              <LeadingIcon
+                size={iconSize}
+                strokeWidth={1.75}
+                className="transition-[stroke-width] duration-80 group-hover:stroke-[2]"
+              />
+            )}
+            {typeof label === "string" || typeof label === "number" ? (
+              <span>{label}</span>
+            ) : (
+              label
+            )}
+            {TrailingIcon && (
+              <TrailingIcon
+                size={iconSize}
+                strokeWidth={1.75}
+                className="transition-[stroke-width] duration-80 group-hover:stroke-[2]"
+              />
+            )}
+          </>
+        )}
+      </>
+    );
+
+    if (targetElement) {
       return cloneElement(
-        asChildElement,
+        targetElement,
         {
           ...props,
           ref,
-          className: cn(rootClassName, childProps.className),
-          style: { ...style, ...childProps.style },
+          className: cn(rootClassName, targetElement.props.className),
+          style: { ...style, ...targetElement.props.style },
+          disabled: disabled || loading,
+          "aria-disabled": disabled || loading || undefined,
         },
         internals
       );
@@ -266,8 +258,6 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
     return (
       <ButtonPrimitive
-        // Base UI's `ButtonPrimitive` forwards to an HTMLButtonElement;
-        // keep the public ref type narrow so consumers see the right type.
         ref={ref as React.Ref<HTMLButtonElement>}
         className={rootClassName}
         disabled={disabled || loading}
@@ -283,4 +273,4 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 Button.displayName = "Button";
 
 export { Button, buttonVariants };
-export type { ButtonProps };
+export type { ButtonProps, ButtonSize };

@@ -2,7 +2,7 @@
 
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { ClockRewind as RiHistoryLine, File02 as RiFileTextLine, User01 as RiUserLine, ArrowUpRight as RiArrowRightUpLine, ArrowDownLeft as RiArrowLeftDownLine, InfoCircle as RiInformationLine, Edit01 as RiEditLine } from '@untitledui/icons';
+import { ClockRewind as RiHistoryLine, File02 as RiFileTextLine, User01 as RiUserLine, ArrowUpRight as RiArrowRightUpLine, ArrowDownLeft as RiArrowLeftDownLine, InfoCircle as RiInformationLine } from '@untitledui/icons';
 
 import {
   Dialog,
@@ -31,14 +31,12 @@ interface HistoryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   history: AdjustmentSession[];
-  onEditIds?: (session: AdjustmentSession) => void;
 }
 
 export function HistoryDialog({
   open,
   onOpenChange,
   history,
-  onEditIds,
 }: HistoryDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -131,17 +129,6 @@ export function HistoryDialog({
                         ID Sistema: {session.id.substring(0, 8)}...
                       </div>
                       <div className="flex gap-2">
-                        {onEditIds && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => onEditIds(session)}
-                            className="h-7 text-[10px] font-bold uppercase tracking-wider text-primary hover:bg-primary/10 hover:text-primary transition-colors"
-                          >
-                            <RiEditLine size={14} className="mr-1.5" />
-                            Editar IDs
-                          </Button>
-                        )}
                         <Button variant="ghost" size="sm" className="h-7 text-[10px] font-bold uppercase tracking-wider hover:bg-primary/10 hover:text-primary transition-colors">
                           <RiFileTextLine size={14} className="mr-1.5" />
                           Ver Detalles

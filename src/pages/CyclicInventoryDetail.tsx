@@ -6,14 +6,19 @@ import { Group, GroupSeparator } from '@/components/ui/group';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTab, TabItem } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabItem } from "@/components/ui/tabs";
+import { TabsSubtle, TabsSubtleItem, TabsSubtlePanel } from "@/components/ui/tabs-subtle";
 import { ScrollArea, ScrollAreaViewport, ScrollAreaScrollbar } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Upload01 as Upload, SearchLg as Search, InfoCircle as Info, RefreshCw01 as Loader2, CheckCircle, RefreshCw01 as RotateCcw, CurrencyDollar as Dollar, Clipboard as ClipboardList, ChevronLeft as ArrowLeft, FilterFunnel02 as Filter, DotsHorizontal as MoreVertical, ClipboardX as DiffIcon, AlertTriangle, File02 as Document, Download01 as Download, Edit01 as Pen, RefreshCw01 as Refresh, ArrowUpRight, ArrowDownRight, TrendUp01 as TrendingUp, FileSearch02 } from '@untitledui/icons';
+import { Database, RefreshCw as LucideRefreshCw } from 'lucide-react';
+import { fontWeights } from "@/lib/font-weight";
 import { LabRemovalModal } from "@/components/LabRemovalModal";
 import {
     InputGroup,
     InputField,
+    InputGroupAddon,
+    InputGroupInput,
 } from "@/components/ui/input-group";
 import {
     DropdownMenu,
@@ -43,7 +48,6 @@ import {
     SelectItem,
     SelectTrigger,
 } from '@/components/ui/select';
-import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { cn, normalizeString } from '@/lib/utils';
 import { FabMenu } from '@/components/FabMenu';
 import { DeleteConfirmationDialog } from '@/components/cyclic/DeleteConfirmationDialog';
@@ -86,41 +90,42 @@ export default function CyclicInventoryDetail() {
     const [isAdminPurging, setIsAdminPurging] = useState(false);
     const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
 
-    // Edit Adjustment IDs State
-    const [showEditIdsDialog, setShowEditIdsDialog] = useState(false);
-    const [selectedSessionToEdit, setSelectedSessionToEdit] = useState<string>("active");
-    const [tempShortageId, setTempShortageId] = useState("");
-    const [tempSurplusId, setTempSurplusId] = useState("");
-    const [isSavingIds, setIsSavingIds] = useState(false);
-
     // Save Dialog View State
     const [balanceView, setBalanceView] = useState<'balance' | 'faltantes' | 'sobrantes'>('balance');
-    const [accordionOpen, setAccordionOpen] = useState<string[]>(["item1"]);
+    const [historySearchTerm, setHistorySearchTerm] = useState("");
 
-    // Columns config for history table
+    // Columns config for history table (unified with main table styling)
     const historyColumns = useMemo<any[]>(() => [
         {
             key: "folio",
-            header: <span className="pl-4">Folio</span>,
-            width: "140px",
+            header: "Folio",
+            sortable: true,
+            width: "130px",
+            sortValue: (h: any) => h.folio || '',
             cell: (h: any) => (
-                <span className="pl-4 block">
+                <div className="flex items-center">
                     {h.folio ? (
-                        <Badge variant="outline" showDot={false} className="text-[12px] font-bold border-indigo-200 bg-indigo-50/50 text-indigo-700 dark:border-indigo-900/30 dark:bg-indigo-950/30 dark:text-indigo-400">
+                        <Badge
+                            variant="outline"
+                            size="default"
+                            className="text-xs text-indigo-600 dark:text-indigo-400 border-indigo-500/30 bg-indigo-500/10 dark:border-indigo-500/30 dark:bg-indigo-950/40 font-medium"
+                        >
                             {h.folio}
                         </Badge>
                     ) : (
-                        <span className="text-muted-foreground/30 text-[13px]">–</span>
+                        <span className="text-muted-foreground/30 text-xs">–</span>
                     )}
-                </span>
+                </div>
             )
         },
         {
             key: "date",
             header: "Fecha",
-            width: "120px",
+            sortable: true,
+            width: "110px",
+            sortValue: (h: any) => new Date(h.created_at).getTime(),
             cell: (h: any) => (
-                <span className="text-[13px] font-medium text-muted-foreground whitespace-nowrap block">
+                <span className="text-xs font-medium text-muted-foreground tabular-nums whitespace-nowrap block">
                     {new Date(h.created_at).toLocaleDateString()}
                 </span>
             )
@@ -128,9 +133,11 @@ export default function CyclicInventoryDetail() {
         {
             key: "time",
             header: "Hora",
-            width: "80px",
+            sortable: true,
+            width: "85px",
+            sortValue: (h: any) => new Date(h.created_at).getTime(),
             cell: (h: any) => (
-                <span className="text-[13px] font-medium text-muted-foreground whitespace-nowrap">
+                <span className="text-xs font-medium text-muted-foreground tabular-nums whitespace-nowrap">
                     {new Date(h.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
             )
@@ -138,9 +145,11 @@ export default function CyclicInventoryDetail() {
         {
             key: "user_name",
             header: "Auditor",
-            width: "150px",
+            sortable: true,
+            width: "140px",
+            sortValue: (h: any) => h.user_name || '',
             cell: (h: any) => (
-                <span className="text-[13px] font-medium text-muted-foreground whitespace-nowrap">
+                <span className="text-xs font-medium text-foreground whitespace-nowrap truncate block">
                     {h.user_name || 'Desconocido'}
                 </span>
             )
@@ -148,9 +157,11 @@ export default function CyclicInventoryDetail() {
         {
             key: "category",
             header: "Rubro/s",
+            sortable: true,
             width: "120px",
+            sortValue: (h: any) => h.category || '',
             cell: (h: any) => (
-                <span className="text-[13px] font-medium text-muted-foreground whitespace-nowrap uppercase">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-tight truncate block">
                     {h.category || 'Varios'}
                 </span>
             )
@@ -158,9 +169,11 @@ export default function CyclicInventoryDetail() {
         {
             key: "total_units_adjusted",
             header: "Art Ajustados",
+            sortable: true,
             width: "110px",
+            sortValue: (h: any) => Number(h.total_units_adjusted) || 0,
             cell: (h: any) => (
-                <span className="text-[13px] font-medium text-foreground tabular-nums">
+                <span className="text-xs font-semibold text-foreground tabular-nums">
                     {h.total_units_adjusted}
                 </span>
             )
@@ -168,9 +181,11 @@ export default function CyclicInventoryDetail() {
         {
             key: "total_stock_counted",
             header: "Art Contados",
+            sortable: true,
             width: "110px",
+            sortValue: (h: any) => Number(h.total_stock_counted) || 0,
             cell: (h: any) => (
-                <span className="text-[13px] font-medium text-foreground tabular-nums">
+                <span className="text-xs font-semibold text-foreground tabular-nums">
                     {h.total_stock_counted !== undefined ? h.total_stock_counted : '—'}
                 </span>
             )
@@ -178,29 +193,33 @@ export default function CyclicInventoryDetail() {
         {
             key: "adjustment_id_shortage",
             header: "ID Ajustes (-)",
-            width: "120px",
+            sortable: true,
+            width: "115px",
+            sortValue: (h: any) => h.adjustment_id_shortage || '',
             cell: (h: any) => (
                 h.adjustment_id_shortage ? (
-                    <Badge variant="outline" showDot={false} className="text-[12px] font-semibold">
+                    <Badge variant="outline" size="default" className="text-xs font-medium tabular-nums">
                         {h.adjustment_id_shortage}
                     </Badge>
                 ) : (
-                    <span className="text-muted-foreground/30 text-[13px] pl-4">–</span>
+                    <span className="text-muted-foreground/30 text-xs">–</span>
                 )
             )
         },
         {
             key: "shortage_value",
             header: "Ajustes Faltantes",
-            width: "130px",
+            sortable: true,
+            width: "135px",
+            sortValue: (h: any) => Number(h.shortage_value ?? h.total_shortage_value) || 0,
             cell: (h: any) => {
                 const shortageVal = Number(h.shortage_value ?? h.total_shortage_value) || 0;
                 return (
                     <p className={cn(
-                        "text-[14px] font-medium tabular-nums",
-                        shortageVal === 0 ? "text-muted-foreground" : "text-red-600 dark:text-red-400"
+                        "text-xs font-semibold tabular-nums",
+                        shortageVal === 0 ? "text-muted-foreground/40 font-normal" : "text-red-600 dark:text-red-400"
                     )}>
-                        {shortageVal > 0 && '-'}${shortageVal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                        {shortageVal > 0 ? `-$${shortageVal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "–"}
                     </p>
                 );
             }
@@ -208,29 +227,33 @@ export default function CyclicInventoryDetail() {
         {
             key: "adjustment_id_surplus",
             header: "ID Ajustes (+)",
-            width: "120px",
+            sortable: true,
+            width: "115px",
+            sortValue: (h: any) => h.adjustment_id_surplus || '',
             cell: (h: any) => (
                 h.adjustment_id_surplus ? (
-                    <Badge variant="outline" showDot={false} className="text-[12px] font-semibold">
+                    <Badge variant="outline" size="default" className="text-xs font-medium tabular-nums">
                         {h.adjustment_id_surplus}
                     </Badge>
                 ) : (
-                    <span className="text-muted-foreground/30 text-[13px] pl-4">–</span>
+                    <span className="text-muted-foreground/30 text-xs">–</span>
                 )
             )
         },
         {
             key: "surplus_value",
             header: "Ajustes Sobrantes",
-            width: "130px",
+            sortable: true,
+            width: "135px",
+            sortValue: (h: any) => Number(h.surplus_value ?? h.total_surplus_value) || 0,
             cell: (h: any) => {
                 const surplusVal = Number(h.surplus_value ?? h.total_surplus_value) || 0;
                 return (
                     <p className={cn(
-                        "text-[14px] font-medium tabular-nums",
-                        surplusVal === 0 ? "text-muted-foreground" : "text-emerald-600 dark:text-emerald-400"
+                        "text-xs font-semibold tabular-nums",
+                        surplusVal === 0 ? "text-muted-foreground/40 font-normal" : "text-emerald-600 dark:text-emerald-400"
                     )}>
-                        {surplusVal > 0 && '+'}${surplusVal.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                        {surplusVal > 0 ? `+$${surplusVal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "–"}
                     </p>
                 );
             }
@@ -292,6 +315,8 @@ export default function CyclicInventoryDetail() {
         isDeleting,
 
         // Actions
+        isSyncingMysql,
+        handleMysqlSync,
         handleFileUpload,
         handleElectronImport,
         handleUpdateQuantity,
@@ -312,8 +337,6 @@ export default function CyclicInventoryDetail() {
         handleCancelAdminEdit,
         isLabHidden,
         handleToggleHideLab,
-        handleUpdateAdjustmentIds,
-        handleUpdateSessionAdjustmentIds,
 
         // Mismatch Overrides
         showMismatchDialog,
@@ -339,6 +362,27 @@ export default function CyclicInventoryDetail() {
 
     } = useCyclicInventoryController({ labName, round });
 
+    const filteredHistory = useMemo(() => {
+        const term = historySearchTerm.toLowerCase().trim();
+        if (!term) return history;
+        return history.filter((h: any) => {
+            const folio = String(h.folio || '').toLowerCase();
+            const user = String(h.user_name || '').toLowerCase();
+            const cat = String(h.category || '').toLowerCase();
+            const idShortage = String(h.adjustment_id_shortage || '').toLowerCase();
+            const idSurplus = String(h.adjustment_id_surplus || '').toLowerCase();
+            const dateStr = h.created_at ? new Date(h.created_at).toLocaleDateString().toLowerCase() : '';
+            return (
+                folio.includes(term) ||
+                user.includes(term) ||
+                cat.includes(term) ||
+                idShortage.includes(term) ||
+                idSurplus.includes(term) ||
+                dateStr.includes(term)
+            );
+        });
+    }, [history, historySearchTerm]);
+
     const [removalModalOpen, setRemovalModalOpen] = useState(false);
 
     // Resumen de Rubros Controlados y Totales para el Diálogo de Finalización
@@ -350,14 +394,14 @@ export default function CyclicInventoryDetail() {
                 return normCat === normTarget;
             });
 
-            let controlledUnits = 0;
+            let controlledArticles = 0;
             let surplusUnits = 0;
             let shortageUnits = 0;
             let value = 0;
 
             catItems.forEach(item => {
                 if (item.status === 'controlled') {
-                    controlledUnits += item.countedQuantity;
+                    controlledArticles += 1;
                     const diff = item.countedQuantity - item.systemQuantity;
                     if (diff > 0) {
                         surplusUnits += diff;
@@ -370,7 +414,7 @@ export default function CyclicInventoryDetail() {
 
             return {
                 category,
-                controlledUnits,
+                controlledArticles,
                 surplusUnits,
                 shortageUnits,
                 value: Math.round(value * 100) / 100
@@ -380,8 +424,8 @@ export default function CyclicInventoryDetail() {
         return statsMap;
     }, [items]);
 
-    const totalControlledUnits = useMemo(() => {
-        return categoryStats.reduce((sum, s) => sum + s.controlledUnits, 0);
+    const totalControlledArticles = useMemo(() => {
+        return categoryStats.reduce((sum, s) => sum + s.controlledArticles, 0);
     }, [categoryStats]);
 
     const netBalance = useMemo(() => {
@@ -510,134 +554,80 @@ export default function CyclicInventoryDetail() {
                 <InventorySkeleton />
             ) : (
                 <>
-                    {/* Main View: Always show Header and Stats */}
-                    <div className="flex flex-col gap-3">
-                            {/* Stats Cards */}
-                            {/* 1. Enhanced Status Bar - Full Width Single Row without Container Box */}
-                            <div className="w-full">
-                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 w-full py-2">
-                                    {/* Left: Lab Title & Subtitle */}
-                                    <div className="flex flex-col gap-0.5">
-                                        <div className="flex items-center gap-2">
-                                            <h1 className="text-sm font-bold text-foreground">
-                                                {labName}
-                                            </h1>
-                                            {isReadOnly && (
-                                                <Badge variant="outline" className="border-amber-200 bg-amber-50/50 text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/30 dark:text-amber-400 font-bold rounded-lg text-[11px] px-2 py-0.5 whitespace-nowrap">
-                                                    Historial (Vuelta {round})
-                                                </Badge>
-                                            )}
-                                            {/* Admin Secret Button Next to Title */}
-                                            <AnimatePresence>
-                                                {isAdminModeEnabled && user?.role === 'admin' && (
-                                                    <motion.div
-                                                        initial={{ opacity: 0, scale: 0.8 }}
-                                                        animate={{ opacity: 1, scale: 1 }}
-                                                        exit={{ opacity: 0, scale: 0.8 }}
-                                                    >
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-8 w-8 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-sm flex-shrink-0"
-                                                            onClick={() => setShowAdminPurgeModal(true)}
-                                                            title="Eliminación Administrativa (Crítico)"
-                                                        >
-                                                            <TrashIcon className="w-4 h-4" />
-                                                        </Button>
-                                                    </motion.div>
-                                                )}
-                                            </AnimatePresence>
-                                        </div>
-                                        <p className="text-xs text-muted-foreground">
-                                            Control de inventario cíclico.
-                                        </p>
-                                    </div>
+                    {/* Main Content */}
+                    <div className="w-full flex-1 flex flex-col min-h-0">
+                        {/* Fila superior: Tabs de Categorías a la izquierda y Título/Info al fondo a la derecha */}
+                        <div className="flex items-center justify-between gap-3 mb-2.5">
+                            {/* Categorías */}
+                            <Tabs value={currentCategory} onValueChange={setCurrentCategory} className="w-fit shrink-0">
+                                <TabsList>
+                                    {CATEGORIES.map((cat) => {
+                                        const catCount = items.filter(i => {
+                                            if (i.status !== 'pending') return false;
+                                            const itemCat = i.category ? i.category.trim() : '';
+                                            const normalizedTarget = cat.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+                                            const normalizedItem = itemCat.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+                                            return normalizedItem === normalizedTarget;
+                                        }).length;
 
-                                    {/* Right: Metrics horizontal list with badges and vertical dividers */}
-                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm md:justify-end">
-                                        {/* Pendientes */}
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[13px] text-muted-foreground font-medium">Pendientes</span>
-                                            <Badge size="lg" variant="dot" showDot={false} color="amber" className="font-bold rounded-lg px-2.5">
-                                                {globalPending}
-                                            </Badge>
-                                        </div>
-
-                                        <div className="hidden sm:block h-4 w-px bg-border/60" />
-
-                                        {/* Controlados */}
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[13px] text-muted-foreground font-medium">Controlados</span>
-                                            <Badge size="lg" variant="dot" showDot={false} color="green" className="font-bold rounded-lg px-2.5">
-                                                {globalControlled}
-                                            </Badge>
-                                        </div>
-
-                                        <div className="hidden sm:block h-4 w-px bg-border/60" />
-
-                                        {/* Ajustados */}
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[13px] text-muted-foreground font-medium">Ajustados</span>
-                                            <Badge size="lg" variant="dot" showDot={false} color="blue" className="font-bold rounded-lg px-2.5">
-                                                {globalAdjusted}
-                                            </Badge>
-                                        </div>
-
-                                        <div className="hidden sm:block h-4 w-px bg-border/60" />
-
-                                        {/* Avance */}
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[13px] text-muted-foreground font-medium">Avance</span>
-                                            <Badge size="lg" variant="dot" showDot={false} color="gray" className="font-bold rounded-lg px-2.5">
-                                                {progressPercentage}%
-                                            </Badge>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Main Content */}
-                            <div className="w-full">
-                                {/* Toolbar & Categories */}
-                                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-3">
-                                    {/* Categorías */}
-                                    <Tabs value={currentCategory} onValueChange={setCurrentCategory} className="w-fit shrink-0">
-                                        <TabsList className="bg-popover border border-input shadow-sm p-1 rounded-xl h-10 w-fit inline-flex">
-                                            {CATEGORIES.map((cat) => {
-                                                const catCount = items.filter(i => {
-                                                    if (i.status !== 'pending') return false;
-                                                    const itemCat = i.category ? i.category.trim() : '';
-                                                    const normalizedTarget = cat.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
-                                                    const normalizedItem = itemCat.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
-                                                    return normalizedItem === normalizedTarget;
-                                                }).length;
-
-                                                return (
-                                                    <TabsTab 
-                                                        key={cat} 
-                                                        value={cat} 
-                                                        label={catCount > 0 ? `${cat} (${catCount})` : cat} 
-                                                    />
-                                                );
-                                            })}
-                                        </TabsList>
-                                    </Tabs>
-
-                                    {/* Toolbar de Acciones Superior (Solo barra de búsqueda) */}
-                                    <div className="flex flex-wrap items-center gap-3 flex-1 justify-end w-full xl:w-auto">
-                                        {/* Barra de búsqueda fija como InputGroup */}
-                                        <InputGroup className="max-w-[200px] sm:max-w-xs w-full">
-                                            <InputField
-                                                index={0}
-                                                placeholder="Buscar por nombre..."
-                                                icon={Search as any}
-                                                value={searchTerm}
-                                                onChange={setSearchTerm}
-                                                alwaysShowBorder={true}
+                                        return (
+                                            <TabItem 
+                                                key={cat} 
+                                                value={cat} 
+                                                label={catCount > 0 ? `${cat} (${catCount})` : cat} 
                                             />
-                                        </InputGroup>
-                                    </div>
-                                </div>
+                                        );
+                                    })}
+                                </TabsList>
+                            </Tabs>
+
+                            {/* Al fondo a la derecha: Título de inventario y subtítulo en la misma línea de los tabs */}
+                            <div className="flex items-center gap-2 shrink-0 ml-auto flex-wrap justify-end">
+                                <h1 className="sr-only">
+                                    {labName}
+                                </h1>
+                                <span
+                                    title={labName}
+                                    className="text-[13px] text-foreground font-semibold max-w-[280px] sm:max-w-[420px] truncate"
+                                    style={{ fontVariationSettings: fontWeights.semibold }}
+                                >
+                                    {labName || "Sin Laboratorio"}
+                                </span>
+                                <Badge
+                                    variant="solid"
+                                    color="gray"
+                                    size="default"
+                                    className="bg-muted/70 dark:bg-surface-2/70 text-foreground/80 dark:text-zinc-200 border border-border/40 text-xs font-semibold px-2.5 py-1 rounded-lg shadow-2xs tabular-nums"
+                                >
+                                    {progressPercentage}% avance
+                                </Badge>
+                                {isReadOnly && (
+                                    <Badge variant="outline" className="border-amber-200 bg-amber-50/50 text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/30 dark:text-amber-400 font-bold rounded-lg text-[11px] px-2 py-0.5 whitespace-nowrap">
+                                        Historial (Vuelta {round})
+                                    </Badge>
+                                )}
+                                {/* Admin Secret Button Next to Title */}
+                                <AnimatePresence>
+                                    {isAdminModeEnabled && user?.role === 'admin' && (
+                                        <motion.div
+                                            initial={{ opacity: 0, scale: 0.8 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            exit={{ opacity: 0, scale: 0.8 }}
+                                        >
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-sm flex-shrink-0"
+                                                onClick={() => setShowAdminPurgeModal(true)}
+                                                title="Eliminación Administrativa (Crítico)"
+                                            >
+                                                <TrashIcon className="w-4 h-4" />
+                                            </Button>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+                        </div>
                                 {isAdminEditActive && (
                                     <Alert className="mb-4 bg-primary/10 border-primary/20 text-primary-foreground dark:text-primary animate-in slide-in-from-top duration-300 rounded-xl">
                                         <div className="flex items-center gap-2">
@@ -651,79 +641,87 @@ export default function CyclicInventoryDetail() {
                                         </div>
                                     </Alert>
                                 )}
-                                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full shrink-0">
-                                    {/* Row 2: Tabs Wrapper con Botones de Acción */}
-                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2">
-                                        <TabsList className="bg-popover border border-input shadow-sm p-1 rounded-xl h-10 w-fit inline-flex shrink-0">
-                                            <TabsTab value="pending" label={pendingItems.length > 0 ? `Pendientes (${pendingItems.length})` : "Pendientes"} />
-                                            <TabsTab value="controlled" label={controlledItems.length > 0 ? `Controlados (${controlledItems.length})` : "Controlados"} />
-                                            <TabsTab value="adjusted" label={adjustedItems.length > 0 ? `Ajustados (${adjustedItems.length})` : "Ajustados"} />
-                                            <TabsTab value="history" label={history.length > 0 ? `Historial (${history.length})` : "Historial"} />
-                                        </TabsList>
+                                {(() => {
+                                    const cyclicActions = (
+                                        <>
+                                            {/* Botón Sincronizar desde Servidor Plex (MySQL) - Desactivado temporalmente */}
+                                            <Button
+                                                variant="tertiary"
+                                                size="icon"
+                                                disabled
+                                                aria-label="Sincronizar Stock desde Servidor Plex (MySQL) (Desactivado)"
+                                                title="Sincronizar Stock desde Servidor Plex (MySQL) (Desactivado)"
+                                                className="h-8 w-8 rounded-lg border border-border bg-transparent opacity-40 grayscale cursor-not-allowed pointer-events-none text-muted-foreground transition-all duration-80"
+                                            >
+                                                <Database className="size-3.5" />
+                                            </Button>
 
-                                        {/* Botones de acción alineados al lado de las pestañas de estado */}
-                                        <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                                             {/* Botón Cargar Archivo */}
                                             <Button
-                                                variant="ghost"
+                                                variant="tertiary"
                                                 size="icon"
                                                 onClick={() => document.getElementById('inventory-upload-hidden')?.click()}
-                                                disabled={isUploading || isSaving}
-                                                className="bg-surface-2 shadow-surface-2 text-muted-foreground hover:text-foreground rounded-xl group transition-all duration-200"
+                                                disabled={isUploading || isSaving || isSyncingMysql}
+                                                aria-label="Cargar Archivo"
                                                 title="Cargar Archivo"
+                                                className="h-8 w-8 rounded-lg border border-border bg-transparent hover:bg-hover text-muted-foreground hover:text-foreground transition-all duration-80 cursor-pointer"
                                             >
-                                                <Upload className="w-4 h-4 group-hover:text-foreground transition-colors" />
+                                                <Upload className="size-3.5" />
                                             </Button>
 
                                             {/* Botón Reiniciar */}
                                             <Button
-                                                variant="ghost"
+                                                variant="tertiary"
                                                 size="icon"
                                                 onClick={handleResetData}
                                                 disabled={isUploading || isSaving}
-                                                className="bg-surface-2 shadow-surface-2 text-muted-foreground hover:text-foreground rounded-xl group transition-all duration-200"
+                                                aria-label="Reiniciar"
                                                 title="Reiniciar"
+                                                className="h-8 w-8 rounded-lg border border-border bg-transparent hover:bg-hover text-muted-foreground hover:text-foreground transition-all duration-80 cursor-pointer"
                                             >
-                                                <RotateCcw className="w-4 h-4 group-hover:text-foreground transition-colors" />
+                                                <RotateCcw className="size-3.5" />
                                             </Button>
 
                                             {/* Botón Solo Diferencias */}
                                             <Button
-                                                variant="ghost"
+                                                variant="tertiary"
                                                 size="icon"
                                                 onClick={() => setShowDifferencesOnly(!showDifferencesOnly)}
-                                                className={cn(
-                                                    "rounded-xl transition-all duration-200",
-                                                    showDifferencesOnly 
-                                                        ? "bg-primary text-primary-foreground shadow-sm" 
-                                                        : "bg-surface-2 shadow-surface-2 text-muted-foreground hover:text-foreground"
-                                                )}
+                                                aria-label="Solo Diferencias"
                                                 title="Solo Diferencias"
+                                                className={cn(
+                                                    "h-8 w-8 rounded-lg border transition-all duration-80 cursor-pointer",
+                                                    showDifferencesOnly 
+                                                        ? "bg-primary/10 border-primary/30 text-primary hover:bg-primary/20" 
+                                                        : "border-border bg-transparent hover:bg-hover text-muted-foreground hover:text-foreground"
+                                                )}
                                             >
-                                                <DiffIcon className="w-4 h-4" />
+                                                <DiffIcon className="size-3.5" />
                                             </Button>
 
                                             {/* Botón Solicitar Baja de Laboratorio */}
                                             <Button
-                                                variant="ghost"
+                                                variant="tertiary"
                                                 size="icon"
                                                 onClick={() => setRemovalModalOpen(true)}
-                                                className="bg-surface-2 shadow-surface-2 text-muted-foreground hover:text-amber-500 rounded-xl group transition-all duration-200"
+                                                aria-label="Solicitar Baja de Laboratorio"
                                                 title="Solicitar Baja de Laboratorio"
+                                                className="h-8 w-8 rounded-lg border border-border bg-transparent hover:bg-hover text-muted-foreground hover:text-amber-500 transition-all duration-80 cursor-pointer"
                                             >
-                                                <FileSearch02 className="w-4 h-4 group-hover:text-amber-500 transition-colors" />
+                                                <FileSearch02 className="size-3.5" />
                                             </Button>
 
                                             {/* Dropdown Ordenar */}
                                             <DropdownMenu>
                                                 <DropdownTrigger render={
                                                     <Button 
-                                                        variant="ghost" 
+                                                        variant="tertiary" 
                                                         size="icon" 
-                                                        className="bg-surface-2 shadow-surface-2 text-muted-foreground hover:text-foreground rounded-xl group transition-all duration-200"
+                                                        aria-label="Ordenar"
                                                         title="Ordenar"
+                                                        className="h-8 w-8 rounded-lg border border-border bg-transparent hover:bg-hover text-muted-foreground hover:text-foreground transition-all duration-80 cursor-pointer"
                                                     >
-                                                        <Filter className="w-4 h-4 group-hover:text-foreground transition-colors" />
+                                                        <Filter className="size-3.5" />
                                                     </Button>
                                                 } />
                                                 <DropdownContent align="end" className="w-48">
@@ -758,12 +756,13 @@ export default function CyclicInventoryDetail() {
                                             <DropdownMenu>
                                                 <DropdownTrigger render={
                                                     <Button 
-                                                        variant="ghost" 
+                                                        variant="tertiary" 
                                                         size="icon" 
-                                                        className="bg-surface-2 shadow-surface-2 text-muted-foreground hover:text-foreground rounded-xl group transition-all duration-200"
+                                                        aria-label="Más Acciones"
                                                         title="Más Acciones"
+                                                        className="h-8 w-8 rounded-lg border border-border bg-transparent hover:bg-hover text-muted-foreground hover:text-foreground transition-all duration-80 cursor-pointer"
                                                     >
-                                                        <MoreVertical className="w-4 h-4 group-hover:text-foreground transition-colors" />
+                                                        <MoreVertical className="size-3.5" />
                                                     </Button>
                                                 } />
                                                 <DropdownContent align="end" className="w-56">
@@ -774,6 +773,13 @@ export default function CyclicInventoryDetail() {
                                                                 {!isReadOnly && (
                                                                     <>
                                                                         <DropdownLabel>Carga de Datos</DropdownLabel>
+                                                                        <MenuItem
+                                                                            index={itemIndex++}
+                                                                            icon={Database}
+                                                                            label="Sincronizar desde Servidor Plex"
+                                                                            disabled
+                                                                            className="opacity-40 grayscale cursor-not-allowed pointer-events-none"
+                                                                        />
                                                                         <MenuItem
                                                                             index={itemIndex++}
                                                                             icon={Document}
@@ -828,21 +834,21 @@ export default function CyclicInventoryDetail() {
 
                                             {/* Finalizar Button / Admin Save Changes */}
                                             {isAdminEditActive ? (
-                                                <div className="flex gap-2 ml-1.5 shrink-0">
+                                                <div className="flex gap-1.5 ml-1 shrink-0">
                                                     <Button
                                                         variant="ghost"
                                                         onClick={handleCancelAdminEdit}
                                                         disabled={isSaving}
-                                                        className="bg-surface-2 shadow-surface-2 text-muted-foreground hover:text-foreground rounded-xl h-9 px-4 group transition-all duration-200 font-semibold text-[13px]"
+                                                        className="h-8 px-3 rounded-lg font-semibold text-xs border border-border bg-transparent hover:bg-hover text-muted-foreground hover:text-foreground transition-all duration-80"
                                                     >
                                                         Cancelar Edición
                                                     </Button>
                                                     <Button
                                                         onClick={handleSaveAdminEdit}
                                                         disabled={isSaving}
-                                                        className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-md rounded-xl h-9 px-4 flex items-center gap-2 font-semibold text-[13px] whitespace-nowrap"
+                                                        className="h-8 px-3 bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs rounded-lg flex items-center gap-1.5 font-semibold text-xs whitespace-nowrap transition-all duration-80"
                                                     >
-                                                        <CheckCircle size={16} className="shrink-0" />
+                                                        <CheckCircle size={14} className="shrink-0" />
                                                         Guardar Cambios (Admin)
                                                     </Button>
                                                 </div>
@@ -850,141 +856,161 @@ export default function CyclicInventoryDetail() {
                                                 <Button
                                                     onClick={handleFinalizeClick}
                                                     disabled={isSaving || (pendingItems.length === 0 && controlledItems.length === 0 && adjustedItems.length === 0)}
-                                                    variant="primary"
-                                                    className="rounded-xl h-9 px-4 group transition-all duration-200 flex items-center gap-1.5 font-semibold text-[13px] ml-1.5 shrink-0"
-                                                 >
-                                                    <CheckCircle size={16} className="shrink-0" />
-                                                    <span>Finalizar</span>
+                                                    className="h-8 px-3.5 bg-foreground text-background hover:bg-foreground/90 active:scale-[0.98] shadow-xs rounded-lg font-semibold text-xs whitespace-nowrap ml-1 shrink-0 transition-all duration-80 cursor-pointer"
+                                                >
+                                                    Finalizar
                                                 </Button>
                                             ) : null}
-                                        </div>
-                                    </div>
-                                    <ScrollArea className="flex-1 -mx-4 px-4 overflow-hidden">
-                                        <ScrollAreaViewport className="pb-8">
-                                            <TabsContent value="pending" className="space-y-4 pt-2">
-                                                {false && (
-                                                    <Card className="p-12 border-dashed border-2 flex flex-col items-center justify-center text-center space-y-4 bg-muted/10 my-4 animate-in fade-in zoom-in duration-500 rounded-xl">
-                                                        <div className="p-4 bg-primary/10 rounded-full">
-                                                            <Upload className="w-8 h-8 text-primary" />
-                                                        </div>
-                                                        
-                                                        {history.length === 0 ? (
-                                                            // Initial Opening State
-                                                            <>
-                                                                <div>
-                                                                    <h3 className="text-lg font-semibold">Cargar Archivo de Inventario</h3>
-                                                                    <p className="text-muted-foreground max-w-sm mx-auto mt-1">
-                                                                        Sube el archivo Excel (.xlsx) o PDF descargado del sistema para comenzar el control de {labName}.
-                                                                    </p>
-                                                                </div>
-                                                                <div className="relative">
-                                                                    <Button disabled={isUploading} className="rounded-full px-8">
-                                                                        {isUploading ? 'Procesando...' : 'Seleccionar Archivo'}
-                                                                    </Button>
-                                                                    <Input
-                                                                        type="file"
-                                                                        accept=".xlsx, .xls"
-                                                                        className="absolute inset-0 opacity-0 cursor-pointer"
-                                                                        onChange={handleFileUpload}
-                                                                        disabled={isUploading}
-                                                                    />
-                                                                </div>
-                                                                <p className="text-[10px] text-muted-foreground mt-4 opacity-70 uppercase tracking-tighter">
-                                                                    Columnas requeridas: C (EAN), D (Producto), E (Cantidad), K (Costo), J (Rubro), O (Laboratorio)
-                                                                </p>
-                                                            </>
-                                                        ) : (
-                                                            // New Cycle State
-                                                            <>
-                                                                <div>
-                                                                    <h3 className="text-lg font-semibold">Cargar Nuevo Ciclo</h3>
-                                                                    <p className="text-muted-foreground max-w-sm mx-auto mt-1">
-                                                                        No hay ítems para contar en este laboratorio. Cargá un nuevo archivo para iniciar el siguiente ciclo.
-                                                                    </p>
-                                                                </div>
-                                                                <div className="relative">
-                                                                    <Button disabled={isUploading} className="rounded-full px-8">
-                                                                        {isUploading ? 'Procesando...' : 'Cargar Archivo de Sistema'}
-                                                                    </Button>
-                                                                    <Input
-                                                                        type="file"
-                                                                        accept=".xlsx, .xls"
-                                                                        className="absolute inset-0 opacity-0 cursor-pointer"
-                                                                        onChange={handleFileUpload}
-                                                                        disabled={isUploading}
-                                                                    />
-                                                                </div>
-                                                            </>
-                                                        )}
-                                                    </Card>
-                                                )}
-                                                               <CyclicInventoryList
-                                                    items={getSortedItems(pendingItems)}
+                                        </>
+                                    );
+
+                                    const statusTabKeys = ["pending", "controlled", "adjusted", "history"] as const;
+                                    const selectedTab = Math.max(0, statusTabKeys.indexOf(activeTab as any));
+
+                                    const statusTabsData = [
+                                        { key: "pending", label: pendingItems.length > 0 ? `Pendientes (${pendingItems.length})` : "Pendientes" },
+                                        { key: "controlled", label: controlledItems.length > 0 ? `Controlados (${controlledItems.length})` : "Controlados" },
+                                        { key: "adjusted", label: adjustedItems.length > 0 ? `Ajustados (${adjustedItems.length})` : "Ajustados" },
+                                        { key: "history", label: history.length > 0 ? `Historial (${history.length})` : "Historial" },
+                                    ];
+
+                                    const statusTabs = (
+                                        <TabsSubtle
+                                            idPrefix="cyclic-status"
+                                            selectedIndex={selectedTab}
+                                            onSelect={(idx) => setActiveTab(statusTabKeys[idx] || "pending")}
+                                            size="compact"
+                                            className="h-8 items-center"
+                                        >
+                                            {statusTabsData.map((tab, i) => (
+                                                <TabsSubtleItem
+                                                    key={tab.key}
+                                                    index={i}
+                                                    label={tab.label}
+                                                    className="h-8 px-3 text-xs"
+                                                />
+                                            ))}
+                                        </TabsSubtle>
+                                    );
+
+                                    const activeTabItems = selectedTab === 0
+                                        ? getSortedItems(pendingItems)
+                                        : selectedTab === 1
+                                        ? getSortedItems(controlledItems)
+                                        : selectedTab === 2
+                                        ? getSortedItems(adjustedItems)
+                                        : [];
+
+                                    return (
+                                        <div className="w-full pb-8">
+                                            <TabsSubtlePanel index={0} selectedIndex={selectedTab} idPrefix="cyclic-status" className="space-y-4 pt-2">
+                                                <CyclicInventoryList
+                                                    items={selectedTab === 0 ? activeTabItems : []}
                                                     onUpdateQuantity={handleUpdateQuantity}
                                                     onCheck={handleCheck}
                                                     onBulkCheck={handleBulkCheck}
                                                     isPending={true}
                                                     readOnly={isReadOnly}
                                                     isExcelUploaded={isExcelUploaded || isAdminEditActive}
+                                                    actions={cyclicActions}
+                                                    tabsSlot={statusTabs}
                                                 />
-                                            </TabsContent>
- 
-                                            <TabsContent value="controlled" className="space-y-4 pt-2">
+                                            </TabsSubtlePanel>
+        
+                                            <TabsSubtlePanel index={1} selectedIndex={selectedTab} idPrefix="cyclic-status" className="space-y-4 pt-2">
                                                 <CyclicInventoryList
-                                                    items={getSortedItems(controlledItems)}
+                                                    items={selectedTab === 1 ? activeTabItems : []}
                                                     onUpdateQuantity={handleUpdateQuantity}
                                                     onCheck={handleCheck}
                                                     onBulkCheck={handleBulkCheck}
                                                     onRevert={handleRevertItem}
                                                     readOnly={isReadOnly}
                                                     isExcelUploaded={isExcelUploaded || isAdminEditActive}
+                                                    actions={cyclicActions}
+                                                    tabsSlot={statusTabs}
                                                 />
-                                            </TabsContent>
- 
-                                            <TabsContent value="adjusted" className="space-y-4 pt-2">
+                                            </TabsSubtlePanel>
+        
+                                            <TabsSubtlePanel index={2} selectedIndex={selectedTab} idPrefix="cyclic-status" className="space-y-4 pt-2">
                                                 <CyclicInventoryList
-                                                    items={getSortedItems(adjustedItems)}
+                                                    items={selectedTab === 2 ? activeTabItems : []}
                                                     onUpdateQuantity={handleUpdateQuantity}
-                                                    onCheck={() => { }} // No check needed for adjusted
+                                                    onCheck={() => { }}
                                                     onBulkCheck={handleBulkCheck}
                                                     readOnly={isReadOnly}
                                                     isExcelUploaded={isExcelUploaded || isAdminEditActive}
+                                                    actions={cyclicActions}
+                                                    tabsSlot={statusTabs}
                                                 />
-                                            </TabsContent>
+                                            </TabsSubtlePanel>
 
-                                            <TabsContent value="history" className="space-y-4 pt-2">
-                                                {history.length === 0 ? (
-                                                    <div className="text-center py-8 text-muted-foreground bg-muted/20 rounded-lg border-dashed border-2">
-                                                        No hay historial de ajustes para este laboratorio.
+                                            <TabsSubtlePanel index={3} selectedIndex={selectedTab} idPrefix="cyclic-status" className="space-y-4 pt-2">
+                                                <div className="w-full bg-surface-2/60 dark:bg-surface-2/40 border border-border/40 rounded-[24px] p-[2px] transition-all duration-200 shadow-xs">
+                                                    <div className="w-full bg-white dark:bg-surface-3 border border-border/40 rounded-[22px] p-2 sm:p-3 shadow-xs min-h-[560px] flex flex-col relative">
+                                                        <div className="sticky top-0 z-30 bg-white/95 dark:bg-surface-3/95 backdrop-blur-md -mx-2 sm:-mx-3 -mt-2 sm:-mt-3 px-3 sm:px-4 py-3 rounded-t-[22px] border-b border-border/40 flex flex-wrap items-center justify-between gap-3 transition-colors shadow-2xs">
+                                                            <div className="flex flex-wrap items-center gap-3">
+                                                                {/* Buscador */}
+                                                                <InputGroup className="w-[180px] h-8 rounded-lg border border-border bg-transparent hover:bg-hover transition-all duration-80 focus-within:ring-1 focus-within:ring-[color:var(--focus-ring,#6B97FF)] shadow-none shrink-0">
+                                                                    <InputGroupAddon className="pl-2.5 pr-1.5 text-muted-foreground">
+                                                                        <Search className="size-3.5 shrink-0" />
+                                                                    </InputGroupAddon>
+                                                                    <InputGroupInput
+                                                                        type="text"
+                                                                        placeholder="Buscar en historial..."
+                                                                        value={historySearchTerm}
+                                                                        onChange={(e) => setHistorySearchTerm(e.target.value)}
+                                                                        className="h-full text-xs font-normal placeholder:text-muted-foreground text-foreground bg-transparent border-0 focus-visible:ring-0 px-0"
+                                                                    />
+                                                                </InputGroup>
+
+                                                                {statusTabs}
+                                                            </div>
+                                                            {cyclicActions && (
+                                                                <div className="flex items-center gap-1.5 shrink-0 ml-auto flex-wrap justify-end">
+                                                                    {cyclicActions}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        {history.length === 0 ? (
+                                                            <div className="text-center py-16 text-muted-foreground text-xs flex flex-col items-center justify-center gap-1">
+                                                                <span className="font-semibold text-foreground text-sm">No hay historial de ajustes</span>
+                                                                <span>No se encontraron sesiones de ajuste registradas para este laboratorio.</span>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex-1 w-full overflow-hidden rounded-b-[18px]">
+                                                                <MotionTable
+                                                                    data={filteredHistory}
+                                                                    columns={historyColumns}
+                                                                    getRowId={(row: any) => row.id}
+                                                                    resizable
+                                                                    reorderable
+                                                                    defaultSort={{ key: "date", direction: "desc" }}
+                                                                    height={520}
+                                                                    rowHeight={40}
+                                                                    dense={true}
+                                                                    overscan={5}
+                                                                    headerClassName="bg-white dark:bg-[#252525] dark:bg-surface-3 shadow-2xs"
+                                                                    className="rounded-xl border-none w-full bg-transparent"
+                                                                    emptyState={
+                                                                        <div className="flex flex-col items-center justify-center p-12 text-muted-foreground text-xs gap-1.5">
+                                                                            <span className="font-semibold text-foreground text-sm">Sin coincidencias</span>
+                                                                            <span className="text-muted-foreground text-xs">
+                                                                                No se encontraron resultados para "{historySearchTerm}".
+                                                                            </span>
+                                                                        </div>
+                                                                    }
+                                                                />
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                ) : (
-                                                    <div className="w-full flex-1 relative bg-surface-5 shadow-surface-5 rounded-2xl border border-border/40 overflow-hidden flex flex-col h-[650px]">
-                                                        <MotionTable
-                                                            data={history}
-                                                            columns={historyColumns}
-                                                            getRowId={(row: any) => row.id}
-                                                            height={600}
-                                                            rowHeight={56}
-                                                            onRowClick={(row: any) => {
-                                                                    setSelectedSessionToEdit(row.id);
-                                                                    setTempShortageId(row.adjustment_id_shortage || "");
-                                                                    setTempSurplusId(row.adjustment_id_surplus || "");
-                                                                    setShowEditIdsDialog(true);
-                                                            }}
-                                                            className="border-none"
-                                                            emptyState="Sin resultados."
-                                                        />
-                                                    </div>
-                                                )}
-                                            </TabsContent>
-                                        </ScrollAreaViewport>
-                                        <ScrollAreaScrollbar />
-                                    </ScrollArea>
-                                </Tabs>
-                                </div>
-                            </div>
-                        </>
-                    )}
+                                                </div>
+                                            </TabsSubtlePanel>
+                                        </div>
+                                    );
+                        })()}
+                    </div>
+                </>
+            )}
 
             {/* Save Dialog */}
             <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
@@ -1003,7 +1029,7 @@ export default function CyclicInventoryDetail() {
                                     Finalizar Control
                                 </DialogTitle>
                                 <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
-                                    Confirma los códigos de ajuste para cerrar el control del laboratorio <strong className="text-foreground">{labName}</strong>.
+                                    Confirma los códigos de ajuste para cerrar el control del laboratorio <strong className="text-foreground">{labName.replace(/\.+$/, '')}</strong>.
                                 </DialogDescription>
                             </div>
 
@@ -1020,7 +1046,14 @@ export default function CyclicInventoryDetail() {
 
                             {/* Big value — changes based on select */}
                             <div className="flex flex-col gap-0.5 pt-1">
-                                <div className="text-3xl font-semibold tracking-tight text-gray-900 dark:text-gray-50 leading-none">
+                                <div className={cn(
+                                    "text-3xl font-bold tracking-tight leading-none tabular-nums",
+                                    balanceView === 'balance'
+                                        ? (netBalance > 0 ? "text-financial-positive" : netBalance < 0 ? "text-financial-negative" : "text-foreground")
+                                        : balanceView === 'faltantes'
+                                        ? "text-financial-negative"
+                                        : "text-financial-positive"
+                                )}>
                                     {balanceView === 'balance' 
                                         ? (netBalance > 0 ? `+$${netBalance.toLocaleString('es-AR', { minimumFractionDigits: 2 })}` : `$${netBalance.toLocaleString('es-AR', { minimumFractionDigits: 2 })}`)
                                         : balanceView === 'faltantes'
@@ -1029,150 +1062,149 @@ export default function CyclicInventoryDetail() {
                                     }
                                 </div>
                                 <div className="flex justify-between items-center mt-2">
-                                    <div className="flex items-center gap-1 text-xs font-normal">
+                                    <div className="flex items-center gap-1 text-xs font-normal tabular-nums">
                                         {balanceView === 'balance' ? (
                                             netBalance >= 0 ? (
                                                 <>
-                                                    <ArrowUpRight className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                                                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{statsDetail.netValueDevPercent >= 0 ? '+' : ''}{statsDetail.netValueDevPercent.toFixed(2)}%</span>
-                                                    <span className="text-black dark:text-white">Desvío</span>
+                                                    <ArrowUpRight className="w-3.5 h-3.5 text-financial-positive" />
+                                                    <span className="text-financial-positive font-semibold">+{statsDetail.netValueDevPercent.toFixed(2)}%</span>
+                                                    <span className="text-muted-foreground">Desvío</span>
                                                 </>
                                             ) : (
                                                 <>
-                                                    <ArrowDownRight className="w-3.5 h-3.5 text-red-500" />
-                                                    <span className="text-red-500 font-semibold">{statsDetail.netValueDevPercent.toFixed(2)}%</span>
-                                                    <span className="text-black dark:text-white">Desvío</span>
+                                                    <ArrowDownRight className="w-3.5 h-3.5 text-financial-negative" />
+                                                    <span className="text-financial-negative font-semibold">{statsDetail.netValueDevPercent.toFixed(2)}%</span>
+                                                    <span className="text-muted-foreground">Desvío</span>
                                                 </>
                                             )
                                         ) : balanceView === 'faltantes' ? (
                                             <>
-                                                <ArrowDownRight className="w-3.5 h-3.5 text-red-500" />
-                                                <span className="text-red-500 font-semibold">{statsDetail.shortagePercent.toFixed(2)}%</span>
-                                                <span className="text-black dark:text-white">Pérdida</span>
+                                                <ArrowDownRight className="w-3.5 h-3.5 text-financial-negative" />
+                                                <span className="text-financial-negative font-semibold">{statsDetail.shortagePercent.toFixed(2)}%</span>
+                                                <span className="text-muted-foreground">Pérdida</span>
                                             </>
                                         ) : (
                                             <>
-                                                <ArrowUpRight className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                                                <span className="text-emerald-600 dark:text-emerald-400 font-semibold">+{statsDetail.surplusPercent.toFixed(2)}%</span>
-                                                <span className="text-black dark:text-white">Excedente</span>
+                                                <ArrowUpRight className="w-3.5 h-3.5 text-financial-positive" />
+                                                <span className="text-financial-positive font-semibold">+{statsDetail.surplusPercent.toFixed(2)}%</span>
+                                                <span className="text-muted-foreground">Excedente</span>
                                             </>
                                         )}
                                     </div>
-                                    <span className="text-xs font-normal text-black dark:text-white">
-                                        {totalControlledUnits} Unidades Controladas
+                                    <span className="text-xs font-normal text-muted-foreground">
+                                        {totalControlledArticles} {totalControlledArticles === 1 ? 'Artículo Controlado' : 'Artículos Controlados'}
                                     </span>
                                 </div>
                              </div>
                         </div>
 
-                        {/* Block 2 — Ajustes de inventario (Showcase Accordion wrapper) */}
-                        <div className="px-5 w-full">
-                            <Accordion
-                                type="multiple"
-                                value={["item1", "item2"]}
-                                className="w-full"
-                            >
-                                <AccordionItem value="item1">
-                                    <AccordionTrigger className="pointer-events-none bg-hover">Ajustes de inventario</AccordionTrigger>
-                                    <AccordionContent>
-                                        <div className="!text-black dark:!text-white">
-                                        <div className="space-y-3 pt-2">
-                                            {/* Item 1: Faltantes */}
-                                            <div className="flex items-center justify-between gap-4 pb-3 border-b border-border/20 last:border-b-0 last:pb-0">
-                                                <input
-                                                    type="text"
-                                                    value={shortageId}
-                                                    onChange={(e) => setShortageId(e.target.value)}
-                                                    placeholder={shortageValue === 0 ? "Sin diferencias" : "Ingresar ID de Ajuste"}
-                                                    disabled={shortageValue === 0}
-                                                    className="flex-1 h-9 px-3 text-sm font-medium bg-background border border-border/30 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40 text-black dark:text-white placeholder:text-sm placeholder:font-normal placeholder:text-black dark:placeholder:text-white transition-all shadow-xs disabled:opacity-40 disabled:bg-muted/10 disabled:cursor-not-allowed"
-                                                />
-                                                <div className="text-right">
-                                                    <span className="text-sm font-semibold text-black dark:text-white block leading-none">
-                                                        -${Math.abs(shortageValue).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                        {/* Block 2 — Ajustes y Detalle por rubros */}
+                        <div className="px-5 w-full space-y-3.5 pt-1">
+                            {/* Sección Ajustes de inventario */}
+                            <div className="flex flex-col gap-2">
+                                <div className="px-3 py-1.5 rounded-lg bg-hover font-semibold text-xs text-foreground select-none">
+                                    Ajustes de inventario
+                                </div>
+                                <div className="space-y-3 pt-1">
+                                    {/* Item 1: Faltantes */}
+                                    <div className="flex items-center justify-between gap-4 pb-3 border-b border-border/20 last:border-b-0 last:pb-0">
+                                        <input
+                                            type="text"
+                                            value={shortageId}
+                                            onChange={(e) => setShortageId(e.target.value)}
+                                            placeholder={shortageValue === 0 ? "Sin diferencias" : "Ingresar ID de Ajuste"}
+                                            disabled={shortageValue === 0}
+                                            className="flex-1 h-9 px-3 text-sm font-medium bg-background border border-border/30 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40 text-foreground placeholder:text-sm placeholder:font-normal placeholder:text-muted-foreground/60 tabular-nums transition-all shadow-xs disabled:opacity-40 disabled:bg-muted/10 disabled:cursor-not-allowed"
+                                        />
+                                        <div className="text-right shrink-0">
+                                            <span className="text-sm font-semibold text-foreground tabular-nums block leading-none">
+                                                -${Math.abs(shortageValue).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                            </span>
+                                            <span className="text-xs font-normal text-financial-negative mt-1 block">
+                                                Ajuste negativo
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Item 2: Sobrantes */}
+                                    <div className="flex items-center justify-between gap-4 pb-3 border-b border-border/20 last:border-b-0 last:pb-0">
+                                        <input
+                                            type="text"
+                                            value={surplusId}
+                                            onChange={(e) => setSurplusId(e.target.value)}
+                                            placeholder={surplusValue === 0 ? "Sin diferencias" : "Ingresar ID de Ajuste"}
+                                            disabled={surplusValue === 0}
+                                            className="flex-1 h-9 px-3 text-sm font-medium bg-background border border-border/30 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40 text-foreground placeholder:text-sm placeholder:font-normal placeholder:text-muted-foreground/60 tabular-nums transition-all shadow-xs disabled:opacity-40 disabled:bg-muted/10 disabled:cursor-not-allowed"
+                                        />
+                                        <div className="text-right shrink-0">
+                                            <span className="text-sm font-semibold text-foreground tabular-nums block leading-none">
+                                                +${Math.abs(surplusValue).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                            </span>
+                                            <span className="text-xs font-normal text-financial-positive mt-1 block">
+                                                Ajuste positivo
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Sección Detalle por rubros */}
+                            <div className="flex flex-col gap-2">
+                                <div className="px-3 py-1.5 rounded-lg bg-hover font-semibold text-xs text-foreground select-none">
+                                    Detalle por rubros
+                                </div>
+                                <div className="space-y-3 pt-1">
+                                    {categoryStats.map((stat, idx) => {
+                                        const hasDiff = stat.surplusUnits > 0 || stat.shortageUnits < 0;
+                                        const isZero = stat.value === 0 && !hasDiff;
+                                        
+                                        return (
+                                            <div key={idx} className="flex items-center justify-between gap-4 pb-3 border-b border-border/20 last:border-b-0 last:pb-0">
+                                                <div className="min-w-0">
+                                                    <span className={cn(
+                                                        "text-sm font-semibold block leading-none",
+                                                        isZero ? "text-muted-foreground/70" : "text-foreground"
+                                                    )}>
+                                                        {stat.category}
                                                     </span>
-                                                    <span className="text-xs font-normal text-red-500 mt-1 block">
-                                                        Ajuste negativo
+                                                    <span className="text-xs font-normal text-muted-foreground mt-1 block">
+                                                        {stat.controlledArticles} {stat.controlledArticles === 1 ? 'Artículo Controlado' : 'Artículos Controlados'}
                                                     </span>
                                                 </div>
-                                            </div>
-
-                                            {/* Item 2: Sobrantes */}
-                                            <div className="flex items-center justify-between gap-4 pb-3 border-b border-border/20 last:border-b-0 last:pb-0">
-                                                <input
-                                                    type="text"
-                                                    value={surplusId}
-                                                    onChange={(e) => setSurplusId(e.target.value)}
-                                                    placeholder={surplusValue === 0 ? "Sin diferencias" : "Ingresar ID de Ajuste"}
-                                                    disabled={surplusValue === 0}
-                                                    className="flex-1 h-9 px-3 text-sm font-medium bg-background border border-border/30 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40 text-black dark:text-white placeholder:text-sm placeholder:font-normal placeholder:text-black dark:placeholder:text-white transition-all shadow-xs disabled:opacity-40 disabled:bg-muted/10 disabled:cursor-not-allowed"
-                                                />
-                                                <div className="text-right">
-                                                    <span className="text-sm font-semibold text-black dark:text-white block leading-none">
-                                                        +${Math.abs(surplusValue).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                                <div className="text-right shrink-0">
+                                                    <span className={cn(
+                                                        "text-sm font-semibold tabular-nums block leading-none",
+                                                        isZero ? "text-muted-foreground/60" : stat.value > 0 ? "text-financial-positive" : stat.value < 0 ? "text-financial-negative" : "text-foreground"
+                                                    )}>
+                                                        {stat.value > 0 ? '+' : stat.value < 0 ? '-' : ''}${Math.abs(stat.value).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                                                     </span>
-                                                    <span className="text-xs font-normal text-emerald-600 dark:text-emerald-400 mt-1 block">
-                                                        Ajuste positivo
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        </div>
-                                    </AccordionContent>
-                                </AccordionItem>
-
-                                <AccordionItem value="item2" className="mt-2">
-                                    <AccordionTrigger className="pointer-events-none bg-hover">Detalle por rubros</AccordionTrigger>
-                                    <AccordionContent>
-                                        <div className="!text-black dark:!text-white">
-                                            <div className="space-y-3 pt-2">
-                                                {categoryStats.map((stat, idx) => {
-                                                    const hasDiff = stat.surplusUnits > 0 || stat.shortageUnits < 0;
                                                     
-                                                    return (
-                                                        <div key={idx} className="flex items-center justify-between gap-4 pb-3 border-b border-border/20 last:border-b-0 last:pb-0">
-                                                            <div>
-                                                                <span className="text-sm font-semibold block leading-none text-black dark:text-white">
-                                                                    {stat.category}
-                                                                </span>
-                                                                <span className="text-xs font-normal text-black dark:text-white mt-1 block">
-                                                                    {stat.controlledUnits} Unidades Controladas
-                                                                </span>
-                                                            </div>
-                                                            <div className="text-right">
-                                                                <span className="text-sm font-semibold block leading-none text-black dark:text-white">
-                                                                    {stat.value > 0 ? '+' : stat.value < 0 ? '-' : ''}${Math.abs(stat.value).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                                                                </span>
-                                                                
-                                                                <div className="flex flex-wrap items-center justify-end gap-2 mt-1">
-                                                                    {!hasDiff ? (
-                                                                        <span className="text-xs font-normal text-black dark:text-white">
-                                                                            0 Unidades
-                                                                        </span>
-                                                                    ) : (
-                                                                        <>
-                                                                            {stat.surplusUnits > 0 && (
-                                                                                <span className="text-xs font-normal text-emerald-600 dark:text-emerald-400">
-                                                                                    +{stat.surplusUnits} Unidades
-                                                                                </span>
-                                                                            )}
-                                                                            {stat.shortageUnits < 0 && (
-                                                                                <span className="text-xs font-normal text-red-500">
-                                                                                    {stat.shortageUnits} Unidades
-                                                                                </span>
-                                                                            )}
-                                                                        </>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
+                                                    <div className="flex flex-wrap items-center justify-end gap-2 mt-1 tabular-nums">
+                                                        {!hasDiff ? (
+                                                            <span className="text-xs font-normal text-muted-foreground/50">
+                                                                0 Unidades
+                                                            </span>
+                                                        ) : (
+                                                            <>
+                                                                {stat.surplusUnits > 0 && (
+                                                                    <span className="text-xs font-medium text-financial-positive">
+                                                                        +{stat.surplusUnits} Unidades
+                                                                    </span>
+                                                                )}
+                                                                {stat.shortageUnits < 0 && (
+                                                                    <span className="text-xs font-medium text-financial-negative">
+                                                                        {stat.shortageUnits} Unidades
+                                                                    </span>
+                                                                )}
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </AccordionContent>
-                                </AccordionItem>
-                            </Accordion>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         </div>
 
                         <DialogFooter className="px-5 pb-5 pt-4 mt-2 justify-end">
@@ -1215,13 +1247,6 @@ export default function CyclicInventoryDetail() {
                 open={isHistoryDialogOpen}
                 onOpenChange={setIsHistoryDialogOpen}
                 history={history}
-                onEditIds={(session) => {
-                    setSelectedSessionToEdit(session.id);
-                    setTempShortageId(session.adjustment_id_shortage || "");
-                    setTempSurplusId(session.adjustment_id_surplus || "");
-                    setIsHistoryDialogOpen(false);
-                    setShowEditIdsDialog(true);
-                }}
             />
 
             {/* Security Delete Dialog */}
@@ -1441,122 +1466,6 @@ export default function CyclicInventoryDetail() {
                             </Button>
                         </DialogFooter>
                     </div>
-                </DialogContent>
-            </Dialog>
-
-            {/* Edit Adjustment IDs Dialog */}
-            <Dialog open={showEditIdsDialog} onOpenChange={(open) => !open && setShowEditIdsDialog(false)}>
-                <DialogContent size="lg">
-                    <Form
-                        onSubmit={async (e) => {
-                            e.preventDefault();
-                            setIsSavingIds(true);
-                            try {
-                                if (selectedSessionToEdit === "active") {
-                                    await handleUpdateAdjustmentIds(tempShortageId, tempSurplusId);
-                                } else {
-                                    const session = history.find(s => s.id === selectedSessionToEdit);
-                                    if (session) {
-                                        await handleUpdateSessionAdjustmentIds(
-                                            selectedSessionToEdit,
-                                            tempShortageId,
-                                            tempSurplusId,
-                                            session.created_at
-                                        );
-                                    }
-                                }
-                                setShowEditIdsDialog(false);
-                                toast.success("Operación exitosa", "IDs de ajuste actualizados correctamente.");
-                            } catch (err) {
-                                toast.error("Error", "No se pudieron actualizar los IDs de ajuste.");
-                            } finally {
-                                setIsSavingIds(false);
-                            }
-                        }}
-                        className="space-y-4"
-                    >
-                        <DialogHeader>
-                            <DialogTitle>Editar IDs de Ajuste</DialogTitle>
-                            <DialogDescription>
-                                Modifica los IDs de ajuste cargados en PLEX para Faltantes y Sobrantes.
-                            </DialogDescription>
-                        </DialogHeader>
-
-                        <div className="space-y-4 py-2">
-                            <Field className="space-y-1.5">
-                                <FieldLabel className="text-xs font-semibold text-foreground/90">
-                                    Seleccionar Sesión / Historial
-                                </FieldLabel>
-                                <select
-                                    value={selectedSessionToEdit}
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        setSelectedSessionToEdit(val);
-                                        if (val === "active") {
-                                            const existingShortage = items.find(i => i.status === 'adjusted' && i.shortageId)?.shortageId || "";
-                                            const existingSurplus = items.find(i => i.status === 'adjusted' && i.surplusId)?.surplusId || "";
-                                            setTempShortageId(existingShortage);
-                                            setTempSurplusId(existingSurplus);
-                                        } else {
-                                            const session = history.find(s => s.id === val);
-                                            if (session) {
-                                                setTempShortageId(session.adjustment_id_shortage || "");
-                                                setTempSurplusId(session.adjustment_id_surplus || "");
-                                            }
-                                        }
-                                    }}
-                                    className="w-full h-10 px-3 text-xs rounded-xl border border-border/60 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all cursor-pointer font-medium"
-                                >
-                                    <option value="active">Control Activo (Actual)</option>
-                                    {history.map((session: any) => {
-                                        const dateStr = format(new Date(session.created_at), "d 'de' MMMM, HH:mm", { locale: es });
-                                        const categoryStr = session.category || "General";
-                                        return (
-                                            <option key={session.id} value={session.id}>
-                                                {`${dateStr} - ${categoryStr} (${session.total_units_adjusted} unids)`}
-                                            </option>
-                                        );
-                                    })}
-                                </select>
-                            </Field>
-
-                            <Field>
-                                <FieldLabel className="text-xs font-semibold text-foreground/90">
-                                    ID Ajuste Faltantes (negativos)
-                                </FieldLabel>
-                                <Input
-                                    value={tempShortageId}
-                                    onChange={(e) => setTempShortageId(e.target.value)}
-                                    placeholder="ID Ajuste Faltantes (PLEX)"
-                                    className="h-10 text-xs rounded-xl"
-                                />
-                            </Field>
-
-                            <Field>
-                                <FieldLabel className="text-xs font-semibold text-foreground/90">
-                                    ID Ajuste Sobrantes (positivos)
-                                </FieldLabel>
-                                <Input
-                                    value={tempSurplusId}
-                                    onChange={(e) => setTempSurplusId(e.target.value)}
-                                    placeholder="ID Ajuste Sobrantes (PLEX)"
-                                    className="h-10 text-xs rounded-xl"
-                                />
-                            </Field>
-                        </div>
-
-                        <DialogFooter>
-                            <DialogClose nativeButton={false} render={<Button type="button" variant="ghost" />}>
-                                Cancelar
-                            </DialogClose>
-                            <Button
-                                type="submit"
-                                loading={isSavingIds}
-                            >
-                                Guardar Cambios
-                            </Button>
-                        </DialogFooter>
-                    </Form>
                 </DialogContent>
             </Dialog>
 

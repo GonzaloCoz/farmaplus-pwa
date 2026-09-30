@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
-import { ChevronRight as ArrowRight, Clock, Laptop01 as Laptop, Phone as Smartphone, Zap } from '@untitledui/icons';
+import { ChevronRight as ArrowRight, Clock, Laptop01 as Laptop, Phone as Smartphone, Zap, Upload01 as Upload, Database01 as Database } from '@untitledui/icons';
 import { ZebraIcon } from '@/components/icons/ZebraIcon';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -20,6 +20,7 @@ export default function Stock() {
             color: 'primary',
             gradient: 'from-primary/20 to-primary/5',
             badgeClass: '',
+            borderClass: '',
             showOnMobile: true,
             showOnDesktop: true
         },
@@ -32,6 +33,7 @@ export default function Stock() {
             color: 'primary',
             gradient: 'from-success/20 to-success/5',
             badgeClass: '',
+            borderClass: '',
             showOnMobile: true,
             showOnDesktop: false // Oculto en PC porque la app cliente está optimizada para la Zebra
         }

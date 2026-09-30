@@ -9,10 +9,12 @@ import { BarChart01 as BarChart3, CheckCircle, AlertCircle, CurrencyDollar as Do
 import { LaboratoryCard, LaboratoryStatus } from "@/components/LaboratoryCard";
 import { LabRemovalModal } from "@/components/LabRemovalModal";
 import { CounterAnimation } from "@/components/CounterAnimation";
+import { ParticleCanvasBackground } from "@/components/ui/ParticleCanvasBackground";
 import { MetricCarousel } from "@/components/MetricCarousel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Frame, FramePanel } from "@/components/ui/frame";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { cn, normalizeString } from "@/lib/utils";
 import { ReportExporter } from "@/lib/reportExporter";
@@ -49,6 +51,7 @@ import { getLaboratoriesForBranch } from "@/services/preCountDB";
 import { cyclicInventoryService, CyclicInventoryStats } from "@/services/cyclicInventoryService";
 import { requestsService } from "@/services/requestsService";
 import { supabase } from "@/integrations/supabase/client";
+import { CyclicInventorySkeleton } from "@/components/skeletons/CyclicInventorySkeleton";
 import { useUser } from "@/contexts/UserContext";
 import { usePrefetchLabInventory } from "@/hooks/useInventoryQueries";
 import { useIcons } from "@/lib/icon-context";
@@ -116,6 +119,9 @@ export default function CyclicInventory() {
   const [visibleCount, setVisibleCount] = useState(16);
   const observerRef = useRef<IntersectionObserver | null>(null);
 
+  // Metric View Mode ('currency' | 'units')
+  const [metricViewMode, setMetricViewMode] = useState<'currency' | 'units'>('currency');
+
   // Mass Reset State
   const [showMassResetDialog, setShowMassResetDialog] = useState(false);
   const [massResetChallenge, setMassResetChallenge] = useState("");
@@ -129,7 +135,6 @@ export default function CyclicInventory() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingLabOriginalName, setEditingLabOriginalName] = useState("");
   const [selectedEditLab, setSelectedEditLab] = useState("");
-  const [selectedEditLabObj, setSelectedEditLabObj] = useState<{ label: string, value: string } | null>(null);
 
   // Lab Removal Request State
   const [removalModalOpen, setRemovalModalOpen] = useState(false);
@@ -143,8 +148,30 @@ export default function CyclicInventory() {
     setIsLoading(true);
 
     try {
-      // 0. Obtener lista de bajas aprobadas para esta sucursal
-      const approvedBajas = await requestsService.getApprovedBajas(user.branchSheet);
+      // 1. Cargar en paralelo todas las consultas independientes
+      const [allBranchRequests, allowedLabs, config, inventoryStats] = await Promise.all([
+        requestsService.getRequests(user.branchSheet),
+        getLaboratoriesForBranch(user.branchSheet),
+        cyclicInventoryService.getBranchConfig(user.branchSheet),
+        cyclicInventoryService.getAllCyclicInventories(user.branchSheet)
+      ]);
+
+      const approvedBajas = allBranchRequests
+        .filter(r => (r.type === 'Baja de Laboratorio' || !r.type) && r.status === 'approved')
+        .map(r => ({
+          targetName: (r.targetName || '').trim().toUpperCase(),
+          category: r.category ? r.category.trim().toUpperCase() : undefined,
+          branchName: r.branchName
+        }));
+
+      const pendingBajas = allBranchRequests
+        .filter(r => (r.type === 'Baja de Laboratorio' || !r.type) && r.status === 'pending')
+        .map(r => ({
+          targetName: (r.targetName || '').trim().toUpperCase(),
+          category: r.category ? r.category.trim().toUpperCase() : undefined,
+          branchName: r.branchName,
+          reason: r.reason
+        }));
 
       // Helper para verificar si un laboratorio/rubro fue dado de baja
       const checkIsDischarged = (labName: string, categoryName?: string) => {
@@ -158,14 +185,18 @@ export default function CyclicInventory() {
         });
       };
 
-      // 1. Obtener lista maestra de laboratorios (Autorizados para esta sucursal)
-      const allowedLabs = await getLaboratoriesForBranch(user.branchSheet);
-
-      // Obtener configuración de sucursal para obtener rondas
-      const config = await cyclicInventoryService.getBranchConfig(user.branchSheet);
-
-      // 2. Obtener estado actual del inventario desde Supabase (Filtrado por sucursal)
-      const inventoryStats = await cyclicInventoryService.getAllCyclicInventories(user.branchSheet);
+      // Helper para verificar si un laboratorio/rubro tiene solicitud de baja pendiente
+      const checkPendingRemoval = (labName: string, categoryName?: string) => {
+        const normLab = labName.trim().toUpperCase();
+        const normCat = (categoryName || '').trim().toUpperCase();
+        const match = pendingBajas.find(b => {
+          if (b.targetName !== normLab) return false;
+          if (!b.category || b.category === "BAJA TOTAL" || b.category === "TODOS" || b.category === "GENERAL") return true;
+          const allowedCats = b.category.split(',').map(c => c.trim().toUpperCase());
+          return allowedCats.includes(normCat);
+        });
+        return match ? { hasPending: true, reason: match.reason } : { hasPending: false, reason: undefined };
+      };
 
       // Filtrar por la ronda activa de cada categoría
       const activeInventoryStats = inventoryStats.filter(lab => {
@@ -181,10 +212,15 @@ export default function CyclicInventory() {
       });
 
       // 3. Unir datos: Unión de Inventario Activo (desde branch_laboratories) + Lista Maestra (para pendientes)
-      const mergedData: CyclicInventoryStats[] = activeInventoryStats.map(stat => ({
-        ...stat,
-        isDischarged: checkIsDischarged(stat.labName, stat.category)
-      }));
+      const mergedData: CyclicInventoryStats[] = activeInventoryStats.map(stat => {
+        const pending = checkPendingRemoval(stat.labName, stat.category);
+        return {
+          ...stat,
+          isDischarged: checkIsDischarged(stat.labName, stat.category),
+          hasPendingRemoval: pending.hasPending,
+          pendingRemovalReason: pending.reason
+        };
+      });
 
       // Crear un Set de búsqueda para evitar duplicados (Clave: Nombre|Categoría)
       const activeLabsSet = new Set(activeInventoryStats.map(s => `${s.labName.trim().toUpperCase()}|${normalizeString(s.category || '')}`));
@@ -196,6 +232,7 @@ export default function CyclicInventory() {
 
         // Si esta combinación específica (Nombre+Categoría) no existe en el inventario activo, agregar como Pendiente
         if (!activeLabsSet.has(key)) {
+          const pending = checkPendingRemoval(labInfo.name, labInfo.category);
           mergedData.push({
             labName: labInfo.name,
             category: normalizeString(labInfo.category), // Guardar categoría normalizada para ítems pendientes
@@ -212,7 +249,9 @@ export default function CyclicInventory() {
             positiveUnits: 0,
             netUnits: 0,
             round: labInfo.round,
-            isDischarged: checkIsDischarged(labInfo.name, labInfo.category)
+            isDischarged: checkIsDischarged(labInfo.name, labInfo.category),
+            hasPendingRemoval: pending.hasPending,
+            pendingRemovalReason: pending.reason
           });
         }
       });
@@ -334,8 +373,14 @@ export default function CyclicInventory() {
 
       if (!grouped.has(key)) {
         grouped.set(key, { ...lab });
-      } else if (lab.isDischarged) {
-        grouped.get(key)!.isDischarged = true;
+      } else {
+        if (lab.isDischarged) {
+          grouped.get(key)!.isDischarged = true;
+        }
+        if (lab.hasPendingRemoval) {
+          grouped.get(key)!.hasPendingRemoval = true;
+          grouped.get(key)!.pendingRemovalReason = lab.pendingRemovalReason;
+        }
       }
     });
 
@@ -370,55 +415,35 @@ export default function CyclicInventory() {
   const totalPositive = activeLabs.reduce((acc, curr) => acc + curr.positiveValue, 0);
   const totalAbsoluteDifference = totalPositive + Math.abs(totalNegative);
 
-  // Calcular Totales de Unidades para porcentajes de tendencia
-  const totalSystemUnits = activeLabs.reduce((acc, curr) => acc + curr.totalSystemUnits, 0);
-  const totalNegativeUnits = activeLabs.reduce((acc, curr) => acc + curr.negativeUnits, 0);
-  const totalPositiveUnits = activeLabs.reduce((acc, curr) => acc + curr.positiveUnits, 0);
+  // Calcular Totales de Unidades
+  const totalSystemUnits = activeLabs.reduce((acc, curr) => acc + (curr.totalSystemUnits || 0), 0);
+  const totalNegativeUnits = activeLabs.reduce((acc, curr) => acc + (curr.negativeUnits || 0), 0);
+  const totalPositiveUnits = activeLabs.reduce((acc, curr) => acc + (curr.positiveUnits || 0), 0);
+
+  // Total de unidades/ítems controlados para el cálculo de porcentaje sobre lo auditado
+  const totalControlledItems = activeLabs.reduce((acc, curr) => acc + (curr.controlledItems || 0), 0);
+  const totalAuditedUnits = totalSystemUnits > 0 
+    ? totalSystemUnits 
+    : (totalControlledItems > 0 ? totalControlledItems : (totalPositiveUnits + Math.abs(totalNegativeUnits)));
 
   const calculateTrend = (value: number, total: number) => {
-    if (total === 0) return { value: 0, isPositive: true };
-    const percentage = (value / total) * 100;
+    if (total === 0 || value === 0) return { value: "0", isPositive: true };
+    const raw = (value / total) * 100;
+    const abs = Math.abs(raw);
+    const formatted = abs < 0.1 && abs > 0 ? abs.toFixed(2) : abs.toFixed(1);
     return {
-      value: Math.abs(Number(percentage.toFixed(1))),
-      isPositive: percentage >= 0
+      value: formatted,
+      isPositive: raw >= 0
     };
   };
 
-  const netTrend = calculateTrend(totalNegativeUnits + totalPositiveUnits, totalSystemUnits);
-  const negativeTrend = calculateTrend(totalNegativeUnits, totalSystemUnits);
-  const positiveTrend = calculateTrend(totalPositiveUnits, totalSystemUnits);
-  const absoluteTrend = calculateTrend(Math.abs(totalNegativeUnits) + totalPositiveUnits, totalSystemUnits);
+  const netTrend = calculateTrend(totalNegativeUnits + totalPositiveUnits, totalAuditedUnits);
+  const negativeTrend = calculateTrend(totalNegativeUnits, totalAuditedUnits);
+  const positiveTrend = calculateTrend(totalPositiveUnits, totalAuditedUnits);
+  const absoluteTrend = calculateTrend(Math.abs(totalNegativeUnits) + totalPositiveUnits, totalAuditedUnits);
   const progressPercentage = totalLabs > 0 ? Math.round((controlledLabs / totalLabs) * 100) : 0;
 
-  const handleStartMicroRound = async () => {
-    if (!user?.branchSheet) return;
-    const categoryName = categoriesMap[categoryFilter as CategoryKey] || categoryFilter;
-    const confirmed = window.confirm(
-      `¿Estás seguro de que deseas iniciar una nueva vuelta interna para el rubro ${categoryName}? Esto reiniciará el avance de este rubro a 0% para que puedan volver a auditarlo, pero los datos actuales se guardarán en el historial.`
-    );
-    if (!confirmed) return;
 
-    try {
-      setIsLoading(true);
-      // 1. Fetch current config to find active round
-      const config = await cyclicInventoryService.getBranchConfig(user.branchSheet);
-      const currentRound = config.rounds?.[categoryFilter.toUpperCase()] || config.rounds?.GENERAL || 1;
-      const nextRound = currentRound + 1;
-
-      // 2. Call service to reset category round
-      await cyclicInventoryService.resetCategoryRound(user.branchSheet, categoryFilter, nextRound);
-
-      notify.success("Microvuelta Iniciada", `Se inició la Vuelta ${nextRound}ª para el rubro ${categoryName} con éxito.`);
-      
-      // 3. Reload labs list
-      await loadLabs();
-    } catch (error) {
-      console.error("Error starting micro round:", error);
-      notify.error("Error", "No se pudo iniciar la nueva vuelta interna.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const filteredAndSortedLabs = useMemo(() => {
     let result = [...groupedLaboratories];
@@ -607,7 +632,6 @@ export default function CyclicInventory() {
     setIsEditMode(false);
     setEditingLabOriginalName("");
     setSelectedEditLab("");
-    setSelectedEditLabObj(null);
     setNewLabName("");
     setNewLabCategories(["MEDICAMENTOS"]);
     setShowAddLabDialog(true);
@@ -617,7 +641,6 @@ export default function CyclicInventory() {
     setIsEditMode(true);
     setEditingLabOriginalName("");
     setSelectedEditLab("");
-    setSelectedEditLabObj(null);
     setNewLabName("");
     setNewLabCategories([]);
     setShowAddLabDialog(true);
@@ -627,7 +650,6 @@ export default function CyclicInventory() {
     setSelectedEditLab(labName);
     setEditingLabOriginalName(labName);
     setNewLabName(labName);
-    setSelectedEditLabObj({ label: labName, value: labName });
 
     // Find categories this lab currently has in our local list of labs
     const existingCats = laboratories
@@ -761,11 +783,7 @@ export default function CyclicInventory() {
 
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
+    return <CyclicInventorySkeleton />;
   }
 
   return (
@@ -783,161 +801,159 @@ export default function CyclicInventory() {
         </Alert>
       )}
 
-      {/* Resumen del Panel */}
-      <Card className="p-6 flex flex-col gap-6 transition-all duration-300">
-        {/* Top Breadcrumb and Financial Summary Section */}
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-          <div className="space-y-1">
-            <span className="text-[11px] text-muted-foreground" style={{ fontVariationSettings: fontWeights.normal }}>
-              Rubro seleccionado
-            </span>
-            <div className="flex items-center gap-1.5 text-sm text-foreground" style={{ fontVariationSettings: fontWeights.semibold }}>
-              <span>Inventario Cíclico</span>
-              <span className="text-muted-foreground/50">›</span>
-              <span className="text-primary font-bold">
-                {categoriesMap[categoryFilter as CategoryKey] || categoryFilter}
+      {/* Resumen del Panel con doble recuadro concéntrico */}
+      <div className="w-full bg-surface-2/60 dark:bg-surface-2/40 border border-border/40 rounded-[24px] p-[2px] transition-all duration-200 shadow-xs">
+        <div className="w-full bg-white dark:bg-surface-3 border border-border/40 rounded-[22px] px-5 sm:px-6 pt-3.5 pb-4 sm:pt-4 sm:pb-5 shadow-xs relative overflow-hidden flex flex-col gap-4 sm:gap-5">
+          <ParticleCanvasBackground />
+          
+          {/* Top: Header / Rubro Title & Badges */}
+          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <span className="text-xs text-muted-foreground" style={{ fontVariationSettings: fontWeights.normal }}>
+                Rubro seleccionado
               </span>
+              <div className="flex items-center gap-1.5 text-base font-bold text-foreground" style={{ fontVariationSettings: fontWeights.bold }}>
+                <span>Inventario Cíclico</span>
+                <span className="text-muted-foreground/50 font-normal">›</span>
+                <span className="text-primary font-bold">
+                  {categoriesMap[categoryFilter as CategoryKey] || categoryFilter}
+                </span>
+              </div>
+            </div>
+
+            {/* Badges y Selector de modo (Importes / Unidades) */}
+            <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+              {/* Badges sencillos monocromáticos sin dot */}
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <Badge variant="solid" color="gray" className="bg-muted/70 dark:bg-surface-2/70 text-foreground/80 dark:text-zinc-200 border border-border/40 text-xs font-semibold px-2.5 py-1 rounded-lg shadow-2xs">
+                  {controlledLabs} / {totalLabs} Controlados
+                </Badge>
+                <Badge variant="solid" color="gray" className="bg-muted/70 dark:bg-surface-2/70 text-foreground/80 dark:text-zinc-200 border border-border/40 text-xs font-semibold px-2.5 py-1 rounded-lg shadow-2xs">
+                  {inProgressLabs} En Proceso
+                </Badge>
+                <Badge variant="solid" color="gray" className="bg-muted/70 dark:bg-surface-2/70 text-foreground/80 dark:text-zinc-200 border border-border/40 text-xs font-semibold px-2.5 py-1 rounded-lg shadow-2xs">
+                  {pendingLabs} Pendientes
+                </Badge>
+              </div>
+
+              {/* Selector de modo: Importes ($) / Unidades */}
+              <Tabs
+                value={metricViewMode}
+                onValueChange={(v) => setMetricViewMode(v as 'currency' | 'units')}
+                size="compact"
+              >
+                <TabsList>
+                  <TabItem value="currency" label="Importes" />
+                  <TabItem value="units" label="Unidades" />
+                </TabsList>
+              </Tabs>
             </div>
           </div>
 
-          {/* Financial Values horizontal list */}
-          <div className="flex flex-wrap items-center gap-6 text-sm">
+          {/* Bottom: Financial/Unit Values ocupando todo el ancho en 4 columnas */}
+          <div className="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 divide-y md:divide-y-0 md:divide-x divide-border/40 w-full pt-1">
             {/* Diferencia Neta */}
-            <div className="flex flex-col gap-0.5">
-              <span className="text-[11px] text-muted-foreground" style={{ fontVariationSettings: fontWeights.normal }}>Diferencia Neta</span>
+            <div className="flex flex-col gap-1 md:pr-4">
+              <span className="text-xs text-muted-foreground font-medium" style={{ fontVariationSettings: fontWeights.normal }}>
+                Diferencia Neta
+              </span>
               <div className="flex items-baseline gap-2">
                 <CounterAnimation 
-                   value={Math.abs(totalDifference)} 
-                   prefix={totalDifference < 0 ? "-$" : totalDifference > 0 ? "+$" : "$"}
+                   value={metricViewMode === 'currency' 
+                     ? Math.abs(totalDifference) 
+                     : Math.abs(totalPositiveUnits + totalNegativeUnits)
+                   } 
+                   prefix={metricViewMode === 'currency'
+                     ? (totalDifference < 0 ? "-$" : totalDifference > 0 ? "+$" : "$")
+                     : ((totalPositiveUnits + totalNegativeUnits) < 0 ? "-" : (totalPositiveUnits + totalNegativeUnits) > 0 ? "+" : "")
+                   }
+                   suffix={metricViewMode === 'units' ? " u." : ""}
                    className={cn(
-                    "font-bold tracking-tight text-base",
-                    totalDifference < 0 ? "text-red-500 dark:text-red-400" : totalDifference > 0 ? "text-emerald-500" : "text-foreground"
+                    "font-bold tracking-tight text-xl sm:text-2xl",
+                    (metricViewMode === 'currency' ? totalDifference : (totalPositiveUnits + totalNegativeUnits)) < 0 
+                      ? "text-financial-negative" 
+                      : (metricViewMode === 'currency' ? totalDifference : (totalPositiveUnits + totalNegativeUnits)) > 0 
+                        ? "text-financial-positive" 
+                        : "text-foreground"
                    )}
                 />
-                <span className={cn("text-[10px] font-bold", totalDifference < 0 ? "text-red-500/80" : totalDifference > 0 ? "text-emerald-500/80" : "text-muted-foreground")}>
+                <span className={cn("text-xs font-bold", totalDifference !== 0 ? (totalDifference < 0 ? "text-financial-negative-muted" : "text-financial-positive-muted") : "text-muted-foreground")}>
                   {totalDifference < 0 ? "↓" : totalDifference > 0 ? "↑" : ""}{netTrend.value}%
                 </span>
               </div>
             </div>
 
-            <div className="h-8 w-px bg-border/40 hidden sm:block" />
-
             {/* Valor Absoluto */}
-            <div className="flex flex-col gap-0.5">
-              <span className="text-[11px] text-muted-foreground" style={{ fontVariationSettings: fontWeights.normal }}>Valor Absoluto</span>
+            <div className="flex flex-col gap-1 pt-3 md:pt-0 md:px-4">
+              <span className="text-xs text-muted-foreground font-medium" style={{ fontVariationSettings: fontWeights.normal }}>
+                Valor Absoluto
+              </span>
               <div className="flex items-baseline gap-2">
                 <CounterAnimation 
-                  value={totalAbsoluteDifference} 
-                  prefix="$"
-                  className="font-bold tracking-tight text-base text-foreground"
+                  value={metricViewMode === 'currency'
+                    ? totalAbsoluteDifference
+                    : (totalPositiveUnits + Math.abs(totalNegativeUnits))
+                  } 
+                  prefix={metricViewMode === 'currency' ? "$" : ""}
+                  suffix={metricViewMode === 'units' ? " u." : ""}
+                  className="font-bold tracking-tight text-xl sm:text-2xl text-foreground"
                 />
-                <span className="text-[10px] font-bold text-muted-foreground/60">
+                <span className="text-xs font-bold text-muted-foreground/60">
                   {absoluteTrend.value}%
                 </span>
               </div>
             </div>
 
-            <div className="h-8 w-px bg-border/40 hidden sm:block" />
-
-            {/* Negativo Total */}
-            <div className="flex flex-col gap-0.5">
-              <span className="text-[11px] text-muted-foreground" style={{ fontVariationSettings: fontWeights.normal }}>Faltante Total</span>
+            {/* Faltante Total */}
+            <div className="flex flex-col gap-1 pt-3 md:pt-0 md:px-4">
+              <span className="text-xs text-muted-foreground font-medium" style={{ fontVariationSettings: fontWeights.normal }}>
+                Faltante Total
+              </span>
               <div className="flex items-baseline gap-2">
                 <CounterAnimation 
-                  value={Math.abs(totalNegative)} 
-                  prefix="$"
-                  className="font-bold tracking-tight text-base text-red-500 dark:text-red-400"
+                  value={metricViewMode === 'currency'
+                    ? Math.abs(totalNegative)
+                    : Math.abs(totalNegativeUnits)
+                  } 
+                  prefix={metricViewMode === 'currency' ? "$" : ""}
+                  suffix={metricViewMode === 'units' ? " u." : ""}
+                  className="font-bold tracking-tight text-xl sm:text-2xl text-financial-negative"
                 />
-                <span className={cn("text-[10px] font-bold", totalNegative !== 0 ? "text-red-500/80" : "text-muted-foreground")}>
+                <span className={cn("text-xs font-bold", totalNegative !== 0 ? "text-financial-negative-muted" : "text-muted-foreground")}>
                   {totalNegative !== 0 ? "↓" : ""}{negativeTrend.value}%
                 </span>
               </div>
             </div>
 
-            <div className="h-8 w-px bg-border/40 hidden sm:block" />
-
-            {/* Positivo Total */}
-            <div className="flex flex-col gap-0.5">
-              <span className="text-[11px] text-muted-foreground" style={{ fontVariationSettings: fontWeights.normal }}>Sobrante Total</span>
+            {/* Sobrante Total */}
+            <div className="flex flex-col gap-1 pt-3 md:pt-0 md:pl-4">
+              <span className="text-xs text-muted-foreground font-medium" style={{ fontVariationSettings: fontWeights.normal }}>
+                Sobrante Total
+              </span>
               <div className="flex items-baseline gap-2">
                 <CounterAnimation 
-                  value={totalPositive} 
-                  prefix="$"
-                  className="font-bold tracking-tight text-base text-emerald-500"
+                  value={metricViewMode === 'currency'
+                    ? totalPositive
+                    : totalPositiveUnits
+                  } 
+                  prefix={metricViewMode === 'currency' ? "$" : ""}
+                  suffix={metricViewMode === 'units' ? " u." : ""}
+                  className="font-bold tracking-tight text-xl sm:text-2xl text-financial-positive"
                 />
-                <span className={cn("text-[10px] font-bold", totalPositive !== 0 ? "text-emerald-500/80" : "text-muted-foreground")}>
+                <span className={cn("text-xs font-bold", totalPositive !== 0 ? "text-financial-positive-muted" : "text-muted-foreground")}>
                   {totalPositive !== 0 ? "↑" : ""}{positiveTrend.value}%
                 </span>
               </div>
             </div>
           </div>
         </div>
-
-        {/* Central Progress Panel (Visual structure similar to reference image) */}
-        <Elevated offset={1} className="rounded-2xl p-5 flex flex-col gap-4 relative">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <span className="text-sm font-medium text-muted-foreground">
-                Avance: <span className="font-bold text-foreground tabular-nums text-base">{progressPercentage}%</span>
-              </span>
-            </div>
-
-            {/* Controlled/Total Badge */}
-            <div className="flex flex-wrap items-center gap-2">
-              {progressPercentage === 100 && totalLabs > 0 && (
-                <Button
-                  size="sm"
-                  onClick={handleStartMicroRound}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold px-3 h-8 shadow-sm gap-1.5 flex items-center transition-colors mr-1"
-                >
-                  <Loader2 className="size-3.5" />
-                  Iniciar nueva vuelta
-                </Button>
-              )}
-              <Badge variant="solid" color="green" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-xs font-semibold px-2.5 py-1">
-                {controlledLabs} / {totalLabs} Controlados
-              </Badge>
-              <Badge variant="solid" color="blue" className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 text-xs font-semibold px-2.5 py-1">
-                {inProgressLabs} En Proceso
-              </Badge>
-              <Badge variant="solid" color="amber" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 text-xs font-semibold px-2.5 py-1">
-                {pendingLabs} Pendientes
-              </Badge>
-              {/* Ocultado por pedido del usuario temporalmente 
-              <Badge variant="outline" className="bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 text-xs font-semibold px-2.5 py-1">
-                {totalLedgerAdjustments} Ajustes Realizados
-              </Badge>
-              */}
-            </div>
-          </div>
-
-          {/* Progress bar and ticks */}
-          <div className="space-y-2">
-            <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${progressPercentage}%` }}
-                transition={{ duration: 1, ease: "easeOut" }}
-                className="h-full bg-foreground rounded-full"
-              />
-            </div>
-            {/* Ticks */}
-            <div className="flex justify-between text-[10px] text-muted-foreground/60 font-medium px-0.5">
-              <span>0%</span>
-              <span>25%</span>
-              <span>50%</span>
-              <span>75%</span>
-              <span>100%</span>
-            </div>
-          </div>
-        </Elevated>
-      </Card>
+      </div>
 
       {/* Filtros y Búsqueda */}
       <Tabs value={categoryFilter} onValueChange={(v) => setCategoryFilter(v as FilterCategory)} className="w-full">
         <div className="flex flex-col md:flex-row md:items-center justify-between transition-all gap-4 mb-4">
           {/* Filtros de Categoría */}
-          <TabsList className="bg-popover border border-input shadow-sm p-1 rounded-xl h-10 w-fit inline-flex">
+          <TabsList>
             <TabItem value="MEDICAMENTOS" label="Medicamentos" />
             <TabItem value="PERFUMERIA" label="Perfumería" />
             <TabItem value="ACCESORIOS" label="Accesorios" />
@@ -948,10 +964,10 @@ export default function CyclicInventory() {
         <div className="flex items-center gap-2.5 flex-1 justify-end">
           {/* Botón de Solicitudes antes del buscador */}
           <Button 
-            variant="ghost" 
+            variant="tertiary" 
             size="icon" 
             onClick={() => navigate('/solicitudes')}
-            className="bg-surface-5 shadow-surface-5 rounded-lg group shrink-0"
+            className="shrink-0"
             title="Ver Solicitudes"
           >
             <FileSearch02 className="text-muted-foreground group-hover:text-foreground transition-colors" />
@@ -966,6 +982,7 @@ export default function CyclicInventory() {
               value={searchTerm}
               onChange={setSearchTerm}
               alwaysShowBorder={true}
+              size="default"
             />
           </InputGroup>
 
@@ -973,9 +990,8 @@ export default function CyclicInventory() {
             <DropdownMenu>
               <DropdownTrigger render={
                 <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className="bg-surface-5 shadow-surface-5 rounded-lg group"
+                  variant="tertiary" 
+                  size="icon"
                 >
                   <Filter className="text-muted-foreground group-hover:text-foreground transition-colors" />
                 </Button>
@@ -1046,9 +1062,8 @@ export default function CyclicInventory() {
             <DropdownMenu>
               <DropdownTrigger render={
                 <Button 
-                  variant="ghost" 
+                  variant="tertiary" 
                   size="icon" 
-                  className="bg-surface-5 shadow-surface-5 rounded-lg group" 
                   disabled={isProcessingMassAction}
                 >
                   <MoreVertical className="text-muted-foreground group-hover:text-foreground transition-colors" />
@@ -1139,6 +1154,8 @@ export default function CyclicInventory() {
                       status={lab.status}
                       progress={lab.progress}
                       isDischarged={lab.isDischarged}
+                      hasPendingRemoval={lab.hasPendingRemoval}
+                      pendingRemovalReason={lab.pendingRemovalReason}
                       onClick={() => {
                         if (lab.isDischarged) {
                           notify.warning("Laboratorio Desactivado", "Este laboratorio fue dado de baja mediante solicitud aprobada.");
@@ -1199,18 +1216,36 @@ export default function CyclicInventory() {
                               </span>
                             </TableCell>
                             <TableCell className="text-center">
-                              <div className="flex justify-center">
+                              <div className="flex justify-center items-center gap-1.5">
                                 {lab.isDischarged ? (
                                   <Badge variant="outline" color="rose" size="sm" className="text-[10px] uppercase font-semibold border-rose-500/30 text-rose-500 bg-rose-500/10">
                                     Baja
                                   </Badge>
                                 ) : (
-                                  <div className={cn(
-                                    "size-1.5 rounded-full shadow-sm",
-                                    lab.status === 'controlado' ? "bg-emerald-500" :
-                                      lab.status === 'por_controlar' ? "bg-blue-500" :
-                                        "bg-amber-500"
-                                  )} />
+                                  <>
+                                    {lab.hasPendingRemoval && (
+                                      <Tooltip
+                                        content={
+                                          <div className="flex flex-col gap-0.5 text-left max-w-[200px] py-0.5">
+                                            <span className="font-semibold text-background">Baja en trámite</span>
+                                            <span className="text-[10.5px] opacity-85">
+                                              {lab.pendingRemovalReason || "Solicitud pendiente de aprobación"}
+                                            </span>
+                                          </div>
+                                        }
+                                        side="top"
+                                        sideOffset={4}
+                                      >
+                                        <span className="w-2 h-2 rounded-full bg-[var(--celeste-baja)] animate-pulse shrink-0 cursor-help" />
+                                      </Tooltip>
+                                    )}
+                                    <div className={cn(
+                                      "size-1.5 rounded-full shadow-sm",
+                                      lab.status === 'controlado' ? "bg-emerald-500" :
+                                        lab.status === 'por_controlar' ? "bg-blue-500" :
+                                          "bg-amber-500"
+                                    )} />
+                                  </>
                                 )}
                               </div>
                             </TableCell>
@@ -1372,16 +1407,16 @@ export default function CyclicInventory() {
                 <Field>
                   <FieldLabel className="text-sm font-semibold text-foreground/90">Seleccionar Laboratorio a Editar</FieldLabel>
                   <Combobox
-                    items={comboboxItems}
-                    value={selectedEditLabObj}
-                    onValueChange={(val: { label: string, value: string } | null) => {
-                      setSelectedEditLabObj(val);
+                    items={uniqueLabNames}
+                    value={selectedEditLab}
+                    onValueChange={(val: string) => {
+                      setSelectedEditLab(val || "");
                       if (val) {
-                        handleSelectLabToEdit(val.value);
+                        handleSelectLabToEdit(val);
                       } else {
                         setSelectedEditLab("");
                         setNewLabName("");
-                        setNewLabCategories([]);
+                        setNewLabCategories(["MEDICAMENTOS"]);
                       }
                     }}
                   >
@@ -1395,15 +1430,14 @@ export default function CyclicInventory() {
                         <ComboboxInput
                           className="rounded-md before:rounded-[calc(var(--radius-md)-1px)]"
                           placeholder="Buscar laboratorio..."
-                          showTrigger={false}
-                          startAddon={<SearchIcon className="w-4 h-4 text-muted-foreground" />}
+                          icon={SearchIcon as any}
                         />
                       </div>
                       <ComboboxEmpty>No se encontraron laboratorios.</ComboboxEmpty>
                       <ComboboxList>
-                        {(item: { label: string, value: string }) => (
-                          <ComboboxItem key={item.value} value={item}>
-                            {item.label}
+                        {(item: string) => (
+                          <ComboboxItem key={item} value={item}>
+                            {item}
                           </ComboboxItem>
                         )}
                       </ComboboxList>
@@ -1426,24 +1460,40 @@ export default function CyclicInventory() {
               </Field>
               <Field>
                 <FieldLabel className="text-sm font-semibold text-foreground/90">Rubros / Categorías</FieldLabel>
-                <Select
-                  value={newLabCategories}
-                  onValueChange={setNewLabCategories}
-                  multiple
-                >
-                  <SelectTrigger
-                    disabled={isEditMode && !selectedEditLab}
-                    className="w-full h-11 px-4 rounded-xl bg-popover text-foreground border border-input focus:border-primary/50 transition-colors disabled:opacity-50"
-                  >
-                    <SelectValue>{renderCategoryValue}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="MEDICAMENTOS" index={0}>Medicamentos</SelectItem>
-                    <SelectItem value="PERFUMERIA" index={1}>Perfumería</SelectItem>
-                    <SelectItem value="ACCESORIOS" index={2}>Accesorios</SelectItem>
-                    <SelectItem value="VARIOS" index={3}>Varios</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  {CATEGORIES.map((cat) => {
+                    const isSelected = newLabCategories.includes(cat);
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => {
+                          setNewLabCategories((prev) =>
+                            prev.includes(cat)
+                              ? prev.length > 1
+                                ? prev.filter((c) => c !== cat)
+                                : prev
+                              : [...prev, cat]
+                          );
+                        }}
+                        disabled={isEditMode && !selectedEditLab}
+                        className={cn(
+                          "flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer",
+                          isSelected
+                            ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                            : "bg-surface-2/60 text-muted-foreground border-border/60 hover:border-border hover:text-foreground",
+                          isEditMode && !selectedEditLab && "opacity-50 pointer-events-none"
+                        )}
+                      >
+                        <span>{categoriesMap[cat as CategoryKey] || cat}</span>
+                        <span className={cn(
+                          "w-2 h-2 rounded-full",
+                          isSelected ? "bg-primary-foreground" : "bg-muted-foreground/30"
+                        )} />
+                      </button>
+                    );
+                  })}
+                </div>
               </Field>
             </DialogPanel>
             <DialogFooter>

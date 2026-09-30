@@ -25,7 +25,7 @@ export function TrainingCenterButton({
             size="icon"
             onClick={handleOpenForo}
             className={cn(
-                "shrink-0 cursor-pointer",
+                "h-[34px] w-[34px] rounded-lg shrink-0 cursor-pointer",
                 surfaceClasses(3),
                 className
             )}

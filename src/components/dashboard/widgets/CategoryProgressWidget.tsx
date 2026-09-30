@@ -91,6 +91,9 @@ export function CategoryProgressWidget({ showPrevious = false }: CategoryProgres
 
         // Aggregate Data
         inventories.forEach(inv => {
+            // Excluir laboratorios con baja aprobada
+            if ((inv as any).isDischarged) return;
+
             const catNorm = (inv.category || 'VARIOS').toUpperCase();
             const activeRound = (config as any).rounds?.[catNorm] || (config as any).rounds?.GENERAL || 1;
             const targetRound = showPrevious ? Math.max(1, activeRound - 1) : activeRound;
@@ -127,58 +130,6 @@ export function CategoryProgressWidget({ showPrevious = false }: CategoryProgres
         });
     }, [inventories, config, closures, showPrevious]);
 
-    // Handle background auto-closures side-effect when categories change
-    useEffect(() => {
-        if (loading || !user?.branchSheet || categories.length === 0) return;
-
-        const checkAndRunAutoClosures = async () => {
-            const branchName = user.branchSheet.trim();
-            // Calculate Days Elapsed
-            let daysElapsed = 0;
-            const startDate = (config as any)?.startDate;
-            if (startDate) {
-                const start = new Date(startDate);
-                const now = new Date();
-                const diffTime = Math.abs(now.getTime() - start.getTime());
-                daysElapsed = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            }
-
-            const checkAndRun = async (period: number, dayThreshold: number) => {
-                if (daysElapsed >= dayThreshold) {
-                    const existingClosure = await cyclicInventoryService.getCycleClosures(branchName, period);
-                    const hasClosure = Object.keys(existingClosure).length > 0;
-
-                    if (!hasClosure) {
-                        console.log(`Auto-closing Period ${period} (Day ${dayThreshold} reached)`);
-                        const dataToSave = categories.map(c => ({
-                            name: c.name,
-                            percentage: c.percentage
-                        }));
-
-                        await cyclicInventoryService.saveCycleClosure(branchName, period, dataToSave);
-                        notify.success(`Cierre automático del Periodo ${period} completado.`);
-                        // Refresh closures
-                        const closuresRaw = await cyclicInventoryService.getCycleClosures(branchName, 1);
-                        const normalizedClosures: Record<string, number> = {};
-                        Object.entries(closuresRaw).forEach(([k, v]) => {
-                            const normalizedKey = k.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
-                            normalizedClosures[normalizedKey] = v;
-                        });
-                        setClosures(normalizedClosures);
-                    }
-                }
-            };
-
-            try {
-                await checkAndRun(1, 30);
-                await checkAndRun(2, 60);
-            } catch (err) {
-                console.warn('[ProgressWidget] Background closure check failed', err);
-            }
-        };
-
-        checkAndRunAutoClosures();
-    }, [categories, loading, config, user?.branchSheet]);
 
     const activeStats = useMemo(() => {
         if (selectedCategory) {

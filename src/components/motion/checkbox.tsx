@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useId } from "react";
 import { EASE_OUT, SPRING_PRESS } from "@/lib/ease";
 import { cn } from "@/lib/utils";
@@ -58,12 +58,11 @@ export function Checkbox({
           checked ? "checked" : indeterminate ? "indeterminate" : "unchecked"
         }
         className={cn(
-          "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 outline-none transition-colors duration-200",
-          "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-          "disabled:cursor-not-allowed disabled:opacity-60",
+          "inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border outline-none transition-colors duration-100 shadow-2xs",
+          "focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
           showMark
-            ? "border-primary bg-primary text-primary-foreground"
-            : "border-muted-foreground/50 bg-background hover:border-muted-foreground",
+            ? "border-foreground bg-foreground text-background"
+            : "border-border/70 bg-surface-3 hover:border-foreground/40 dark:border-white/20 dark:hover:border-white/40",
         )}
       >
         <AnimatePresence initial={false}>
@@ -117,3 +116,6 @@ export function Checkbox({
     </label>
   );
 }
+
+export default Checkbox;
+

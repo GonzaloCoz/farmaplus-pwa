@@ -47,6 +47,8 @@ export interface LocalItem {
     device_id?: string;
     device_name?: string;
     location_tag?: string;
+    laboratory?: string;
+    rubro?: string;
 }
 
 export interface LocalProduct {
@@ -55,6 +57,7 @@ export interface LocalProduct {
     cost: number;
     salePrice?: number;
     laboratory?: string;
+    rubro?: string;
     stock?: number;
     id_producto?: string;
     session_id: string;
@@ -112,6 +115,22 @@ export class FarmaplusDB extends Dexie {
             locations: '++id, [session_id+location_tag], status',
             products: null,
             precount_products: 'ean, name, session_id, [session_id+ean]',
+            pendingActions: '++id, status, timestamp, entity'
+        });
+
+        this.version(10).stores({
+            sessions: 'id, status, start_time, synced, user_id, branch_id, sync_pin',
+            items: 'id, session_id, ean, [session_id+ean], [session_id+ean+device_id], [session_id+location_tag], synced, id_producto, device_id, scanned_by, location_tag',
+            locations: '++id, [session_id+location_tag], status',
+            precount_products: 'ean, name, session_id, [session_id+ean]',
+            pendingActions: '++id, status, timestamp, entity'
+        });
+
+        this.version(11).stores({
+            sessions: 'id, status, start_time, synced, user_id, branch_id, sync_pin',
+            items: 'id, session_id, ean, [session_id+ean], [session_id+ean+device_id], [session_id+location_tag], synced, id_producto, device_id, scanned_by, location_tag',
+            locations: '++id, [session_id+location_tag], status',
+            precount_products: 'ean, name, session_id, id_producto, [session_id+ean], [session_id+id_producto]',
             pendingActions: '++id, status, timestamp, entity'
         });
     }

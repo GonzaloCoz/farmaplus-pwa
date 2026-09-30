@@ -154,14 +154,21 @@ export const collectorOfflineService = {
         }
     },
 
-    // 2. Buscar producto en IndexedDB local
+    // 2. Buscar producto en IndexedDB local por EAN o ID de Producto
     async findLocalProduct(ean: string): Promise<LocalProduct | null> {
-        const cleanEan = String(ean).trim();
-        const prod = await collectorDb.products.get(cleanEan);
+        const cleanCode = String(ean).trim();
+        let prod = await collectorDb.products.get(cleanCode);
         if (prod) return prod;
 
-        // Si no está en products, buscar si ya existe en inventories local
-        const inv = await collectorDb.inventories.where('ean').equals(cleanEan).first();
+        // Buscar por id_producto en products
+        prod = await collectorDb.products.filter(p => p.id_producto === cleanCode || String(p.id_producto).trim() === cleanCode).first();
+        if (prod) return prod;
+
+        // Si no está en products, buscar si ya existe en inventories local por EAN o ID
+        let inv = await collectorDb.inventories.where('ean').equals(cleanCode).first();
+        if (!inv) {
+            inv = await collectorDb.inventories.filter(x => x.id_producto === cleanCode || String(x.id_producto).trim() === cleanCode).first();
+        }
         if (inv) {
             return {
                 ean: inv.ean,
@@ -187,13 +194,14 @@ export const collectorOfflineService = {
         const cleanEan = String(ean).trim();
         const nowIso = new Date().toISOString();
 
-        // Buscar producto maestro local
+        // Buscar producto maestro local por EAN o ID
         const localProd = await collectorOfflineService.findLocalProduct(cleanEan);
+        const resolvedEan = localProd?.ean || cleanEan;
 
         let existingItem = await collectorDb.inventories
             .where('[branch_name+laboratory]')
             .equals([branchName, laboratory])
-            .and(x => x.ean === cleanEan)
+            .and(x => x.ean === resolvedEan || (localProd?.id_producto && x.id_producto === localProd.id_producto))
             .first();
 
         let isNew = false;

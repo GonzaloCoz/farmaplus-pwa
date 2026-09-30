@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback, useDeferredValue } from "react";
 import { UIPreCountItem } from "@/hooks/usePreCount";
 import { MasterCatalogItem } from "@/services/preCountDB";
 import { CardFrame } from "@/components/ui/card";
@@ -65,38 +65,58 @@ export function PreCountList({ items, mode = "full", onUpdate, onDelete, onEditR
         };
     }, [items.length]);
 
+    // Indexar catálogo maestro en Maps para acceso O(1) en ordenamiento y renderizado
+    const { catalogByProductId, catalogByEan } = useMemo(() => {
+        const byId = new Map<string, MasterCatalogItem>();
+        const byEan = new Map<string, MasterCatalogItem>();
+        if (masterCatalog && masterCatalog.length > 0) {
+            for (let i = 0; i < masterCatalog.length; i++) {
+                const item = masterCatalog[i];
+                if (item.id_producto) byId.set(item.id_producto, item);
+                if (item.ean) byEan.set(item.ean, item);
+                if (item.eans && item.eans.length > 0) {
+                    for (let j = 0; j < item.eans.length; j++) {
+                        byEan.set(item.eans[j], item);
+                    }
+                }
+            }
+        }
+        return { catalogByProductId: byId, catalogByEan: byEan };
+    }, [masterCatalog]);
+
     const getLab = useCallback((id_producto?: string, ean?: string) => {
         if (!masterCatalog) return "Laboratorio";
-        const matched = masterCatalog.find(item => 
-            (id_producto && item.id_producto === id_producto) || 
-            (ean && (item.ean === ean || item.eans?.includes(ean)))
-        );
+        const matched = (id_producto ? catalogByProductId.get(id_producto) : undefined) || (ean ? catalogByEan.get(ean) : undefined);
         return matched?.laboratory || "Laboratorio"; 
-    }, [masterCatalog]);
+    }, [masterCatalog, catalogByProductId, catalogByEan]);
 
     const getRubro = useCallback((id_producto?: string, ean?: string) => {
         if (!masterCatalog) return "Varios";
-        const matched = masterCatalog.find(item => 
-            (id_producto && item.id_producto === id_producto) || 
-            (ean && (item.ean === ean || item.eans?.includes(ean)))
-        );
+        const matched = (id_producto ? catalogByProductId.get(id_producto) : undefined) || (ean ? catalogByEan.get(ean) : undefined);
         return matched?.rubro || "Varios"; 
-    }, [masterCatalog]);
+    }, [masterCatalog, catalogByProductId, catalogByEan]);
+
+    const deferredSearchQuery = useDeferredValue(searchQuery);
 
     const filteredItems = useMemo(() => {
-        let baseItems = [...items].sort((a, b) => b.timestamp - a.timestamp);
-        
-        if (searchQuery.trim()) {
-            const query = searchQuery.toLowerCase();
-            baseItems = baseItems.filter(item => 
-                item.productName.toLowerCase().includes(query) || 
-                item.ean.includes(query) ||
-                (item.location_tag && item.location_tag.toLowerCase().includes(query))
-            );
+        const term = deferredSearchQuery.trim().toLowerCase();
+        if (!term) {
+            return [...items].sort((a, b) => b.timestamp - a.timestamp);
         }
         
-        return baseItems;
-    }, [items, searchQuery]);
+        const filtered: UIPreCountItem[] = [];
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (
+                item.productName.toLowerCase().includes(term) || 
+                item.ean.includes(term) ||
+                (item.location_tag && item.location_tag.toLowerCase().includes(term))
+            ) {
+                filtered.push(item);
+            }
+        }
+        return filtered.sort((a, b) => b.timestamp - a.timestamp);
+    }, [items, deferredSearchQuery]);
 
     const totalProducts = filteredItems.length;
     const totalUnits = useMemo(() => filteredItems.reduce((acc, item) => acc + (item.quantity || 0), 0), [filteredItems]);

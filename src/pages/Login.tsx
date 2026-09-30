@@ -7,6 +7,8 @@ const Beams = React.lazy(() => import("@/components/ui/Beams"));
 import { InputGroup, InputField } from "@/components/ui/input-group";
 import { StatefulButton, type ButtonState } from "@/components/ui/stateful-button";
 import { useIcons } from "@/lib/icon-context";
+import { WindowControls } from "@/components/WindowControls";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 export default function Login() {
     const { login, user } = useUser();
@@ -18,6 +20,35 @@ export default function Login() {
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [buttonState, setButtonState] = useState<ButtonState>("idle");
+    const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+
+    const handleDragMouseDown = (e: React.MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('button, a, input, [role="button"], [data-no-drag]')) {
+            return;
+        }
+        if (e.button === 0 && isTauri) {
+            try {
+                getCurrentWindow().startDragging();
+            } catch (err) {
+                console.error("Drag error:", err);
+            }
+        }
+    };
+
+    const handleHeaderDoubleClick = (e: React.MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('button, a, input, [role="button"], [data-no-drag]')) {
+            return;
+        }
+        if (isTauri) {
+            try {
+                getCurrentWindow().toggleMaximize();
+            } catch (err) {
+                console.error("Toggle maximize error:", err);
+            }
+        }
+    };
 
     // Redirect if already authenticated
     useEffect(() => {
@@ -49,16 +80,27 @@ export default function Login() {
     };
 
     return (
-        <div className="flex h-screen w-full bg-[#0a0a0c] text-white overflow-hidden font-sans select-none">
+        <div className="flex h-screen w-full bg-[oklch(0.11_0_0)] text-white overflow-hidden font-sans select-none relative">
+            {/* Top draggable titlebar for Tauri desktop */}
+            {isTauri && (
+                <div 
+                    data-tauri-drag-region
+                    onMouseDown={handleDragMouseDown}
+                    onDoubleClick={handleHeaderDoubleClick}
+                    className="absolute top-0 left-0 right-0 h-11 flex items-center justify-end px-3.5 z-50 select-none bg-transparent"
+                >
+                    <WindowControls />
+                </div>
+            )}
             {/* Left Panel: Form */}
-            <div className="w-full lg:w-[42%] xl:w-[38%] h-full flex flex-col justify-center items-center p-6 sm:p-10 md:p-12 z-10 relative bg-[#0a0a0c] border-r border-white/[0.04]">
+            <div className="w-full lg:w-[42%] xl:w-[38%] h-full flex flex-col justify-center items-center p-6 sm:p-10 md:p-12 z-10 relative bg-[oklch(0.11_0_0)] border-r border-[oklch(1_0_0/0.05)] [--muted-foreground:oklch(0.68_0_0)] [--foreground:oklch(0.96_0_0)] [--border:oklch(0.24_0_0)] [--card:oklch(0.15_0_0)] [--muted:oklch(0.18_0_0)]">
                 <div className="max-w-sm w-full flex flex-col justify-center gap-8 py-8">
                     {/* Brand Logo & Intro */}
                     <div>
-                        <h1 className="font-sans text-3xl font-semibold tracking-tight text-white">
+                        <h1 className="font-sans text-3xl font-semibold tracking-tight text-[oklch(0.98_0_0)]">
                             Iniciar sesión
                         </h1>
-                        <p className="mt-2 text-zinc-400 text-sm">
+                        <p className="mt-2 text-[oklch(0.68_0_0)] text-sm">
                             Te damos la bienvenida de nuevo. Ingresa tus datos.
                         </p>
                     </div>
@@ -110,14 +152,14 @@ export default function Login() {
                     </div>
 
                     {/* Support / Help footer */}
-                    <div className="text-center pt-6 border-t border-white/[0.03]">
+                    <div className="text-center pt-6 border-t border-[oklch(1_0_0/0.05)]">
                         <a
                             href="https://teams.microsoft.com/l/chat/0/0?users=GHCoz@farmaplus.com.ar&message=Hola Gonzalo, necesito ayuda con el acceso al PWA"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-500 hover:text-white transition-colors group justify-center"
+                            className="inline-flex items-center gap-2 text-xs font-semibold text-[oklch(0.55_0_0)] hover:text-[oklch(0.95_0_0)] transition-colors group justify-center"
                         >
-                            <HelpCircle className="w-4 h-4 text-zinc-600 group-hover:text-white transition-colors" />
+                            <HelpCircle className="w-4 h-4 text-[oklch(0.45_0_0)] group-hover:text-[oklch(0.95_0_0)] transition-colors" />
                             <span>¿Necesitas ayuda con el acceso?</span>
                         </a>
                     </div>
@@ -143,8 +185,8 @@ export default function Login() {
                 </div>
 
                 {/* Dark Vignette Overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0c]/80 via-transparent to-[#0a0a0c]/30 pointer-events-none z-10" />
-                <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0c] via-transparent to-transparent pointer-events-none w-1/4 z-10" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[oklch(0.11_0_0)]/80 via-transparent to-[oklch(0.11_0_0)]/30 pointer-events-none z-10" />
+                <div className="absolute inset-0 bg-gradient-to-r from-[oklch(0.11_0_0)] via-transparent to-transparent pointer-events-none w-1/4 z-10" />
 
                 {/* Text Content */}
                 <div className="relative flex h-full flex-col justify-end p-16 xl:p-20 z-20">

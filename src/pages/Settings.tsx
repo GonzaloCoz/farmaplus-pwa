@@ -17,6 +17,7 @@ import { useUser } from "@/contexts/UserContext";
 import { useNotificationPreferences } from "@/contexts/NotificationPreferencesContext";
 import { NotificationPositionSelector } from "@/components/settings/NotificationPositionSelector";
 import { ThemeSelector } from "@/components/settings/ThemeSelector";
+import { TintSelector } from "@/components/settings/TintSelector";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { notify } from "@/lib/notifications";
 import { hasPermission } from "@/config/permissions";
@@ -37,7 +38,7 @@ import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAppVersion, CURRENT_APP_VERSION } from '@/hooks/useAppVersion';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -670,6 +671,17 @@ export default function Settings() {
                     {themeMode === 'system' && '💻 Siguiendo configuración del sistema'}
                   </p>
                 </div>
+
+                <div className="border-t border-border/60 pt-6 space-y-4">
+                  <div>
+                    <Label className="text-base">Tinte de Color (Matiz Global)</Label>
+                    <p className="text-sm text-muted-foreground mt-1 mb-4">
+                      Aplica un sutil tinte cromático en toda la aplicación tanto para el modo claro como oscuro.
+                    </p>
+                  </div>
+
+                  <TintSelector />
+                </div>
               </CardContent>
             </Card>
 
@@ -751,9 +763,7 @@ export default function Settings() {
                           <div className="space-y-2">
                             <Label>Sucursal a actualizar</Label>
                             <Select value={selectedBranchImport} onValueChange={setSelectedBranchImport}>
-                              <SelectTrigger>
-                                <SelectValue>Seleccionar sucursal...</SelectValue>
-                              </SelectTrigger>
+                              <SelectTrigger placeholder="Seleccionar sucursal..." />
                               <SelectContent>
                                 {allBranches.map((name, idx) => (
                                   <SelectItem key={name} index={idx} value={name}>{name}</SelectItem>

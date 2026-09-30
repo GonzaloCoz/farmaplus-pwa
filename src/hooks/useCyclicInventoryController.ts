@@ -76,6 +76,8 @@ export function useCyclicInventoryController({ labName, round }: UseCyclicInvent
     // 2. Upload Logic
     const { 
         isUploading, 
+        isSyncingMysql,
+        handleMysqlSync,
         handleFileUpload, 
         handleElectronImport,
         showMismatchDialog,
@@ -98,7 +100,7 @@ export function useCyclicInventoryController({ labName, round }: UseCyclicInvent
         currentItems: items,
         onItemsUpdated: (newItems) => {
             setItems(newItems);
-            setIsExcelUploaded(true); // Se acaba de cargar un Excel, permitimos re-ajustes
+            setIsExcelUploaded(true); // Se acaba de sincronizar/cargar datos, permitimos re-ajustes
             if (branchName && labName) {
                 const key = `excel_uploaded_${normalizeString(branchName)}_${normalizeString(labName)}`;
                 localStorage.setItem(key, 'true');
@@ -145,15 +147,18 @@ export function useCyclicInventoryController({ labName, round }: UseCyclicInvent
         fetchPersistentStats();
     }, [fetchPersistentStats]);
 
+const esCollator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' });
+
     // Advanced Logic State
     const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'value-asc' | 'value-desc'>('name-asc');
 
     // Derived State: Sorted Items
     // We filter items based on the active tab in the UI, but here we provide a helper to sort any list
     const getSortedItems = useCallback((itemsToSort: CyclicItem[]) => {
+        if (!itemsToSort || itemsToSort.length <= 1) return itemsToSort;
         return [...itemsToSort].sort((a, b) => {
-            if (sortBy === 'name-asc') return a.name.localeCompare(b.name);
-            if (sortBy === 'name-desc') return b.name.localeCompare(a.name);
+            if (sortBy === 'name-asc') return esCollator.compare(a.name, b.name);
+            if (sortBy === 'name-desc') return esCollator.compare(b.name, a.name);
 
             const diffA = (a.countedQuantity - a.systemQuantity) * a.cost;
             const diffB = (b.countedQuantity - b.systemQuantity) * b.cost;
@@ -429,11 +434,6 @@ export function useCyclicInventoryController({ labName, round }: UseCyclicInvent
             // Fetch the updated stats to reflect the real database state after finalization
             await fetchPersistentStats();
 
-            // Source of truth: recompute progress from inventories (prevent false 100%)
-            // Already called inside finalize_cyclic_inventory RPC but doing it here again 
-            // ensures the local UI is fully synced if necessary.
-            await cyclicInventoryService.recomputeLabProgress(branchName, labName);
-
             // Extrack history details
             const controlledCategories = Array.from(new Set(controlledItems.map(i => i.category || 'Varios')));
             const historyCategoryStr = controlledCategories.length > 0
@@ -452,7 +452,9 @@ export function useCyclicInventoryController({ labName, round }: UseCyclicInvent
                 console.warn("No se pudo obtener la ronda del config, usando default 1:", err);
             }
 
-            await cyclicInventoryService.saveAdjustmentHistory(branchName, labName, {
+            // Guardar historial de auditoría de manera asíncrona enviando solo los ítems ajustados
+            // para no congelar la UI ni saturar el ancho de banda con payloads gigantes
+            cyclicInventoryService.saveAdjustmentHistory(branchName, labName, {
                 adjustment_id_shortage: shortageId,
                 adjustment_id_surplus: surplusId,
                 shortage_value: shortageValue,
@@ -460,9 +462,11 @@ export function useCyclicInventoryController({ labName, round }: UseCyclicInvent
                 total_units_adjusted: controlledItems.length,
                 user_name: user?.name,
                 user_id: user?.id,
-                items_snapshot: updatedItems,
+                items_snapshot: finalProcessedItems,
                 category: historyCategoryStr,
                 round: activeRound
+            }).catch(err => {
+                console.error("Error saving adjustment history in background:", err);
             });
 
             notify.success("Operación exitosa", `${categoryToFinalize} finalizado y archivado. Listo para nueva carga.`);
@@ -607,7 +611,7 @@ export function useCyclicInventoryController({ labName, round }: UseCyclicInvent
                 total_units_adjusted: adjustedItems.length,
                 user_name: `${user?.name || 'Admin'} (Edición Admin)`,
                 user_id: user?.id,
-                items_snapshot: items,
+                items_snapshot: adjustedItems,
                 category: historyCategoryStr,
                 round: activeRoundAdmin
             });
@@ -759,6 +763,8 @@ export function useCyclicInventoryController({ labName, round }: UseCyclicInvent
         getSortedItems,
 
         // Actions
+        isSyncingMysql,
+        handleMysqlSync,
         handleFileUpload,
         handleElectronImport,
         handleUpdateQuantity,

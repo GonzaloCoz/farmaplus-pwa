@@ -15,11 +15,15 @@ interface ResultItem {
   sku?: string;
 }
 
+import { APP_NAVIGATION } from "@/config/navigation";
+
 const STATIC_INDEX: ResultItem[] = [
-  { id: "dashboard", title: "Inicio", url: "/", type: "page" },
-  { id: "cyclic", title: "Inventarios Cíclicos", url: "/inventario-ciclico", type: "page" },
-  { id: "vencimientos", title: "Control de Vencimiento", url: "/control-vencimiento", type: "page" },
-  { id: "reports", title: "Reportes", url: "/reportes", type: "page" },
+  ...APP_NAVIGATION.map(item => ({
+    id: item.url.replace(/\//g, '-') || 'home',
+    title: item.title,
+    url: item.url,
+    type: 'page' as const,
+  })),
   { id: "settings", title: "Configuración", url: "/configuracion", type: "other" },
 ];
 

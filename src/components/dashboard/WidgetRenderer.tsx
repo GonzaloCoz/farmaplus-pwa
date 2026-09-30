@@ -6,6 +6,7 @@ import { CountdownWidget } from "@/components/dashboard/widgets/CountdownWidget"
 import { CategoryProgressWidget } from "@/components/dashboard/widgets/CategoryProgressWidget";
 import { TrendsChartWidget } from "@/components/dashboard/widgets/TrendsChartWidget";
 import { TeamsChatWidget } from "@/components/dashboard/widgets/TeamsChatWidget";
+import { WidgetSkeleton } from "@/components/dashboard/WidgetSkeleton";
 import { hasPermission } from "@/config/permissions";
 import { User } from "@/contexts/UserContext";
 
@@ -23,6 +24,7 @@ interface WidgetRendererProps {
     onToggleLock?: (isLocked: boolean) => void;
     cycleFilter?: 'current' | 'previous';
     onCycleFilterChange?: (filter: 'current' | 'previous') => void;
+    isLoading?: boolean;
 }
 
 export const WidgetRenderer = memo(({
@@ -38,7 +40,8 @@ export const WidgetRenderer = memo(({
     lockReason,
     onToggleLock,
     cycleFilter = 'current',
-    onCycleFilterChange
+    onCycleFilterChange,
+    isLoading
 }: WidgetRendererProps) => {
 
     switch (widgetType) {
@@ -67,6 +70,9 @@ export const WidgetRenderer = memo(({
         case 'trends-chart':
             return <TrendsChartWidget type="negative" />;
         case 'countdown':
+            if (isLoading) {
+                return <WidgetSkeleton />;
+            }
             return (
                 <CountdownWidget
                     assignedDays={assignedDays}

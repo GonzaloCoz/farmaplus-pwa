@@ -15,7 +15,7 @@ export function TopAppBar() {
         const handleScroll = (e: Event) => {
             const target = e.target as HTMLElement;
             // Detect scroll in any child of main-content (individual windows)
-            if (target && (target.id === "main-content" || target.closest("#main-content"))) {
+            if (target && typeof target.closest === 'function' && (target.id === "main-content" || target.closest("#main-content"))) {
                 setIsScrolled(target.scrollTop > 10);
             }
         };

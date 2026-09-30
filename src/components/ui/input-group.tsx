@@ -102,7 +102,7 @@ const InputGroup = forwardRef<HTMLDivElement, InputGroupProps>(
 InputGroup.displayName = "InputGroup";
 
 interface InputFieldProps
-  extends Omit<InputHTMLAttributes<HTMLInputElement>, "onChange" | "index"> {
+  extends Omit<InputHTMLAttributes<HTMLInputElement>, "onChange" | "index" | "size"> {
   label?: string;
   placeholder?: string;
   icon?: IconComponent;
@@ -113,6 +113,8 @@ interface InputFieldProps
   disabled?: boolean;
   alwaysShowBorder?: boolean;
   className?: string;
+  inputClassName?: string;
+  size?: "default" | "compact";
 }
 
 const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
@@ -128,6 +130,8 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
       disabled,
       alwaysShowBorder,
       className,
+      inputClassName,
+      size = "default",
       ...props
     },
     ref
@@ -231,14 +235,16 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
             inputRef.current?.focus();
           }}
           className={cn(
-            `flex items-center gap-2 ${shape.input} px-3 py-2 ring-1 transition-all duration-80`,
+            `flex items-center gap-2 ${shape.input} ring-1 transition-all duration-80`,
+            size === "compact" ? "h-7 px-2.5 gap-1.5 text-xs" : "h-9 px-3",
             bgClass,
-            ringClass
+            ringClass,
+            inputClassName
           )}
         >
           {Icon && (
             <Icon
-              size={16}
+              size={size === "compact" ? 14 : 16}
               strokeWidth={labelActive || alwaysShowBorder ? 2 : 1.5}
               className={cn(
                 "shrink-0 transition-[color,stroke-width] duration-80",
@@ -256,7 +262,10 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
             onFocus={handleFocus}
             onBlur={handleBlur}
             placeholder={placeholder}
-            className="w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground outline-none font-[inherit]"
+            className={cn(
+              "w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground outline-none font-[inherit]",
+              size === "compact" && "text-xs"
+            )}
             style={{ fontVariationSettings: fontWeights.normal }}
             {...props}
           />

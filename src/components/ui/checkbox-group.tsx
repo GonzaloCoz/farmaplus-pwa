@@ -15,9 +15,11 @@ import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";
 import { cn } from "@/lib/utils";
 import { spring } from "@/lib/springs";
 import { fontWeights } from "@/lib/font-weight";
-import { useProximityHover } from "@/hooks/use-proximity-hover";
+import { useFluidHover, useRegisterFluidHoverItem } from "@/hooks/use-fluid-hover";
 import { useMergeSplitBlocks, SelectionBackgrounds } from "@/hooks/use-merge-split";
 import { useShape } from "@/lib/shape-context";
+import { SizeProvider, useSize, type SizeVariant } from "@/lib/size-context";
+import { FluidHoverHighlight } from "@/components/ui/fluid-hover-highlight";
 
 interface CheckboxGroupContextValue {
   registerItem: (index: number, element: HTMLElement | null) => void;
@@ -38,28 +40,26 @@ function useCheckboxGroup() {
 interface CheckboxGroupProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;
   checkedIndices: Set<number>;
+  /** Pins the group's rows to one step of the size ladder (default 36px,
+   *  compact 28px — see /docs/sizes). Omitted, it follows the surrounding
+   *  SizeProvider. */
+  size?: SizeVariant;
 }
 
 const CheckboxGroup = forwardRef<HTMLDivElement, CheckboxGroupProps>(
-  ({ children, checkedIndices, className, ...props }, ref) => {
+  ({ children, checkedIndices, size, className, ...props }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const groupIdCounter = useRef(0);
     const prevGroupMap = useRef(new Map<number, number>());
 
+    const hover = useFluidHover(containerRef);
     const {
       activeIndex,
       setActiveIndex,
       itemRects,
-      sessionRef,
       handlers,
       registerItem,
-      measureItems,
-    } = useProximityHover(containerRef);
-
-    const childrenLength = Array.isArray(children) ? children.length : (children ? 1 : 0);
-    useEffect(() => {
-      measureItems();
-    }, [measureItems, childrenLength]);
+    } = hover;
 
     // Group contiguous checked indices into runs with stable IDs
     const runs: { start: number; end: number }[] = [];
@@ -96,17 +96,14 @@ const CheckboxGroup = forwardRef<HTMLDivElement, CheckboxGroupProps>(
 
     const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
 
-    const activeRect = activeIndex !== null ? itemRects[activeIndex] : null;
     const focusRect = focusedIndex !== null ? itemRects[focusedIndex] : null;
-    const isHoveringOther =
-      activeIndex !== null && !checkedIndices.has(activeIndex);
     const shape = useShape();
 
     // Selected backgrounds, with the merge/split boundary animation when one
     // unchecked row bridges or splits two checked runs.
     const blocks = useMergeSplitBlocks(checkedGroups, itemRects, shape.mergedRadius);
 
-    return (
+    const group = (
       <CheckboxGroupContext.Provider value={{ registerItem, activeIndex }}>
         <div
           ref={(node) => {
@@ -117,10 +114,11 @@ const CheckboxGroup = forwardRef<HTMLDivElement, CheckboxGroupProps>(
           onMouseEnter={handlers.onMouseEnter}
           onMouseMove={handlers.onMouseMove}
           onMouseLeave={handlers.onMouseLeave}
+          onClick={handlers.onClick}
           onFocus={(e) => {
             const indexAttr = (e.target as HTMLElement)
-              .closest("[data-proximity-index]")
-              ?.getAttribute("data-proximity-index");
+              .closest("[data-fluid-hover-index]")
+              ?.getAttribute("data-fluid-hover-index");
             if (indexAttr != null) {
               const idx = Number(indexAttr);
               setActiveIndex(idx);
@@ -140,7 +138,7 @@ const CheckboxGroup = forwardRef<HTMLDivElement, CheckboxGroupProps>(
             // carries role="checkbox", so a bare [role="checkbox"] selector
             // matches twice per row and arrows skip onto the hidden control.
             const items = Array.from(
-              containerRef.current?.querySelectorAll("[data-proximity-index]") ?? []
+              containerRef.current?.querySelectorAll("[data-fluid-hover-index]") ?? []
             ) as HTMLElement[];
             const currentIdx = items.indexOf(e.target as HTMLElement);
             if (currentIdx === -1) return;
@@ -169,36 +167,13 @@ const CheckboxGroup = forwardRef<HTMLDivElement, CheckboxGroupProps>(
           {/* Selected backgrounds (merged for contiguous checked items).
               A run is normally one block; mid merge/split it is drawn as two
               abutting halves — see useMergeSplitBlocks. */}
-          <SelectionBackgrounds blocks={blocks} dimmed={isHoveringOther} />
+          <SelectionBackgrounds blocks={blocks} />
 
           {/* Hover background */}
-          <AnimatePresence>
-            {activeRect && (
-              <motion.div
-                key={sessionRef.current}
-                className={`absolute ${shape.bg} bg-hover pointer-events-none`}
-                initial={{
-                  opacity: 0,
-                  top: activeRect.top,
-                  left: activeRect.left,
-                  width: activeRect.width,
-                  height: activeRect.height,
-                }}
-                animate={{
-                  opacity: 1,
-                  top: activeRect.top,
-                  left: activeRect.left,
-                  width: activeRect.width,
-                  height: activeRect.height,
-                }}
-                exit={{ opacity: 0, transition: spring.fast.exit }}
-                transition={{
-                  ...spring.fast,
-                  opacity: { duration: 0.08 },
-                }}
-              />
-            )}
-          </AnimatePresence>
+          <FluidHoverHighlight
+            hover={hover}
+            className={shape.bg}
+          />
 
           {/* Focus ring */}
           <AnimatePresence>
@@ -225,6 +200,9 @@ const CheckboxGroup = forwardRef<HTMLDivElement, CheckboxGroupProps>(
         </div>
       </CheckboxGroupContext.Provider>
     );
+
+    // A size prop pins every row in the group to one ladder step.
+    return size ? <SizeProvider size={size}>{group}</SizeProvider> : group;
   }
 );
 
@@ -243,10 +221,7 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
     const hasMounted = useRef(false);
     const { registerItem, activeIndex } = useCheckboxGroup();
 
-    useEffect(() => {
-      registerItem(index, internalRef.current);
-      return () => registerItem(index, null);
-    }, [index, registerItem]);
+    useRegisterFluidHoverItem(registerItem, index, internalRef);
 
     useEffect(() => {
       hasMounted.current = true;
@@ -255,6 +230,8 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
     const isActive = activeIndex === index;
     const skipAnimation = !hasMounted.current;
     const shape = useShape();
+    const sizeClasses = useSize();
+    const compact = sizeClasses.variant === "compact";
 
     return (
       <div
@@ -263,7 +240,7 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
           if (typeof ref === "function") ref(node);
           else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
         }}
-        data-proximity-index={index}
+        data-fluid-hover-index={index}
         tabIndex={0}
         role="checkbox"
         aria-checked={checked}
@@ -292,7 +269,7 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
         className={cn(
           // Fixed height (was py-1.5 around a 19.5px line box ≈ 31.5px) so the
           // text-box trim on the label doesn't shrink the row.
-          `relative z-10 flex h-8 items-center gap-2.5 ${shape.item} px-3 cursor-pointer outline-none`,
+          `relative z-10 flex ${sizeClasses.control} items-center ${sizeClasses.gap} ${shape.item} ${sizeClasses.px} cursor-pointer outline-none`,
           className
         )}
         {...props}
@@ -303,13 +280,17 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
           onCheckedChange={() => onToggle()}
           tabIndex={-1}
           aria-hidden
-          className="relative w-[15px] h-[15px] shrink-0 appearance-none bg-transparent p-0 border-0 outline-none cursor-pointer"
+          className={cn(
+            "relative shrink-0 appearance-none bg-transparent p-0 border-0 outline-none cursor-pointer",
+            compact ? "w-[14px] h-[14px]" : "w-[16px] h-[16px]"
+          )}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Border */}
           <div
             className={cn(
-              "absolute inset-0 rounded-[5px] border-solid transition-all duration-80",
+              "absolute inset-0 border-solid transition-all duration-80",
+              compact ? "rounded-[4px]" : "rounded-[5px]",
               checked
                 ? "border-[1.5px] border-transparent"
                 : isActive
@@ -336,8 +317,8 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
                   return (
                     <motion.svg
                       {...rest}
-                      width={18}
-                      height={18}
+                      width={compact ? 16 : 18}
+                      height={compact ? 16 : 18}
                       viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
@@ -372,7 +353,7 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
         {/* Label */}
         {/* Both stacked spans carry the text-box trim so the invisible bold
             sizer and the visible label keep identical boxes. */}
-        <span className="inline-grid text-[13px]">
+        <span className={cn("inline-grid", sizeClasses.text)}>
           <span
             className="col-start-1 row-start-1 invisible [text-box:trim-both_cap_alphabetic]"
             style={{ fontVariationSettings: fontWeights.semibold }}

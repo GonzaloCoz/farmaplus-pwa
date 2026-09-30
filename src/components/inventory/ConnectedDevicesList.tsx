@@ -30,7 +30,7 @@ export function ConnectedDevicesList({ devices, className }: ConnectedDevicesLis
         {devices.length > 0 ? (
           <div className="divide-y divide-border/10">
             {devices.map((device) => {
-              const isZebra = device.deviceName.toLowerCase().includes('zebra') || device.deviceId.startsWith('dev-');
+              const isZebra = device.deviceName.toLowerCase().includes('zebra') || (device as any).deviceType === 'zebra';
               
               // Paleta de colores aleatorios estables por dispositivo
               const colors = [

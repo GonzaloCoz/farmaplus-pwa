@@ -3,11 +3,14 @@
 import {
   ArrowLeftToLine,
   ArrowRightToLine,
-  ChevronUp,
-  GripVertical,
   MoreHorizontal,
   Trash2,
 } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import UnfoldMoreIcon from "@hugeicons/core-free-icons/UnfoldMoreIcon";
+import ChevronDownIcon from "@hugeicons/core-free-icons/ChevronDownIcon";
+import ChevronUpIcon from "@hugeicons/core-free-icons/ChevronUpIcon";
+import DragDropVerticalIcon from "@hugeicons/core-free-icons/DragDropVerticalIcon";
 import { motion } from "motion/react";
 import { type PointerEvent as ReactPointerEvent, useEffect } from "react";
 import { createPortal } from "react-dom";
@@ -50,6 +53,8 @@ export interface TableHeaderProps<T> {
   activeColumn: string | null;
   onColumnActivate?: (key: string) => void;
   onColumnDeactivate?: () => void;
+  dense?: boolean;
+  headerClassName?: string;
 }
 
 /** Column insert / delete menu items shared by the header cell and the portal handle. */
@@ -122,7 +127,7 @@ function ColumnHandle<T>({
         top: rect.top,
         left: rect.left + rect.width / 2,
         transform: "translate(-50%, -50%)",
-        zIndex: 40,
+        zIndex: 50,
       }}
       onPointerEnter={onEnter}
       onPointerLeave={onLeave}
@@ -165,6 +170,8 @@ export function TableHeader<T>({
   activeColumn,
   onColumnActivate,
   onColumnDeactivate,
+  dense = false,
+  headerClassName,
 }: TableHeaderProps<T>) {
   const hasColumnMenu = !!(onInsertColumn || onDeleteColumn);
   const activeIndex = columns.findIndex((c) => c.key === activeColumn);
@@ -184,7 +191,7 @@ export function TableHeader<T>({
       <thead>
       <tr style={{ height: rowHeight }}>
         {selectable ? (
-          <th className="sticky top-0 z-10 border-border border-b bg-surface-5">
+          <th className={cn("sticky top-0 z-40 border-border/60 border-b bg-white dark:bg-[#252525] dark:bg-surface-3", headerClassName)}>
             <div className="flex items-center justify-center">
               <Checkbox
                 checked={allSelected}
@@ -222,7 +229,8 @@ export function TableHeader<T>({
                   : undefined
               }
               className={cn(
-                "group sticky top-0 z-10 border-border border-b bg-surface-5 p-0 font-medium text-muted-foreground",
+                "group sticky top-0 z-40 border-border/40 border-b bg-white dark:bg-[#252525] dark:bg-surface-3 p-0 text-sm font-normal text-muted-foreground",
+                headerClassName,
                 "data-[drop=true]:before:absolute data-[drop=true]:before:inset-y-0 data-[drop=true]:before:left-0 data-[drop=true]:before:w-0.5 data-[drop=true]:before:bg-primary",
                 "data-[dropend=true]:after:absolute data-[dropend=true]:after:inset-y-0 data-[dropend=true]:after:right-0 data-[dropend=true]:after:w-0.5 data-[dropend=true]:after:bg-primary",
               )}
@@ -242,16 +250,24 @@ export function TableHeader<T>({
                 }
                 transition={SPRING_PRESS}
               >
-                {reorderable ? (
+                {reorderable && column.key !== "select" ? (
                   <button
                     type="button"
                     aria-label={`Reorder ${column.key} column`}
                     onPointerDown={(e) => onReorderStart(column.key, e)}
                     onPointerMove={onReorderMove}
                     onPointerUp={onReorderEnd}
-                    className="flex h-full cursor-grab touch-none items-center pl-2 text-muted-foreground/60 transition-colors hover:text-foreground active:cursor-grabbing"
+                    className={cn(
+                      "flex h-full cursor-grab touch-none items-center text-muted-foreground/60 transition-colors hover:text-foreground active:cursor-grabbing",
+                      dense ? "pl-1" : "pl-2"
+                    )}
                   >
-                    <GripVertical className="h-3.5 w-3.5" />
+                    <HugeiconsIcon
+                      icon={DragDropVerticalIcon as any}
+                      size={dense ? 13 : 15}
+                      strokeWidth={1.5}
+                      className="shrink-0"
+                    />
                   </button>
                 ) : null}
                 {column.sortable ? (
@@ -259,27 +275,39 @@ export function TableHeader<T>({
                     type="button"
                     onClick={() => onToggleSort(column.key)}
                     className={cn(
-                      "flex h-full min-w-0 flex-1 select-none items-center gap-1 pl-2.5 justify-start transition-colors hover:text-foreground",
-                      index === columns.length - 1 ? "pr-6" : "pr-2.5",
+                      "group/sort flex h-full min-w-0 flex-1 select-none items-center justify-start transition-colors hover:text-foreground text-sm font-normal",
+                      dense ? "gap-1 pl-1.5" : "gap-1.5 pl-2.5",
+                      index === columns.length - 1 ? (dense ? "pr-2" : "pr-6") : (dense ? "pr-1.5" : "pr-2.5"),
                       active && "text-foreground",
                     )}
                   >
                     <span className="truncate">{column.header}</span>
-                    <motion.span
-                      aria-hidden
-                      className="inline-flex shrink-0"
-                      animate={{
-                        rotate: active && sort?.direction === "desc" ? 180 : 0,
-                        opacity: active ? 1 : 0.35,
-                      }}
-                      transition={
-                        reduce
-                          ? { duration: 0 }
-                          : { duration: 0.18, ease: EASE_OUT }
-                      }
-                    >
-                      <ChevronUp className="h-3.5 w-3.5" />
-                    </motion.span>
+                    <span className="inline-flex shrink-0 items-center justify-center">
+                      {active ? (
+                        sort?.direction === "desc" ? (
+                          <HugeiconsIcon
+                            icon={ChevronDownIcon as any}
+                            size={14}
+                            strokeWidth={1.8}
+                            className="text-foreground"
+                          />
+                        ) : (
+                          <HugeiconsIcon
+                            icon={ChevronUpIcon as any}
+                            size={14}
+                            strokeWidth={1.8}
+                            className="text-foreground"
+                          />
+                        )
+                      ) : (
+                        <HugeiconsIcon
+                          icon={UnfoldMoreIcon as any}
+                          size={14}
+                          strokeWidth={1.5}
+                          className="text-muted-foreground/40 group-hover/sort:text-muted-foreground transition-colors"
+                        />
+                      )}
+                    </span>
                   </button>
                 ) : onColumnRename ? (
                   <input
@@ -292,22 +320,24 @@ export function TableHeader<T>({
                       onColumnRename(column.key, e.target.value)
                     }
                     className={cn(
-                      "min-w-0 flex-1 truncate appearance-none rounded-md border-0 bg-transparent pl-2.5 font-medium text-muted-foreground outline-none transition-colors focus:bg-muted focus:text-foreground text-left",
+                      "min-w-0 flex-1 truncate appearance-none rounded-md border-0 bg-transparent pl-2.5 font-normal text-sm text-muted-foreground outline-none transition-colors focus:bg-muted focus:text-foreground text-left",
                       index === columns.length - 1 ? "pr-6" : "pr-2.5",
                     )}
                   />
                 ) : (
                   <span
                     className={cn(
-                      "min-w-0 flex-1 truncate pl-2.5 text-left",
-                      index === columns.length - 1 ? "pr-6" : "pr-2.5",
+                      "min-w-0 flex-1 truncate text-sm font-normal",
+                      column.key === "select"
+                        ? "flex items-center justify-center p-0"
+                        : cn("text-left pl-2.5", index === columns.length - 1 ? "pr-6" : "pr-2.5"),
                     )}
                   >
                     {column.header}
                   </span>
                 )}
               </motion.div>
-              {resizable ? (
+              {resizable && column.key !== "select" ? (
                 <button
                   type="button"
                   aria-label={`Resize ${column.key} column`}

@@ -88,14 +88,14 @@ export interface PreCountSettingsMenuProps {
     setIsManualMode: (val: boolean) => void;
     autoSave: boolean;
     setAutoSave: (val: boolean) => void;
-    sortOrder: string;
-    setSortOrder: (val: string) => void;
+    sortOrder: 'name_asc' | 'name_desc' | 'qty_asc' | 'qty_desc';
+    setSortOrder: (val: 'name_asc' | 'name_desc' | 'qty_asc' | 'qty_desc') => void;
     isZenMode: boolean;
     setIsZenMode: (val: boolean) => void;
     handleResetSector: () => void;
     handleExportTXT: () => void;
     handleFinishClick: () => void;
-    accessMode: string;
+    accessMode: 'admin' | 'salon' | null;
 }
 
 export function PreCountSettingsMenu({
@@ -259,9 +259,7 @@ export function PreCountSettingsMenu({
 
     return (
         <DropdownMenu>
-            <DropdownTrigger asChild>
-                {trigger}
-            </DropdownTrigger>
+            <DropdownTrigger render={trigger} />
             <DropdownContent align="end" className="w-56">
                 <DropdownLabel>Modo de lectura</DropdownLabel>
                 <MenuItem
@@ -364,3 +362,6 @@ export function PreCountSettingsMenu({
         </DropdownMenu>
     );
 }
+
+export { PreCountSettingsMenu as SettingsMenu };
+export default PreCountSettingsMenu;

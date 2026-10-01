@@ -93,9 +93,6 @@ export function SendPlexApiDialog({
                 if (effectiveSessionId) {
                     records = await db.items.where('session_id').equals(effectiveSessionId).toArray();
                 }
-                if (!records || records.length === 0) {
-                    records = await db.items.toArray();
-                }
 
                 // Map catalog info if available
                 const productsMap = new Map<string, { lab?: string; rubro?: string; name?: string; id_producto?: string }>();

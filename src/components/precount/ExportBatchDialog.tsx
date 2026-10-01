@@ -78,9 +78,6 @@ export function ExportBatchDialog({
                 if (effectiveSessionId) {
                     records = await db.items.where('session_id').equals(effectiveSessionId).toArray();
                 }
-                if (!records || records.length === 0) {
-                    records = await db.items.toArray();
-                }
 
                 // Map catalog info if available
                 const productsMap = new Map<string, { lab?: string; rubro?: string; name?: string }>();
@@ -113,7 +110,7 @@ export function ExportBatchDialog({
     );
 
     const activeItems = useMemo(() => {
-        if (items && items.length > 0) return items;
+        if (items !== undefined) return items;
         return liveDbItems || [];
     }, [items, liveDbItems]);
 

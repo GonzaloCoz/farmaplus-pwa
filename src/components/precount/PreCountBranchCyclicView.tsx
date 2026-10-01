@@ -1488,19 +1488,16 @@ export function PreCountBranchCyclicView({
                 onOpenChange={setShowExportBatchModal}
                 inventoryTitle={displayTitle}
                 sectorOrLab={activeSector || labName || 'General'}
-                items={scannedTableItems.length > 0 
-                    ? scannedTableItems.map(it => ({
-                        id: it.id,
-                        id_producto: (it as any).id_producto,
-                        ean: it.ean,
-                        productName: it.productName || (it as any).name,
-                        quantity: Number(it.quantity) || 1,
-                        laboratory: it.laboratory || labName,
-                        rubro: it.rubro || it.category,
-                        sector: it.sector || activeSector
-                    }))
-                    : undefined
-                }
+                items={scannedTableItems.map(it => ({
+                    id: it.id,
+                    id_producto: (it as any).id_producto,
+                    ean: it.ean,
+                    productName: it.productName || (it as any).name,
+                    quantity: Number(it.quantity) || 1,
+                    laboratory: it.laboratory || labName,
+                    rubro: it.rubro || it.category,
+                    sector: it.sector || activeSector
+                }))}
                 sessionId={sessionId}
             />
 

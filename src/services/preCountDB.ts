@@ -352,23 +352,62 @@ export async function getSessionSummary(sessionId: string): Promise<{
 export async function updatePreCountItem(id: string, updates: Partial<PreCountItem>): Promise<void> {
     // 1. Update Local
     await db.items.update(id, updates);
+    const item = await db.items.get(id);
 
     // 2. Queue Sync
     await syncManager.addToQueue({
         type: 'update',
         entity: 'item',
-        data: { id, ...updates }
+        data: item ? { ...item, ...updates } : { id, ...updates }
     });
 }
 
 export async function deletePreCountItem(id: string): Promise<void> {
+    // 1. Delete from local IndexedDB
     await db.items.delete(id);
 
+    // 2. Remove any pending un-synced actions for this item so it won't be re-uploaded
+    await db.pendingActions.where('entity').equals('item').and(action => action.data?.id === id).delete();
+
+    // 3. Direct delete from Supabase if online
+    try {
+        await supabase.from('precount_items').delete().eq('id', id);
+    } catch (e) {
+        console.warn('Direct delete failed, queuing...', e);
+    }
+
+    // 4. Queue Sync
     await syncManager.addToQueue({
         type: 'delete',
         entity: 'item',
         data: { id }
     });
+}
+
+export async function deletePreCountItems(ids: string[]): Promise<void> {
+    if (!ids || ids.length === 0) return;
+
+    // 1. Bulk delete from local IndexedDB
+    await db.items.bulkDelete(ids);
+
+    // 2. Remove any pending un-synced actions for these items
+    await db.pendingActions.where('entity').equals('item').and(action => ids.includes(action.data?.id)).delete();
+
+    // 3. Direct delete from Supabase in batch if online
+    try {
+        await supabase.from('precount_items').delete().in('id', ids);
+    } catch (e) {
+        console.warn('Direct batch delete failed, queuing...', e);
+    }
+
+    // 4. Queue delete for each item to guarantee offline resilience
+    for (const id of ids) {
+        await syncManager.addToQueue({
+            type: 'delete',
+            entity: 'item',
+            data: { id }
+        });
+    }
 }
 
 export async function getPreCountItemsBySessionId(sessionId: string): Promise<PreCountItem[]> {

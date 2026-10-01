@@ -12,7 +12,7 @@ import { notify as toast } from '@/lib/notifications';
 import { cn } from '@/lib/utils';
 import { Elevated } from '@/lib/elevated';
 import { db } from '@/services/db';
-import { upsertPreCountItem, getDeviceId } from '@/services/preCountDB';
+import { upsertPreCountItem, updatePreCountItem, deletePreCountItems, getDeviceId } from '@/services/preCountDB';
 import { supabase } from '@/integrations/supabase/client';
 import { DragStepper } from '@/components/ui/drag-stepper';
 
@@ -255,24 +255,42 @@ export function PreCountProductsView({
                     return;
                 }
 
-                if (data && data.length > 0 && isMounted) {
-                    const localRows = data.map((item: any) => ({
-                        id: item.id,
-                        session_id: item.session_id,
-                        ean: item.ean,
-                        product_name: item.product_name || `Producto ${item.ean}`,
-                        quantity: item.quantity || 0,
-                        scanned_at: item.scanned_at || new Date().toISOString(),
-                        scanned_by: item.scanned_by || undefined,
-                        synced: 1,
-                        id_producto: item.id_producto || undefined,
-                        device_id: item.device_id || undefined,
-                        device_name: item.device_name || undefined,
-                        location_tag: item.location_tag || undefined,
-                        laboratory: item.laboratory || undefined,
-                        rubro: item.rubro || undefined,
-                    }));
-                    await db.items.bulkPut(localRows);
+                if (data && isMounted) {
+                    const remoteIds = new Set(data.map((item: any) => item.id));
+
+                    // Obtener acciones pendientes de creación/actualización para no borrar ítems pendientes offline
+                    const pendingActions = await db.pendingActions.where('entity').equals('item').toArray();
+                    const pendingIds = new Set(pendingActions.map(a => a.data?.id).filter(Boolean));
+
+                    // Limpiar ítems de Dexie que ya no existen en Supabase y no están pendientes de subida
+                    const localSessionItems = await db.items.where('session_id').equals(effectiveSessionId).toArray();
+                    const staleLocalIds = localSessionItems
+                        .filter(item => !remoteIds.has(item.id) && !pendingIds.has(item.id))
+                        .map(item => item.id);
+
+                    if (staleLocalIds.length > 0) {
+                        await db.items.bulkDelete(staleLocalIds);
+                    }
+
+                    if (data.length > 0) {
+                        const localRows = data.map((item: any) => ({
+                            id: item.id,
+                            session_id: item.session_id,
+                            ean: item.ean,
+                            product_name: item.product_name || `Producto ${item.ean}`,
+                            quantity: item.quantity || 0,
+                            scanned_at: item.scanned_at || new Date().toISOString(),
+                            scanned_by: item.scanned_by || undefined,
+                            synced: 1,
+                            id_producto: item.id_producto || undefined,
+                            device_id: item.device_id || undefined,
+                            device_name: item.device_name || undefined,
+                            location_tag: item.location_tag || undefined,
+                            laboratory: item.laboratory || undefined,
+                            rubro: item.rubro || undefined,
+                        }));
+                        await db.items.bulkPut(localRows);
+                    }
                 }
             } catch (err) {
                 console.error('[PreCountProductsView] Error inesperado en syncRemoteItems:', err);
@@ -1163,9 +1181,9 @@ export function PreCountProductsView({
         setTableData(prev => prev.map(r => r.id === rowId ? { ...r, quantity: validatedQty } : r));
         if (effectiveSessionId) {
             try {
-                await db.items.update(rowId, { quantity: validatedQty });
+                await updatePreCountItem(rowId, { quantity: validatedQty });
             } catch (err) {
-                console.warn("Error actualizando cantidad en Dexie:", err);
+                console.warn("Error actualizando cantidad:", err);
             }
         }
     }, [effectiveSessionId]);
@@ -1174,9 +1192,9 @@ export function PreCountProductsView({
         setTableData(prev => prev.map(r => r.id === rowId ? { ...r, position: newSector, sector: newSector } : r));
         if (effectiveSessionId) {
             try {
-                await db.items.update(rowId, { location_tag: newSector });
+                await updatePreCountItem(rowId, { location_tag: newSector });
             } catch (err) {
-                console.warn("Error actualizando sector en Dexie:", err);
+                console.warn("Error actualizando sector:", err);
             }
         }
     }, [effectiveSessionId]);
@@ -1194,9 +1212,19 @@ export function PreCountProductsView({
 
         if (effectiveSessionId) {
             try {
-                await db.items.bulkDelete(idsToDelete);
+                await deletePreCountItems(idsToDelete);
+
+                try {
+                    const { emitDeviceTelemetry } = await import('@/services/deviceTelemetry');
+                    emitDeviceTelemetry({
+                        sessionId: effectiveSessionId,
+                        currentLocation: isBranchMode ? activeSector : null,
+                    });
+                } catch (telemErr) {
+                    console.debug('[PreCountProductsView] Error emitiendo telemetría post-delete:', telemErr);
+                }
             } catch (err) {
-                console.warn("Error eliminando items de Dexie:", err);
+                console.warn("Error eliminando items:", err);
             }
         }
 

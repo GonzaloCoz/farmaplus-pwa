@@ -168,38 +168,60 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
 
             // 2. Si hay sesión activa local, consultar ítems locales y remotos de la sesión
             if (activeSessionId) {
-                let items: LocalItem[] = await db.items
+                // Obtener ítems locales de Dexie
+                let localItems = await db.items
                     .where('session_id')
                     .equals(activeSessionId)
                     .toArray();
 
-                // SIEMPRE consultar ítems remotos de Supabase para ver los enviados por la Zebra y otras terminales
-                const { data: supaItems } = await supabase
-                    .from('precount_items')
-                    .select('*')
-                    .eq('session_id', activeSessionId);
+                // Acciones pendientes de la cola de sincronización
+                const pendingActions = await db.pendingActions.where('entity').equals('item').toArray();
+                const pendingIds = new Set(pendingActions.map(a => a.data?.id).filter(Boolean));
+                const pendingDeleteIds = new Set(
+                    pendingActions.filter(a => a.type === 'delete').map(a => a.data?.id).filter(Boolean)
+                );
 
-                if (supaItems && supaItems.length > 0) {
-                    const localIds = new Set(items.map(it => it.id));
-                    supaItems.forEach((si: any) => {
-                        if (!localIds.has(si.id)) {
-                            items.push({
-                                id: si.id,
-                                session_id: si.session_id,
-                                ean: si.ean,
-                                product_name: si.product_name,
-                                quantity: si.quantity,
-                                scanned_at: si.scanned_at,
-                                scanned_by: si.device_name || si.device_id,
-                                synced: 1,
-                                id_producto: si.id_producto || '',
-                                device_id: si.device_id || 'TERMINAL-01',
-                                device_name: si.device_name || 'Terminal',
-                                location_tag: si.location_tag || 'GENERAL'
-                            });
-                        }
-                    });
+                // Consultar ítems remotos de Supabase
+                let supaItems: any[] = [];
+                try {
+                    const { data } = await supabase
+                        .from('precount_items')
+                        .select('*')
+                        .eq('session_id', activeSessionId);
+                    if (data) supaItems = data;
+                } catch (e) {
+                    console.warn('[PreCountFilesView] Error consultando Supabase:', e);
                 }
+
+                const remoteMap = new Map<string, any>(supaItems.map((si: any) => [si.id, si]));
+
+                // Filtrar ítems locales: descartar si fueron eliminados (no están en Supabase ni pendientes de subida)
+                const validLocalItems = localItems.filter(it => 
+                    !pendingDeleteIds.has(it.id) && (remoteMap.has(it.id) || pendingIds.has(it.id))
+                );
+
+                const localIds = new Set(validLocalItems.map(it => it.id));
+                const items: LocalItem[] = [...validLocalItems];
+
+                // Agregar ítems de Supabase que no estén en local (siempre que no estén pendientes de borrado local)
+                supaItems.forEach((si: any) => {
+                    if (!localIds.has(si.id) && !pendingDeleteIds.has(si.id)) {
+                        items.push({
+                            id: si.id,
+                            session_id: si.session_id,
+                            ean: si.ean,
+                            product_name: si.product_name,
+                            quantity: si.quantity,
+                            scanned_at: si.scanned_at,
+                            scanned_by: si.device_name || si.device_id,
+                            synced: 1,
+                            id_producto: si.id_producto || '',
+                            device_id: si.device_id || 'TERMINAL-01',
+                            device_name: si.device_name || 'Terminal',
+                            location_tag: si.location_tag || 'GENERAL'
+                        });
+                    }
+                });
 
                 if (items.length > 0) {
                     const closedSectors = new Set<string>();
@@ -317,6 +339,9 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
                             const byteSize = batchItems.length * 28;
                             const sizeFormatted = byteSize > 1024 ? `${(byteSize / 1024).toFixed(1)} KB` : `${byteSize} B`;
 
+                            const fileLines = batchItems.map(it => `${it.id_producto || ''};${it.ean};${it.quantity};0`);
+                            const fileContent = fileLines.join('\n');
+
                             files.push({
                                 id: `file-${devId}-${locTag}`,
                                 fileName,
@@ -327,6 +352,7 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
                                 skusCount,
                                 status: isClosed ? 'processed' : 'pending',
                                 fileSize: sizeFormatted,
+                                content: fileContent,
                                 items: batchItems.map(it => ({
                                     id_producto: it.id_producto,
                                     ean: it.ean,
@@ -472,7 +498,7 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
 
             {/* Grilla de Dispositivos / Terminales o Estado Vacío */}
             {visibleTerminals.length > 0 ? (
-                <div className={cn("grid gap-4 pb-8", isBranchMode ? "grid-cols-1 max-w-2xl" : "grid-cols-1 xl:grid-cols-2")}>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pb-8 w-full">
                     {visibleTerminals.map((terminal) => (
                         <TerminalFilesCard key={terminal.id} terminal={terminal} />
                     ))}

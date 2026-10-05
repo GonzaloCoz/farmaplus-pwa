@@ -165,6 +165,17 @@ export function PreCountAdminCyclicView({
     const { activeWindowId, updateWindowMeta } = useWindowManager();
     const { user } = useUser();
     const [activeTab, setActiveTab] = useState("pending");
+    const [mainTab, setMainTab] = useState<string>(() => {
+        return sessionId ? "productos" : "configuracion";
+    });
+
+    useEffect(() => {
+        if (sessionId) {
+            setMainTab("productos");
+        } else {
+            setMainTab("configuracion");
+        }
+    }, [sessionId]);
 
     const displayTitle = useMemo(() => {
         if (!labName || labName === "ABBVIE" || labName === "Sin Sesión") return "Sin Sesión Activa";
@@ -690,7 +701,7 @@ export function PreCountAdminCyclicView({
                                 </Alert>
                             )}
 
-                            <Tabs defaultValue="productos" className="w-full flex-1 flex flex-col min-h-0">
+                            <Tabs value={mainTab} onValueChange={setMainTab} className="w-full flex-1 flex flex-col min-h-0">
                                 {/* Fila superior: Tabs a la izquierda y Título/Info al fondo a la derecha */}
                                 <div className="flex items-center justify-between gap-3 mb-2.5 shrink-0">
                                     <TabsList>
@@ -744,7 +755,13 @@ export function PreCountAdminCyclicView({
                                             <Button
                                                 variant="tertiary"
                                                 size="icon"
-                                                className="h-8 w-8 rounded-lg border border-border bg-transparent hover:bg-hover text-muted-foreground hover:text-foreground transition-all duration-80"
+                                                onClick={() => {
+                                                    window.dispatchEvent(new CustomEvent('precount:item_scanned'));
+                                                    window.dispatchEvent(new CustomEvent('precount:device_heartbeat'));
+                                                    toast.info("Actualizando datos", "Consultando últimos registros del servidor...");
+                                                }}
+                                                title="Actualizar datos"
+                                                className="h-8 w-8 rounded-lg border border-border bg-transparent hover:bg-hover text-muted-foreground hover:text-foreground transition-all duration-80 cursor-pointer"
                                             >
                                                 <RotateCcw className="size-3.5" />
                                             </Button>
@@ -930,19 +947,19 @@ export function PreCountAdminCyclicView({
                                     />
                                 </TabPanel>
 
-                                <TabPanel value="resumen" className="flex-1 min-h-0 pt-2 w-full">
+                                <TabPanel value="resumen" className="flex-1 min-h-0 pt-2 w-full flex flex-col">
                                     <PreCountSummaryView />
                                 </TabPanel>
 
-                                <TabPanel value="archivos" className="flex-1 min-h-0 pt-2 w-full">
+                                <TabPanel value="archivos" className="flex-1 min-h-0 pt-2 w-full flex flex-col">
                                     <PreCountFilesView key="precount-files-view" sessionId={sessionId} />
                                 </TabPanel>
 
-                                <TabPanel value="monitor" className="flex-1 min-h-0 pt-2 w-full">
+                                <TabPanel value="monitor" className="flex-1 min-h-0 pt-2 w-full flex flex-col">
                                     <DeviceMonitorView key={sessionId || 'no-session'} sessionId={sessionId} />
                                 </TabPanel>
 
-                                <TabPanel value="configuracion" className="flex-1 min-h-0 pt-2 w-full">
+                                <TabPanel value="configuracion" className="flex-1 min-h-0 pt-2 w-full flex flex-col">
                                     <PreCountConfigView
                                         sessionId={sessionId}
                                         onSessionCreated={(newSession) => {

@@ -49,8 +49,12 @@ export const preCountExportService = {
     ) => {
         try {
             const lines = items.map(item => {
-                const idProd = item.id_producto || '';
-                return `${idProd};${item.ean};${item.quantity};0`;
+                let idProd = (item.id_producto || '').trim();
+                const rawEan = (item.ean || '').trim();
+                if (!idProd) {
+                    idProd = rawEan;
+                }
+                return `${idProd};${rawEan};${item.quantity};0`;
             });
             const content = lines.join('\n');
 
@@ -80,6 +84,40 @@ export const preCountExportService = {
             throw new Error('No hay productos para exportar.');
         }
 
+        // Resolver id_producto para los ítems que no lo tengan
+        if (sessionId) {
+            try {
+                const catalogItems = await db.precount_products.where('session_id').equals(sessionId).toArray();
+                const catMap = new Map<string, string>();
+                catalogItems.forEach(p => {
+                    const idp = String(p.id_producto || '').trim();
+                    const ean = String(p.ean || '').trim();
+                    if (idp) {
+                        if (ean) catMap.set(ean, idp);
+                        catMap.set(idp, idp);
+                    }
+                });
+
+                items.forEach(it => {
+                    let idp = (it.id_producto || '').trim();
+                    const rawEan = (it.ean || '').trim();
+                    if (!idp && rawEan) {
+                        idp = catMap.get(rawEan) || '';
+                    }
+                    if (!idp && rawEan) {
+                        idp = rawEan;
+                    }
+                    it.id_producto = idp;
+                });
+            } catch {}
+        } else {
+            items.forEach(it => {
+                if (!it.id_producto && it.ean) {
+                    it.id_producto = it.ean;
+                }
+            });
+        }
+
         const deviceId = getDeviceId();
         const devName = userName || getDeviceName() || 'Terminal';
         const cleanBranch = normalizeString(branchName || 'Sucursal');
@@ -89,7 +127,7 @@ export const preCountExportService = {
 
         // 1. Generar contenido estándar TXT
         const lines = items.map(item => {
-            const idProd = item.id_producto || '';
+            const idProd = (item.id_producto || item.ean || '').trim();
             return `${idProd};${item.ean};${item.quantity};0`;
         });
         const fileContent = lines.join('\n');

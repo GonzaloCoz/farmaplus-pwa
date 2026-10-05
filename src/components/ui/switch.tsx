@@ -16,7 +16,7 @@ import { spring } from "@/lib/springs";
 import { useSize, type SizeVariant } from "@/lib/size-context";
 
 interface SwitchProps extends HTMLAttributes<HTMLDivElement> {
-  label: string;
+  label?: string;
   checked: boolean;
   onToggle: () => void;
   disabled?: boolean;
@@ -271,18 +271,20 @@ const Switch = forwardRef<HTMLDivElement, SwitchProps>(
         </SwitchPrimitive.Root>
 
         {/* Label */}
-        <span
-          id={labelId}
-          className={cn(
-            // text-box trim recenters the letterforms against the track; the
-            // track is taller than the label, so layout doesn't change.
-            "[text-box:trim-both_cap_alphabetic] transition-[color] duration-80",
-            sizeClasses.text,
-            checked ? "text-foreground" : "text-muted-foreground"
-          )}
-        >
-          {label}
-        </span>
+        {label && (
+          <span
+            id={labelId}
+            className={cn(
+              // text-box trim recenters the letterforms against the track; the
+              // track is taller than the label, so layout doesn't change.
+              "[text-box:trim-both_cap_alphabetic] transition-[color] duration-80",
+              sizeClasses.text,
+              checked ? "text-foreground" : "text-muted-foreground"
+            )}
+          >
+            {label}
+          </span>
+        )}
       </div>
     );
   }

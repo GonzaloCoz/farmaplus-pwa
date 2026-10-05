@@ -57,7 +57,7 @@ export function DashboardHeader() {
                     {getGreeting()}, {user?.name.split(' ')[0]}
                     {user?.branchName && (
                         <span className="text-muted-foreground font-normal ml-2">
-                            — {user.branchName}
+                            {user.branchName}
                         </span>
                     )}
                     {(() => {
@@ -78,9 +78,7 @@ export function DashboardHeader() {
                                 </Tooltip>
                             ));
                         }
-                        return (
-                            <span className="wave ml-2 hidden lg:inline-block">👋</span>
-                        );
+                        return <span className="wave ml-2 select-none" aria-hidden="true">👋</span>;
                     })()}
                 </h1>
             </div>

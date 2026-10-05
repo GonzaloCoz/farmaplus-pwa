@@ -298,6 +298,11 @@ export function PreCountProductsView({
         };
 
         syncRemoteItems();
+        const pollInterval = setInterval(syncRemoteItems, 4000);
+
+        const handleForceRefresh = () => syncRemoteItems();
+        window.addEventListener('precount:item_scanned' as any, handleForceRefresh);
+        window.addEventListener('precount:item_added' as any, handleForceRefresh);
 
         // Suscripción Realtime para recibir conteos en vivo de todos los operadores/dispositivos
         const channel = supabase
@@ -346,6 +351,9 @@ export function PreCountProductsView({
 
         return () => {
             isMounted = false;
+            clearInterval(pollInterval);
+            window.removeEventListener('precount:item_scanned' as any, handleForceRefresh);
+            window.removeEventListener('precount:item_added' as any, handleForceRefresh);
             supabase.removeChannel(channel);
         };
     }, [effectiveSessionId]);

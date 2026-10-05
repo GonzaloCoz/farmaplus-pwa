@@ -90,15 +90,15 @@ const DEFAULT_WIDGETS: Widget[] = [
         row: 'middle'
     },
     {
-        id: 'branches-table',
-        type: 'branches-table',
-        title: 'Tabla de Sucursales',
-        description: 'Listado completo de sucursales',
+        id: 'branch-monitor',
+        type: 'branch-monitor',
+        title: 'Monitor de Sucursales',
+        description: 'Tabla de control y seguimiento de productos de colector',
         icon: Building2,
         visible: true,
         order: 7,
         size: 'full',
-        span: 1,
+        span: 2,
         row: 'bottom'
     }
 ];

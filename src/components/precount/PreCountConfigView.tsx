@@ -302,6 +302,13 @@ export function PreCountConfigView({
                         setInventoryName(remote.sector);
                     }
                     if (remote.sync_pin) setGeneratedPin(remote.sync_pin);
+                } else if (!remote && !isCancelled) {
+                    // La sesión fue eliminada en el servidor o no existe
+                    if (typeof window !== 'undefined') {
+                        localStorage.removeItem('last_precount_session_id');
+                        localStorage.removeItem('precount_session_id');
+                        localStorage.removeItem('active_precount_session_id');
+                    }
                 }
             } catch (err) {
                 console.warn('[PreCountConfigView] Error cargando datos de sesión activa:', err);
@@ -1094,7 +1101,7 @@ export function PreCountConfigView({
                                             <span className="text-border/60">•</span>
                                             <div className="inline-flex items-center gap-1.5 font-medium">
                                                 <ShieldCheck className="w-3.5 h-3.5 text-foreground/70" />
-                                                <span>PIN activo de la sesión</span>
+                                                <span>{sessionId ? 'PIN activo de la sesión' : 'PIN asignado al iniciar'}</span>
                                             </div>
                                         </div>
                                     ) : (

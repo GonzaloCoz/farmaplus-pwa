@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { auditService, AuditLogEntry } from "@/services/auditService";
+import { auditService, AuditLogRow } from "@/services/auditService";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
 import { Frame, FramePanel } from "@/components/ui/frame";
@@ -8,7 +8,7 @@ import { format } from "date-fns";
 import { MarkerPin01 as MapPin, Calendar, User01 as User, SearchLg as Search, FilterLines as Filter } from '@untitledui/icons';
 import { PageSkeleton } from "@/components/skeletons/PageSkeleton";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useBranchesQuery } from "@/hooks/useBranchesQuery";
@@ -60,7 +60,7 @@ export default function AdminAudit() {
     const { data: branchesData } = useBranchesQuery();
     const branches = useMemo(() => branchesData || [], [branchesData]);
     const [profiles, setProfiles] = useState<any[]>([]);
-    const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+    const [logs, setLogs] = useState<AuditLogRow[]>([]);
     const [loading, setLoading] = useState(true);
 
     // Filters
@@ -221,9 +221,7 @@ export default function AdminAudit() {
                 <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground ml-1">Sucursal</label>
                     <Select value={branchFilter} onValueChange={setBranchFilter}>
-                        <SelectTrigger>
-                            <SelectValue>Todas las sucursales</SelectValue>
-                        </SelectTrigger>
+                        <SelectTrigger placeholder="Todas las sucursales" />
                         <SelectContent>
                             <SelectItem value="all" index={0}>Todas las sucursales</SelectItem>
                             {branches.map((b, idx) => (

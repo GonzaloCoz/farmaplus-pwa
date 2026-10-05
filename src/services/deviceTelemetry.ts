@@ -397,6 +397,23 @@ export async function emitDeviceTelemetry(options: {
     } catch (err) {
         console.warn('[Telemetry] Error enviando telemetría a Supabase:', err);
     }
+
+    // 4. Actualizar tabla precount_connected_devices en Supabase (garantiza persistencia e inmediatez si Realtime re-conecta)
+    try {
+        await (supabase as any).from('precount_connected_devices').upsert({
+            session_id: sessionId,
+            device_id: deviceId,
+            device_name: telemetry.userName,
+            device_type: telemetry.deviceType,
+            device_model: telemetry.deviceModel,
+            battery_level: telemetry.batteryLevel,
+            is_charging: telemetry.isCharging,
+            current_location: activeLoc || null,
+            last_seen: new Date().toISOString()
+        });
+    } catch (dbErr) {
+        console.debug('[Telemetry] Error actualizando precount_connected_devices:', dbErr);
+    }
 }
 
 /**

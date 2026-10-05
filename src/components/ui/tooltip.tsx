@@ -127,152 +127,56 @@ function getSlideOffset(side: TooltipSide) {
 // ---------------------------------------------------------------------------
 
 function Tooltip(props: TooltipProps | any) {
-  const [internalOpen, setInternalOpen] = useState(false);
-  const portalContainer = useContext(TooltipPortalContainerContext);
   const hasAmbientProvider = useContext(TooltipGroupContext);
 
-  // Backward compatibility: Low-level API (acts as TooltipPrimitive.Root)
-  if (props.content === undefined) {
-    const { children, delayDuration, ...rest } = props;
-    const tooltipRoot = (
+  // High-level API: <Tooltip content={...}>{children}</Tooltip>
+  if (props.content !== undefined) {
+    const {
+      content,
+      children,
+      side = "top",
+      sideOffset = 8,
+      delayDuration = DEFAULT_DELAY,
+      className,
+      contentClassName,
+      ...rest
+    } = props as TooltipProps;
+
+    const tooltipTree = (
       <TooltipPrimitive.Root {...rest}>
-        {children}
+        <TooltipPrimitive.Trigger
+          render={children as React.ReactElement}
+          delay={delayDuration}
+        />
+        <TooltipContent
+          side={side}
+          sideOffset={sideOffset}
+          className={cn(className, contentClassName)}
+        >
+          {content}
+        </TooltipContent>
       </TooltipPrimitive.Root>
     );
-    if (hasAmbientProvider) return tooltipRoot;
+
+    if (hasAmbientProvider) return tooltipTree;
     return (
-      <TooltipPrimitive.Provider delay={delayDuration ?? DEFAULT_DELAY}>
-        {tooltipRoot}
+      <TooltipPrimitive.Provider delay={delayDuration}>
+        {tooltipTree}
       </TooltipPrimitive.Provider>
     );
   }
 
-  // High-level API
-  const {
-    content,
-    children,
-    side = "top",
-    sideOffset = 8,
-    delayDuration,
-    className,
-    contentClassName,
-    forceOpen,
-    onOpenChange: onOpenChangeProp,
-    followCursor,
-  } = props as TooltipProps;
-
-  const open = forceOpen !== undefined ? forceOpen : internalOpen;
-  const shape = useShape();
-  const slideOffset = getSlideOffset(side);
-
-  // Cursor-follow offset from the trigger's center, driven as a motion value
-  // so per-move updates skip React re-renders.
-  const followOffset = useMotionValue(0);
-  // A force-opened follow-cursor tooltip has no cursor to follow — it rests
-  // centered on the trigger until a real pointer takes over.
-  useEffect(() => {
-    if (forceOpen && followCursor) followOffset.set(0);
-  }, [forceOpen, followCursor, followOffset]);
-  const handleFollowMove = (event: React.PointerEvent) => {
-    if (!followCursor) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    followOffset.set(
-      followCursor === "y"
-        ? event.clientY - (rect.top + rect.height / 2)
-        : event.clientX - (rect.left + rect.width / 2)
-    );
-  };
-
-  const tooltip = (
-    <TooltipPrimitive.Root
-      open={open}
-      onOpenChange={(v) => {
-        setInternalOpen(v);
-        onOpenChangeProp?.(v);
-      }}
-    >
-      {/* An explicit delayDuration overrides the ambient provider's delay;
-          left undefined, the trigger inherits it from the provider. */}
-      <TooltipPrimitive.Trigger
-        render={children as React.ReactElement}
-        delay={delayDuration}
-        onPointerMove={followCursor ? handleFollowMove : undefined}
-      />
-      <TooltipPrimitive.Portal container={portalContainer ?? undefined}>
-        <TooltipPrimitive.Positioner
-          side={side}
-          sideOffset={sideOffset}
-          className={cn("z-50", contentClassName)}
-        >
-          <TooltipPrimitive.Popup
-            render={(props, state) => {
-              const exiting = state.transitionStatus === "ending";
-              const contentChildren = content;
-              const {
-                style: baseStyle,
-                // motion.div has incompatible drag/animation event signatures —
-                // strip the React-DOM versions so they don't fight motion's own.
-                onDrag: _onDrag,
-                onDragStart: _onDragStart,
-                onDragEnd: _onDragEnd,
-                onAnimationStart: _onAnimationStart,
-                onAnimationEnd: _onAnimationEnd,
-                onAnimationIteration: _onAnimationIteration,
-                ...rest
-              } = props as React.HTMLAttributes<HTMLDivElement>;
-              return (
-                // Outer wrapper carries Base UI's popup props plus the
-                // cursor-follow motion value; the inner box keeps the
-                // enter/exit slide so the two transforms don't fight.
-                <motion.div
-                  {...rest}
-                  style={{
-                    ...(baseStyle as React.CSSProperties | undefined),
-                    ...(followCursor === "y"
-                      ? { y: followOffset }
-                      : followCursor === "x"
-                        ? { x: followOffset }
-                        : {}),
-                  }}
-                >
-                  <motion.div
-                    className={cn(
-                      // Trim recenters the label; the padding bump only applies
-                      // where text-box is supported, keeping the same overall
-                      // height (~26px) as untrimmed browsers.
-                      "bg-foreground text-background text-[12px] px-2 py-1",
-                      "[text-box:trim-both_cap_alphabetic] supports-[text-box:trim-both]:py-2",
-                      shape.bg,
-                      className
-                    )}
-                    style={{ fontVariationSettings: fontWeights.medium }}
-                    initial={{ opacity: 0, ...slideOffset }}
-                    animate={
-                      exiting
-                        ? { opacity: 0, ...slideOffset }
-                        : { opacity: 1, x: 0, y: 0 }
-                    }
-                    transition={exiting ? spring.fast.exit : spring.fast}
-                  >
-                    {contentChildren}
-                  </motion.div>
-                </motion.div>
-              );
-            }}
-          />
-        </TooltipPrimitive.Positioner>
-      </TooltipPrimitive.Portal>
+  // Low-level API (acts as TooltipPrimitive.Root)
+  const { children, delayDuration, ...rest } = props;
+  const tooltipRoot = (
+    <TooltipPrimitive.Root {...rest}>
+      {children}
     </TooltipPrimitive.Root>
   );
-
-  // Fallback: without an ambient TooltipProvider, give this instance its own
-  // so a bare <Tooltip> keeps the library's default delay. Grouped skip-delay
-  // needs the shared app-level TooltipProvider.
-  if (hasAmbientProvider) return tooltip;
-
+  if (hasAmbientProvider) return tooltipRoot;
   return (
     <TooltipPrimitive.Provider delay={delayDuration ?? DEFAULT_DELAY}>
-      {tooltip}
+      {tooltipRoot}
     </TooltipPrimitive.Provider>
   );
 }

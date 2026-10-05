@@ -17,6 +17,7 @@ import { getDeviceId } from '@/services/deviceTelemetry';
 import { getFullSectorName } from '@/constants/farmaplusSectors';
 import { normalizeDeviceModel } from './DeviceMonitorView';
 import { preCountExportService, SentBatchRecord } from '@/services/preCountExportService';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 export interface ExportFileItem {
     id: string;
@@ -55,16 +56,29 @@ export interface PreCountFilesViewProps {
 function downloadExportFile(file: ExportFileItem, terminalName: string) {
     try {
         let content = file.content;
-        if (!content) {
-            if (!file.items || file.items.length === 0) {
-                toast.info(`No hay ítems registrados para el lote ${file.batchCode}`);
-                return;
-            }
-
-            // Formato estándar Colector Farmaplus: IDProducto;EAN;Cantidad;0
+        
+        // Si hay items en el archivo, regenerar para garantizar que IDProducto esté siempre presente
+        if (file.items && file.items.length > 0) {
             const lines = file.items.map(item => {
-                const idProd = item.id_producto || '';
-                return `${idProd};${item.ean};${item.quantity};0`;
+                let idProd = (item.id_producto || '').trim();
+                const rawEan = (item.ean || '').trim();
+                if (!idProd) {
+                    idProd = rawEan;
+                }
+                return `${idProd};${rawEan};${item.quantity};0`;
+            });
+            content = lines.join('\n');
+        } else if (content && (content.startsWith(';') || content.includes('\n;'))) {
+            // Si el contenido tiene líneas huérfanas que empiezan con ';', reparar usando el código
+            const lines = content.split(/\r?\n/).map(line => {
+                if (line.startsWith(';')) {
+                    const parts = line.split(';');
+                    const ean = (parts[1] || '').trim();
+                    const qty = parts[2] || '1';
+                    const flag = parts[3] || '0';
+                    return `${ean};${ean};${qty};${flag}`;
+                }
+                return line;
             });
             content = lines.join('\n');
         }
@@ -224,6 +238,117 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
                 });
 
                 if (items.length > 0) {
+                    // Cargar catálogo de la sesión para resolver IDProducto de cada EAN
+                    const catalogIdByEan = new Map<string, string>();
+                    const catalogKnownIds = new Set<string>();
+
+                    try {
+                        const sessionProducts = await db.precount_products
+                            .where('session_id')
+                            .equals(activeSessionId)
+                            .toArray();
+                        sessionProducts.forEach(p => {
+                            const idp = String(p.id_producto || '').trim();
+                            const ean = String(p.ean || '').trim();
+                            if (idp) {
+                                catalogKnownIds.add(idp);
+                                if (ean) catalogIdByEan.set(ean, idp);
+                                catalogIdByEan.set(idp, idp);
+                            }
+                        });
+
+                        if (sessionProducts.length === 0) {
+                            const session = await db.sessions.get(activeSessionId);
+                            let masterCatalog = session?.master_catalog;
+
+                            if (!masterCatalog || masterCatalog.length === 0) {
+                                try {
+                                    const { data: catFile } = await (supabase as any)
+                                        .from('precount_device_files')
+                                        .select('content')
+                                        .eq('session_id', activeSessionId)
+                                        .eq('filename', 'master_catalog.json')
+                                        .maybeSingle();
+                                    if (catFile?.content) {
+                                        masterCatalog = JSON.parse(catFile.content);
+                                    }
+                                } catch {}
+                            }
+
+                            if (masterCatalog && Array.isArray(masterCatalog)) {
+                                masterCatalog.forEach((p: any) => {
+                                    const idp = String(p.id_producto || p.id || '').trim();
+                                    const ean = String(p.ean || '').trim();
+                                    if (idp) {
+                                        catalogKnownIds.add(idp);
+                                        if (ean) catalogIdByEan.set(ean, idp);
+                                        catalogIdByEan.set(idp, idp);
+                                    }
+                                    const eans: string[] = Array.isArray(p.eans) ? p.eans : [];
+                                    eans.forEach(e => {
+                                        const cleanEan = String(e || '').trim();
+                                        if (cleanEan && idp) catalogIdByEan.set(cleanEan, idp);
+                                    });
+                                });
+                            }
+                        }
+
+                        // Si hay EANs no encontrados localmente, consultar Supabase products en bloque
+                        const missingEans = Array.from(new Set(
+                            items
+                                .map(it => String(it.ean || '').trim())
+                                .filter(e => e && !catalogIdByEan.has(e) && !catalogKnownIds.has(e))
+                        ));
+
+                        if (missingEans.length > 0) {
+                            try {
+                                const { data: remoteProds } = await supabase
+                                    .from('products')
+                                    .select('ean, id_producto')
+                                    .in('ean', missingEans.slice(0, 300));
+                                if (remoteProds) {
+                                    remoteProds.forEach(rp => {
+                                        const idp = String(rp.id_producto || '').trim();
+                                        const ean = String(rp.ean || '').trim();
+                                        if (idp) {
+                                            catalogKnownIds.add(idp);
+                                            if (ean) catalogIdByEan.set(ean, idp);
+                                        }
+                                    });
+                                }
+                            } catch {}
+                        }
+                    } catch (catErr) {
+                        console.warn('[PreCountFilesView] Error cargando catálogo de sesión:', catErr);
+                    }
+
+                    const resolveItemProductId = (it: { ean?: string; id_producto?: string }): string => {
+                        const directId = String(it.id_producto || '').trim();
+                        if (directId) return directId;
+
+                        const rawEan = String(it.ean || '').trim();
+                        if (!rawEan) return '';
+
+                        const mapped = catalogIdByEan.get(rawEan);
+                        if (mapped) return mapped;
+
+                        if (catalogKnownIds.has(rawEan)) return rawEan;
+
+                        // Si es código numérico corto o de formato ID, devolverlo directamente
+                        if (/^\d{1,8}$/.test(rawEan) && !rawEan.startsWith('779') && !rawEan.startsWith('980') && !rawEan.startsWith('990')) {
+                            return rawEan;
+                        }
+
+                        return rawEan;
+                    };
+
+                    // Resolver y backfill id_producto en los items
+                    items.forEach(it => {
+                        if (!it.id_producto) {
+                            it.id_producto = resolveItemProductId(it);
+                        }
+                    });
+
                     const closedSectors = new Set<string>();
                     try {
                         const localLocations = await db.locations
@@ -339,7 +464,11 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
                             const byteSize = batchItems.length * 28;
                             const sizeFormatted = byteSize > 1024 ? `${(byteSize / 1024).toFixed(1)} KB` : `${byteSize} B`;
 
-                            const fileLines = batchItems.map(it => `${it.id_producto || ''};${it.ean};${it.quantity};0`);
+                            const fileLines = batchItems.map(it => {
+                                const finalId = (it.id_producto || resolveItemProductId(it) || it.ean || '').trim();
+                                it.id_producto = finalId;
+                                return `${finalId};${it.ean};${it.quantity};0`;
+                            });
                             const fileContent = fileLines.join('\n');
 
                             files.push({
@@ -354,7 +483,7 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
                                 fileSize: sizeFormatted,
                                 content: fileContent,
                                 items: batchItems.map(it => ({
-                                    id_producto: it.id_producto,
+                                    id_producto: it.id_producto || resolveItemProductId(it) || it.ean,
                                     ean: it.ean,
                                     quantity: it.quantity,
                                     product_name: it.product_name
@@ -387,6 +516,7 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
 
     useEffect(() => {
         loadRealFiles();
+        const filesPollInterval = setInterval(loadRealFiles, 5000);
 
         const handleUpdate = () => loadRealFiles();
         window.addEventListener('storage', handleUpdate);
@@ -422,6 +552,7 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
         }
 
         return () => {
+            clearInterval(filesPollInterval);
             window.removeEventListener('storage', handleUpdate);
             window.removeEventListener('precount:item_added' as any, handleUpdate);
             window.removeEventListener('precount:item_scanned' as any, handleUpdate);
@@ -469,10 +600,67 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
     const totalSkus = visibleTerminals.reduce((acc, t) => acc + t.files.reduce((fa, f) => fa + f.skusCount, 0), 0);
     const totalFiles = visibleTerminals.reduce((acc, t) => acc + t.files.length, 0);
 
+    // Compilar todas las exportaciones generadas por los usuarios de sucursal en un único archivo Plex
+    const handleDownloadConsolidatedPlex = () => {
+        const allItems: Array<{ id_producto?: string; ean: string; quantity: number }> = [];
+        terminals.forEach(t => {
+            t.files.forEach(f => {
+                if (f.items && f.items.length > 0) {
+                    allItems.push(...f.items);
+                } else if (f.content) {
+                    const lines = f.content.split(/\r?\n/).filter(Boolean);
+                    lines.forEach(line => {
+                        const parts = line.split(';');
+                        if (parts.length >= 3) {
+                            allItems.push({
+                                id_producto: parts[0] || parts[1],
+                                ean: parts[1],
+                                quantity: Number(parts[2]) || 1
+                            });
+                        }
+                    });
+                }
+            });
+        });
+
+        if (allItems.length === 0) {
+            toast.info('No hay productos para compilar');
+            return;
+        }
+
+        const compiledMap = new Map<string, { id_producto: string; ean: string; quantity: number }>();
+        for (const item of allItems) {
+            const idProd = (item.id_producto || item.ean || '').trim();
+            const ean = (item.ean || idProd).trim();
+            const key = idProd || ean;
+            if (!key) continue;
+            const existing = compiledMap.get(key);
+            if (existing) {
+                existing.quantity += Number(item.quantity) || 1;
+            } else {
+                compiledMap.set(key, { id_producto: idProd, ean, quantity: Number(item.quantity) || 1 });
+            }
+        }
+
+        const lines = Array.from(compiledMap.values()).map(it => `${it.id_producto};${it.ean};${it.quantity};0`);
+        const content = lines.join('\n');
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const dateStr = new Date().toISOString().split('T')[0];
+        a.download = `CONSOLIDADO_PLEX_${dateStr}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast.success(`Consolidado descargado: ${compiledMap.size} SKUs compilados para Plex`);
+    };
+
     return (
-        <div className="flex-1 flex flex-col min-h-0 space-y-4">
+        <div className="flex-1 flex flex-col min-h-0 space-y-4 h-full">
             {/* Header / Resumen de Archivos (Estructura y altura 100% idéntica a DeviceMonitorView) */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 border-b border-border/20">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 border-b border-border/20 shrink-0">
                 <div className="flex items-center gap-3">
                     <h2 className="text-sm font-bold text-foreground">
                         {isBranchMode
@@ -485,7 +673,7 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
                     </h2>
                 </div>
 
-                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
                     <div>
                         Total escaneado: <strong className="text-foreground">{totalUnits.toLocaleString('es-AR')} un.</strong>
                     </div>
@@ -493,16 +681,31 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
                     <div>
                         Variedad: <strong className="text-foreground">{totalSkus} {totalSkus === 1 ? 'SKU' : 'SKUs'}</strong>
                     </div>
+                    {!isBranchMode && totalFiles > 0 && (
+                        <>
+                            <div className="hidden sm:block h-3.5 w-px bg-border/40" />
+                            <button
+                                type="button"
+                                onClick={handleDownloadConsolidatedPlex}
+                                className="h-7 px-2.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1.5 font-bold text-xs shadow-xs cursor-pointer transition-colors"
+                            >
+                                <Download className="w-3.5 h-3.5" />
+                                <span>Compilar Todo a Plex (.TXT)</span>
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
 
-            {/* Grilla de Dispositivos / Terminales o Estado Vacío */}
+            {/* Grilla de Dispositivos / Terminales o Estado Vacío con ScrollArea */}
             {visibleTerminals.length > 0 ? (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pb-8 w-full">
-                    {visibleTerminals.map((terminal) => (
-                        <TerminalFilesCard key={terminal.id} terminal={terminal} />
-                    ))}
-                </div>
+                <ScrollArea orientation="vertical" viewportClassName="scroll-fade pr-1 pb-6 [&>div]:!w-full" className="flex-1 min-h-0 w-full">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pb-6 w-full">
+                        {visibleTerminals.map((terminal) => (
+                            <TerminalFilesCard key={terminal.id} terminal={terminal} />
+                        ))}
+                    </div>
+                </ScrollArea>
             ) : (
                 <div className="flex-1 flex flex-col items-center justify-center p-12 text-muted-foreground text-xs gap-1.5 text-center">
                     <span className="font-semibold text-foreground text-sm">

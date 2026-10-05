@@ -139,6 +139,16 @@ export async function getActiveSessions(options?: { branchId?: string, role?: st
                 // Filter out those we just deleted locally but haven't synced yet
                 const filteredRemote = rawSessions.filter(rs => !deletedIds.has(rs.id));
 
+                // Purgar de Dexie sesiones que fueron eliminadas en Supabase
+                for (const ls of localSessions) {
+                    if (!remoteIds.has(ls.id) && !deletedIds.has(ls.id)) {
+                        await db.sessions.delete(ls.id);
+                        await db.items.where('session_id').equals(ls.id).delete();
+                        await db.locations.where('session_id').equals(ls.id).delete();
+                        await db.precount_products.where('session_id').equals(ls.id).delete();
+                    }
+                }
+
                 // Update local sessions with remote ones (simple merge and sync counts)
                 for (const rs of filteredRemote) {
                     const { items: _items, ...sessionData } = rs;
@@ -151,7 +161,7 @@ export async function getActiveSessions(options?: { branchId?: string, role?: st
                     } as LocalSession);
                 }
                 
-                // Refresh localSessions after merge
+                // Refresh localSessions after purge & merge
                 localSessions = await db.sessions
                     .where('status')
                     .equals('active')
@@ -257,6 +267,32 @@ export async function upsertPreCountItem(item: {
         .filter(i => i.location_tag === item.location_tag)
         .first();
 
+    // Resolver id_producto desde catálogo si no fue provisto
+    let resolvedIdProducto = (item.id_producto || existingItem?.id_producto || '').trim();
+    if (!resolvedIdProducto && item.session_id && item.ean) {
+        try {
+            const catItem = await db.precount_products
+                .where('[session_id+ean]')
+                .equals([item.session_id, item.ean])
+                .first();
+            if (catItem?.id_producto) {
+                resolvedIdProducto = String(catItem.id_producto).trim();
+            } else {
+                const byId = await db.precount_products
+                    .where('session_id')
+                    .equals(item.session_id)
+                    .filter(p => String(p.id_producto).trim() === item.ean)
+                    .first();
+                if (byId?.id_producto) {
+                    resolvedIdProducto = String(byId.id_producto).trim();
+                }
+            }
+        } catch {}
+    }
+    if (!resolvedIdProducto && item.ean) {
+        resolvedIdProducto = item.ean.trim();
+    }
+
     const now = new Date().toISOString();
     let resultItem: LocalItem;
 
@@ -267,7 +303,7 @@ export async function upsertPreCountItem(item: {
             quantity: newQuantity,
             scanned_at: now,
             synced: 1, // Optimistic: assume success
-            id_producto: item.id_producto || existingItem.id_producto,
+            id_producto: resolvedIdProducto || existingItem.id_producto,
             laboratory: item.laboratory || existingItem.laboratory,
             rubro: item.rubro || existingItem.rubro,
             device_name: deviceName,
@@ -277,7 +313,7 @@ export async function upsertPreCountItem(item: {
             ...existingItem, 
             quantity: newQuantity, 
             scanned_at: now, 
-            id_producto: item.id_producto || existingItem.id_producto,
+            id_producto: resolvedIdProducto || existingItem.id_producto,
             laboratory: item.laboratory || existingItem.laboratory,
             rubro: item.rubro || existingItem.rubro,
             device_name: deviceName,
@@ -294,7 +330,7 @@ export async function upsertPreCountItem(item: {
             scanned_at: now,
             scanned_by: userData.user?.id,
             synced: 1, // Optimistic: assume success
-            id_producto: item.id_producto,
+            id_producto: resolvedIdProducto || undefined,
             laboratory: item.laboratory,
             rubro: item.rubro,
             device_id: deviceId,
@@ -316,7 +352,7 @@ export async function upsertPreCountItem(item: {
             product_name: item.product_name,
             quantity: item.quantity,
             scanned_by: userData.user?.id,
-            id_producto: item.id_producto || existingItem?.id_producto,
+            id_producto: resolvedIdProducto || existingItem?.id_producto,
             device_id: deviceId,
             device_name: deviceName,
             location_tag: item.location_tag

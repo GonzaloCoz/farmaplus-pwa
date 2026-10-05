@@ -179,7 +179,7 @@ export function PreCountSettingsMenu({
                                 <span className="text-[14px]">Modo oscuro</span>
                                 <Switch
                                     checked={theme === 'dark'}
-                                    onCheckedChange={toggleTheme}
+                                    onToggle={toggleTheme}
                                     className="[--thumb-size:--spacing(4)] sm:[--thumb-size:--spacing(3)]"
                                 />
                             </div>
@@ -298,7 +298,7 @@ export function PreCountSettingsMenu({
                     <span>Modo oscuro</span>
                     <Switch
                         checked={theme === 'dark'}
-                        onCheckedChange={toggleTheme}
+                        onToggle={toggleTheme}
                         className="[--thumb-size:--spacing(4)] sm:[--thumb-size:--spacing(3)]"
                     />
                 </div>

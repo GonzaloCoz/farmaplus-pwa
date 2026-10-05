@@ -216,11 +216,24 @@ export function SendPlexApiDialog({
 
         setIsSending(true);
         try {
-            const batchPayload: PlexBatchItemInput[] = activeItems.map(it => ({
-                id_producto: it.id_producto ? Number(it.id_producto) : undefined,
-                codebar: it.ean,
-                cantidad: Number(it.quantity) || 1
-            }));
+            // Compilar todas las exportaciones generadas por los usuarios/terminales de la sucursal
+            const compiledMap = new Map<string, PlexBatchItemInput>();
+            for (const it of activeItems) {
+                const key = String(it.id_producto || it.ean).trim();
+                if (!key) continue;
+                const qty = Number(it.quantity) || 1;
+                const existing = compiledMap.get(key);
+                if (existing) {
+                    existing.cantidad += qty;
+                } else {
+                    compiledMap.set(key, {
+                        id_producto: it.id_producto && !isNaN(Number(it.id_producto)) ? Number(it.id_producto) : undefined,
+                        codebar: it.ean,
+                        cantidad: qty
+                    });
+                }
+            }
+            const batchPayload: PlexBatchItemInput[] = Array.from(compiledMap.values());
 
             const res = await sendPlexInventoryApiBatch(mysqlConfig, batchPayload);
 

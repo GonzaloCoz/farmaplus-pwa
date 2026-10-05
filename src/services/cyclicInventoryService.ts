@@ -661,6 +661,7 @@ export const cyclicInventoryService = {
         }
 
         return allData
+            .filter((row: any) => row.laboratory !== '_CONFIG_')
             .map((row: any) => {
                 // Map DB status to UI Status
                 let status: LaboratoryStatus = 'pendiente';
@@ -693,309 +694,7 @@ export const cyclicInventoryService = {
             });
     },
 
-    // Get Super-Lite summary for ALL branches (Admin View) or target branches
-    // Uses direct aggregated metrics from branch_laboratories with pre-indexed baja filters
-    getBranchesSummaryLite: async (
-        timeframe: string = 'all',
-        showPrevious: boolean = false,
-        targetBranches?: string[]
-    ): Promise<any[]> => {
-        try {
-            const targetRound = showPrevious ? 1 : 2;
 
-            // Cache for normalized branch strings to avoid re-running expensive regexes millions of times
-            const normBranchCache = new Map<string, string>();
-            const getNormBranch = (name: string): string => {
-                let norm = normBranchCache.get(name);
-                if (!norm) {
-                    norm = normalizeString(name || '');
-                    normBranchCache.set(name, norm);
-                }
-                return norm;
-            };
-
-            // 1. Fetch complete list of branch names
-            let branchNames: string[] = [];
-            if (targetBranches && targetBranches.length > 0) {
-                branchNames = targetBranches;
-            } else {
-                const { data: dbBranches, error: branchesError } = await supabase
-                    .from('branches')
-                    .select('name');
-
-                if (dbBranches && dbBranches.length > 0) {
-                    branchNames = dbBranches.map(b => b.name);
-                } else {
-                    console.warn("[Monitor] Warning fetching branches list:", branchesError);
-                    const { data: labBranches } = await supabase.from('branch_laboratories').select('branch_name');
-                    if (labBranches && labBranches.length > 0) {
-                        branchNames = Array.from(new Set(labBranches.map((b: any) => b.branch_name).filter(Boolean)));
-                    }
-                }
-            }
-
-            // Fetch approved bajas across branches to exclude discharged laboratories
-            let approvedBajas: { targetName: string; category?: string; branchName?: string }[] = [];
-            try {
-                approvedBajas = await requestsService.getApprovedBajas();
-            } catch (err) {
-                console.warn("Could not fetch approved bajas in getBranchesSummaryLite:", err);
-            }
-
-            // Pre-index approved bajas for instantaneous O(1) checks
-            // Key: `${normBranch}::${normLab}` -> Set<normCat> | true (true means complete lab discharge)
-            const bajasMap = new Map<string, Set<string> | true>();
-            for (const b of (approvedBajas || [])) {
-                const bBranchKey = b.branchName ? getNormBranch(b.branchName) : '*';
-                const bLabKey = (b.targetName || '').trim().toUpperCase();
-                const key = `${bBranchKey}::${bLabKey}`;
-                
-                if (!b.category || b.category === "BAJA TOTAL" || b.category === "TODOS" || b.category === "GENERAL") {
-                    bajasMap.set(key, true);
-                } else {
-                    const allowedCats = b.category.split(',').map(c => c.trim().toUpperCase());
-                    const existing = bajasMap.get(key);
-                    if (existing !== true) {
-                        if (existing instanceof Set) {
-                            allowedCats.forEach(c => existing.add(c));
-                        } else {
-                            bajasMap.set(key, new Set(allowedCats));
-                        }
-                    }
-                }
-            }
-
-            const isDischarged = (normB: string, labName: string, catName?: string): boolean => {
-                if (bajasMap.size === 0) return false;
-                const labUpper = (labName || '').trim().toUpperCase();
-                const specificKey = `${normB}::${labUpper}`;
-                const globalKey = `*::${labUpper}`;
-
-                const bajaSpecific = bajasMap.get(specificKey);
-                const bajaGlobal = bajasMap.get(globalKey);
-
-                if (bajaSpecific === true || bajaGlobal === true) return true;
-                const catUpper = (catName || '').trim().toUpperCase();
-                if (bajaSpecific instanceof Set && catUpper && bajaSpecific.has(catUpper)) return true;
-                if (bajaGlobal instanceof Set && catUpper && bajaGlobal.has(catUpper)) return true;
-                return false;
-            };
-
-            // 2. Fetch summary metrics directly from branch_laboratories table
-            const rpcMap: Record<string, any> = {};
-            const pageSize = 1000;
-            
-            const normalizedTargets = targetBranches && targetBranches.length > 0
-                ? Array.from(new Set(targetBranches.map(b => getNormBranch(b)).filter(Boolean)))
-                : null;
-
-            let baseQuery = (supabase as any)
-                .from('branch_laboratories')
-                .select('branch_name, laboratory, category, status, controlled_items, progress_percentage, positive_units, negative_units, positive_value, negative_value, total_items, last_updated', { count: 'exact' })
-                .eq('round', targetRound);
-
-            if (normalizedTargets && normalizedTargets.length > 0) {
-                baseQuery = baseQuery.in('branch_name', normalizedTargets);
-            }
-
-            // First page with exact count to avoid firing empty requests
-            const { data: firstPage, count: totalCount } = await baseQuery.range(0, pageSize - 1);
-
-            let allLabRows: any[] = firstPage || [];
-            if (totalCount && totalCount > pageSize) {
-                const remainingPages = Math.ceil(totalCount / pageSize);
-                // Concurrency batch size of 6 to prevent saturating the browser network queue
-                const batchSize = 6;
-                for (let i = 1; i < remainingPages; i += batchSize) {
-                    const chunkPromises = [];
-                    for (let j = i; j < Math.min(i + batchSize, remainingPages); j++) {
-                        let pageQuery = (supabase as any)
-                            .from('branch_laboratories')
-                            .select('branch_name, laboratory, category, status, controlled_items, progress_percentage, positive_units, negative_units, positive_value, negative_value, total_items, last_updated')
-                            .eq('round', targetRound);
-
-                        if (normalizedTargets && normalizedTargets.length > 0) {
-                            pageQuery = pageQuery.in('branch_name', normalizedTargets);
-                        }
-
-                        chunkPromises.push(
-                            pageQuery
-                                .range(j * pageSize, (j + 1) * pageSize - 1)
-                                .then((r: any) => r.data || [])
-                        );
-                    }
-                    const chunkData = await Promise.all(chunkPromises);
-                    for (const d of chunkData) {
-                        allLabRows = allLabRows.concat(d);
-                    }
-                }
-            }
-
-            if (allLabRows && allLabRows.length > 0) {
-                allLabRows.forEach((row: any) => {
-                    const normB = getNormBranch(row.branch_name || '');
-                    if (!normB) return;
-
-                    // Omitir laboratorios con baja aprobada para que no afecten el total ni el conteo de pendientes/activos
-                    if (isDischarged(normB, row.laboratory, row.category)) {
-                        return;
-                    }
-
-                    if (!rpcMap[normB]) {
-                        rpcMap[normB] = {
-                            branch_name: row.branch_name,
-                            inventory_units: 0,
-                            difference_units: 0,
-                            positive_diff_units: 0,
-                            negative_diff_units: 0,
-                            adjustments_value: 0,
-                            absolute_deviation_value: 0,
-                            controlled_labs_count: 0,
-                            active_labs_count: 0,
-                            total_labs_count: 0,
-                            total_controlled_items: 0,
-                            total_items_sum: 0,
-                            weighted_progress_sum: 0,
-                            updated_at: row.last_updated
-                        };
-                    }
-                    const bData = rpcMap[normB];
-                    bData.total_labs_count += 1;
-                    if (row.status === 'completed' || (row.progress_percentage || 0) >= 100) {
-                        bData.controlled_labs_count += 1;
-                    }
-                    if ((row.controlled_items || 0) > 0 || (row.progress_percentage || 0) > 0 || row.status !== 'pending') {
-                        bData.active_labs_count += 1;
-                    }
-                    bData.positive_diff_units += Number(row.positive_units) || 0;
-                    bData.negative_diff_units += Number(row.negative_units) || 0;
-                    bData.difference_units += (Number(row.positive_units) || 0) - (Number(row.negative_units) || 0);
-                    bData.inventory_units += Number(row.total_items) || 0;
-                    bData.adjustments_value += (Number(row.positive_value) || 0) - (Number(row.negative_value) || 0);
-                    bData.absolute_deviation_value += (Number(row.positive_value) || 0) + (Number(row.negative_value) || 0);
-                    bData.weighted_progress_sum += Number(row.progress_percentage) || 0;
-                });
-            }
-
-            // 3. Fetch branch configuration for deployment date and assigned days
-            const { data: configData } = await (supabase as any)
-                .from('inventories')
-                .select('branch_name, ean, quantity, round')
-                .eq('laboratory', '_CONFIG_')
-                .or('ean.eq.CONFIG_DAYS,ean.eq.CONFIG_START_DATE,ean.like.CONFIG_ROUND%');
-
-            const branchConfigs: Record<string, { startDate: string | null, days: number, rounds: Record<string, number> }> = {};
-            if (configData) {
-                configData.forEach((c: any) => {
-                    const normalized = getNormBranch(c.branch_name || '');
-                    if (!branchConfigs[normalized]) {
-                        branchConfigs[normalized] = { startDate: null, days: 0, rounds: { GENERAL: 1 } };
-                    }
-                    if (c.ean && c.ean.startsWith('CONFIG_ROUND')) {
-                        const roundVal = Number(c.quantity) || 1;
-                        if (c.ean === 'CONFIG_ROUND') {
-                            branchConfigs[normalized].rounds.GENERAL = Math.max(branchConfigs[normalized].rounds.GENERAL || 1, roundVal);
-                        } else {
-                            const cat = c.ean.replace('CONFIG_ROUND_', '').toUpperCase();
-                            branchConfigs[normalized].rounds[cat] = Math.max(branchConfigs[normalized].rounds[cat] || 1, roundVal);
-                        }
-                    }
-                });
-
-                configData.forEach((c: any) => {
-                    const normalized = getNormBranch(c.branch_name || '');
-                    if (c.ean === 'CONFIG_START_DATE') {
-                        if (c.round === targetRound || !branchConfigs[normalized].startDate) {
-                            if (c.quantity) {
-                                branchConfigs[normalized].startDate = new Date(c.quantity * 1000).toISOString();
-                            }
-                        }
-                    } else if (c.ean === 'CONFIG_DAYS') {
-                        if (c.round === targetRound || !branchConfigs[normalized].days) {
-                            if (c.quantity) {
-                                branchConfigs[normalized].days = c.quantity;
-                            }
-                        }
-                    }
-                });
-            }
-
-            // 4. Map over ALL branches using exact metrics matching the widgets
-            const finalResult = branchNames.map(branchName => {
-                const normalizedSearch = getNormBranch(branchName);
-                const row = rpcMap[normalizedSearch];
-
-                const activeLabsCount = Number(row?.active_labs_count) || 0;
-                const controlledLabsCount = Number(row?.controlled_labs_count) || 0;
-                const totalLabsMaster = Number(row?.total_labs_count) || 0;
-
-                // % Avance = Active labs / Total assigned labs (Exactamente igual que los widgets)
-                let progress = 0;
-                if (totalLabsMaster > 0 && activeLabsCount > 0) {
-                    progress = Number(((activeLabsCount / totalLabsMaster) * 100).toFixed(1));
-                    if (progress > 100) progress = 100;
-                }
-
-                const inventoryUnits = Number(row?.inventory_units) || 0;
-                const differenceUnits = Number(row?.difference_units) || 0;
-                const positiveDiffUnits = Number(row?.positive_diff_units) || 0;
-                const negativeDiffUnits = Number(row?.negative_diff_units) || 0;
-                const adjustmentsValue = Number(row?.adjustments_value) || 0;
-                const absoluteDeviationValue = Number(row?.absolute_deviation_value) || 0;
-
-                let status: 'controlado' | 'por_controlar' | 'pendiente' = 'pendiente';
-                if (controlledLabsCount >= totalLabsMaster && totalLabsMaster > 0 && controlledLabsCount > 0) {
-                    status = 'controlado';
-                } else if (activeLabsCount > 0 || inventoryUnits > 0 || differenceUnits !== 0) {
-                    status = 'por_controlar';
-                }
-
-                const config = branchConfigs[normalizedSearch] || { startDate: null, days: 0, rounds: {} };
-                const startDateIso = config.startDate || (!showPrevious ? '2026-07-21T03:00:00.000Z' : null);
-                const assignedDays = config.days || (!showPrevious ? 150 : 0);
-                const deploymentDate = startDateIso
-                    ? startDateIso.split('T')[0].split('-').reverse().slice(0, 2).join('/')
-                    : 'sin fecha asignada';
-
-                let elapsedDays = 0;
-                let remainingDays = 0;
-                if (startDateIso) {
-                    const start = new Date(startDateIso);
-                    const today = new Date();
-                    const diffTime = today.getTime() - start.getTime();
-                    elapsedDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
-                    remainingDays = Math.max(0, assignedDays - elapsedDays);
-                } else if (assignedDays > 0) {
-                    remainingDays = assignedDays;
-                }
-
-                return {
-                    branchName,
-                    deploymentDate,
-                    assignedDays: Number(assignedDays) || 0,
-                    remainingDays: Number(remainingDays) || 0,
-                    cyclicRound: targetRound,
-                    rounds: { GENERAL: targetRound },
-                    monthlyGoal: totalLabsMaster,
-                    elapsedDays,
-                    progress,
-                    inventoryUnits,
-                    differenceUnits,
-                    positiveDiffUnits,
-                    negativeDiffUnits,
-                    adjustmentsValue: Math.round(adjustmentsValue * 100) / 100,
-                    absoluteDeviationValue: Math.round(absoluteDeviationValue * 100) / 100,
-                    status,
-                    lastUpdated: row?.updated_at || null
-                };
-            }).sort((a: any, b: any) => b.progress - a.progress);
-
-            return finalResult;
-        } catch (err) {
-            console.error("[Monitor] Error building branches summary lite:", err);
-            return [];
-        }
-    },
 
 
 
@@ -1057,6 +756,373 @@ export const cyclicInventoryService = {
         }
 
         return { days, startDate, rounds };
+    },
+
+    getAllBranchesConfigs: async (): Promise<Map<string, { days: number, daysRemaining: number, assignedDays: number, startDate: string | null, round: number }>> => {
+        const configMap = new Map<string, { days: number, daysRemaining: number, assignedDays: number, startDate: string | null, round: number }>();
+        try {
+            const { data, error } = await supabase
+                .from('inventories')
+                .select('branch_name, ean, quantity, round')
+                .eq('laboratory', '_CONFIG_')
+                .or('ean.eq.CONFIG_DAYS,ean.eq.CONFIG_START_DATE,ean.like.CONFIG_ROUND%');
+
+            if (error || !data) return configMap;
+
+            const grouped = new Map<string, any[]>();
+            data.forEach((r: any) => {
+                const norm = normalizeString(r.branch_name || '');
+                if (!grouped.has(norm)) grouped.set(norm, []);
+                grouped.get(norm)!.push(r);
+            });
+
+            grouped.forEach((records, normBranch) => {
+                const generalRound = 2; // Estrictamente Ronda 2
+                let daysRec = records.find((r: any) => r.ean === 'CONFIG_DAYS' && r.round === 2) || records.find((r: any) => r.ean === 'CONFIG_DAYS');
+                let startRec = records.find((r: any) => r.ean === 'CONFIG_START_DATE' && r.round === 2) || records.find((r: any) => r.ean === 'CONFIG_START_DATE');
+
+                const assignedDays = Number(daysRec?.quantity || 0);
+                let startDate: string | null = null;
+                let daysRemaining = assignedDays;
+
+                if (startRec && startRec.quantity) {
+                    startDate = new Date(startRec.quantity * 1000).toISOString();
+                    if (assignedDays > 0) {
+                        const daysElapsed = Math.max(0, Math.floor((new Date().getTime() - (startRec.quantity * 1000)) / (1000 * 60 * 60 * 24)));
+                        daysRemaining = Math.max(0, assignedDays - daysElapsed);
+                    }
+                }
+
+                configMap.set(normBranch, {
+                    days: assignedDays,
+                    daysRemaining,
+                    assignedDays,
+                    startDate,
+                    round: generalRound,
+                });
+            });
+        } catch (err) {
+            console.error("Error loading all branch configs:", err);
+        }
+        return configMap;
+    },
+
+    /**
+     * Obtiene el avance y las unidades declaradas (sobrantes, faltantes, desvío, diferencia neta)
+     * EXCLUSIVAMENTE DE LA RONDA 2 de cada sucursal.
+     * Calcula el porcentaje de avance por laboratorios (controlados o en proceso / total)
+     * idéntico al widget de Progreso de Inventario.
+     */
+    getAllBranchesProgress: async (_roundsMap?: Map<string, number>): Promise<Map<string, {
+        total: number;
+        controlled: number;
+        progress: number;
+        positiveUnits: number;
+        negativeUnits: number;
+        netUnits: number;
+        totalDeviationUnits: number;
+        totalSystemUnits: number;
+        totalLabs: number;
+        controlledLabs: number;
+        totalItems: number;
+        controlledItems: number;
+        adjustmentsValue: number;
+        netDeviationValue: number;
+    }>> => {
+        const progressMap = new Map<string, {
+            total: number;
+            controlled: number;
+            progress: number;
+            positiveUnits: number;
+            negativeUnits: number;
+            netUnits: number;
+            totalDeviationUnits: number;
+            totalSystemUnits: number;
+            totalLabs: number;
+            controlledLabs: number;
+            totalItems: number;
+            controlledItems: number;
+            adjustmentsValue: number;
+            netDeviationValue: number;
+        }>();
+        try {
+            let allData: any[] = [];
+            let page = 0;
+            const limit = 1000;
+
+            // 1. Cargar bajas aprobadas completas de todas las sucursales (Criterio B)
+            let approvedBajas: { targetName: string; category?: string; branchName?: string }[] = [];
+            try {
+                approvedBajas = await requestsService.getApprovedBajas();
+            } catch (err) {
+                console.warn('Error fetching approved bajas in getAllBranchesProgress:', err);
+            }
+
+            const bajasMap = new Map<string, Map<string, Set<string> | true>>();
+            approvedBajas.forEach((b) => {
+                const normB = b.branchName ? normalizeString(b.branchName) : '*';
+                if (!bajasMap.has(normB)) bajasMap.set(normB, new Map());
+                const labMap = bajasMap.get(normB)!;
+                const lab = (b.targetName || '').trim().toUpperCase();
+                const cat = (b.category || '').trim().toUpperCase();
+                if (!cat || cat === 'BAJA TOTAL' || cat === 'TODOS' || cat === 'GENERAL') {
+                    labMap.set(lab, true);
+                } else {
+                    const cats = cat.split(',').map((c) => c.trim().toUpperCase());
+                    const existing = labMap.get(lab);
+                    if (existing !== true) {
+                        if (existing instanceof Set) {
+                            cats.forEach(c => existing.add(c));
+                        } else {
+                            labMap.set(lab, new Set(cats));
+                        }
+                    }
+                }
+            });
+
+            // 2. Filtro estricto por round = 2 directamente en Supabase
+            while (true) {
+                const { data, error } = await (supabase as any)
+                    .from('branch_laboratories')
+                    .select('branch_name, laboratory, category, status, total_items, controlled_items, adjusted_items, round, positive_units, negative_units, net_units, total_system_units, positive_value, negative_value, net_value')
+                    .eq('round', 2)
+                    .range(page * limit, (page + 1) * limit - 1);
+
+                if (error) {
+                    console.error('Error fetching branch progress:', error);
+                    break;
+                }
+                if (!data || data.length === 0) break;
+                allData = allData.concat(data);
+                if (data.length < limit) break;
+                page++;
+            }
+
+            // Agrupar por branch_name para la Ronda 2 (Criterio B: deduciendo bajas aprobadas)
+            const grouped = new Map<string, {
+                totalLabs: number;
+                controlledLabs: number;
+                totalItems: number;
+                controlledItems: number;
+                positiveUnits: number;
+                negativeUnits: number;
+                netUnits: number;
+                totalSystemUnits: number;
+                totalAdjustmentsValue: number;
+                netDeviationValue: number;
+            }>();
+
+            allData.forEach((row: any) => {
+                const norm = normalizeString(row.branch_name || '');
+                if (!norm) return;
+                // Omitir fila de configuración del sistema
+                if (row.laboratory === '_CONFIG_') return;
+
+                // Descontar laboratorios con baja aprobada (sucursal específica o global)
+                const checkBaja = (mapBranch: string) => {
+                    const labMap = bajasMap.get(mapBranch);
+                    if (!labMap) return false;
+                    const normLab = (row.laboratory || '').trim().toUpperCase();
+                    const normCat = (row.category || '').trim().toUpperCase();
+                    const match = labMap.get(normLab);
+                    if (match === true) return true;
+                    if (match instanceof Set && match.has(normCat)) return true;
+                    return false;
+                };
+
+                if (checkBaja(norm) || checkBaja('*')) return;
+
+                const current = grouped.get(norm) || {
+                    totalLabs: 0,
+                    controlledLabs: 0,
+                    totalItems: 0,
+                    controlledItems: 0,
+                    positiveUnits: 0,
+                    negativeUnits: 0,
+                    netUnits: 0,
+                    totalSystemUnits: 0,
+                    totalAdjustmentsValue: 0,
+                    netDeviationValue: 0,
+                };
+
+                current.totalLabs += 1;
+                const isTouched = row.status === 'completed' || row.status === 'in_progress' || row.status === 'controlado' || row.status === 'por_controlar';
+                if (isTouched) {
+                    current.controlledLabs += 1;
+                }
+
+                current.totalItems += Number(row.total_items || 0);
+                current.controlledItems += Number(row.controlled_items || 0) + Number(row.adjusted_items || 0);
+                current.positiveUnits += Number(row.positive_units || 0);
+                current.negativeUnits += Number(row.negative_units || 0);
+                current.netUnits += Number(row.net_units !== undefined && row.net_units !== null
+                    ? row.net_units
+                    : (Number(row.positive_units || 0) + Number(row.negative_units || 0)));
+                current.totalSystemUnits += Number(row.total_system_units || 0);
+
+                const posVal = Number(row.positive_value || 0);
+                const negVal = Number(row.negative_value || 0);
+                const netVal = Number(row.net_value !== undefined && row.net_value !== null ? row.net_value : (posVal + negVal));
+                current.totalAdjustmentsValue += (posVal + Math.abs(negVal));
+                current.netDeviationValue += netVal;
+
+                grouped.set(norm, current);
+            });
+
+            grouped.forEach((val, key) => {
+                // Métrica unificada: % de laboratorios controlados/iniciados sobre total asignado (con 1 decimal)
+                const progress = val.totalLabs > 0
+                    ? Math.min(100, Number(((val.controlledLabs / val.totalLabs) * 100).toFixed(1)))
+                    : 0;
+
+                progressMap.set(key, {
+                    total: val.totalLabs,
+                    controlled: val.controlledLabs,
+                    progress,
+                    positiveUnits: val.positiveUnits,
+                    negativeUnits: val.negativeUnits,
+                    netUnits: val.netUnits,
+                    totalDeviationUnits: val.positiveUnits + Math.abs(val.negativeUnits),
+                    totalSystemUnits: val.totalSystemUnits,
+                    totalLabs: val.totalLabs,
+                    controlledLabs: val.controlledLabs,
+                    totalItems: val.totalItems,
+                    controlledItems: val.controlledItems,
+                    adjustmentsValue: Math.round(val.totalAdjustmentsValue * 100) / 100,
+                    netDeviationValue: Math.round(val.netDeviationValue * 100) / 100,
+                });
+            });
+        } catch (err) {
+            console.error('Error loading all branches progress:', err);
+        }
+        return progressMap;
+    },
+
+    /**
+     * Obtiene la actividad diaria de ajustes de inventario de los últimos N días para todas las sucursales.
+     */
+    getAllBranchesDailyActivity: async (daysCount: number = 12): Promise<Map<string, {
+        points: Array<{ date: string; shortDate: string; count: number; units: number }>;
+        lastAdjustment?: { createdAt: string; laboratory?: string; units?: number };
+    }>> => {
+        const resultMap = new Map<string, {
+            points: Array<{ date: string; shortDate: string; count: number; units: number }>;
+            lastAdjustment?: { createdAt: string; laboratory?: string; units?: number };
+        }>();
+        try {
+            const today = new Date();
+            const startDate = new Date(today);
+            startDate.setDate(startDate.getDate() - (daysCount - 1));
+            startDate.setHours(0, 0, 0, 0);
+
+            // Generar lista de días
+            const dateBuckets: Array<{ isoDate: string; shortDate: string }> = [];
+            for (let i = 0; i < daysCount; i++) {
+                const d = new Date(startDate);
+                d.setDate(d.getDate() + i);
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                const isoDate = `${yyyy}-${mm}-${dd}`;
+                const shortDate = `${dd}/${mm}`;
+                dateBuckets.push({ isoDate, shortDate });
+            }
+
+            // Paginación segura para obtener todos los ajustes del período
+            let allAdjustments: any[] = [];
+            let page = 0;
+            const limit = 1000;
+            while (true) {
+                const { data, error } = await supabase
+                    .from('inventory_adjustments')
+                    .select('branch_name, created_at, total_units_adjusted, laboratory')
+                    .gte('created_at', startDate.toISOString())
+                    .order('created_at', { ascending: true })
+                    .range(page * limit, (page + 1) * limit - 1);
+
+                if (error || !data || data.length === 0) break;
+                allAdjustments = allAdjustments.concat(data);
+                if (data.length < limit) break;
+                page++;
+            }
+
+            const lastAdjMap = new Map<string, { createdAt: string; laboratory?: string; units?: number }>();
+
+            // Agrupar por sucursal normalizada y por fecha
+            const branchDailyMap = new Map<string, Map<string, { count: number; units: number }>>();
+            allAdjustments.forEach(row => {
+                const norm = normalizeString(row.branch_name || '');
+                if (!norm) return;
+
+                // Actualizar último ajuste dentro del período
+                lastAdjMap.set(norm, {
+                    createdAt: row.created_at,
+                    laboratory: row.laboratory,
+                    units: Math.abs(Number(row.total_units_adjusted) || 0),
+                });
+
+                const rowDate = new Date(row.created_at);
+                const yyyy = rowDate.getFullYear();
+                const mm = String(rowDate.getMonth() + 1).padStart(2, '0');
+                const dd = String(rowDate.getDate()).padStart(2, '0');
+                const isoDate = `${yyyy}-${mm}-${dd}`;
+
+                if (!branchDailyMap.has(norm)) {
+                    branchDailyMap.set(norm, new Map());
+                }
+                const daysMap = branchDailyMap.get(norm)!;
+                const current = daysMap.get(isoDate) || { count: 0, units: 0 };
+                daysMap.set(isoDate, {
+                    count: current.count + 1,
+                    units: current.units + Math.abs(Number(row.total_units_adjusted) || 1),
+                });
+            });
+
+            // Obtener los ajustes más recientes históricos para cubrir sucursales que no ajustaron en los últimos 12 días
+            let p = 0;
+            while (p < 5) {
+                const { data: recent, error: rErr } = await supabase
+                    .from('inventory_adjustments')
+                    .select('branch_name, created_at, laboratory, total_units_adjusted')
+                    .order('created_at', { ascending: false })
+                    .range(p * 1000, (p + 1) * 1000 - 1);
+                if (rErr || !recent || recent.length === 0) break;
+                recent.forEach((r: any) => {
+                    const norm = normalizeString(r.branch_name || '');
+                    if (norm && !lastAdjMap.has(norm)) {
+                        lastAdjMap.set(norm, {
+                            createdAt: r.created_at,
+                            laboratory: r.laboratory,
+                            units: Math.abs(Number(r.total_units_adjusted) || 0),
+                        });
+                    }
+                });
+                p++;
+            }
+
+            // Construir el mapa final con serie de puntos y último ajuste
+            const allBranchKeys = new Set([...branchDailyMap.keys(), ...lastAdjMap.keys()]);
+            allBranchKeys.forEach(normBranch => {
+                const daysMap = branchDailyMap.get(normBranch);
+                const series = dateBuckets.map(b => {
+                    const dayData = daysMap?.get(b.isoDate) || { count: 0, units: 0 };
+                    return {
+                        date: b.isoDate,
+                        shortDate: b.shortDate,
+                        count: dayData.count,
+                        units: dayData.units,
+                    };
+                });
+                resultMap.set(normBranch, {
+                    points: series,
+                    lastAdjustment: lastAdjMap.get(normBranch),
+                });
+            });
+
+        } catch (err) {
+            console.error('Error fetching all branches daily activity:', err);
+        }
+        return resultMap;
     },
 
     resetCategoryRound: async (branchName: string, category: string, nextRound: number): Promise<void> => {

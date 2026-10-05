@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from 'react-router-dom';
 import { useUser } from '@/contexts/UserContext';
 import {
@@ -369,14 +369,7 @@ export default function PreCount() {
     const navigate = useNavigate();
     const { user, logout } = useUser();
     const isAdmin = user?.role === 'admin' || user?.role === 'mod';
-    const [step, setStep] = useState<Step>(() => {
-        if (user?.role === 'admin' || user?.role === 'mod') return 'counting';
-        if (typeof localStorage !== 'undefined') {
-            const saved = localStorage.getItem('last_precount_session_id') || localStorage.getItem('precount_session_id');
-            if (saved) return 'counting';
-        }
-        return 'config';
-    });
+    const [step, setStep] = useState<Step>('counting');
     const [autoSave, setAutoSave] = useState(true);
 
     // Sincronizar preferencia de autoguardado con el gestor de colas en segundo plano
@@ -1537,7 +1530,7 @@ export default function PreCount() {
 
         // Si no es admin, enviamos el archivo al admin y salimos LOCALMENTE
         if (accessMode !== 'admin') {
-            const content = generateTXTContent();
+            const content = await generateTXTContent();
             if (content) {
                 const filename = `Colector_${deviceName || 'Zebra'}_${session?.sector}_${new Date().toISOString().split('T')[0]}.txt`;
 
@@ -1554,7 +1547,7 @@ export default function PreCount() {
 
             // IMPORTANTE: NO llamamos a finishSession() si no es admin
             // Solo limpiamos el estado local para volver al inicio
-            setStep('config');
+            setStep('counting');
             notify.success("Sesión terminada", "Has finalizado tu parte del conteo.");
         } else {
             // Si es admin, descarga el consolidado y CIERRA para todos
@@ -1568,7 +1561,7 @@ export default function PreCount() {
 
 
     // Generar contenido del TXT (Formato: IDProducto;EAN;Cantidad;0)
-    const generateTXTContent = () => {
+    const generateTXTContent = async () => {
         if (items.length === 0) return null;
 
         // Si no es admin, solo enviamos lo que escaneó ESTE dispositivo
@@ -1582,16 +1575,57 @@ export default function PreCount() {
             return null;
         }
 
+        // Mapa de catálogo para resolver ID de producto si no vino grabado
+        const productMap = new Map<string, string>();
+        try {
+            const allCatalogProds = await db.precount_products.toArray();
+            for (const p of allCatalogProds) {
+                if (p.id_producto) {
+                    if (p.ean) productMap.set(String(p.ean).trim(), String(p.id_producto).trim());
+                    if (Array.isArray(p.eans)) {
+                        for (const altEan of p.eans) {
+                            if (altEan) productMap.set(String(altEan).trim(), String(p.id_producto).trim());
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[PreCount] Error cargando catálogo local para exportación:', e);
+        }
+
+        if (session?.master_catalog) {
+            for (const p of session.master_catalog) {
+                if (p.id_producto) {
+                    const idStr = String(p.id_producto).trim();
+                    if (p.ean && !productMap.has(String(p.ean).trim())) {
+                        productMap.set(String(p.ean).trim(), idStr);
+                    }
+                    if (Array.isArray(p.eans)) {
+                        for (const altEan of p.eans) {
+                            const trimmedAlt = String(altEan).trim();
+                            if (trimmedAlt && !productMap.has(trimmedAlt)) {
+                                productMap.set(trimmedAlt, idStr);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         const lines = filteredItems.map(item => {
-            const idProd = item.id_producto || '';
-            return `${idProd};${item.ean};${item.quantity};0`;
+            const eanStr = String(item.ean || '').trim();
+            const rawId = item.id_producto ? String(item.id_producto).trim() : '';
+            const mappedId = eanStr ? productMap.get(eanStr) : undefined;
+            const isShortCode = eanStr.length > 0 && eanStr.length <= 7 && /^\d+$/.test(eanStr);
+            const idProd = rawId || mappedId || (isShortCode ? eanStr : '') || eanStr || '0';
+            return `${idProd};${eanStr};${item.quantity};0`;
         });
         return lines.join('\n');
     };
 
     // Exportar a TXT
-    const handleExportTXT = () => {
-        const content = generateTXTContent();
+    const handleExportTXT = async () => {
+        const content = await generateTXTContent();
         if (!content) {
             notify.error("Error", 'No hay productos para exportar');
             return;
@@ -2364,79 +2398,49 @@ export default function PreCount() {
 
     return (
         <div className="h-full flex flex-col relative overflow-hidden">
-            <motion.div
-                className="h-full flex flex-col space-y-0"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4 }}
-            >
-                <AnimatePresence mode="wait">
-                    {step !== 'counting' && accessMode !== 'admin' ? (
-                        <motion.div
-                            key="config"
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 20 }}
-                            transition={{ duration: 0.3 }}
-                            className="flex-1 flex flex-col p-0 md:p-2 lg:grid lg:grid-cols-12 gap-0 lg:gap-6 w-full h-full"
-                        >
-                            {/* Left Column: Config Steps */}
-                            <div className="lg:col-span-4 lg:col-start-1 flex-1 flex flex-col min-h-0 h-full">
-                                <div className="flex flex-col flex-1 overflow-hidden bg-surface-8 border border-border/40 rounded-xl h-full shadow-surface-8">
-                                    <AnimatePresence mode="wait">
-                                        <motion.div
-                                            key={step}
-                                            initial={{ opacity: 0, y: 10 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            exit={{ opacity: 0, y: -10 }}
-                                            transition={{ duration: 0.25 }}
-                                            className="flex flex-col flex-1 overflow-hidden h-full"
-                                        >
-                                            {renderConfig()}
-                                        </motion.div>
-                                    </AnimatePresence>
+            {step !== 'counting' && accessMode !== 'admin' ? (
+                <div className="flex-1 flex flex-col p-0 md:p-2 lg:grid lg:grid-cols-12 gap-0 lg:gap-6 w-full h-full">
+                    {/* Left Column: Config Steps */}
+                    <div className="lg:col-span-4 lg:col-start-1 flex-1 flex flex-col min-h-0 h-full">
+                        <div className="flex flex-col flex-1 overflow-hidden bg-surface-8 border border-border/40 rounded-xl h-full shadow-surface-8">
+                            {renderConfig()}
+                        </div>
+                    </div>
+
+                    {/* Right Column: Empty State, Table Preview or Connected Devices during config */}
+                    <div className="hidden lg:flex lg:col-span-8 lg:col-start-5 flex-col min-h-0 bg-surface-8 border border-border/40 rounded-xl overflow-hidden shadow-surface-8">
+                        {masterCatalog && masterCatalog.length > 0 ? (
+                            <EditableCatalogPreview
+                                catalog={masterCatalog}
+                                onChange={(updatedCatalog) => {
+                                    setMasterCatalog(updatedCatalog);
+                                    const primaryCount = updatedCatalog.filter((item: MasterCatalogItem) => item.isPrimaryEan).length;
+                                    setParsedStock((prev) => prev ? { ...prev, total: primaryCount } : null);
+                                }}
+                                profile={inventoryProfile}
+                            />
+                        ) : (step === 'admin_sync' || step === 'qr_generator') ? (
+                            <ConnectedDevicesList devices={connectedDevices} />
+                        ) : (
+                            <div className="h-full flex flex-col items-center justify-center gap-6 text-center px-12 animate-in fade-in duration-700">
+                                <div className="flex flex-col items-center gap-6">
+                                    <Laptop className="w-24 h-24 text-muted-foreground/20 stroke-[1.5]" />
+                                    <div className="space-y-3">
+                                        <h3 className="text-xl font-black text-muted-foreground/40 tracking-tight">Configuración en progreso</h3>
+                                        <p className="text-xs text-muted-foreground/30 max-w-sm leading-relaxed mx-auto">
+                                            Una vez completados los pasos de configuración inicial en el panel izquierdo, este espacio mostrará la lista de productos y el control de inventario en tiempo real.
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
-
-                            {/* Right Column: Empty State, Table Preview or Connected Devices during config */}
-                            <div className="hidden lg:flex lg:col-span-8 lg:col-start-5 flex-col min-h-0 bg-surface-8 border border-border/40 rounded-xl overflow-hidden shadow-surface-8">
-                                {masterCatalog && masterCatalog.length > 0 ? (
-                                    <EditableCatalogPreview
-                                        catalog={masterCatalog}
-                                        onChange={(updatedCatalog) => {
-                                            setMasterCatalog(updatedCatalog);
-                                            const primaryCount = updatedCatalog.filter((item: MasterCatalogItem) => item.isPrimaryEan).length;
-                                            setParsedStock((prev) => prev ? { ...prev, total: primaryCount } : null);
-                                        }}
-                                        profile={inventoryProfile}
-                                    />
-                                ) : (step === 'admin_sync' || step === 'qr_generator') ? (
-                                    <ConnectedDevicesList devices={connectedDevices} />
-                                ) : (
-                                    <div className="h-full flex flex-col items-center justify-center gap-6 text-center px-12 animate-in fade-in duration-700">
-                                        <div className="flex flex-col items-center gap-6">
-                                            <Laptop className="w-24 h-24 text-muted-foreground/20 stroke-[1.5]" />
-                                            <div className="space-y-3">
-                                                <h3 className="text-xl font-black text-muted-foreground/40 tracking-tight">Configuración en progreso</h3>
-                                                <p className="text-xs text-muted-foreground/30 max-w-sm leading-relaxed mx-auto">
-                                                    Una vez completados los pasos de configuración inicial en el panel izquierdo, este espacio mostrará la lista de productos y el control de inventario en tiempo real.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </motion.div>
-                    ) : (
-                        <motion.div
-                            key="counting"
-                            id="counting-main-container"
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -20 }}
-                            transition={{ duration: 0.3 }}
-                            className="flex-1 w-full h-full overflow-hidden flex flex-col bg-surface-2 dark:bg-surface-1"
-                        >
+                        )}
+                    </div>
+                </div>
+            ) : (
+                <div
+                    id="counting-main-container"
+                    className="flex-1 w-full h-full overflow-hidden flex flex-col bg-surface-2 dark:bg-surface-1"
+                >
                             {/* VISTA COLECTOR DE DATOS: PERFIL ADMIN / PERFIL SUCURSAL */}
                             {accessMode === 'admin' ? (
                                 <SurfaceProvider value={2}>
@@ -2697,10 +2701,8 @@ export default function PreCount() {
                                     </div>
                                 </div>
                             )}
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-            </motion.div>
+                </div>
+            )}
 
 
             {/* Modales y Drawers Modulares */}

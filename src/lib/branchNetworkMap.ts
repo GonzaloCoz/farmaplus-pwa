@@ -71,7 +71,7 @@ export const OFFICIAL_71_BRANCHES: OfficialBranchInfo[] = [
     { branchId: 50, name: 'ISDIN G. PACIFICO', code: 'S50', sigla: 'FP48', primaryIp: '10.0.50.10' },
     { branchId: 51, name: 'LOREAL ALTO PALERMO', code: 'S51', sigla: 'FP49', primaryIp: '10.0.51.10' },
     { branchId: 52, name: 'ISDIN PALERMO', code: 'S52', sigla: 'FP50', primaryIp: '10.0.52.10' },
-    { branchId: 53, name: 'BELGRANO VII - DANESA', code: 'S53', sigla: 'FP51', primaryIp: '10.0.48.10' },
+    { branchId: 53, name: 'BELGRANO VII', code: 'S53', sigla: 'FP51', primaryIp: '10.0.48.10' },
     { branchId: 54, name: 'PALERMO II', code: 'S54', sigla: 'FP52', primaryIp: '10.0.49.10' },
     { branchId: 55, name: 'BELGRANO VIII', code: 'S55', sigla: 'FP53', primaryIp: '10.0.51.10' },
     { branchId: 56, name: 'CABALLITO IV', code: 'S56', sigla: 'FP54', primaryIp: '10.0.50.10' },

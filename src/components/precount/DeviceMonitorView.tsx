@@ -5,6 +5,7 @@ import { db } from '@/services/db';
 import { getDeviceId } from '@/services/deviceTelemetry';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
     Wifi,
     Smartphone as SmartphoneIcon,
@@ -208,6 +209,8 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
         globalMonitorCache.clear();
 
         const liveDeviceIds = new Set<string>();
+        let devicePollInterval: any = null;
+        let countsPollInterval: any = null;
 
         const syncDevicePositionsAndStats = () => {
             // Recalcular conteos por dispositivo desde itemsByIdRef desde cero (idempotente 100%)
@@ -522,15 +525,17 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
                 }).catch(() => {});
 
             // 3. Consultar terminales conectadas en Supabase (precount_connected_devices)
-            (supabase as any)
-                .from('precount_connected_devices')
-                .select('*')
-                .eq('session_id', activeSessionId)
-                .then((res: any) => {
+            const fetchRemoteDevices = async () => {
+                try {
+                    const res = await (supabase as any)
+                        .from('precount_connected_devices')
+                        .select('*')
+                        .eq('session_id', activeSessionId);
+
                     if (res?.data && Array.isArray(res.data)) {
                         res.data.forEach((row: any) => {
                             const isRecentlyActive = row.last_seen 
-                                ? (Date.now() - new Date(row.last_seen).getTime()) < 5 * 60 * 1000 
+                                ? (Date.now() - new Date(row.last_seen).getTime()) < 3 * 60 * 1000 
                                 : false;
                             const nameLower = (row.device_name || '').toLowerCase();
                             const modelLower = (row.device_model || '').toLowerCase();
@@ -558,14 +563,22 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
                         });
                         syncDevicePositionsAndStats();
                     }
-                }).catch(() => {});
+                } catch (err) {
+                    console.debug('[DeviceMonitor] Error consultando precount_connected_devices:', err);
+                }
+            };
+
+            fetchRemoteDevices();
+            devicePollInterval = setInterval(fetchRemoteDevices, 5000);
 
             // 4. Cargar conteos reales exactos escaneados en esta sesión por cada dispositivo
-            (supabase as any)
-                .from('precount_items')
-                .select('id, device_id, device_name, location_tag, quantity, ean')
-                .eq('session_id', activeSessionId)
-                .then((res: any) => {
+            const fetchRemoteCounts = async () => {
+                try {
+                    const res = await (supabase as any)
+                        .from('precount_items')
+                        .select('id, device_id, device_name, location_tag, quantity, ean')
+                        .eq('session_id', activeSessionId);
+
                     if (res?.data && Array.isArray(res.data)) {
                         itemsByIdRef.current.clear();
                         res.data.forEach((it: any) => {
@@ -581,7 +594,13 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
                         });
                         syncDevicePositionsAndStats();
                     }
-                }).catch(() => {});
+                } catch (err) {
+                    console.debug('[DeviceMonitor] Error consultando precount_items:', err);
+                }
+            };
+
+            fetchRemoteCounts();
+            countsPollInterval = setInterval(fetchRemoteCounts, 5000);
         }
 
         // 5. Listeners locales
@@ -828,6 +847,8 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
         window.addEventListener('precount:session_deleted' as any, handleSessionDeleted);
 
         return () => {
+            clearInterval(devicePollInterval);
+            clearInterval(countsPollInterval);
             window.removeEventListener('precount:device_joined' as any, handleDeviceJoined);
             window.removeEventListener('precount:device_heartbeat' as any, handleDeviceHeartbeat);
             window.removeEventListener('precount:session_deleted' as any, handleSessionDeleted);
@@ -864,9 +885,9 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
     const totalSkus = visibleDevices.reduce((acc, d) => acc + d.totalSkus, 0);
 
     return (
-        <div className="flex-1 flex flex-col min-h-0 space-y-4">
+        <div className="flex-1 flex flex-col min-h-0 space-y-4 h-full">
             {/* Header / Resumen del Monitor */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 border-b border-border/20">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 border-b border-border/20 shrink-0">
                 <div className="flex items-center gap-2">
                     <h2 className="text-sm font-bold text-foreground">
                         {visibleDevices.length > 0 
@@ -886,13 +907,15 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
                 </div>
             </div>
 
-            {/* Grilla de Dispositivos o Estado Vacío */}
+            {/* Grilla de Dispositivos o Estado Vacío con ScrollArea */}
             {visibleDevices.length > 0 ? (
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 pb-8">
-                    {visibleDevices.map((device) => (
-                        <DeviceCard key={device.id} device={device} />
-                    ))}
-                </div>
+                <ScrollArea orientation="vertical" viewportClassName="scroll-fade pr-1 pb-6 [&>div]:!w-full" className="flex-1 min-h-0 w-full">
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 pb-6 w-full">
+                        {visibleDevices.map((device) => (
+                            <DeviceCard key={device.id} device={device} />
+                        ))}
+                    </div>
+                </ScrollArea>
             ) : (
                 <div className="flex-1 flex flex-col items-center justify-center p-12 text-muted-foreground text-xs gap-1.5 text-center">
                     <span className="font-semibold text-foreground text-sm">

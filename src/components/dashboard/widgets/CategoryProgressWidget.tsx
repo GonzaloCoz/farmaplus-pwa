@@ -91,10 +91,12 @@ export function CategoryProgressWidget({ showPrevious = false }: CategoryProgres
 
         // Aggregate Data
         inventories.forEach(inv => {
-            // Excluir laboratorios con baja aprobada
+            // Excluir laboratorios con baja aprobada y filas de configuración del sistema
             if ((inv as any).isDischarged) return;
+            if ((inv as any).labName === '_CONFIG_' || (inv as any).laboratory === '_CONFIG_') return;
 
             const catNorm = (inv.category || 'VARIOS').toUpperCase();
+            if (catNorm === 'SYSTEM') return;
             const activeRound = (config as any).rounds?.[catNorm] || (config as any).rounds?.GENERAL || 1;
             const targetRound = showPrevious ? Math.max(1, activeRound - 1) : activeRound;
 

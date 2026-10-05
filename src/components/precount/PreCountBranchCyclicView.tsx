@@ -166,16 +166,14 @@ export function PreCountBranchCyclicView({
     const [activeTab, setActiveTab] = useState("pending");
     const [mainTab, setMainTab] = useState<string>(() => {
         if (sessionId) return "productos";
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('last_precount_session_id') || localStorage.getItem('precount_session_id');
-            if (saved) return "productos";
-        }
         return "configuracion";
     });
 
     useEffect(() => {
         if (sessionId) {
             setMainTab("productos");
+        } else {
+            setMainTab("configuracion");
         }
     }, [sessionId]);
 
@@ -796,7 +794,13 @@ export function PreCountBranchCyclicView({
                                             <Button
                                                 variant="tertiary"
                                                 size="icon"
-                                                className="h-8 w-8 rounded-lg border border-border bg-transparent hover:bg-hover text-muted-foreground hover:text-foreground transition-all duration-80"
+                                                onClick={() => {
+                                                    window.dispatchEvent(new CustomEvent('precount:item_scanned'));
+                                                    window.dispatchEvent(new CustomEvent('precount:device_heartbeat'));
+                                                    toast.info("Actualizando datos", "Consultando últimos registros del servidor...");
+                                                }}
+                                                title="Actualizar datos"
+                                                className="h-8 w-8 rounded-lg border border-border bg-transparent hover:bg-hover text-muted-foreground hover:text-foreground transition-all duration-80 cursor-pointer"
                                             >
                                                 <RotateCcw className="size-3.5" />
                                             </Button>
@@ -959,11 +963,11 @@ export function PreCountBranchCyclicView({
                                     />
                                 </TabPanel>
 
-                                <TabPanel value="archivos" className="flex-1 min-h-0 pt-2 w-full">
+                                <TabPanel value="archivos" className="flex-1 min-h-0 pt-2 w-full flex flex-col">
                                     <PreCountFilesView key="precount-files-view" sessionId={sessionId} isBranchMode={true} />
                                 </TabPanel>
 
-                                <TabPanel value="configuracion" className="flex-1 min-h-0 pt-2 w-full">
+                                <TabPanel value="configuracion" className="flex-1 min-h-0 pt-2 w-full flex flex-col">
                                     <PreCountConfigView
                                         sessionId={sessionId}
                                         isBranchProfile={true}

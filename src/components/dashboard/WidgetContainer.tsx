@@ -10,6 +10,14 @@ interface WidgetContainerProps {
 }
 
 export const WidgetContainer = memo(({ widget, children }: WidgetContainerProps) => {
+    if (widget.size === 'full') {
+        return (
+            <div className="w-full h-full">
+                {children}
+            </div>
+        );
+    }
+
     return (
         <div
             className={cn(

@@ -1,11 +1,11 @@
 import { memo } from "react";
 import { SmartAnalystWidget } from "@/components/dashboard/widgets/SmartAnalystWidget";
 import { UpcomingInventoriesWidget } from "@/components/dashboard/widgets/UpcomingInventoriesWidget";
-import { BranchesTableWidget } from "@/components/dashboard/widgets/BranchesTableWidget";
 import { CountdownWidget } from "@/components/dashboard/widgets/CountdownWidget";
 import { CategoryProgressWidget } from "@/components/dashboard/widgets/CategoryProgressWidget";
 import { TrendsChartWidget } from "@/components/dashboard/widgets/TrendsChartWidget";
 import { TeamsChatWidget } from "@/components/dashboard/widgets/TeamsChatWidget";
+import { BranchMonitorWidget } from "@/components/dashboard/widgets/BranchMonitorWidget";
 import { WidgetSkeleton } from "@/components/dashboard/WidgetSkeleton";
 import { hasPermission } from "@/config/permissions";
 import { User } from "@/contexts/UserContext";
@@ -53,20 +53,6 @@ export const WidgetRenderer = memo(({
             return <TeamsChatWidget />;
         case 'upcoming-inventories':
             return <UpcomingInventoriesWidget onDateClick={onDateClick} />;
-        case 'branches-table':
-            if (!hasPermission(user, 'VIEW_BRANCH_MONITOR')) return null;
-            return <BranchesTableWidget 
-                cycleFilter={cycleFilter}
-                onCycleFilterChange={onCycleFilterChange}
-                branches={[
-                    { name: "Belgrano IV", address: "Av. Cabildo 2040", zonal: "Zona Norte", email: "belgrano4@farmaplus.com" },
-                    { name: "Recoleta", address: "Av. Santa Fe 1860", zonal: "Zona Centro", email: "recoleta@farmaplus.com" },
-                    { name: "Palermo II", address: "Av. Las Heras 3520", zonal: "Zona Norte", email: "palermo2@farmaplus.com" },
-                    { name: "Microcentro", address: "Florida 520", zonal: "Zona Centro", email: "microcentro@farmaplus.com" },
-                    { name: "Belgrano III", address: "Av. Cabildo 1520", zonal: "Zona Norte", email: "belgrano3@farmaplus.com" },
-                    { name: "Villa Urquiza II", address: "Av. Triunvirato 4280", zonal: "Zona Norte", email: "villaurquiza2@farmaplus.com" },
-                ]} 
-            />;
         case 'trends-chart':
             return <TrendsChartWidget type="negative" />;
         case 'countdown':
@@ -88,6 +74,13 @@ export const WidgetRenderer = memo(({
             );
         case 'category-progress':
             return <CategoryProgressWidget showPrevious={cycleFilter === 'previous'} />;
+        case 'branch-monitor':
+            return (
+                <BranchMonitorWidget
+                    assignedDays={assignedDays}
+                    cycleStartDate={cycleStartDate}
+                />
+            );
         default:
             return null;
     }

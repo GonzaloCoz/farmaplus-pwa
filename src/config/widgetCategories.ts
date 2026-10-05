@@ -53,7 +53,6 @@ export const WIDGET_CATEGORY_MAP: Record<string, string> = {
     'inventory-summary': 'inventory',
     'inventory-alerts': 'alerts',
     'upcoming-inventories': 'inventory',
-    'branches-table': 'activity',
     'inventory-progress': 'inventory',
     'critical-products': 'alerts',
     'total-stock-value': 'metrics',
@@ -69,4 +68,5 @@ export const WIDGET_CATEGORY_MAP: Record<string, string> = {
     'countdown': 'alerts',
     'category-progress': 'analytics',
     'calendar': 'actions',
+    'branch-monitor': 'inventory',
 };

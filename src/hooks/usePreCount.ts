@@ -167,7 +167,18 @@ export function usePreCount(): UsePreCountReturn {
                     if (found) {
                         sessionRef.current = found;
                         setSession(found);
+                    } else if (navigator.onLine) {
+                        sessionRef.current = null;
+                        setSession(null);
+                        if (typeof localStorage !== 'undefined') {
+                            localStorage.removeItem('last_precount_session_id');
+                            localStorage.removeItem('precount_session_id');
+                            sessionStorage.removeItem('active_precount_session_id');
+                        }
                     }
+                } else if (navigator.onLine && sessions.length === 0) {
+                    sessionRef.current = null;
+                    setSession(null);
                 }
             } catch (error) {
                 console.error('Error initializing pre-count:', error);

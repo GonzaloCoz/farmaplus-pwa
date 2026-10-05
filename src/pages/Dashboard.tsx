@@ -60,11 +60,8 @@ export default function Dashboard() {
 
   // Filter widgets permission
   const displayedWidgets = useMemo(() => {
-    return visibleWidgets.filter(w => {
-      if (w.type === 'branches-table') return hasPermission(user, 'VIEW_BRANCH_MONITOR');
-      return true;
-    });
-  }, [visibleWidgets, user]);
+    return visibleWidgets;
+  }, [visibleWidgets]);
 
   return (
     <motion.div

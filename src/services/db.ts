@@ -61,6 +61,7 @@ export interface LocalProduct {
     stock?: number;
     id_producto?: string;
     session_id: string;
+    eans?: string[];
 }
 
 export class FarmaplusDB extends Dexie {

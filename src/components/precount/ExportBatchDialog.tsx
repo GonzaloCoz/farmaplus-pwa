@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import { preCountExportService } from '@/services/preCountExportService';
 import { useUser } from '@/contexts/UserContext';
 import { db } from '@/services/db';
+import { getDeviceId } from '@/services/preCountDB';
 
 export interface ExportBatchDialogProps {
     open: boolean;
@@ -79,20 +80,44 @@ export function ExportBatchDialog({
                     records = await db.items.where('session_id').equals(effectiveSessionId).toArray();
                 }
 
+                // Perfil sucursal: exportación estrictamente individual por terminal
+                const myDeviceId = (getDeviceId() || '').toLowerCase();
+                const myDeviceName = (typeof window !== 'undefined' ? (localStorage.getItem('precount_device_name') || localStorage.getItem('precount_user_name') || '') : '').toLowerCase().trim();
+
+                records = records.filter(rec => {
+                    const recDevId = (rec.device_id || '').toLowerCase();
+                    const recDevName = (rec.device_name || '').toLowerCase();
+                    const recScannedBy = (rec.scanned_by || '').toLowerCase();
+
+                    if (recDevId && (recDevId === myDeviceId || myDeviceId.includes(recDevId) || recDevId.includes(myDeviceId))) return true;
+                    if (myDeviceName && recDevName && (recDevName === myDeviceName || recDevName.includes(myDeviceName) || myDeviceName.includes(recDevName))) return true;
+                    if (!recDevId && !recDevName.includes('zebra') && !recScannedBy.includes('zebra')) return true;
+                    return false;
+                });
+
                 // Map catalog info if available
-                const productsMap = new Map<string, { lab?: string; rubro?: string; name?: string }>();
+                const productsMap = new Map<string, { lab?: string; rubro?: string; name?: string; id_producto?: string }>();
                 if (effectiveSessionId) {
                     const sessionProducts = await db.precount_products.where('session_id').equals(effectiveSessionId).toArray();
                     sessionProducts.forEach(p => {
-                        productsMap.set(p.ean, { lab: p.laboratory, rubro: p.rubro, name: p.name });
+                        const idp = p.id_producto ? String(p.id_producto).trim() : undefined;
+                        productsMap.set(p.ean, { lab: p.laboratory, rubro: p.rubro, name: p.name, id_producto: idp });
+                        if (idp) {
+                            productsMap.set(idp, { lab: p.laboratory, rubro: p.rubro, name: p.name, id_producto: idp });
+                        }
                     });
                 }
 
                 return records.map(rec => {
-                    const catInfo = productsMap.get(rec.ean);
+                    const rawEan = String(rec.ean || '').trim();
+                    const catInfo = productsMap.get(rawEan) || (rec.id_producto ? productsMap.get(rec.id_producto) : undefined);
+                    let finalIdProd = (rec.id_producto || catInfo?.id_producto || '').trim();
+                    if (!finalIdProd && rawEan) {
+                        finalIdProd = rawEan;
+                    }
                     return {
                         id: rec.id,
-                        id_producto: rec.id_producto,
+                        id_producto: finalIdProd || undefined,
                         ean: rec.ean,
                         productName: rec.product_name || catInfo?.name || `Producto ${rec.ean}`,
                         quantity: Number(rec.quantity) || 1,

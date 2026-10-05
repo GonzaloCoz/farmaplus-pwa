@@ -66,15 +66,15 @@
   --celeste-baja-bg: oklch(0.65 0.08 220 / 0.05);
 
   /* ── Financial Status Colors (OKLCH - Light) ── */
-  --financial-positive: oklch(0.52 0.17 155);
-  --financial-positive-muted: oklch(0.52 0.17 155 / 0.85);
-  --financial-positive-bg: oklch(0.52 0.17 155 / 0.10);
-  --financial-positive-border: oklch(0.60 0.17 155);
+  --financial-positive: oklch(0.38 0.14 155);
+  --financial-positive-muted: oklch(0.48 0.12 155);
+  --financial-positive-bg: oklch(0.93 0.05 155 / 0.85);
+  --financial-positive-border: oklch(0.78 0.09 155 / 0.60);
 
-  --financial-negative: oklch(0.55 0.21 25);
-  --financial-negative-muted: oklch(0.55 0.21 25 / 0.85);
-  --financial-negative-bg: oklch(0.55 0.21 25 / 0.10);
-  --financial-negative-border: oklch(0.58 0.20 25);
+  --financial-negative: oklch(0.42 0.17 25);
+  --financial-negative-muted: oklch(0.50 0.14 25);
+  --financial-negative-bg: oklch(0.94 0.05 25 / 0.85);
+  --financial-negative-border: oklch(0.80 0.10 25 / 0.60);
 
   /* Neutral scale */
   --neutral-100: #F5F5F5;
@@ -210,15 +210,15 @@
     --celeste-baja-bg: oklch(0.74 0.08 218 / 0.06);
 
     /* ── Financial Status Colors (OKLCH - Dark Mode) ── */
-    --financial-positive: oklch(0.76 0.16 155);
-    --financial-positive-muted: oklch(0.76 0.16 155 / 0.85);
-    --financial-positive-bg: oklch(0.76 0.16 155 / 0.12);
-    --financial-positive-border: oklch(0.72 0.16 155);
+    --financial-positive: oklch(0.86 0.12 155);
+    --financial-positive-muted: oklch(0.76 0.10 155 / 0.85);
+    --financial-positive-bg: oklch(0.26 0.065 155 / 0.70);
+    --financial-positive-border: oklch(0.65 0.13 155 / 0.35);
 
-    --financial-negative: oklch(0.72 0.19 25);
-    --financial-negative-muted: oklch(0.72 0.19 25 / 0.85);
-    --financial-negative-bg: oklch(0.72 0.19 25 / 0.12);
-    --financial-negative-border: oklch(0.70 0.19 25);
+    --financial-negative: oklch(0.86 0.11 25);
+    --financial-negative-muted: oklch(0.76 0.10 25 / 0.85);
+    --financial-negative-bg: oklch(0.26 0.065 25 / 0.70);
+    --financial-negative-border: oklch(0.65 0.13 25 / 0.35);
 
     --checker-a: #1f1f1f;
     --checker-b: #2a2a2a;
@@ -295,15 +295,15 @@
   --celeste-baja-bg: oklch(0.65 0.08 220 / 0.05);
 
   /* ── Financial Status Colors (OKLCH - Light) ── */
-  --financial-positive: oklch(0.52 0.17 155);
-  --financial-positive-muted: oklch(0.52 0.17 155 / 0.85);
-  --financial-positive-bg: oklch(0.52 0.17 155 / 0.10);
-  --financial-positive-border: oklch(0.60 0.17 155);
+  --financial-positive: oklch(0.38 0.14 155);
+  --financial-positive-muted: oklch(0.48 0.12 155);
+  --financial-positive-bg: oklch(0.93 0.05 155 / 0.85);
+  --financial-positive-border: oklch(0.78 0.09 155 / 0.60);
 
-  --financial-negative: oklch(0.55 0.21 25);
-  --financial-negative-muted: oklch(0.55 0.21 25 / 0.85);
-  --financial-negative-bg: oklch(0.55 0.21 25 / 0.10);
-  --financial-negative-border: oklch(0.58 0.20 25);
+  --financial-negative: oklch(0.42 0.17 25);
+  --financial-negative-muted: oklch(0.50 0.14 25);
+  --financial-negative-bg: oklch(0.94 0.05 25 / 0.85);
+  --financial-negative-border: oklch(0.80 0.10 25 / 0.60);
 
   --checker-a: #bbbbbb;
   --checker-b: #ffffff;
@@ -374,15 +374,15 @@
   --celeste-baja-bg: oklch(0.74 0.08 218 / 0.06);
 
   /* ── Financial Status Colors (OKLCH - Dark Mode) ── */
-  --financial-positive: oklch(0.76 0.16 155);
-  --financial-positive-muted: oklch(0.76 0.16 155 / 0.85);
-  --financial-positive-bg: oklch(0.76 0.16 155 / 0.12);
-  --financial-positive-border: oklch(0.72 0.16 155);
+  --financial-positive: oklch(0.86 0.12 155);
+  --financial-positive-muted: oklch(0.76 0.10 155 / 0.85);
+  --financial-positive-bg: oklch(0.26 0.065 155 / 0.70);
+  --financial-positive-border: oklch(0.65 0.13 155 / 0.35);
 
-  --financial-negative: oklch(0.72 0.19 25);
-  --financial-negative-muted: oklch(0.72 0.19 25 / 0.85);
-  --financial-negative-bg: oklch(0.72 0.19 25 / 0.12);
-  --financial-negative-border: oklch(0.70 0.19 25);
+  --financial-negative: oklch(0.86 0.11 25);
+  --financial-negative-muted: oklch(0.76 0.10 25 / 0.85);
+  --financial-negative-bg: oklch(0.26 0.065 25 / 0.70);
+  --financial-negative-border: oklch(0.65 0.13 25 / 0.35);
 
   --checker-a: #1f1f1f;
   --checker-b: #2a2a2a;
@@ -1583,4 +1583,19 @@ p {
   background: none;
   -webkit-mask: none;
   mask: none;
+}
+
+/* Waving hand animation */
+.wave {
+  display: inline-block;
+  transform-origin: 70% 70%;
+  animation: wave-animation 2.5s infinite;
+}
+
+@keyframes wave-animation {
+  0%, 60%, 100% { transform: rotate(0deg); }
+  10%, 30% { transform: rotate(14deg); }
+  20% { transform: rotate(-8deg); }
+  40% { transform: rotate(-4deg); }
+  50% { transform: rotate(10deg); }
 }

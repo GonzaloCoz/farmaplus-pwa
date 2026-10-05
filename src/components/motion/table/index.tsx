@@ -236,7 +236,11 @@ export function Table<T>({
             {sortedRows.length === 0 ? (
               loading ? (
                 <SkeletonRows
-                  count={Math.max(1, Math.ceil(height / rowHeight))}
+                  count={
+                    typeof height === "number"
+                      ? Math.max(1, Math.ceil(height / rowHeight))
+                      : skeletonRows
+                  }
                   columns={orderedColumns}
                   selectable={selectable}
                   rowHeight={rowHeight}

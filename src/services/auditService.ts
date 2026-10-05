@@ -10,6 +10,17 @@ export interface AuditLogEntry {
     userId?: string;
 }
 
+export interface AuditLogRow {
+    id: string;
+    created_at: string;
+    user_id: string;
+    branch_id: string;
+    action: string;
+    entity_type: string;
+    entity_id: string;
+    details: any;
+}
+
 export const auditService = {
     /**
      * Logs a critical action to the database.
@@ -57,7 +68,7 @@ export const auditService = {
         startDate?: string,
         endDate?: string,
         limit?: number
-    }) {
+    }): Promise<AuditLogRow[]> {
         let query = supabase
             .from('audit_logs')
             .select('*')
@@ -82,6 +93,6 @@ export const auditService = {
 
         const { data, error } = await query;
         if (error) throw error;
-        return data;
+        return (data as unknown as AuditLogRow[]) || [];
     }
 };

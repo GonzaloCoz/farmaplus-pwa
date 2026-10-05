@@ -32,14 +32,35 @@ export const requestsService = {
      */
     getRequests: async (branchName?: string): Promise<RequestItem[]> => {
         try {
-            // 1. Intentar consultar desde Supabase
-            const { data, error } = await (supabase as any)
-                .from('requests')
-                .select('*')
-                .order('requested_at', { ascending: false });
+            // 1. Consultar desde Supabase con paginación completa
+            let allData: any[] = [];
+            let page = 0;
+            const limit = 1000;
 
-            if (!error && data) {
-                let formatted: RequestItem[] = data.map((d: any) => ({
+            while (true) {
+                let query = (supabase as any)
+                    .from('requests')
+                    .select('*')
+                    .order('requested_at', { ascending: false });
+
+                if (branchName) {
+                    query = query.ilike('branch_name', `%${branchName.trim()}%`);
+                }
+
+                const { data, error } = await query.range(page * limit, (page + 1) * limit - 1);
+
+                if (error) {
+                    console.error('Error al obtener solicitudes desde Supabase:', error);
+                    break;
+                }
+                if (!data || data.length === 0) break;
+                allData = allData.concat(data);
+                if (data.length < limit) break;
+                page++;
+            }
+
+            if (allData.length > 0) {
+                let formatted: RequestItem[] = allData.map((d: any) => ({
                     id: d.id,
                     type: d.type || 'Baja de Laboratorio',
                     branchName: d.branch_name,

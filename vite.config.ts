@@ -133,6 +133,13 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
       watch: {
         ignored: ['**/src-tauri/**', '**/dist/**']
+      },
+      proxy: {
+        '/api-farmaplus': {
+          target: 'https://www.farmaplus.com.ar',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api-farmaplus/, '')
+        }
       }
     },
     build: {

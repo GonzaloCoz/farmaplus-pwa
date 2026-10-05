@@ -15,12 +15,6 @@ export const PERMISSION_DETAILS: PermissionDetail[] = [
         category: 'Visibilidad'
     },
     {
-        id: '2',
-        code: 'VIEW_BRANCH_MONITOR',
-        description: 'Ver Monitor de Sucursales',
-        category: 'Visibilidad'
-    },
-    {
         id: '3',
         code: 'EDIT_DASHBOARD_LAYOUT',
         description: 'Editar Diseño del Panel',

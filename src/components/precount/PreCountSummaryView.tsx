@@ -1,9 +1,10 @@
 import React from 'react';
 import { FunnelChart } from '@/components/charts/funnel-chart';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 export function PreCountSummaryView() {
     return (
-        <div className="w-full flex-1 flex flex-col min-h-0">
+        <ScrollArea orientation="vertical" viewportClassName="scroll-fade pr-1 pb-6 [&>div]:!w-full" className="w-full flex-1 min-h-0 h-full">
             {/* Contenedor exterior estilo Fluid: 2px de padding, bordes redondeados y sombra sutil */}
             <div className="w-full bg-surface-2/60 dark:bg-surface-2/40 border border-border/40 rounded-[24px] p-[2px] transition-all duration-200 shadow-xs">
                 {/* Recuadro interior blanco/más claro que ocupa todo el ancho */}
@@ -42,7 +43,7 @@ export function PreCountSummaryView() {
                     </div>
                 </div>
             </div>
-        </div>
+        </ScrollArea>
     );
 }
 

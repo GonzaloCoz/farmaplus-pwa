@@ -65,8 +65,8 @@ export class SyncManager {
             retries: 0
         });
 
-        // 1. Acciones críticas que no son escaneos rápidos (sesiones, archivos, etc.) -> sincronizar ya
-        if (action.entity !== 'item') {
+        // 1. Acciones críticas o ediciones/borrados directos -> sincronizar ya
+        if (action.entity !== 'item' || action.type === 'update' || action.type === 'delete') {
             if (navigator.onLine) {
                 this.processQueue();
             }
@@ -143,7 +143,7 @@ export class SyncManager {
             const otherActions: PendingAction[] = [];
 
             for (const action of pendingActions) {
-                if (action.entity === 'item' && (action.type === 'create' || action.type === 'update')) {
+                if (action.entity === 'item' && action.type === 'create') {
                     itemUpserts.push(action);
                 } else {
                     otherActions.push(action);
@@ -231,6 +231,8 @@ export class SyncManager {
                     await this.executeAction(action);
                     if (action.entity === 'session') {
                         await db.sessions.update(action.data.id, { synced: 1 });
+                    } else if (action.entity === 'item' && action.data?.id) {
+                        await db.items.update(action.data.id, { synced: 1 });
                     }
                     await db.pendingActions.delete(action.id);
                 } catch (error: any) {
@@ -292,8 +294,8 @@ export class SyncManager {
                 if (error) throw error;
             }
         } else if (entity === 'item') {
-            if (type === 'create' || type === 'update') {
-                // Use upsert RPC for atoms
+            if (type === 'create') {
+                // Use upsert RPC for atoms / scans (additive)
                 const { error } = await supabase.rpc('upsert_precount_item', {
                     p_id: data.id,
                     p_session_id: data.session_id,
@@ -306,25 +308,22 @@ export class SyncManager {
                     p_device_name: data.device_name,
                     p_location_tag: data.location_tag
                 });
+                if (error) throw error;
+            } else if (type === 'update') {
+                // Direct absolute update for item modifications (stepper, quantity edits, sector)
+                const { id, ...updates } = data;
+                const cleanUpdates: any = {};
+                if (updates.quantity !== undefined) cleanUpdates.quantity = updates.quantity;
+                if (updates.location_tag !== undefined) cleanUpdates.location_tag = updates.location_tag;
+                if (updates.product_name !== undefined) cleanUpdates.product_name = updates.product_name;
+                if (updates.id_producto !== undefined) cleanUpdates.id_producto = updates.id_producto;
 
-                if (error) {
-                    // If 409/Conflict, try a direct update as a last resort
-                    const postgrestError = error as any;
-                    if (postgrestError.status === 409 || error.code === '23505') {
-                        console.log(`[SyncManager] Conflict on item ${data.ean}, attempting forced update...`);
-                        const { error: updateError } = await supabase
-                            .from('precount_items')
-                            .update({
-                                quantity: data.quantity,
-                                updated_at: new Date().toISOString()
-                            })
-                            .eq('id', data.id);
-                        
-                        if (updateError) throw updateError;
-                    } else {
-                        throw error;
-                    }
-                }
+                const { error: updateError } = await supabase
+                    .from('precount_items')
+                    .update(cleanUpdates)
+                    .eq('id', id);
+                
+                if (updateError) throw updateError;
             } else if (type === 'delete') {
                 const { error } = await supabase.from('precount_items').delete().eq('id', data.id);
                 if (error) throw error;

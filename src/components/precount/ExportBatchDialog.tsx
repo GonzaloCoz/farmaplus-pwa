@@ -43,6 +43,7 @@ export interface ExportBatchDialogProps {
         sector?: string;
     }>;
     sessionId?: string;
+    branchName?: string;
     onExportSuccess?: () => void;
 }
 
@@ -53,6 +54,7 @@ export function ExportBatchDialog({
     sectorOrLab,
     items,
     sessionId,
+    branchName: propBranchName,
     onExportSuccess,
 }: ExportBatchDialogProps) {
     const { user } = useUser();
@@ -141,7 +143,14 @@ export function ExportBatchDialog({
 
     const totalUnits = activeItems.reduce((acc, it) => acc + (Number(it.quantity) || 1), 0);
     const totalSkus = new Set(activeItems.map(it => it.ean)).size;
-    const branchName = user?.branchName || 'Sucursal';
+    const branchName = useMemo(() => {
+        if (propBranchName && propBranchName.trim()) return propBranchName.trim();
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('plex_target_branch') || localStorage.getItem('precount_config_selected_branch');
+            if (saved) return saved.replace(/\s*\([^)]*\)/, '').trim();
+        }
+        return user?.branchName || 'Sucursal';
+    }, [propBranchName, user?.branchName]);
 
     const effectiveOperatorName = useMemo(() => {
         if (typeof window !== 'undefined') {

@@ -15,6 +15,7 @@ pub struct LocalProductRecord {
     pub sale_price: f64,
     pub cost: f64,
     pub category: Option<String>,
+    pub subrubro: Option<String>,
     pub laboratory: Option<String>,
     pub barcode: String,
 }
@@ -28,6 +29,7 @@ pub struct LocalProductInput {
     pub sale_price: f64,
     pub cost: f64,
     pub category: Option<String>,
+    pub subrubro: Option<String>,
     pub laboratory: Option<String>,
     pub eans: Vec<String>,
 }
@@ -143,6 +145,7 @@ pub async fn init_local_stock_db(app: tauri::AppHandle) -> Result<LocalDbStats, 
             precio REAL DEFAULT 0,
             costo REAL DEFAULT 0,
             rubro TEXT,
+            subrubro TEXT,
             laboratorio TEXT
         );
 
@@ -157,6 +160,7 @@ pub async fn init_local_stock_db(app: tauri::AppHandle) -> Result<LocalDbStats, 
         CREATE INDEX IF NOT EXISTS idx_desc ON productos(descripcion);
         CREATE INDEX IF NOT EXISTS idx_troq ON productos(troquel);
         CREATE INDEX IF NOT EXISTS idx_lab ON productos(laboratorio);
+        CREATE INDEX IF NOT EXISTS idx_subrubro ON productos(subrubro);
 
         CREATE TABLE IF NOT EXISTS scanned_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -173,6 +177,9 @@ pub async fn init_local_stock_db(app: tauri::AppHandle) -> Result<LocalDbStats, 
         CREATE INDEX IF NOT EXISTS idx_scan_location ON scanned_items(session_id, location_tag);"
     )
     .map_err(|e| format!("Error creando tablas SQLite: {}", e))?;
+
+    // Migración sin fallas para bases SQLite existentes
+    let _ = conn.execute("ALTER TABLE productos ADD COLUMN subrubro TEXT", []);
 
     let total_products: usize = conn
         .query_row("SELECT COUNT(*) FROM productos", [], |row| row.get(0))
@@ -220,8 +227,8 @@ pub async fn sync_mysql_to_local_db(
             let mut stmt_prod = tx
                 .prepare(
                     "INSERT OR REPLACE INTO productos 
-                     (idproducto, troquel, descripcion, stock, precio, costo, rubro, laboratorio) 
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                     (idproducto, troquel, descripcion, stock, precio, costo, rubro, subrubro, laboratorio) 
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 )
                 .map_err(|e| format!("Error preparando INSERT productos: {}", e))?;
 
@@ -239,6 +246,7 @@ pub async fn sync_mysql_to_local_db(
                         p.sale_price,
                         p.cost,
                         p.category,
+                        p.subrubro,
                         p.laboratory
                     ])
                     .map_err(|e| format!("Error insertando producto {}: {}", p.id, e))?;
@@ -298,8 +306,8 @@ pub async fn import_catalog_to_local_db(
             let mut stmt_prod = tx
                 .prepare(
                     "INSERT OR REPLACE INTO productos 
-                     (idproducto, troquel, descripcion, stock, precio, costo, rubro, laboratorio) 
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                     (idproducto, troquel, descripcion, stock, precio, costo, rubro, subrubro, laboratorio) 
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 )
                 .map_err(|e| format!("Error preparando INSERT productos: {}", e))?;
 
@@ -317,6 +325,7 @@ pub async fn import_catalog_to_local_db(
                         p.sale_price,
                         p.cost,
                         p.category,
+                        p.subrubro,
                         p.laboratory
                     ])
                     .map_err(|e| format!("Error insertando producto {}: {}", p.id_producto, e))?;
@@ -366,7 +375,7 @@ pub async fn search_local_barcode(
 
     // 1. Buscar primero en la tabla indexada de códigos de barra
     let found_by_cb = conn.query_row(
-        "SELECT p.idproducto, p.troquel, p.descripcion, p.stock, p.precio, p.costo, p.rubro, p.laboratorio, cb.codbarra
+        "SELECT p.idproducto, p.troquel, p.descripcion, p.stock, p.precio, p.costo, p.rubro, p.subrubro, p.laboratorio, cb.codbarra
          FROM codigos_barra cb
          JOIN productos p ON p.idproducto = cb.idproducto
          WHERE cb.codbarra = ?1
@@ -381,8 +390,9 @@ pub async fn search_local_barcode(
                 sale_price: row.get(4)?,
                 cost: row.get(5)?,
                 category: row.get(6)?,
-                laboratory: row.get(7)?,
-                barcode: row.get(8)?,
+                subrubro: row.get(7)?,
+                laboratory: row.get(8)?,
+                barcode: row.get(9)?,
             })
         },
     );
@@ -393,7 +403,7 @@ pub async fn search_local_barcode(
 
     // 2. Si no coincide con código de barras, buscar por IDProducto o Troquel
     let found_by_id_or_troq = conn.query_row(
-        "SELECT p.idproducto, p.troquel, p.descripcion, p.stock, p.precio, p.costo, p.rubro, p.laboratorio, ?1 as codbarra
+        "SELECT p.idproducto, p.troquel, p.descripcion, p.stock, p.precio, p.costo, p.rubro, p.subrubro, p.laboratorio, ?1 as codbarra
          FROM productos p
          WHERE p.idproducto = ?1 OR p.troquel = ?1
          LIMIT 1",
@@ -407,8 +417,9 @@ pub async fn search_local_barcode(
                 sale_price: row.get(4)?,
                 cost: row.get(5)?,
                 category: row.get(6)?,
-                laboratory: row.get(7)?,
-                barcode: row.get(8)?,
+                subrubro: row.get(7)?,
+                laboratory: row.get(8)?,
+                barcode: row.get(9)?,
             })
         },
     );

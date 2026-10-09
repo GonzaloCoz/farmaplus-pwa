@@ -498,6 +498,22 @@ export function PreCountAdminCyclicView({
     const [showPlexApiModal, setShowPlexApiModal] = useState(false);
     const [scannedTableItems, setScannedTableItems] = useState<any[]>([]);
 
+    const effectiveBranchName = useMemo(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('plex_target_branch') || localStorage.getItem('precount_config_selected_branch');
+            if (saved && saved.trim()) return saved.replace(/\s*\([^)]*\)/, '').trim();
+        }
+        return branchName || user?.branchName || 'FP ADM (Pruebas)';
+    }, [branchName, user?.branchName]);
+
+    const effectiveBranchIp = useMemo(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('plex_target_ip') || localStorage.getItem('precount_config_server_ip');
+            if (saved && saved.trim()) return saved.trim();
+        }
+        return undefined;
+    }, []);
+
     const handleExportExcel = () => {
         const listToExport = items.length > 0
             ? items
@@ -706,12 +722,7 @@ export function PreCountAdminCyclicView({
                                 <div className="flex items-center justify-between gap-3 mb-2.5 shrink-0">
                                     <TabsList>
                                         <TabItem value="productos" label="Productos" />
-                                        <TabItem 
-                                            value="resumen" 
-                                            label="Resumen" 
-                                            disabled 
-                                            className="opacity-40 grayscale cursor-not-allowed pointer-events-none" 
-                                        />
+                                        <TabItem value="resumen" label="Resumen" />
                                         <TabItem value="archivos" label="Archivos" />
                                         <TabItem value="monitor" label="Monitor" />
                                         <TabItem value="configuracion" label="Configuración" />
@@ -1483,6 +1494,8 @@ export function PreCountAdminCyclicView({
                 onOpenChange={setShowPlexApiModal}
                 inventoryTitle={displayTitle}
                 sectorOrLab={labName || 'General'}
+                branchName={effectiveBranchName}
+                branchIp={effectiveBranchIp}
                 items={scannedTableItems.length > 0
                     ? scannedTableItems.map(it => ({
                         id: it.id,

@@ -1,8 +1,6 @@
 import React, { type ComponentType } from "react";
 import {
   HomeSmile as Home,
-  Upload01 as Upload,
-  Clock,
   File02 as FileText,
   TrendUp01 as TrendingUp,
   FileSearch02,
@@ -16,6 +14,8 @@ import {
 import { Terminal } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import GitCompareArrowsIcon from "@hugeicons/core-free-icons/GitCompareArrowsIcon";
+import CatalogueIcon from "@hugeicons/core-free-icons/CatalogueIcon";
+import DateTimeIcon from "@hugeicons/core-free-icons/DateTimeIcon";
 import { ZebraIcon } from "@/components/icons/ZebraIcon";
 
 /**
@@ -36,6 +36,8 @@ export function createHugeIcon(iconDef: any, defaultStroke = 1.8) {
 }
 
 export const GitCompareArrows = createHugeIcon(GitCompareArrowsIcon);
+export const Catalogue = createHugeIcon(CatalogueIcon);
+export const DateTime = createHugeIcon(DateTimeIcon);
 
 export interface NavItemConfig {
   title: string;
@@ -66,7 +68,7 @@ export const APP_NAVIGATION: NavItemConfig[] = [
     title: "Stock",
     shortLabel: "Stock",
     url: "/stock/colector",
-    icon: Upload,
+    icon: Catalogue,
     inSidebar: true,
     inBottomNav: true,
   },
@@ -74,7 +76,7 @@ export const APP_NAVIGATION: NavItemConfig[] = [
     title: "Control de Vencimiento",
     shortLabel: "Vencimiento",
     url: "/control-vencimiento",
-    icon: Clock,
+    icon: DateTime,
     inSidebar: true,
   },
   {
@@ -92,23 +94,7 @@ export const APP_NAVIGATION: NavItemConfig[] = [
     icon: FileSearch02,
     inSidebar: true,
   },
-  {
-    title: "Comparativa",
-    shortLabel: "Comparativa",
-    url: "/comparativa",
-    icon: TrendingUp,
-    roles: ["admin"] as const,
-    inSidebar: true,
-  },
-  {
-    title: "Reportes",
-    shortLabel: "Reportes",
-    url: "/reportes",
-    icon: FileText,
-    roles: ["admin", "mod"] as const,
-    inSidebar: true,
-    inBottomNav: true,
-  },
+
   {
     title: "Terminal Ventas (Live)",
     shortLabel: "Terminal",
@@ -127,10 +113,10 @@ export const BOTTOM_NAV_ITEMS = APP_NAVIGATION.filter((item) => item.inBottomNav
 
 /** Additional paths for Tab headers */
 const EXTRA_TAB_CONFIG: Record<string, { title: string; icon: React.ReactNode }> = {
-  "/stock": { title: "Stock", icon: <Upload size={16} /> },
-  "/stock/colector": { title: "Colector de Datos", icon: <ZebraIcon className="w-4 h-4" /> },
+  "/stock": { title: "Stock", icon: <Catalogue size={16} /> },
+  "/stock/colector": { title: "Stock", icon: <Catalogue size={16} /> },
   "/stock/recuento-movil": { title: "Recuento Móvil", icon: <ZebraIcon className="w-4 h-4" /> },
-  "/stock/control-vencimiento": { title: "Control de Vencimiento", icon: <Clock size={16} /> },
+  "/stock/control-vencimiento": { title: "Control de Vencimiento", icon: <DateTime size={16} /> },
   "/colector": { title: "Colector Zebra", icon: <ZebraIcon className="w-4 h-4" /> },
   "/configuracion": { title: "Configuración", icon: <Settings size={16} /> },
   "/admin/auditoria": { title: "Auditoría", icon: <ShieldCheck size={16} /> },
@@ -159,9 +145,6 @@ export const getTabMetaForPath = (path: string = "") => {
     return { title: "Detalle de Inventario", icon: <GitCompareArrows size={16} className="w-4 h-4" /> };
   }
 
-  if (path.startsWith("/reportes/")) {
-    return { title: "Detalle de Reporte", icon: <FileText size={16} /> };
-  }
 
   if (path.startsWith("/foro/")) {
     if (path.includes("/admin/edit/")) {

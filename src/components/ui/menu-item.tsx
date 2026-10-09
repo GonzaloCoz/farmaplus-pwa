@@ -264,7 +264,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
           <div
             ref={mergeRef}
             data-fluid-hover-index={index}
-            aria-label={label}
+            aria-label={typeof label === "string" ? label : undefined}
             onClick={handleActivate}
             className={itemClassName}
             {...props}
@@ -291,7 +291,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
         }
         aria-checked={typeof checked === "boolean" ? checked : undefined}
         aria-disabled={disabled || undefined}
-        aria-label={label}
+        aria-label={typeof label === "string" ? label : undefined}
         onClick={handleActivate}
         onKeyDown={(e) => {
           if (disabled) return;

@@ -11,14 +11,11 @@ const StockRecountMobile = lazy(() => import("@/pages/StockRecountMobile"));
 const ExpirationControl = lazy(() => import("@/pages/ExpirationControl"));
 const CyclicInventory = lazy(() => import("@/pages/CyclicInventory"));
 const CyclicInventoryDetail = lazy(() => import("@/pages/CyclicInventoryDetail"));
-const Reports = lazy(() => import("@/pages/Reports"));
-const ReportDetail = lazy(() => import("@/components/ReportDetail"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const AdminBranches = lazy(() => import("@/pages/AdminBranches"));
 const SmartAnalystPage = lazy(() => import("@/pages/SmartAnalystPage"));
 const AdminAudit = lazy(() => import("@/pages/AdminAudit"));
 const AdminUsers = lazy(() => import("@/pages/AdminUsers"));
-const BranchComparison = lazy(() => import("@/pages/BranchComparison"));
 const TrainingCenter = lazy(() => import("../pages/TrainingCenter"));
 const PostDetail = lazy(() => import("../pages/PostDetail"));
 const AdminEditor = lazy(() => import("../pages/AdminEditor"));
@@ -50,10 +47,7 @@ export function WindowRouter({ currentPath }: { initialPath: string, currentPath
                     <Route path="/inventario-ciclico" element={<CyclicInventory />} />
                     <Route path="/inventario-ciclico/:id" element={<CyclicInventoryDetail />} />
 
-                    {/* Reportes & Comparativa */}
-                    <Route path="/reportes" element={<Reports />} />
-                    <Route path="/reportes/:reportId" element={<ReportDetail />} />
-                    <Route path="/comparativa" element={<BranchComparison />} />
+
 
                     {/* Configuración & Admin */}
                     <Route path="/configuracion" element={<Settings />} />

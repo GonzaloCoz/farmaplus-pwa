@@ -1492,6 +1492,7 @@ export function PreCountBranchCyclicView({
                 onOpenChange={setShowExportBatchModal}
                 inventoryTitle={displayTitle}
                 sectorOrLab={activeSector || labName || 'General'}
+                branchName={branchName}
                 items={scannedTableItems.map(it => ({
                     id: it.id,
                     id_producto: (it as any).id_producto,

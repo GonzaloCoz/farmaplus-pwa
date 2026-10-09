@@ -1,34 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Minus, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
-
-/* Pointer capture is best effort and must never be the thing
-   that decides whether the rest of a handler runs. It throws
-   for a pointer id the element does not own, and anything
-   sequenced after it is then silently skipped. Arm state
-   first, capture last, and swallow the failure. */
-const grab = (e: React.PointerEvent) => {
-  try {
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  } catch {
-    /* the gesture still works through ordinary bubbling */
-  }
-};
-
-/* ══ 3 · stepper that becomes a slider ════════════════════
-   Tap for one, hold to sweep. A stepper is precise and slow;
-   a slider is fast and vague. Almost every product picks one
-   and makes the other job painful. This is both, on the same
-   control, chosen by how long you hold it — so the coarse
-   move never costs you the fine one. */
-
-const WAKE = 260;      // hold this long and the rail appears
-
-/* 23 is half of the 46px pill, so the default is the shape it
-   already is and the slider only runs downwards from it. */
-const STEP_CORNER = 23;
 
 export interface DragStepperProps {
   value?: number;
@@ -45,13 +19,12 @@ export interface DragStepperProps {
 
 export function Stepper({
   value,
-  defaultValue = 24,
+  defaultValue = 1,
   onChange,
-  min = 0,
-  max = 100,
+  min = 1,
+  max = 99999,
   step = 1,
-  corner = STEP_CORNER,
-  size = "default",
+  size = "compact",
   className,
   disabled = false,
 }: DragStepperProps = {}) {
@@ -59,19 +32,19 @@ export function Stepper({
   const [internalVal, setInternalVal] = useState(defaultValue);
   const v = isControlled ? (value as number) : internalVal;
 
-  const [sweeping, setSweeping] = useState(false);
-  /* which end is under the finger — that edge sinks a touch */
-  const [held, setHeld] = useState<-1 | 0 | 1>(0);
   const [isManualInput, setIsManualInput] = useState(false);
   const [tempInput, setTempInput] = useState(String(v));
 
-  const rail = useRef<HTMLDivElement | null>(null);
-  const timer = useRef<number | undefined>(undefined);
-  const from = useRef({ x: 0, v: 0, dir: 1, stepped: false });
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const repeatTimer = useRef<any>(null);
+  const repeatInterval = useRef<any>(null);
 
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const tempInputRef = useRef(tempInput);
+  tempInputRef.current = tempInput;
+  const isManualRef = useRef(isManualInput);
+  isManualRef.current = isManualInput;
 
+  // Sincronizar tempInput cuando el prop value cambia externamente (solo si no está escribiendo activamente)
   useEffect(() => {
     if (!isManualInput) {
       setTempInput(String(v));
@@ -85,45 +58,41 @@ export function Stepper({
     }
   }, [isManualInput]);
 
-  const updateVal = (newVal: number) => {
+  const updateVal = useCallback((newVal: number) => {
     const clamped = clamp(newVal, min, max);
     if (!isControlled) {
       setInternalVal(clamped);
     }
     onChange?.(clamped);
-  };
+  }, [min, max, isControlled, onChange]);
 
-  const press = (dir: 1 | -1) => (e: React.PointerEvent) => {
-    if (disabled || isManualInput) return;
-    e.stopPropagation();
-    from.current = { x: e.clientX, v, dir, stepped: false };
-    setHeld(dir);
-    timer.current = window.setTimeout(() => { setSweeping(true); }, WAKE);
-    grab(e);
-  };
+  // Si el componente se desmonta mientras el usuario estaba editando (ej: apagó el switch 'Editar')
+  useEffect(() => {
+    return () => {
+      clearTimeout(repeatTimer.current);
+      clearInterval(repeatInterval.current);
+      if (isManualRef.current && tempInputRef.current.trim() !== "") {
+        const parsed = parseInt(tempInputRef.current, 10);
+        if (!isNaN(parsed)) {
+          onChange?.(clamp(parsed, min, max));
+        }
+      }
+    };
+  }, [min, max, onChange]);
 
-  const drag = (e: React.PointerEvent) => {
-    if (!sweeping || disabled) return;
-    const w = rail.current?.offsetWidth ?? (size === "compact" ? 100 : 200);
-    /* the whole rail spans 100 or max-min, so the sweep is proportional
-       to how wide the control actually is */
-    const span = Math.max(1, max - min);
-    const next = clamp(Math.round(from.current.v + ((e.clientX - from.current.x) / w) * span), min, max);
-    /* a sweep is the one gesture here that produces a
-       continuous value, so it gets the continuous voice —
-       pitched to where it has got to, and floored so a fast
-       drag across the rail is a rise and not a rattle */
-    updateVal(next);
-  };
-
-  const lift = () => {
-    window.clearTimeout(timer.current);
-    setHeld(0);
-    if (!sweeping && !from.current.stepped && !disabled) {
-      from.current.stepped = true;
-      updateVal(v + from.current.dir * step);
+  const handleCommitManualInput = () => {
+    setIsManualInput(false);
+    const raw = (inputRef.current?.value ?? tempInput).trim();
+    if (raw === "") {
+      updateVal(min);
+      return;
     }
-    setSweeping(false);
+    const parsed = parseInt(raw, 10);
+    if (isNaN(parsed)) {
+      setTempInput(String(v));
+      return;
+    }
+    updateVal(parsed);
   };
 
   const handleStartManualEdit = (e: React.MouseEvent) => {
@@ -133,45 +102,60 @@ export function Stepper({
     setTempInput(String(v));
   };
 
-  const handleCommitManualInput = () => {
-    setIsManualInput(false);
-    if (tempInput.trim() === "") {
-      updateVal(min);
-      return;
+  // Manejo de botones +/- con click inmediato y soporte de repetición al mantener presionado
+  const startStep = (dir: 1 | -1) => (e: React.PointerEvent) => {
+    if (disabled) return;
+    e.stopPropagation();
+
+    let baseVal = v;
+    if (isManualInput) {
+      setIsManualInput(false);
+      const parsed = parseInt(tempInput.trim(), 10);
+      if (!isNaN(parsed)) {
+        baseVal = clamp(parsed, min, max);
+      }
     }
-    const parsed = parseInt(tempInput, 10);
-    if (isNaN(parsed)) {
-      setTempInput(String(v));
-      return;
-    }
-    updateVal(parsed);
+
+    // Paso inmediato
+    const nextVal = clamp(baseVal + dir * step, min, max);
+    updateVal(nextVal);
+
+    // Repetición continua si mantiene presionado más de 350ms
+    clearTimeout(repeatTimer.current);
+    clearInterval(repeatInterval.current);
+
+    let currentVal = nextVal;
+    repeatTimer.current = setTimeout(() => {
+      repeatInterval.current = setInterval(() => {
+        currentVal = clamp(currentVal + dir * step, min, max);
+        updateVal(currentVal);
+      }, 90);
+    }, 350);
   };
 
-  const fillRatio = Math.max(0, Math.min(1, (v - min) / Math.max(1, max - min)));
+  const stopStep = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    clearTimeout(repeatTimer.current);
+    clearInterval(repeatInterval.current);
+  };
+
   const isCompact = size === "compact" || size === "sm";
 
   return (
     <div
       className={cn(isCompact ? "step-well-compact" : "step-well", className)}
-      style={{ "--step-r": `${clamp(corner, 0, STEP_CORNER)}px` } as React.CSSProperties}
       onClick={(e) => e.stopPropagation()}
     >
-      <div
-        className={cn("step-pill gpane", isCompact && "step-pill-compact")}
-        data-sweep={sweeping}
-        /* a press sinks its own end; a sweep takes over from it */
-        data-press={!sweeping && held ? (held < 0 ? "l" : "r") : undefined}
-        ref={rail}
-      >
+      <div className={cn("step-pill gpane", isCompact && "step-pill-compact")}>
         <button
           type="button"
-          className="step-side"
-          onPointerDown={press(-1)}
-          onPointerMove={drag}
-          onPointerUp={lift}
-          onPointerCancel={lift}
+          className="step-side cursor-pointer"
+          onPointerDown={startStep(-1)}
+          onPointerUp={stopStep}
+          onPointerLeave={stopStep}
+          onPointerCancel={stopStep}
           disabled={disabled || v <= min}
-          aria-label="Down"
+          aria-label="Disminuir"
         >
           <Minus size={isCompact ? 12 : 16} strokeWidth={2} />
         </button>
@@ -201,7 +185,7 @@ export function Stepper({
             }}
             className={cn(
               "step-value font-sans text-center bg-transparent border-none outline-none font-semibold text-foreground p-0 m-0",
-              isCompact ? "text-xs min-w-[28px] max-w-[36px]" : "text-base min-w-[48px]"
+              isCompact ? "text-xs min-w-[28px] max-w-[64px]" : "text-base min-w-[48px]"
             )}
             onClick={(e) => e.stopPropagation()}
           />
@@ -217,31 +201,17 @@ export function Stepper({
 
         <button
           type="button"
-          className="step-side"
-          onPointerDown={press(1)}
-          onPointerMove={drag}
-          onPointerUp={lift}
-          onPointerCancel={lift}
+          className="step-side cursor-pointer"
+          onPointerDown={startStep(1)}
+          onPointerUp={stopStep}
+          onPointerLeave={stopStep}
+          onPointerCancel={stopStep}
           disabled={disabled || v >= max}
-          aria-label="Up"
+          aria-label="Aumentar"
         >
           <Plus size={isCompact ? 12 : 16} strokeWidth={2} />
         </button>
-
-        <i className="step-fill" style={{ transform: `scaleX(${fillRatio})` }} />
       </div>
-      {/* ── no caption ───────────────────────────────────────
-          There was a line of small caps under the pill that
-          read "sweeping" while you held it, and it was doing
-          two unhelpful things at once. It said in a word what
-          the control was already showing you — the pill widens,
-          the rail fills, the number swells — and because it was
-          a flex sibling of the pill, its arrival RESIZED the
-          column and shoved the pill 5px up out from under your
-          own finger, mid-gesture.
-
-          A control that moves when you touch it is worse than
-          one that says nothing. */}
     </div>
   );
 }

@@ -390,7 +390,7 @@ export default function LiveSalesTerminal() {
                         host: branch.ip,
                         port: 3306,
                         user: 'root',
-                        password: 'm@st3rpl3x0nz3',
+                        password: '',
                         database: 'plex',
                     };
 
@@ -660,7 +660,7 @@ export default function LiveSalesTerminal() {
                     host: selectedBranch.primaryIp,
                     port: 3306,
                     user: 'root',
-                    password: 'm@st3rpl3x0nz3',
+                    password: '',
                     database: 'plex',
                 };
 

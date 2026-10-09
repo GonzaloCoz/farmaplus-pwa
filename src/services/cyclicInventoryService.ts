@@ -308,15 +308,6 @@ export const cyclicInventoryService = {
         return data as { success: boolean, message: string, deleted_items?: number };
     },
 
-    // Purga masiva de TODO el sistema (Admin gcoz only)
-    purgeAllInventoryData: async () => {
-        const { error } = await (supabase as any).rpc('purge_all_inventory_data');
-        if (error) {
-            console.error("Error in global purge:", error);
-            throw error;
-        }
-    },
-
     // Delete adjustment history (ya incluido en purge_lab_inventory RPC; mantener por compatibilidad)
     deleteAdjustmentHistory: async (branchName: string, labName: string) => {
         const { error } = await supabase.from('inventory_adjustments')

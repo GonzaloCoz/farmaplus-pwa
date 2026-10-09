@@ -15,6 +15,15 @@ export const getDeviceId = () => {
 };
 
 export const getDeviceName = () => {
+    try {
+        const storedUser = localStorage.getItem('farmaplus_user');
+        if (storedUser) {
+            const parsed = JSON.parse(storedUser);
+            if (parsed.name || parsed.username) {
+                return parsed.name || parsed.username;
+            }
+        }
+    } catch {}
     return localStorage.getItem('precount_device_name') || 'Generic Device';
 };
 
@@ -47,6 +56,7 @@ export interface MasterCatalogItem {
     salePrice: number;
     laboratory?: string;
     rubro?: string;
+    subrubro?: string;
 }
 
 export interface PreCountSession extends LocalSession {
@@ -254,11 +264,12 @@ export async function upsertPreCountItem(item: {
     id_producto?: string, 
     location_tag?: string,
     laboratory?: string,
-    rubro?: string
+    rubro?: string,
+    device_name?: string
 }): Promise<PreCountItem> {
     const { data: userData } = await supabase.auth.getUser();
     const deviceId = getDeviceId();
-    const deviceName = getDeviceName();
+    const effectiveDeviceName = (item.device_name && item.device_name.trim()) ? item.device_name.trim() : getDeviceName();
 
     // Check if item exists locally FOR THIS DEVICE AND LOCATION
     const existingItem = await db.items
@@ -306,7 +317,7 @@ export async function upsertPreCountItem(item: {
             id_producto: resolvedIdProducto || existingItem.id_producto,
             laboratory: item.laboratory || existingItem.laboratory,
             rubro: item.rubro || existingItem.rubro,
-            device_name: deviceName,
+            device_name: effectiveDeviceName,
             location_tag: item.location_tag
         });
         resultItem = { 
@@ -316,7 +327,7 @@ export async function upsertPreCountItem(item: {
             id_producto: resolvedIdProducto || existingItem.id_producto,
             laboratory: item.laboratory || existingItem.laboratory,
             rubro: item.rubro || existingItem.rubro,
-            device_name: deviceName,
+            device_name: effectiveDeviceName,
             location_tag: item.location_tag
         };
     } else {
@@ -334,7 +345,7 @@ export async function upsertPreCountItem(item: {
             laboratory: item.laboratory,
             rubro: item.rubro,
             device_id: deviceId,
-            device_name: deviceName,
+            device_name: effectiveDeviceName,
             location_tag: item.location_tag
         };
         await db.items.add(newItem);
@@ -343,18 +354,18 @@ export async function upsertPreCountItem(item: {
 
     // Queue Sync with full metadata to avoid deletion mismatch
     await syncManager.addToQueue({
-        type: 'update',
+        type: existingItem ? 'update' : 'create',
         entity: 'item',
         data: {
             id: resultItem.id, // Pass the local UUID to Supabase
             session_id: item.session_id,
             ean: item.ean,
             product_name: item.product_name,
-            quantity: item.quantity,
+            quantity: existingItem ? resultItem.quantity : item.quantity,
             scanned_by: userData.user?.id,
             id_producto: resolvedIdProducto || existingItem?.id_producto,
             device_id: deviceId,
-            device_name: deviceName,
+            device_name: effectiveDeviceName,
             location_tag: item.location_tag
         }
     });
@@ -387,10 +398,28 @@ export async function getSessionSummary(sessionId: string): Promise<{
 
 export async function updatePreCountItem(id: string, updates: Partial<PreCountItem>): Promise<void> {
     // 1. Update Local
-    await db.items.update(id, updates);
+    await db.items.update(id, { ...updates, synced: 0 });
     const item = await db.items.get(id);
 
-    // 2. Queue Sync
+    // 2. Direct absolute update to Supabase if online (instant sync)
+    try {
+        const cleanUpdates: any = {};
+        if (updates.quantity !== undefined) cleanUpdates.quantity = updates.quantity;
+        if (updates.location_tag !== undefined) cleanUpdates.location_tag = updates.location_tag;
+        if (updates.product_name !== undefined) cleanUpdates.product_name = updates.product_name;
+        if (updates.id_producto !== undefined) cleanUpdates.id_producto = updates.id_producto;
+
+        const { error } = await supabase.from('precount_items').update(cleanUpdates).eq('id', id);
+        if (!error) {
+            await db.items.update(id, { synced: 1 });
+            await db.pendingActions.where('entity').equals('item').and(action => action.data?.id === id && action.type === 'update').delete();
+            return;
+        }
+    } catch (e) {
+        console.warn('Direct update to Supabase failed, queuing...', e);
+    }
+
+    // 3. Fallback to Queue Sync
     await syncManager.addToQueue({
         type: 'update',
         entity: 'item',
@@ -402,17 +431,18 @@ export async function deletePreCountItem(id: string): Promise<void> {
     // 1. Delete from local IndexedDB
     await db.items.delete(id);
 
-    // 2. Remove any pending un-synced actions for this item so it won't be re-uploaded
+    // 2. Remove any pending un-synced actions for this item
     await db.pendingActions.where('entity').equals('item').and(action => action.data?.id === id).delete();
 
     // 3. Direct delete from Supabase if online
     try {
-        await supabase.from('precount_items').delete().eq('id', id);
+        const { error } = await supabase.from('precount_items').delete().eq('id', id);
+        if (!error) return;
     } catch (e) {
         console.warn('Direct delete failed, queuing...', e);
     }
 
-    // 4. Queue Sync
+    // 4. Fallback to queue if offline or failed
     await syncManager.addToQueue({
         type: 'delete',
         entity: 'item',
@@ -431,12 +461,13 @@ export async function deletePreCountItems(ids: string[]): Promise<void> {
 
     // 3. Direct delete from Supabase in batch if online
     try {
-        await supabase.from('precount_items').delete().in('id', ids);
+        const { error } = await supabase.from('precount_items').delete().in('id', ids);
+        if (!error) return;
     } catch (e) {
         console.warn('Direct batch delete failed, queuing...', e);
     }
 
-    // 4. Queue delete for each item to guarantee offline resilience
+    // 4. Fallback to queue if offline or failed
     for (const id of ids) {
         await syncManager.addToQueue({
             type: 'delete',
@@ -757,6 +788,7 @@ export function expandCatalogToDbProducts(catalog: MasterCatalogItem[], sessionI
                 salePrice: p.salePrice || 0,
                 laboratory: p.laboratory || '',
                 rubro: p.rubro || (p as any).category || '',
+                subrubro: p.subrubro || '',
                 stock: p.systemStock || 0,
                 id_producto: p.id_producto || '',
                 session_id: sessionId

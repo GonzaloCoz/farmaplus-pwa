@@ -14,8 +14,6 @@ import { cyclicInventoryService } from "@/services/cyclicInventoryService";
 import {
   LayoutDashboard as DashboardIcon,
   BarChart3 as BarChartIcon,
-  ClipboardList as ClipboardIcon,
-  Scale as ScaleIcon,
   Clock as ClockIcon,
   LogOut as LogOutIcon,
   Settings as SettingsIcon,
@@ -102,29 +100,7 @@ export function AppLayout() {
       },
     ];
 
-    if (user?.role === 'admin' || user?.role === 'mod') {
-      items.push({
-        id: "reports",
-        label: "Reportes y Auditoría",
-        group: "Navegación",
-        hint: "Historial y logs",
-        icon: ClipboardIcon,
-        keywords: ["reporte", "auditoria", "log"],
-        onSelect: () => navigate("/reportes"),
-      });
-    }
 
-    if (user?.role === 'admin') {
-      items.push({
-        id: "comparison",
-        label: "Comparativa",
-        group: "Navegación",
-        hint: "Comparación de sucursales",
-        icon: ScaleIcon,
-        keywords: ["comparativa", "comparacion", "sucursales"],
-        onSelect: () => navigate("/comparativa"),
-      });
-    }
 
     items.push(
       {

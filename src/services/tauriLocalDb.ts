@@ -10,6 +10,7 @@ export interface LocalProductRecord {
     sale_price: number;
     cost: number;
     category?: string;
+    subrubro?: string;
     laboratory?: string;
     barcode: string;
 }
@@ -22,6 +23,7 @@ export interface LocalProductInput {
     sale_price: number;
     cost: number;
     category?: string;
+    subrubro?: string;
     laboratory?: string;
     eans: string[];
 }
@@ -108,23 +110,23 @@ export async function syncMysqlToLocalDb(
             host: branchConfig.primaryIp,
             port: branchConfig.port,
             user: branchConfig.user,
-            password: 'm@st3rpl3x0nz3',
+            password: branchConfig.password || '',
             database: branchConfig.database,
         };
     } else if (configOrBranch && typeof configOrBranch === 'object') {
         config = {
-            host: configOrBranch.host || '10.0.70.10',
+            host: configOrBranch.host || '127.0.0.1',
             port: configOrBranch.port || 3306,
             user: configOrBranch.user || 'root',
-            password: configOrBranch.password || 'm@st3rpl3x0nz3',
+            password: configOrBranch.password || '',
             database: configOrBranch.database || 'plex',
         };
     } else {
         config = {
-            host: '10.0.70.10',
+            host: '127.0.0.1',
             port: 3306,
             user: 'root',
-            password: 'm@st3rpl3x0nz3',
+            password: '',
             database: 'plex',
         };
     }

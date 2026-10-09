@@ -383,6 +383,14 @@ export function usePreCount(): UsePreCountReturn {
                             return [mappedFile, ...prev];
                         });
                     })
+                .on('postgres_changes',
+                    { event: 'DELETE', schema: 'public', table: 'precount_device_files' },
+                    (payload) => {
+                        const oldId = payload.old?.id;
+                        if (oldId) {
+                            setReceivedFiles(prev => prev.filter(f => f.id !== oldId));
+                        }
+                    })
                 .subscribe((status) => {
                     console.log(`[Sync] Device files channel status: ${status}`);
                     if (status === 'CHANNEL_ERROR') {
@@ -511,7 +519,15 @@ export function usePreCount(): UsePreCountReturn {
                         master_catalog: parsedCatalog
                     } : prev);
 
-                    notify.success("Catálogo cargado", `Se sincronizaron ${parsedCatalog.length} productos de stock en segundo plano para búsqueda offline.`, { duration: 4000 });
+                    const primaryCount = Array.isArray(parsedCatalog)
+                        ? parsedCatalog.filter((p: any) => p.isPrimaryEan ?? true).length
+                        : (parsedCatalog as any[]).length;
+
+                    notify.success(
+                        "Catálogo cargado",
+                        `Se sincronizaron ${primaryCount.toLocaleString('es-AR')} productos (${parsedCatalog.length.toLocaleString('es-AR')} códigos EAN) para búsqueda offline.`,
+                        { duration: 4500 }
+                    );
                 } else {
                     console.warn('[Sync] No se encontró un catálogo cargado para esta sesión en Supabase.');
                 }

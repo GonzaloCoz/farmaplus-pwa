@@ -61,7 +61,14 @@ export const MysqlDirectImportModal: React.FC<MysqlDirectImportModalProps> = ({
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
             try {
-                return JSON.parse(saved);
+                const parsed = JSON.parse(saved);
+                return {
+                    host: parsed.host || '10.0.48.10',
+                    port: parsed.port || 3306,
+                    user: parsed.user || 'root',
+                    password: '',
+                    database: parsed.database || 'plex',
+                };
             } catch (e) {
                 // ignore
             }
@@ -70,7 +77,7 @@ export const MysqlDirectImportModal: React.FC<MysqlDirectImportModalProps> = ({
             host: '10.0.48.10',
             port: 3306,
             user: 'root',
-            password: 'm@st3rpl3x0nz3',
+            password: '',
             database: 'plex',
         };
     });
@@ -96,9 +103,10 @@ export const MysqlDirectImportModal: React.FC<MysqlDirectImportModalProps> = ({
     const [previewData, setPreviewData] = useState<MysqlQueryResult | null>(null);
     const [isLoadingTables, setIsLoadingTables] = useState(false);
 
-    // Save config on change
+    // Save config on change (excluyendo la contraseña por seguridad de almacenamiento)
     useEffect(() => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+        const { password: _pw, ...safeConfig } = config;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(safeConfig));
     }, [config]);
 
     const addLog = (msg: string) => {

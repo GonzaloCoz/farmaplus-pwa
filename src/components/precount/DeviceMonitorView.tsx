@@ -801,6 +801,43 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
                     table: 'precount_location_status',
                     filter: `session_id=eq.${activeSessionId}`
                 }, (payload: any) => {
+                    if (payload.eventType === 'DELETE') {
+                        const row = payload.old;
+                        if (row && row.location_tag) {
+                            const fullSector = getFullSectorName(row.location_tag);
+                            closedLocationsRef.current.delete(row.location_tag.toUpperCase());
+                            closedLocationsRef.current.delete(fullSector.toUpperCase());
+                            closedDeviceMapRef.current.delete(row.location_tag.toUpperCase());
+                            closedDeviceMapRef.current.delete(fullSector.toUpperCase());
+                            syncDevicePositionsAndStats();
+                        } else {
+                            supabase
+                                .from('precount_location_status')
+                                .select('location_tag, status, closed_by_device_id')
+                                .eq('session_id', activeSessionId)
+                                .eq('status', 'closed')
+                                .then(({ data }) => {
+                                    closedLocationsRef.current.clear();
+                                    closedDeviceMapRef.current.clear();
+                                    if (data) {
+                                        data.forEach((r: any) => {
+                                            if (r.location_tag) {
+                                                const fSec = getFullSectorName(r.location_tag);
+                                                closedLocationsRef.current.add(r.location_tag.toUpperCase());
+                                                closedLocationsRef.current.add(fSec.toUpperCase());
+                                                if (r.closed_by_device_id) {
+                                                    closedDeviceMapRef.current.set(r.location_tag.toUpperCase(), r.closed_by_device_id);
+                                                    closedDeviceMapRef.current.set(fSec.toUpperCase(), r.closed_by_device_id);
+                                                }
+                                            }
+                                        });
+                                    }
+                                    syncDevicePositionsAndStats();
+                                });
+                        }
+                        return;
+                    }
+
                     const row = payload.new || payload.old;
                     if (!row || !row.location_tag) return;
                     const fullSector = getFullSectorName(row.location_tag);

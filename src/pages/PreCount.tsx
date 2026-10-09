@@ -1519,9 +1519,10 @@ export default function PreCount() {
     };
 
 
-    // Confirmar finalización con contraseña
+    // Confirmar finalización con contraseña / PIN de supervisor
     const handleConfirmFinish = async () => {
-        if (finishPassword !== 'farmaplus') {
+        const expectedPin = import.meta.env.VITE_PRECOUNT_FINISH_PIN || 'farmaplus';
+        if (finishPassword !== expectedPin) {
             setFinishPasswordError('Contraseña incorrecta');
             return;
         }

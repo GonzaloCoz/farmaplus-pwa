@@ -32,6 +32,7 @@ export interface MysqlProductRecord {
     sale_price: number;
     troquel?: string;
     category?: string;
+    subrubro?: string;
     laboratory?: string;
     secondary_eans: string[];
 }
@@ -170,6 +171,8 @@ export function convertMysqlToMasterCatalog(products: MysqlProductRecord[]): Mas
             cost: p.cost || 0,
             salePrice: p.sale_price || 0,
             laboratory: p.laboratory || undefined,
+            rubro: p.category || undefined,
+            subrubro: p.subrubro || undefined,
         });
 
         // Add secondary EAN entries if present
@@ -185,6 +188,8 @@ export function convertMysqlToMasterCatalog(products: MysqlProductRecord[]): Mas
                     cost: p.cost || 0,
                     salePrice: p.sale_price || 0,
                     laboratory: p.laboratory || undefined,
+                    rubro: p.category || undefined,
+                    subrubro: p.subrubro || undefined,
                 });
             }
         }
@@ -218,7 +223,7 @@ export async function fetchCyclicLabStockFromMysql(
         host: hostConfig.primaryIp,
         port: hostConfig.port,
         user: hostConfig.user,
-        password: 'm@st3rpl3x0nz3',
+        password: hostConfig.password || '',
         database: hostConfig.database,
     };
 
@@ -457,10 +462,12 @@ export interface SendPlexApiBatchResult {
     total_items?: number;
     total_units?: number;
     host?: string;
+    bypassed_trazables?: number[];
 }
 
 /**
  * Sends counted inventory items to Plex MySQL API tables (`inventario_ws` & `inventario_ws_det`)
+ * Automatically detects and bypasses trazable=1 products to allow Plex import, recording them in bypassed_trazables.
  */
 export async function sendPlexInventoryApiBatch(
     config: MysqlConfig,
@@ -485,6 +492,7 @@ export async function sendPlexInventoryApiBatch(
             total_items: items.length,
             total_units: totalUnits,
             host: config.host,
+            bypassed_trazables: [],
         };
     }
 
@@ -504,5 +512,103 @@ export async function sendPlexInventoryApiBatch(
         };
     }
 }
+
+/**
+ * Restores trazable=1 for product IDs that were temporarily bypassed for import
+ */
+export async function restorePlexTrazables(
+    config: MysqlConfig,
+    productIds: number[]
+): Promise<boolean> {
+    if (!productIds || productIds.length === 0) {
+        return true;
+    }
+
+    if (!isTauriEnvironment()) {
+        console.log('[Simulación PWA] Trazabilidad restaurada para:', productIds);
+        return true;
+    }
+
+    try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        return await invoke<boolean>('restore_plex_trazables', {
+            config,
+            productIds,
+        });
+    } catch (err: any) {
+        console.error('Error al restaurar trazabilidad en Plex:', err);
+        return false;
+    }
+}
+
+/**
+ * Checks current batch status in Plex inventario_ws ('PENDIENTE', 'INGRESADO', etc.)
+ */
+export async function checkPlexBatchStatus(
+    config: MysqlConfig,
+    idRegistro: number
+): Promise<string> {
+    if (!isTauriEnvironment()) {
+        return 'INGRESADO';
+    }
+
+    try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        return await invoke<string>('check_plex_batch_status', {
+            config,
+            idRegistro,
+        });
+    } catch (err: any) {
+        console.error('Error al consultar estado de lote en Plex:', err);
+        return 'ERROR';
+    }
+}
+
+export interface PlexAdjustmentStatus {
+    id_inventario: number | null;
+    id_estado: number | null;
+    estado_desc: string;
+    tipo_ajuste: string | null;
+    is_adjusted: boolean;
+}
+
+/**
+ * Checks whether the inventory session containing the bypassed items has been adjusted in Plex
+ * (IDEstado = 4 or TipoAjuste = 'CONCILIACION', etc.)
+ */
+export async function checkPlexInventoryAdjustment(
+    config: MysqlConfig,
+    productIds: number[],
+    idInventario?: number | null
+): Promise<PlexAdjustmentStatus> {
+    if (!isTauriEnvironment()) {
+        return {
+            id_inventario: idInventario || 1,
+            id_estado: 4,
+            estado_desc: 'PROCESADO',
+            tipo_ajuste: 'CONCILIACION',
+            is_adjusted: true,
+        };
+    }
+
+    try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        return await invoke<PlexAdjustmentStatus>('check_plex_inventory_adjustment', {
+            config,
+            productIds,
+            idInventario: idInventario || null,
+        });
+    } catch (err: any) {
+        console.error('Error al consultar estado de ajuste de inventario en Plex:', err);
+        return {
+            id_inventario: idInventario || null,
+            id_estado: null,
+            estado_desc: 'ERROR',
+            tipo_ajuste: null,
+            is_adjusted: false,
+        };
+    }
+}
+
 
 

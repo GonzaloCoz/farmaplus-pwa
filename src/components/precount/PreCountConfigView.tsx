@@ -41,7 +41,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 
 const RUBROS_CONFIG = ["Medicamentos", "Perfumería", "Accesorios", "Varios"] as const;
 
-export type StockFilterOption = 'all' | 'negative' | 'zero';
+export type StockFilterOption = 'all' | 'positive' | 'negative' | 'zero';
 export type ImportSourceOption = 'file' | 'server';
 
 interface PreCountConfigViewProps {
@@ -75,6 +75,7 @@ function expandCatalogToDbProducts(catalog: MasterCatalogItem[], sessionId: stri
                 salePrice: p.salePrice || 0,
                 laboratory: p.laboratory || '',
                 rubro: p.rubro || (p as any).category || '',
+                subrubro: p.subrubro || '',
                 stock: p.systemStock || 0,
                 id_producto: p.id_producto || '',
                 session_id: sessionId
@@ -82,6 +83,51 @@ function expandCatalogToDbProducts(catalog: MasterCatalogItem[], sessionId: stri
         });
     });
     return rows;
+}
+
+function getRubroIndex(rubroName?: string): number {
+    if (!rubroName) return 3; // Varios por defecto
+    const clean = rubroName.toLowerCase().trim();
+    if (clean.includes('medicam') || clean.includes('farmacia') || clean.includes('etico') || clean.includes('generico') || clean.includes('otc') || clean.includes('droga')) {
+        return 0; // Medicamentos
+    }
+    if (clean.includes('perfum') || clean.includes('belleza') || clean.includes('cosmet') || clean.includes('cuidado') || clean.includes('higiene')) {
+        return 1; // Perfumería
+    }
+    if (clean.includes('accesor') || clean.includes('insumo') || clean.includes('descartab') || clean.includes('material') || clean.includes('ortopedia')) {
+        return 2; // Accesorios
+    }
+    return 3; // Varios
+}
+
+function applyCatalogFilters(
+    catalog: MasterCatalogItem[] | null,
+    checkedRubros: Set<number>,
+    stockFilter: StockFilterOption
+): MasterCatalogItem[] | null {
+    if (!catalog || catalog.length === 0) return null;
+
+    return catalog.filter((item) => {
+        // 1. Filtro de Rubro
+        const rubroIdx = getRubroIndex(item.rubro);
+        if (!checkedRubros.has(rubroIdx)) {
+            return false;
+        }
+
+        // 2. Filtro de Saldo de Stock
+        const stockVal = Number(item.systemStock) || 0;
+        if (stockFilter === 'positive' && stockVal <= 0) {
+            return false;
+        }
+        if (stockFilter === 'negative' && stockVal >= 0) {
+            return false;
+        }
+        if (stockFilter === 'zero' && stockVal !== 0) {
+            return false;
+        }
+
+        return true;
+    });
 }
 
 function formatBranchName(raw: string): string {
@@ -192,8 +238,14 @@ export function PreCountConfigView({
     const [isSyncingLocalDb, setIsSyncingLocalDb] = useState(false);
     const [isParsingFile, setIsParsingFile] = useState(false);
     const [isStartingSession, setIsStartingSession] = useState(false);
-    const [parsedCatalog, setParsedCatalog] = useState<MasterCatalogItem[] | null>(null);
+    const [rawCatalog, setRawCatalog] = useState<MasterCatalogItem[] | null>(null);
     const [localDbCount, setLocalDbCount] = useState<number | null>(null);
+
+    // Catálogo filtrado reactivo según rubros y saldo de stock
+    const parsedCatalog = useMemo(
+        () => applyCatalogFilters(rawCatalog, checkedRubros, stockFilter),
+        [rawCatalog, checkedRubros, stockFilter]
+    );
 
     // Resolver Branch ID real en Supabase para evitar asignar usuario Nuñez en sucursales
     const resolveTargetBranch = async (branchLabel: string) => {
@@ -231,7 +283,7 @@ export function PreCountConfigView({
                 host: ip,
                 port: Number(targetPort) || 3306,
                 user: 'root',
-                password: 'm@st3rpl3x0nz3',
+                password: '',
                 database: 'plex',
             });
             if (res.success && res.sessions) {
@@ -251,7 +303,7 @@ export function PreCountConfigView({
         if (!isBranchProfile && serverIp) {
             fetchOpenSessions(serverIp, serverPort);
         }
-    }, [isBranchProfile]);
+    }, [isBranchProfile, serverIp]);
 
     // Sincronizar nombre de operador en storage cuando cambia
     useEffect(() => {
@@ -281,7 +333,7 @@ export function PreCountConfigView({
                         setGeneratedPin(local.sync_pin);
                     }
                     if (local.master_catalog && local.master_catalog.length > 0) {
-                        setParsedCatalog(local.master_catalog);
+                        setRawCatalog(local.master_catalog);
                         setLocalDbCount(local.master_catalog.length);
                     }
                     return;
@@ -302,6 +354,23 @@ export function PreCountConfigView({
                         setInventoryName(remote.sector);
                     }
                     if (remote.sync_pin) setGeneratedPin(remote.sync_pin);
+
+                    // Intentar recuperar el archivo master_catalog.json de Supabase
+                    try {
+                        const { data: catFile } = await (supabase as any)
+                            .from('precount_device_files')
+                            .select('content')
+                            .eq('session_id', activeId)
+                            .eq('filename', 'master_catalog.json')
+                            .maybeSingle();
+                        if (catFile?.content && !isCancelled) {
+                            const parsed = JSON.parse(catFile.content);
+                            if (Array.isArray(parsed) && parsed.length > 0) {
+                                setRawCatalog(parsed);
+                                setLocalDbCount(parsed.length);
+                            }
+                        }
+                    } catch {}
                 } else if (!remote && !isCancelled) {
                     // La sesión fue eliminada en el servidor o no existe
                     if (typeof window !== 'undefined') {
@@ -320,7 +389,6 @@ export function PreCountConfigView({
         };
     }, [sessionId]);
 
-
     const parseExcelFile = (file: File) => {
         setIsParsingFile(true);
         notify.info('Procesando archivo', `Leyendo "${file.name}"...`);
@@ -336,15 +404,14 @@ export function PreCountConfigView({
                 if (error) {
                     notify.error('Error al procesar archivo', error);
                     setSelectedFile(null);
-                    setParsedCatalog(null);
+                    setRawCatalog(null);
                     worker.terminate();
                     return;
                 }
 
                 if (success && catalog && catalog.length > 0) {
-                    const primaryCount = catalog.filter((item: MasterCatalogItem) => item.isPrimaryEan).length;
-                    setParsedCatalog(catalog);
-                    notify.success('Catálogo procesado', `${primaryCount.toLocaleString('es-AR')} productos listos para el inventario.`);
+                    setRawCatalog(catalog);
+                    notify.success('Catálogo procesado', `${catalog.length.toLocaleString('es-AR')} productos listos para filtrar e inventariar.`);
                 } else {
                     notify.warning('Sin productos', 'No se encontraron productos válidos en el archivo.');
                 }
@@ -373,32 +440,20 @@ export function PreCountConfigView({
         setIsSyncingLocalDb(true);
         notify.info('Servidor Plex', `Descargando stock de ${selectedBranch}...`);
         try {
-            // 1. Si está en Tauri, sincronizar directo a SQLite en disco
-            if (isTauriEnvironment()) {
-                const summary = await syncMysqlToLocalDb({
-                    host: serverIp.trim() || '10.0.70.10',
-                    port: Number(serverPort) || 3306,
-                    user: 'root',
-                    password: 'm@st3rpl3x0nz3',
-                    database: 'plex',
-                });
-                setLocalDbCount(summary.total_products_synced);
-            }
-
-            // 2. Extraer los productos para armar el catálogo de Supabase
+            // 1. Extraer los productos directamente para armar el catálogo
             const res = await fetchMysqlStock({
                 host: serverIp.trim() || '10.0.70.10',
                 port: Number(serverPort) || 3306,
                 user: 'root',
-                password: 'm@st3rpl3x0nz3',
+                password: '',
                 database: 'plex',
             });
 
             if (res.success && res.products) {
                 const catalog = convertMysqlToMasterCatalog(res.products);
-                setParsedCatalog(catalog);
+                setRawCatalog(catalog);
                 setLocalDbCount(res.total_products);
-                notify.success('Stock sincronizado', `${res.total_products.toLocaleString('es-AR')} productos obtenidos de Plex.`);
+                notify.success('Stock sincronizado', `${res.total_products.toLocaleString('es-AR')} productos descargados desde Plex.`);
             } else {
                 notify.error('Error al obtener productos', res.message || 'Sin datos de Plex');
             }
@@ -410,7 +465,7 @@ export function PreCountConfigView({
         }
     };
 
-    const hasStockReady = (parsedCatalog !== null && parsedCatalog.length > 0) || (importSource === 'file' && selectedFile !== null);
+    const hasStockReady = (rawCatalog !== null && rawCatalog.length > 0) || (importSource === 'file' && selectedFile !== null) || (importSource === 'server' && Boolean(serverIp.trim()));
     const isReadyToStart = isBranchProfile
         ? Boolean(operatorName.trim()) && branchPin.trim().length === 6
         : Boolean(inventoryName.trim()) && Boolean(serverIp.trim()) && hasStockReady;
@@ -490,7 +545,7 @@ export function PreCountConfigView({
                 host: serverIp.trim(),
                 port: Number(serverPort) || 3306,
                 user: 'root',
-                password: 'm@st3rpl3x0nz3',
+                password: '',
                 database: 'plex',
             });
 
@@ -534,6 +589,8 @@ export function PreCountConfigView({
             setServerIp(found.primaryIp);
             if (typeof window !== 'undefined') {
                 localStorage.setItem('precount_config_server_ip', found.primaryIp);
+                localStorage.setItem('plex_target_ip', found.primaryIp);
+                localStorage.setItem('plex_target_branch', found.name);
             }
             const newName = `Inventario ${cleanName}`;
             setInventoryName(newName);
@@ -632,6 +689,10 @@ export function PreCountConfigView({
         });
     };
 
+    const selectAllRubros = () => {
+        setCheckedRubros(new Set([0, 1, 2, 3]));
+    };
+
     const handleStartInventory = async () => {
         if (!inventoryName.trim()) {
             notify.error("Nombre requerido", "Ingresá un nombre para el inventario.");
@@ -643,16 +704,43 @@ export function PreCountConfigView({
             return;
         }
 
-        let catalogToUse = parsedCatalog;
+        let currentRaw = rawCatalog;
 
         // Si eligió servidor y todavía no sincronizó
-        if (importSource === 'server' && (!catalogToUse || catalogToUse.length === 0)) {
+        if (importSource === 'server' && (!currentRaw || currentRaw.length === 0)) {
             notify.info("Sincronizando...", "Descargando stock antes de iniciar la sesión...");
-            await handleSyncLocalStock();
+            try {
+                const res = await fetchMysqlStock({
+                    host: serverIp.trim() || '10.0.70.10',
+                    port: Number(serverPort) || 3306,
+                    user: 'root',
+                    password: '',
+                    database: 'plex',
+                });
+                if (res.success && res.products) {
+                    const catalog = convertMysqlToMasterCatalog(res.products);
+                    setRawCatalog(catalog);
+                    setLocalDbCount(res.total_products);
+                    currentRaw = catalog;
+                } else {
+                    notify.error("Error de sincronización", res.message || "No se pudo descargar el stock de Plex");
+                    return;
+                }
+            } catch (err: any) {
+                notify.error("Error conectando a Plex", err?.message || String(err));
+                return;
+            }
         }
 
-        if (!catalogToUse || catalogToUse.length === 0) {
+        if (!currentRaw || currentRaw.length === 0) {
             notify.error("Stock no disponible", "Cargá un archivo Excel o sincronizá desde el servidor Plex.");
+            return;
+        }
+
+        const catalogToUse = applyCatalogFilters(currentRaw, checkedRubros, stockFilter);
+
+        if (!catalogToUse || catalogToUse.length === 0) {
+            notify.error("Sin productos", "Ningún producto coincide con los rubros y saldos de stock seleccionados.");
             return;
         }
 
@@ -678,7 +766,7 @@ export function PreCountConfigView({
                             host: targetHost,
                             port: Number(serverPort) || 3306,
                             user: 'root',
-                            password: 'm@st3rpl3x0nz3',
+                            password: '',
                             database: 'plex',
                         },
                         inventoryName.trim(),
@@ -695,8 +783,8 @@ export function PreCountConfigView({
                 }
             }
 
-            // 1. Si estamos en Tauri y vino por Excel, insertar en SQLite local stock_local.db
-            if (isTauriEnvironment() && importSource === 'file') {
+            // 1. Si estamos en Tauri, insertar el catálogo filtrado en SQLite local stock_local.db
+            if (isTauriEnvironment()) {
                 try {
                     const localInputs = catalogToUse.map(item => ({
                         id_producto: item.id_producto,
@@ -706,11 +794,12 @@ export function PreCountConfigView({
                         sale_price: item.salePrice || 0,
                         cost: item.cost || 0,
                         category: item.rubro,
+                        subrubro: item.subrubro,
                         laboratory: item.laboratory,
                         eans: (item.eans && item.eans.length > 0) ? item.eans : [item.ean],
                     }));
                     await importCatalogToLocalDb(localInputs);
-                    console.log('[TauriLocalDb] Catálogo importado a stock_local.db con éxito.');
+                    console.log(`[TauriLocalDb] ${localInputs.length} productos filtrados guardados en stock_local.db.`);
                 } catch (dbErr) {
                     console.warn('[TauriLocalDb] Advertencia al guardar en SQLite local:', dbErr);
                 }
@@ -732,7 +821,11 @@ export function PreCountConfigView({
             }
 
             // Resolver sucursal de destino real (Saladillo, FP ADM, etc. o null para global)
-            const { branchId: targetBranchId } = await resolveTargetBranch(selectedBranch);
+            const { branchId: targetBranchId, branchName: cleanBranchName } = await resolveTargetBranch(selectedBranch);
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('plex_target_branch', cleanBranchName || selectedBranch);
+                localStorage.setItem('plex_target_ip', serverIp.trim());
+            }
             const finalPin = targetSession?.sync_pin || effectivePin;
             setGeneratedPin(finalPin);
 
@@ -923,9 +1016,16 @@ export function PreCountConfigView({
                                             </div>
                                             <Input
                                                 value={serverIp}
-                                                disabled
+                                                onChange={(e) => {
+                                                    const newIp = e.target.value;
+                                                    setServerIp(newIp);
+                                                    setConnectionStatus('idle');
+                                                    if (typeof window !== 'undefined') {
+                                                        localStorage.setItem('precount_config_server_ip', newIp);
+                                                    }
+                                                }}
                                                 placeholder="10.0.70.10"
-                                                className="h-9 text-xs rounded-xl bg-surface-2/40 dark:bg-surface-2/20 border border-border/30 text-muted-foreground px-3 cursor-not-allowed opacity-75"
+                                                className="h-9 text-xs rounded-xl bg-surface-2/50 dark:bg-surface-2/30 border border-border/40 text-foreground px-3 hover:border-border/60 focus-visible:ring-1 focus-visible:ring-primary/40 font-mono transition-colors"
                                             />
                                         </div>
 
@@ -935,47 +1035,70 @@ export function PreCountConfigView({
                                             </label>
                                             <div className="flex items-center gap-2">
                                                 <Input
-                                                    value={serverPort ? '*'.repeat(serverPort.length) : '****'}
-                                                    disabled
-                                                    placeholder="****"
-                                                    className="h-9 text-xs rounded-xl bg-surface-2/40 dark:bg-surface-2/20 border border-border/30 text-muted-foreground px-3 cursor-not-allowed opacity-75 flex-1 font-mono tracking-widest"
+                                                    value={serverPort}
+                                                    onChange={(e) => {
+                                                        const newPort = e.target.value;
+                                                        setServerPort(newPort);
+                                                        if (typeof window !== 'undefined') {
+                                                            localStorage.setItem('precount_config_server_port', newPort);
+                                                        }
+                                                    }}
+                                                    placeholder="3306"
+                                                    className="h-9 text-xs rounded-xl bg-surface-2/50 dark:bg-surface-2/30 border border-border/40 text-foreground px-3 hover:border-border/60 focus-visible:ring-1 focus-visible:ring-primary/40 flex-1 font-mono transition-colors"
                                                 />
                                                 <Button
                                                     type="button"
                                                     variant="outline"
                                                     size="sm"
-                                                    disabled
-                                                    className="h-9 px-3 rounded-xl text-xs font-medium border border-border/30 bg-surface-2/40 dark:bg-surface-2/20 text-muted-foreground opacity-60 cursor-not-allowed shrink-0 gap-1.5"
+                                                    disabled={isTestingConnection || !serverIp.trim()}
+                                                    onClick={handleTestConnection}
+                                                    className="h-9 px-3 rounded-xl text-xs font-medium border border-border/40 bg-surface-2/60 hover:bg-surface-2 text-foreground transition-colors shrink-0 gap-1.5"
                                                     title="Probar conexión con el servidor Plex"
                                                 >
-                                                    <Wifi className="w-3 h-3" />
-                                                    <span className="hidden sm:inline">Probar</span>
+                                                    <Wifi className={cn("w-3 h-3", isTestingConnection && "animate-pulse text-primary")} />
+                                                    <span className="hidden sm:inline">{isTestingConnection ? "Probando..." : "Probar"}</span>
                                                 </Button>
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* 4.5. Sesión en Servidor Plex (Solo lectura / Inactivo) */}
+                                    {/* 4.5. Sesión en Servidor Plex */}
                                     <div className="space-y-1.5">
                                         <div className="flex items-center justify-between">
                                             <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                                                 <Database className="w-3.5 h-3.5 text-muted-foreground" />
                                                 Sesión de Inventario en Servidor Plex
                                             </label>
-                                            <span className="text-[11px] text-muted-foreground/50 flex items-center gap-1 cursor-default opacity-50">
-                                                <RefreshCw className="w-2.5 h-2.5" /> Comprobar sesiones abiertas
-                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => fetchOpenSessions(serverIp, serverPort)}
+                                                disabled={isCheckingPlexSessions || !serverIp.trim()}
+                                                className="text-[11px] text-primary hover:text-primary/80 transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                <RefreshCw className={cn("w-2.5 h-2.5", isCheckingPlexSessions && "animate-spin")} />
+                                                <span>{isCheckingPlexSessions ? "Comprobando..." : "Comprobar sesiones abiertas"}</span>
+                                            </button>
                                         </div>
 
-                                        <Select value={selectedPlexMode} disabled onValueChange={() => {}}>
+                                        <Select value={selectedPlexMode} onValueChange={handlePlexSessionSelect}>
                                             <SelectTrigger 
                                                 placeholder="Seleccionar sesión de Plex..." 
-                                                className="h-9 text-xs w-full rounded-xl bg-surface-2/40 dark:bg-surface-2/20 border border-border/30 text-muted-foreground cursor-not-allowed opacity-75" 
+                                                className="h-9 text-xs w-full rounded-xl bg-surface-2/50 dark:bg-surface-2/30 border border-border/40 hover:border-border/60 focus-visible:ring-1 focus-visible:ring-primary/40 transition-colors" 
                                             />
                                             <SelectContent className="max-h-[320px] min-w-[320px]">
                                                 <SelectItem value="new" index={0} className="font-sans text-xs sm:text-[13px] h-9">
                                                     + Crear nueva sesión de inventario en Plex
                                                 </SelectItem>
+                                                {openPlexSessions.map((sess, sIdx) => (
+                                                    <SelectItem 
+                                                        key={`plex_${sess.id_inventario}`} 
+                                                        value={`plex_${sess.id_inventario}`} 
+                                                        index={sIdx + 1}
+                                                        className="font-sans text-xs sm:text-[13px] h-9"
+                                                    >
+                                                        {`#${sess.id_inventario} - ${sess.descripcion || 'Sin descripción'} (${sess.fecha} ${sess.hora})`}
+                                                    </SelectItem>
+                                                ))}
                                             </SelectContent>
                                         </Select>
 
@@ -983,7 +1106,7 @@ export function PreCountConfigView({
                                             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs">
                                                 <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
                                                 <span>
-                                                    Se retomará la <strong>Sesión #{selectedPlexSession.id_inventario}</strong> de Plex sin crear una duplicada. Los conteos se enviarán directamente a este inventario.
+                                                    Se retomará la <strong>Sesión #{selectedPlexSession.id_inventario}</strong> de Plex ({selectedPlexSession.usuario || 'Operador'}). Los conteos se enviarán directamente a este inventario.
                                                 </span>
                                             </div>
                                         )}
@@ -991,29 +1114,39 @@ export function PreCountConfigView({
                                 </>
                             )}
 
-                            {/* 5. Rubros a inventariar y Valores de stock a incluir (Visibles pero inactivos con estilo deshabilitado) */}
+                            {/* 5. Rubros a inventariar y Valores de stock a incluir */}
                             <div className="pt-1">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                                     {/* Rubros a inventariar */}
                                     <div className="space-y-1.5">
-                                        <div>
-                                            <label className="text-xs font-semibold text-foreground">
-                                                Rubros a inventariar
-                                            </label>
-                                            <p className="text-[11px] text-muted-foreground mt-0.5 leading-normal">
-                                                Seleccioná los rubros habilitados para el conteo físico.
-                                            </p>
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <label className="text-xs font-semibold text-foreground">
+                                                    Rubros a inventariar
+                                                </label>
+                                                <p className="text-[11px] text-muted-foreground mt-0.5 leading-normal">
+                                                    Seleccioná los rubros habilitados para el conteo físico.
+                                                </p>
+                                            </div>
+                                            {checkedRubros.size < 4 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={selectAllRubros}
+                                                    className="text-[11px] text-primary hover:text-primary/80 font-medium cursor-pointer shrink-0"
+                                                >
+                                                    Seleccionar todos
+                                                </button>
+                                            )}
                                         </div>
 
-                                        <div className="space-y-0.5 pt-0.5 opacity-50 grayscale pointer-events-none select-none cursor-not-allowed">
+                                        <div className="space-y-0.5 pt-0.5">
                                             {RUBROS_CONFIG.map((rubro, idx) => (
                                                 <div key={rubro} className="flex items-center">
                                                     <Switch
                                                         checked={checkedRubros.has(idx)}
-                                                        disabled={true}
-                                                        onToggle={() => {}}
+                                                        onToggle={() => toggleRubro(idx)}
                                                         label={rubro}
-                                                        className="pointer-events-none cursor-not-allowed font-medium text-xs sm:text-[13px] text-muted-foreground py-1 px-1.5"
+                                                        className="font-medium text-xs sm:text-[13px] text-foreground py-1 px-1.5 cursor-pointer"
                                                     />
                                                 </div>
                                             ))}
@@ -1031,18 +1164,35 @@ export function PreCountConfigView({
                                             </p>
                                         </div>
 
-                                        <div className="pt-0.5 pointer-events-none opacity-50 grayscale select-none cursor-not-allowed">
+                                        <div className="pt-0.5">
                                             <RadioGroup
                                                 value={stockFilter}
-                                                className="space-y-0.5 pointer-events-none"
+                                                onValueChange={(v) => setStockFilter(v as StockFilterOption)}
+                                                className="space-y-0.5"
                                             >
-                                                <RadioItem index={0} value="all" label="Todos los valores de stock" className="py-1 px-1.5 text-xs sm:text-[13px] text-muted-foreground cursor-not-allowed" />
-                                                <RadioItem index={1} value="negative" label="Stock en negativo" className="py-1 px-1.5 text-xs sm:text-[13px] text-muted-foreground cursor-not-allowed" />
-                                                <RadioItem index={2} value="zero" label="Stock en 0" className="py-1 px-1.5 text-xs sm:text-[13px] text-muted-foreground cursor-not-allowed" />
+                                                <RadioItem index={0} value="all" label="Todos los valores de stock" className="py-1 px-1.5 text-xs sm:text-[13px] text-foreground cursor-pointer" />
+                                                <RadioItem index={1} value="positive" label="Solo con stock positivo (> 0)" className="py-1 px-1.5 text-xs sm:text-[13px] text-foreground cursor-pointer" />
+                                                <RadioItem index={2} value="negative" label="Stock en negativo (< 0)" className="py-1 px-1.5 text-xs sm:text-[13px] text-foreground cursor-pointer" />
+                                                <RadioItem index={3} value="zero" label="Stock en 0" className="py-1 px-1.5 text-xs sm:text-[13px] text-foreground cursor-pointer" />
                                             </RadioGroup>
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* Resumen interactivo de productos filtrados */}
+                                {rawCatalog && rawCatalog.length > 0 && (
+                                    <div className="mt-3 px-3 py-2 rounded-xl bg-surface-2/70 dark:bg-surface-2/40 border border-border/40 flex items-center justify-between text-xs text-foreground">
+                                        <span className="text-muted-foreground flex items-center gap-1.5">
+                                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                            Filtros activos:
+                                        </span>
+                                        <span className="font-medium">
+                                            <strong className="text-primary font-semibold">
+                                                {parsedCatalog ? parsedCatalog.length.toLocaleString('es-AR') : 0}
+                                            </strong> de {rawCatalog.length.toLocaleString('es-AR')} productos listos para inventariar
+                                        </span>
+                                    </div>
+                                )}
                             </div>
 
                         </div>
@@ -1125,8 +1275,8 @@ export function PreCountConfigView({
                                         </div>
 
                                         <Tabs
-                                            value="file"
-                                            onValueChange={() => {}}
+                                            value={importSource}
+                                            onValueChange={(v) => setImportSource(v as ImportSourceOption)}
                                             className="w-full"
                                         >
                                             <TabsList className="bg-surface-2/60 dark:bg-surface-2/40 border border-border/40 p-1 rounded-xl w-full">
@@ -1135,8 +1285,7 @@ export function PreCountConfigView({
                                                     value="server" 
                                                     label="Importar desde servidor" 
                                                     icon={Database as any} 
-                                                    disabled 
-                                                    className="flex-1 text-xs opacity-40 grayscale cursor-not-allowed pointer-events-none" 
+                                                    className="flex-1 text-xs" 
                                                 />
                                             </TabsList>
 
@@ -1153,7 +1302,7 @@ export function PreCountConfigView({
                                                     onClick={() => fileInputRef.current?.click()}
                                                     className={cn(
                                                         "group relative border-2 border-dashed rounded-2xl p-3.5 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200",
-                                                        parsedCatalog && parsedCatalog.length > 0
+                                                        rawCatalog && rawCatalog.length > 0
                                                             ? "border-foreground/40 bg-surface-3"
                                                             : selectedFile
                                                                 ? "border-foreground/30 bg-surface-2"
@@ -1162,7 +1311,7 @@ export function PreCountConfigView({
                                                 >
                                                     <div className={cn(
                                                         "w-8 h-8 rounded-xl flex items-center justify-center mb-1.5 transition-transform duration-200 group-hover:scale-105",
-                                                        parsedCatalog && parsedCatalog.length > 0
+                                                        rawCatalog && rawCatalog.length > 0
                                                             ? "bg-surface-4 text-foreground"
                                                             : isParsingFile
                                                                 ? "bg-surface-3 text-foreground animate-pulse"
@@ -1170,7 +1319,7 @@ export function PreCountConfigView({
                                                     )}>
                                                         {isParsingFile ? (
                                                             <Loader2 className="w-4 h-4 animate-spin" />
-                                                        ) : parsedCatalog && parsedCatalog.length > 0 ? (
+                                                        ) : rawCatalog && rawCatalog.length > 0 ? (
                                                             <CheckCircle2 className="w-4 h-4 stroke-[2] text-foreground" />
                                                         ) : selectedFile ? (
                                                             <FileSpreadsheet className="w-4 h-4 stroke-[1.8]" />
@@ -1183,8 +1332,8 @@ export function PreCountConfigView({
                                                         <p className="text-xs font-semibold text-foreground tracking-tight">
                                                             {isParsingFile ? (
                                                                 'Procesando archivo...'
-                                                            ) : parsedCatalog && parsedCatalog.length > 0 ? (
-                                                                `Listo: ${selectedFile?.name}`
+                                                            ) : rawCatalog && rawCatalog.length > 0 ? (
+                                                                `Listo: ${selectedFile?.name || 'Archivo Excel cargado'}`
                                                             ) : selectedFile ? (
                                                                 selectedFile.name
                                                             ) : (
@@ -1192,8 +1341,8 @@ export function PreCountConfigView({
                                                             )}
                                                         </p>
                                                         <p className="text-[11px] text-muted-foreground">
-                                                            {parsedCatalog && parsedCatalog.length > 0
-                                                                ? `${parsedCatalog.filter(i => i.isPrimaryEan).length.toLocaleString('es-AR')} productos listos para inventariar`
+                                                            {rawCatalog && rawCatalog.length > 0
+                                                                ? `${parsedCatalog ? parsedCatalog.length.toLocaleString('es-AR') : 0} de ${rawCatalog.length.toLocaleString('es-AR')} productos listos para inventariar`
                                                                 : 'Padrón maestro de existencias teóricas (17 columnas)'}
                                                         </p>
                                                     </div>
@@ -1227,9 +1376,11 @@ export function PreCountConfigView({
                                                             <span>
                                                                 {isSyncingLocalDb 
                                                                     ? "Descargando desde Plex..." 
-                                                                    : localDbCount !== null 
-                                                                        ? `Actualizar Stock Plex (${localDbCount.toLocaleString('es-AR')} prods listos)`
-                                                                        : "Descargar Stock desde Servidor Plex"}
+                                                                    : rawCatalog && rawCatalog.length > 0 
+                                                                        ? `Actualizar Stock (${parsedCatalog ? parsedCatalog.length.toLocaleString('es-AR') : 0} filtrados de ${rawCatalog.length.toLocaleString('es-AR')})`
+                                                                        : localDbCount !== null
+                                                                            ? `Actualizar Stock Plex (${localDbCount.toLocaleString('es-AR')} prods)`
+                                                                            : "Descargar Stock desde Servidor Plex"}
                                                             </span>
                                                         </Button>
                                                         <p className="text-[10px] text-muted-foreground mt-1 text-center">
@@ -1268,7 +1419,7 @@ export function PreCountConfigView({
                                         setGeneratedPin(Math.floor(100000 + Math.random() * 900000).toString());
                                         setServerPort("3306");
                                         setSelectedFile(null);
-                                        setParsedCatalog(null);
+                                        setRawCatalog(null);
                                         setImportSource('file');
                                         setCheckedRubros(new Set([0, 1, 2, 3]));
                                         setStockFilter('all');

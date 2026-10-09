@@ -49,6 +49,7 @@ export interface LocalItem {
     location_tag?: string;
     laboratory?: string;
     rubro?: string;
+    subrubro?: string;
 }
 
 export interface LocalProduct {
@@ -58,6 +59,7 @@ export interface LocalProduct {
     salePrice?: number;
     laboratory?: string;
     rubro?: string;
+    subrubro?: string;
     stock?: number;
     id_producto?: string;
     session_id: string;

@@ -11,6 +11,7 @@ interface MasterCatalogItem {
     salePrice: number;
     laboratory: string;
     rubro?: string;
+    subrubro?: string;
 }
 
 self.onmessage = async (e: MessageEvent) => {
@@ -54,6 +55,7 @@ self.onmessage = async (e: MessageEvent) => {
                 const rubro = String(row[9] || 'Varios').trim(); // Columna J
                 const cost = Number(row[10]) || 0; // Columna K
                 const laboratory = String(row[14] || '').trim(); // Columna O
+                const subrubro = String(row[16] || '').trim(); // Columna Q
 
                 eanList.forEach((ean: string, idx: number) => {
                     catalog.push({
@@ -66,7 +68,8 @@ self.onmessage = async (e: MessageEvent) => {
                         cost,
                         salePrice: cost,
                         laboratory,
-                        rubro
+                        rubro,
+                        subrubro: subrubro || undefined
                     });
                 });
         });

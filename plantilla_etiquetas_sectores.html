@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Farmaplus - Plantilla Etiquetas de Sectores</title>
+    <!-- JsBarcode y QRCode.js para generar códigos vectoriales nítidos para impresión -->
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+        }
+        body {
+            background-color: #f1f5f9;
+            padding: 24px;
+            color: #0f172a;
+        }
+        .header-bar {
+            max-width: 900px;
+            margin: 0 auto 20px auto;
+            background: #ffffff;
+            padding: 16px 24px;
+            border-radius: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        .header-title {
+            font-size: 20px;
+            font-weight: 800;
+            color: #1e3a8a;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .btn-print {
+            background: #2563eb;
+            color: #fff;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .btn-print:hover {
+            background: #1d4ed8;
+        }
+        .sheet {
+            max-width: 900px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 18px;
+        }
+        /* Etiqueta individual optimizada para cenefa / estante */
+        .label-card {
+            background: #ffffff;
+            border: 2px solid #cbd5e1;
+            border-radius: 14px;
+            padding: 14px 16px;
+            position: relative;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.03);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 180px;
+            overflow: hidden;
+            page-break-inside: avoid;
+        }
+        .zone-pill {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 3px 10px;
+            border-radius: 9999px;
+            align-self: flex-start;
+            margin-bottom: 6px;
+        }
+        /* Colores por zona */
+        .zone-farmacia { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+        .zone-salon { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+        .zone-frio { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+        .zone-deposito { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+        .zone-control { background: #ffe4e6; color: #9f1239; border: 1px solid #fecdd3; }
+
+        .sector-title {
+            font-size: 18px;
+            font-weight: 800;
+            color: #0f172a;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .sector-subtitle {
+            font-size: 12px;
+            color: #64748b;
+            font-weight: 600;
+        }
+        .codes-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: auto;
+            padding-top: 6px;
+            gap: 12px;
+        }
+        .barcode-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .barcode-svg {
+            width: 100%;
+            height: 48px;
+        }
+        .qr-container {
+            width: 58px;
+            height: 58px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fff;
+            padding: 3px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+        }
+        .qr-container img, .qr-container canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+        .code-text-big {
+            font-size: 14px;
+            font-weight: 900;
+            letter-spacing: 1.5px;
+            color: #0f172a;
+            margin-top: 2px;
+        }
+
+        @media print {
+            body {
+                background: #fff;
+                padding: 0;
+            }
+            .header-bar {
+                display: none;
+            }
+            .sheet {
+                max-width: 100%;
+                gap: 12px;
+            }
+            .label-card {
+                border: 2px solid #000;
+                box-shadow: none;
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header-bar">
+        <div class="header-title">
+            <span>🏷️ Farmaplus - Etiquetas de Sectores (Zebra TC22 / Colectores)</span>
+        </div>
+        <button class="btn-print" onclick="window.print()">🖨️ Imprimir Etiquetas (A4)</button>
+    </div>
+
+    <div class="sheet" id="labelsGrid">
+        <!-- Generado dinámicamente -->
+    </div>
+
+    <script>
+        const sectors = [
+            { code: 'ESP-01', name: 'ESPALDAR 01', zone: 'Mostrador & Farmacia', zoneClass: 'zone-farmacia', desc: 'Detrás de mostrador farmacéutico' },
+            { code: 'ESP-02', name: 'ESPALDAR 02', zone: 'Mostrador & Farmacia', zoneClass: 'zone-farmacia', desc: 'Detrás de mostrador farmacéutico' },
+            { code: 'HE-01',  name: 'HELADERA 01', zone: 'Cadena de Frío', zoneClass: 'zone-frio', desc: 'Insulinas y Termolábiles (2°C - 8°C)' },
+            { code: 'HE-02',  name: 'HELADERA 02', zone: 'Cadena de Frío', zoneClass: 'zone-frio', desc: 'Vacunas y Biológicos' },
+            { code: 'GON-01', name: 'GÓNDOLA 01',  zone: 'Salón & Exhibición', zoneClass: 'zone-salon', desc: 'Dermocosmética / Cuidado Personal' },
+            { code: 'GON-02', name: 'GÓNDOLA 02',  zone: 'Salón & Exhibición', zoneClass: 'zone-salon', desc: 'Higiene Oral & Capilar' },
+            { code: 'CAJ-01', name: 'CAJONERA 01', zone: 'Mostrador & Farmacia', zoneClass: 'zone-farmacia', desc: 'Cajones deslizantes A-L' },
+            { code: 'MOS-01', name: 'MOSTRADOR 01', zone: 'Mostrador & Farmacia', zoneClass: 'zone-farmacia', desc: 'Puesto de despacho 1' },
+            { code: 'ARC-01', name: 'ARCHIVADOS 01', zone: 'Especiales & Control', zoneClass: 'zone-control', desc: 'Psicotrópicos bajo llave' },
+            { code: 'DEP-01', name: 'DEPÓSITO 01', zone: 'Depósito & Trastienda', zoneClass: 'zone-deposito', desc: 'Trastienda / Bultos Cerrados' }
+        ];
+
+        const container = document.getElementById('labelsGrid');
+
+        sectors.forEach((item, index) => {
+            const card = document.createElement('div');
+            card.className = 'label-card';
+            card.innerHTML = `
+                <div>
+                    <span class="zone-pill ${item.zoneClass}">${item.zone}</span>
+                    <div class="sector-title">
+                        <span>${item.name}</span>
+                        <span class="sector-subtitle">${item.desc}</span>
+                    </div>
+                </div>
+                <div class="codes-row">
+                    <div class="barcode-container">
+                        <svg id="barcode-${index}" class="barcode-svg"></svg>
+                        <span class="code-text-big">${item.code}</span>
+                    </div>
+                    <div class="qr-container" id="qr-${index}"></div>
+                </div>
+            `;
+            container.appendChild(card);
+
+            // Generar Code 128 nítido
+            JsBarcode(`#barcode-${index}`, item.code, {
+                format: "CODE128",
+                width: 1.8,
+                height: 40,
+                displayValue: false,
+                margin: 0,
+                lineColor: "#000000"
+            });
+
+            // Generar QR Code 
+            new QRCode(document.getElementById(`qr-${index}`), {
+                text: item.code,
+                width: 52,
+                height: 52,
+                colorDark : "#000000",
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.M
+            });
+        });
+    </script>
+</body>
+</html>

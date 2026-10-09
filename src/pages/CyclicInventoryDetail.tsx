@@ -88,6 +88,8 @@ export default function CyclicInventoryDetail() {
     const [isAdminModeEnabled, setIsAdminModeEnabled] = useState(false);
     const [showAdminPurgeModal, setShowAdminPurgeModal] = useState(false);
     const [isAdminPurging, setIsAdminPurging] = useState(false);
+    const [adminPurgePassword, setAdminPurgePassword] = useState("");
+    const [adminPurgeError, setAdminPurgeError] = useState("");
     const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
 
     // Save Dialog View State
@@ -463,24 +465,32 @@ export default function CyclicInventoryDetail() {
     }, [items, shortageValue, surplusValue]);
 
     const handleAdminPurge = async () => {
+        if (!adminPurgePassword.trim()) {
+            setAdminPurgeError("Ingresá la contraseña administrativa");
+            return;
+        }
         setIsAdminPurging(true);
+        setAdminPurgeError("");
         try {
             const result = (await cyclicInventoryService.adminPurgeLabInventory(
                 branchName,
                 labName,
-                'pistacho', // ponytail: hardcoded DB credential to bypass UI input
+                adminPurgePassword.trim(),
                 user?.id || ''
             )) as any;
 
             if (result.success) {
                 toast.success("Éxito", result.message);
                 setShowAdminPurgeModal(false);
+                setAdminPurgePassword("");
                 navigate('/inventario-ciclico');
             } else {
+                setAdminPurgeError(result.message || "Error al procesar la solicitud.");
                 toast.error("Error", result.message);
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error in admin purge:", error);
+            setAdminPurgeError(error?.message || "Error al procesar la solicitud.");
             toast.error("Error", "Error al procesar la solicitud.");
         } finally {
             setIsAdminPurging(false);
@@ -1443,7 +1453,16 @@ export default function CyclicInventoryDetail() {
 
 
             {/* Minimalist Admin Purge Modal */}
-            <Dialog open={showAdminPurgeModal} onOpenChange={setShowAdminPurgeModal}>
+            <Dialog 
+                open={showAdminPurgeModal} 
+                onOpenChange={(open) => {
+                    setShowAdminPurgeModal(open);
+                    if (!open) {
+                        setAdminPurgePassword("");
+                        setAdminPurgeError("");
+                    }
+                }}
+            >
                 <DialogContent size="lg">
                     <div className="space-y-4">
                         <DialogHeader>
@@ -1453,13 +1472,37 @@ export default function CyclicInventoryDetail() {
                             </DialogDescription>
                         </DialogHeader>
 
+                        <div className="space-y-1.5 py-1">
+                            <label className="text-xs font-medium text-foreground">
+                                Contraseña de Administrador
+                            </label>
+                            <Input
+                                type="password"
+                                placeholder="Ingresá la contraseña requerida..."
+                                value={adminPurgePassword}
+                                onChange={(e) => {
+                                    setAdminPurgePassword(e.target.value);
+                                    if (adminPurgeError) setAdminPurgeError("");
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter" && adminPurgePassword.trim() && !isAdminPurging) {
+                                        handleAdminPurge();
+                                    }
+                                }}
+                                disabled={isAdminPurging}
+                            />
+                            {adminPurgeError && (
+                                <p className="text-xs text-rose-500 font-medium">{adminPurgeError}</p>
+                            )}
+                        </div>
+
                         <DialogFooter>
                             <DialogClose render={<Button type="button" variant="ghost" disabled={isAdminPurging} />}>
                                 Cancelar
                             </DialogClose>
                             <Button 
                                 onClick={handleAdminPurge} 
-                                disabled={isAdminPurging}
+                                disabled={isAdminPurging || !adminPurgePassword.trim()}
                                 loading={isAdminPurging}
                             >
                                 Eliminar

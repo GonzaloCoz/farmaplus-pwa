@@ -15,6 +15,7 @@ import { db } from '@/services/db';
 import { upsertPreCountItem, updatePreCountItem, deletePreCountItems, getDeviceId } from '@/services/preCountDB';
 import { supabase } from '@/integrations/supabase/client';
 import { DragStepper } from '@/components/ui/drag-stepper';
+import { useUser } from '@/contexts/UserContext';
 
 const COLOR_PALETTE: BadgeColor[] = [
     "blue",
@@ -118,6 +119,12 @@ export function PreCountProductsView({
     activeSector,
     onOpenSectorModal,
 }: PreCountProductsViewProps) {
+    const { user } = useUser();
+    const adminName = user?.name || user?.username;
+    const defaultOperator = (user?.role === 'admin' && adminName) 
+        ? adminName 
+        : (adminName || (typeof window !== 'undefined' ? localStorage.getItem('precount_device_name') : null) || 'Admin');
+
     const [internalEditing, setInternalEditing] = useState(false);
     const isEditing = propIsEditing !== undefined ? propIsEditing : internalEditing;
     const handleToggleEditing = () => {
@@ -211,8 +218,6 @@ export function PreCountProductsView({
                     }
                 }
 
-                const operatorName = (typeof window !== 'undefined' ? localStorage.getItem('precount_device_name') : null) || 'Operador';
-
                 return records.map((rec): ProductExpirationItem => {
                     const catInfo = productsMap.get(rec.ean);
                     return {
@@ -224,7 +229,7 @@ export function PreCountProductsView({
                         rubro: rec.rubro || catInfo?.rubro || 'Medicamentos',
                         quantity: rec.quantity,
                         systemStock: catInfo?.systemStock,
-                        user: rec.device_name || operatorName,
+                        user: rec.device_name || defaultOperator,
                         sector: rec.location_tag || '–',
                         position: rec.location_tag || '–',
                     };
@@ -264,8 +269,18 @@ export function PreCountProductsView({
 
                     // Limpiar ítems de Dexie que ya no existen en Supabase y no están pendientes de subida
                     const localSessionItems = await db.items.where('session_id').equals(effectiveSessionId).toArray();
+                    const unsyncedLocalIds = new Set(localSessionItems.filter(i => i.synced === 0).map(i => i.id));
+                    const nowMs = Date.now();
                     const staleLocalIds = localSessionItems
-                        .filter(item => !remoteIds.has(item.id) && !pendingIds.has(item.id))
+                        .filter(item => {
+                            if (remoteIds.has(item.id)) return false;
+                            if (pendingIds.has(item.id)) return false;
+                            if (unsyncedLocalIds.has(item.id)) return false;
+                            // Dar margen de 30 segundos a ítems recién agregados/modificados para que la sincronización termine de subir
+                            const scannedTime = item.scanned_at ? new Date(item.scanned_at).getTime() : 0;
+                            if (nowMs - scannedTime < 30000) return false;
+                            return true;
+                        })
                         .map(item => item.id);
 
                     if (staleLocalIds.length > 0) {
@@ -273,23 +288,26 @@ export function PreCountProductsView({
                     }
 
                     if (data.length > 0) {
-                        const localRows = data.map((item: any) => ({
-                            id: item.id,
-                            session_id: item.session_id,
-                            ean: item.ean,
-                            product_name: item.product_name || `Producto ${item.ean}`,
-                            quantity: item.quantity || 0,
-                            scanned_at: item.scanned_at || new Date().toISOString(),
-                            scanned_by: item.scanned_by || undefined,
-                            synced: 1,
-                            id_producto: item.id_producto || undefined,
-                            device_id: item.device_id || undefined,
-                            device_name: item.device_name || undefined,
-                            location_tag: item.location_tag || undefined,
-                            laboratory: item.laboratory || undefined,
-                            rubro: item.rubro || undefined,
-                        }));
-                        await db.items.bulkPut(localRows);
+                        const safeRemoteItems = data.filter((item: any) => !pendingIds.has(item.id) && !unsyncedLocalIds.has(item.id));
+                        if (safeRemoteItems.length > 0) {
+                            const localRows = safeRemoteItems.map((item: any) => ({
+                                id: item.id,
+                                session_id: item.session_id,
+                                ean: item.ean,
+                                product_name: item.product_name || `Producto ${item.ean}`,
+                                quantity: item.quantity || 0,
+                                scanned_at: item.scanned_at || new Date().toISOString(),
+                                scanned_by: item.scanned_by || undefined,
+                                synced: 1,
+                                id_producto: item.id_producto || undefined,
+                                device_id: item.device_id || undefined,
+                                device_name: item.device_name || undefined,
+                                location_tag: item.location_tag || undefined,
+                                laboratory: item.laboratory || undefined,
+                                rubro: item.rubro || undefined,
+                            }));
+                            await db.items.bulkPut(localRows);
+                        }
                     }
                 }
             } catch (err) {
@@ -320,6 +338,11 @@ export function PreCountProductsView({
                     try {
                         if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
                             const item = payload.new as any;
+                            // Si el ítem local está pendiente de sincronización, no sobreescribir con datos viejos
+                            const localItem = await db.items.get(item.id);
+                            if (localItem && localItem.synced === 0) {
+                                return;
+                            }
                             await db.items.put({
                                 id: item.id,
                                 session_id: item.session_id,
@@ -409,12 +432,14 @@ export function PreCountProductsView({
 
     // Estado para agregar un producto inline en la tabla
     const [addingRowId, setAddingRowId] = useState<string | null>(null);
-    const [addingStep, setAddingStep] = useState<"ean" | "quantity">("ean");
+    const [addingStep, setAddingStep] = useState<"ean" | "sector" | "quantity">("ean");
     const [newEan, setNewEan] = useState("");
+    const [newSector, setNewSector] = useState<string>("");
     const [newQuantity, setNewQuantity] = useState<number | string>(1);
     const [selectedCandidateIndex, setSelectedCandidateIndex] = useState<number>(0);
 
     const eanInputRef = useRef<HTMLInputElement>(null);
+    const sectorInputRef = useRef<HTMLInputElement>(null);
     const quantityInputRef = useRef<HTMLInputElement>(null);
 
     // Búsqueda dinámica en tiempo real optimizada con precarga en memoria y scoring de relevancia
@@ -746,7 +771,9 @@ export function PreCountProductsView({
     const handleStartAddProduct = useCallback(() => {
         const tempId = `temp-new-${Date.now()}`;
         const initialSector = currentActiveSector || (selectedPosition && selectedPosition !== "all" ? selectedPosition : "");
-        const currentOperator = (typeof window !== 'undefined' ? localStorage.getItem('precount_device_name') : null) || 'Operador';
+        const currentOperator = (user?.role === 'admin' && adminName) 
+            ? adminName 
+            : (adminName || (typeof window !== 'undefined' ? localStorage.getItem('precount_device_name') : null) || 'Admin');
 
         const tempRow: ProductExpirationItem = {
             id: tempId,
@@ -763,6 +790,7 @@ export function PreCountProductsView({
         };
 
         setNewEan("");
+        setNewSector(initialSector || "");
         setNewQuantity(1);
         setSelectedCandidateIndex(0);
         setAddingStep("ean");
@@ -774,7 +802,7 @@ export function PreCountProductsView({
         setTimeout(() => {
             eanInputRef.current?.focus();
         }, 60);
-    }, [currentActiveSector, selectedPosition, selectedRubro, isBranchMode]);
+    }, [currentActiveSector, selectedPosition, selectedRubro, isBranchMode, user, adminName]);
 
     useEffect(() => {
         if (addProductTrigger && addProductTrigger > 0) {
@@ -796,6 +824,8 @@ export function PreCountProductsView({
 
     const handleSelectCandidate = useCallback((item: CandidateProduct) => {
         setNewEan(item.ean);
+        const initialSector = currentActiveSector || (selectedPosition && selectedPosition !== "all" ? selectedPosition : "");
+        setNewSector(initialSector || "");
         setTableData(prev => prev.map(row => {
             if (row.id !== addingRowId) return row;
             return {
@@ -804,16 +834,26 @@ export function PreCountProductsView({
                 productName: item.name,
                 laboratory: item.lab,
                 rubro: item.rubro,
+                sector: initialSector || "–",
+                position: initialSector || "–",
                 systemStock: item.systemStock,
             };
         }));
         setCandidateProducts([]);
-        setAddingStep("quantity");
-        setTimeout(() => {
-            quantityInputRef.current?.focus();
-            quantityInputRef.current?.select();
-        }, 50);
-    }, [addingRowId]);
+        if (initialSector) {
+            setAddingStep("quantity");
+            setTimeout(() => {
+                quantityInputRef.current?.focus();
+                quantityInputRef.current?.select();
+            }, 50);
+        } else {
+            setAddingStep("sector");
+            setTimeout(() => {
+                sectorInputRef.current?.focus();
+                sectorInputRef.current?.select();
+            }, 50);
+        }
+    }, [addingRowId, currentActiveSector, selectedPosition]);
 
     const handleConfirmEan = async () => {
         if (isBranchMode && !currentActiveSector) {
@@ -925,7 +965,12 @@ export function PreCountProductsView({
             return;
         }
 
-        const qtyNum = typeof newQuantity === "number" ? newQuantity : parseInt(String(newQuantity), 10);
+        const rawInputVal = quantityInputRef.current?.value?.trim();
+        const parsedInput = rawInputVal !== undefined && rawInputVal !== "" ? parseInt(rawInputVal, 10) : NaN;
+        const qtyNum = !isNaN(parsedInput) && parsedInput >= 1
+            ? parsedInput
+            : (typeof newQuantity === "number" ? newQuantity : parseInt(String(newQuantity), 10));
+
         if (!qtyNum || qtyNum < 1) {
             toast.warning("La cantidad debe ser mayor a 0");
             setNewQuantity(1);
@@ -941,8 +986,10 @@ export function PreCountProductsView({
         const finalName = candidate?.name || activeRow?.productName || `Producto SKU-${finalEan}`;
         const finalLab = candidate?.lab || activeRow?.laboratory || "";
         const finalRubro = candidate?.rubro || activeRow?.rubro || "";
-        const finalSector = currentActiveSector || (selectedPosition && selectedPosition !== "all" ? selectedPosition : (activeRow?.sector && activeRow.sector !== "–" ? activeRow.sector : ""));
-        const currentOperator = (typeof window !== 'undefined' ? localStorage.getItem('precount_device_name') : null) || activeRow?.user || 'Operador';
+        const finalSector = newSector.trim() || currentActiveSector || (selectedPosition && selectedPosition !== "all" ? selectedPosition : (activeRow?.sector && activeRow.sector !== "–" ? activeRow.sector : "General"));
+        const currentOperator = (user?.role === 'admin' && adminName)
+            ? adminName
+            : (adminName || (typeof window !== 'undefined' ? localStorage.getItem('precount_device_name') : null) || activeRow?.user || 'Admin');
         const finalSysStock = candidate?.systemStock ?? activeRow?.systemStock ?? (resolvedEan ? catalogStockMapRef.current.get(resolvedEan.toLowerCase()) : undefined);
 
         const committedRow: ProductExpirationItem = {
@@ -981,6 +1028,7 @@ export function PreCountProductsView({
             setAddingRowId(nextTempId);
             setAddingStep("ean");
             setNewEan("");
+            setNewSector(nextInitialSector || "");
             setNewQuantity(1);
             setCandidateProducts([]);
             setSelectedCandidateIndex(0);
@@ -992,6 +1040,7 @@ export function PreCountProductsView({
             setTableData(prev => [committedRow, ...prev.filter(r => r.id !== addingRowId && !r.isAdding)]);
             setAddingRowId(null);
             setNewEan("");
+            setNewSector("");
             setNewQuantity(1);
             setCandidateProducts([]);
             setSelectedCandidateIndex(0);
@@ -999,7 +1048,7 @@ export function PreCountProductsView({
 
         if (effectiveSessionId) {
             try {
-                await upsertPreCountItem({
+                const saved = await upsertPreCountItem({
                     session_id: effectiveSessionId,
                     ean: resolvedEan,
                     product_name: finalName,
@@ -1008,7 +1057,19 @@ export function PreCountProductsView({
                     laboratory: finalLab,
                     rubro: finalRubro,
                     location_tag: finalSector || undefined,
+                    device_name: currentOperator,
                 });
+                if (saved?.id) {
+                    setTableData(prev => {
+                        const alreadyInTable = prev.some(r => r.id === saved.id && r.id !== committedRow.id);
+                        if (alreadyInTable) {
+                            return prev
+                                .filter(r => r.id !== committedRow.id)
+                                .map(r => r.id === saved.id ? { ...r, quantity: saved.quantity } : r);
+                        }
+                        return prev.map(r => r.id === committedRow.id ? { ...r, id: saved.id, quantity: saved.quantity } : r);
+                    });
+                }
             } catch (dbErr) {
                 console.error("Error guardando ítem en base local:", dbErr);
             }
@@ -1060,6 +1121,7 @@ export function PreCountProductsView({
     const handleCancelAddProduct = () => {
         if (isBranchMode) {
             setNewEan("");
+            setNewSector("");
             setNewQuantity(1);
             setSelectedCandidateIndex(0);
             setCandidateProducts([]);
@@ -1081,6 +1143,7 @@ export function PreCountProductsView({
         setTableData(prev => prev.filter(r => r.id !== addingRowId && !r.isAdding));
         setAddingRowId(null);
         setNewEan("");
+        setNewSector("");
         setNewQuantity(1);
         setCandidateProducts([]);
         setSelectedCandidateIndex(0);
@@ -1601,17 +1664,77 @@ export function PreCountProductsView({
                             </div>
                         );
                     }
-                    if (row.id === addingRowId && isBranchMode && (!currentActiveSector || sectorVal === "–")) {
+                    if (row.id === addingRowId) {
+                        if (addingStep === "sector") {
+                            return (
+                                <div className="flex items-center my-0.5" onClick={(e) => e.stopPropagation()}>
+                                    <input
+                                        ref={sectorInputRef}
+                                        type="text"
+                                        value={newSector}
+                                        placeholder="Sector…"
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setNewSector(val);
+                                            setTableData(prev => prev.map(r => r.id === addingRowId ? { ...r, sector: val || "–", position: val || "–" } : r));
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === "Enter" || e.key === "Tab") {
+                                                e.preventDefault();
+                                                setAddingStep("quantity");
+                                                setTimeout(() => {
+                                                    quantityInputRef.current?.focus();
+                                                    quantityInputRef.current?.select();
+                                                }, 50);
+                                            } else if (e.key === "Escape") {
+                                                e.preventDefault();
+                                                setAddingStep("ean");
+                                                setTimeout(() => {
+                                                    eanInputRef.current?.focus();
+                                                    eanInputRef.current?.select();
+                                                }, 50);
+                                            }
+                                        }}
+                                        className="h-7 w-full max-w-[105px] px-2 font-sans text-xs font-semibold rounded-md border border-primary bg-background text-foreground focus:ring-1 focus:ring-primary focus:outline-none"
+                                    />
+                                </div>
+                            );
+                        }
+                        if (addingStep === "quantity") {
+                            return (
+                                <span
+                                    className="font-semibold text-foreground text-xs truncate cursor-pointer hover:underline"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setAddingStep("sector");
+                                        setTimeout(() => {
+                                            sectorInputRef.current?.focus();
+                                            sectorInputRef.current?.select();
+                                        }, 50);
+                                    }}
+                                    title="Hacé clic para editar sector"
+                                >
+                                    {newSector || sectorVal || "–"}
+                                </span>
+                            );
+                        }
+                        if (isBranchMode && (!currentActiveSector || sectorVal === "–")) {
+                            return (
+                                <span
+                                    className="font-medium text-xs text-muted-foreground/60 cursor-pointer hover:text-foreground hover:underline truncate"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onOpenSectorModal?.();
+                                    }}
+                                    title="Hacé clic para abrir un sector"
+                                >
+                                    Sin sector
+                                </span>
+                            );
+                        }
                         return (
-                            <span
-                                className="font-medium text-xs text-muted-foreground/60 cursor-pointer hover:text-foreground hover:underline truncate"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onOpenSectorModal?.();
-                                }}
-                                title="Hacé clic para abrir un sector"
-                            >
-                                Sin sector
+                            <span className="font-medium text-muted-foreground text-xs truncate">
+                                {newSector || sectorVal}
                             </span>
                         );
                     }
@@ -1662,10 +1785,23 @@ export function PreCountProductsView({
                                                 handleCommitNewProduct();
                                             } else if (e.key === "Escape") {
                                                 e.preventDefault();
-                                                handleCancelAddProduct();
+                                                const hasOpenSector = Boolean(currentActiveSector || (selectedPosition && selectedPosition !== "all"));
+                                                if (hasOpenSector) {
+                                                    setAddingStep("ean");
+                                                    setTimeout(() => {
+                                                        eanInputRef.current?.focus();
+                                                        eanInputRef.current?.select();
+                                                    }, 50);
+                                                } else {
+                                                    setAddingStep("sector");
+                                                    setTimeout(() => {
+                                                        sectorInputRef.current?.focus();
+                                                        sectorInputRef.current?.select();
+                                                    }, 50);
+                                                }
                                             }
                                         }}
-                                        className="h-8 w-16 text-center font-sans text-xs font-semibold rounded-lg border border-border bg-transparent hover:bg-hover focus:ring-1 focus:ring-[color:var(--focus-ring,#6B97FF)] focus:outline-none tabular-nums shadow-none"
+                                        className="h-8 w-16 text-center font-sans text-xs font-semibold rounded-lg border border-primary bg-background hover:bg-hover focus:ring-1 focus:ring-[color:var(--focus-ring,#6B97FF)] focus:outline-none tabular-nums shadow-none"
                                     />
                                 </div>
                             );

@@ -92,7 +92,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
             const profile = profileData as any;
 
-            if (profile.active === false && profile.username.toLowerCase() !== 'gcoz') {
+            if (profile.active === false && profile.role !== 'admin') {
                 notify.error("Acceso Denegado", "Tu cuenta se encuentra inactiva.");
                 setIsLoading(false);
                 return false;

@@ -100,6 +100,15 @@ export interface PieStableContextValue {
 
   /** Precomputed slice paths during geometry scrub (one per arc). */
   scrubSlicePaths: readonly string[] | null;
+
+  /** Get outer radius for a slice index (supports rose/polar variable radius) */
+  getSliceOuterRadius?: (index: number) => number;
+
+  /** Whether background full-radius track should be rendered with each slice */
+  showTrack?: boolean;
+
+  /** Whether to show numeric value badge pills on slices */
+  showBadge?: boolean;
 }
 
 export type PieContextValue = PieStableContextValue & PieHoverContextValue;
@@ -135,6 +144,8 @@ export function PieProvider({
       getFill: value.getFill,
       geometryScrubbing: value.geometryScrubbing,
       scrubSlicePaths: value.scrubSlicePaths,
+      getSliceOuterRadius: value.getSliceOuterRadius,
+      showTrack: value.showTrack,
     }),
     [
       value.data,
@@ -156,6 +167,8 @@ export function PieProvider({
       value.getFill,
       value.geometryScrubbing,
       value.scrubSlicePaths,
+      value.getSliceOuterRadius,
+      value.showTrack,
     ]
   );
 

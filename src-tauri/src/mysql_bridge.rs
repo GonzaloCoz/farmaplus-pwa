@@ -39,6 +39,7 @@ pub struct MysqlProductRecord {
     pub sale_price: f64,
     pub troquel: Option<String>,
     pub category: Option<String>,
+    pub subrubro: Option<String>,
     pub laboratory: Option<String>,
     pub secondary_eans: Vec<String>,
 }
@@ -106,10 +107,13 @@ fn build_opts_for_host(config: &MysqlConfig, host: &str, timeout_ms: u64) -> Opt
         .read_timeout(Some(Duration::from_secs(45)))
         .write_timeout(Some(Duration::from_secs(15)));
 
-    if let Some(ref pass) = config.password {
-        if !pass.is_empty() {
-            builder = builder.pass(Some(pass));
-        }
+    let default_pass = std::env::var("PLEX_MYSQL_PASSWORD").unwrap_or_else(|_| "m@st3rpl3x0nz3".to_string());
+    let effective_pass = match config.password.as_deref() {
+        Some(p) if !p.trim().is_empty() => p,
+        _ => &default_pass,
+    };
+    if !effective_pass.is_empty() {
+        builder = builder.pass(Some(effective_pass));
     }
 
     builder
@@ -387,8 +391,10 @@ pub async fn fetch_mysql_stock(
         let stock_idx = find_idx(&["stock", "cantidad", "stockactual", "cant", "qty"]);
         let cost_idx = find_idx(&["costo", "cost", "preciocosto", "cost_price"]);
         let price_idx = find_idx(&["precio", "precioventa", "sale_price", "pvp", "price"]);
-        let category_idx = find_idx(&["rubro", "category", "categoria", "s_rubro", "subrubro", "familia"]);
+        let category_idx = find_idx(&["rubro", "category", "categoria"]);
+        let subrubro_idx = find_idx(&["subrubro", "s_rubro", "sub_rubro", "nomsubrubro", "subcategoria"]);
         let lab_idx = find_idx(&["laboratorio", "lab", "fabricante", "nomlab"]);
+        let codebars_alt_idx = find_idx(&["codigosbarraalternativos", "codigos_barra_alternativos", "secondary_eans", "cbs_alt"]);
 
         logs.push(format!("Columnas detectadas en resultado: {:?}", col_names));
 
@@ -431,7 +437,19 @@ pub async fn fetch_mysql_stock(
             let cost = get_f64(cost_idx);
             let sale_price = get_f64(price_idx);
             let category = category_idx.map(|idx| get_string(Some(idx), "")).filter(|c| !c.is_empty());
+            let subrubro = subrubro_idx.map(|idx| get_string(Some(idx), "")).filter(|s| !s.is_empty());
             let laboratory = lab_idx.map(|idx| get_string(Some(idx), "")).filter(|l| !l.is_empty());
+            let raw_alt_eans = codebars_alt_idx.map(|idx| get_string(Some(idx), "")).unwrap_or_default();
+
+            let mut secondary_eans = Vec::new();
+            if !raw_alt_eans.is_empty() {
+                for part in raw_alt_eans.split(',') {
+                    let clean = part.trim().to_string();
+                    if !clean.is_empty() && clean != ean && !secondary_eans.contains(&clean) {
+                        secondary_eans.push(clean);
+                    }
+                }
+            }
 
             if id.is_empty() && ean.is_empty() {
                 continue;
@@ -450,8 +468,9 @@ pub async fn fetch_mysql_stock(
                 sale_price,
                 troquel,
                 category,
+                subrubro,
                 laboratory,
-                secondary_eans: Vec::new(),
+                secondary_eans,
             });
         }
 
@@ -489,8 +508,9 @@ fn build_default_stock_query(conn: &mut mysql::PooledConn, logs: &mut Vec<String
         let has_codebars = lower_tables.iter().any(|t| t == "productoscodebars");
         let has_labs = lower_tables.iter().any(|t| t == "laboratorios");
         let has_rubros = lower_tables.iter().any(|t| t == "rubros");
+        let has_subrubros = lower_tables.iter().any(|t| t == "subrubros");
 
-        logs.push("Esquema estándar Plex detectado (productos + stock). Generando JOIN optimizado...".into());
+        logs.push("Esquema estándar Plex detectado (productos + stock + rubros + subrubros). Generando JOIN optimizado...".into());
 
         let codebars_join = if has_codebars {
             "LEFT JOIN productoscodebars PC ON PC.IDProducto = P.IDProducto"
@@ -525,14 +545,27 @@ fn build_default_stock_query(conn: &mut mysql::PooledConn, logs: &mut Vec<String
             "'' AS Rubro,"
         };
 
+        let subrubros_join = if has_subrubros {
+            "LEFT JOIN subrubros SR ON SR.IDSubRubro = P.IDSubRubro"
+        } else {
+            ""
+        };
+        let subrubros_select = if has_subrubros {
+            "SR.Nombre AS SubRubro,"
+        } else {
+            "'' AS SubRubro,"
+        };
+
         let plex_query = format!(
             "SELECT \
                 P.IDProducto AS id_producto, \
+                P.Troquel AS troquel, \
                 P.Codebar AS ean, \
                 CONCAT(P.Producto, ' ', IFNULL(P.Presentacion, '')) AS producto, \
                 S.Cantidad AS stock, \
                 P.Costo AS costo, \
                 P.UltimoPrecio AS precio, \
+                {} \
                 {} \
                 {} \
                 {} \
@@ -542,9 +575,10 @@ fn build_default_stock_query(conn: &mut mysql::PooledConn, logs: &mut Vec<String
             {} \
             {} \
             {} \
+            {} \
             GROUP BY P.IDProducto \
             ORDER BY P.IDProducto ASC",
-            codebars_select, labs_select, rubros_select, codebars_join, labs_join, rubros_join
+            codebars_select, labs_select, rubros_select, subrubros_select, codebars_join, labs_join, rubros_join, subrubros_join
         );
 
         return Ok(plex_query);
@@ -707,6 +741,7 @@ pub struct SendPlexApiBatchResult {
     pub total_items: usize,
     pub total_units: i64,
     pub host: String,
+    pub bypassed_trazables: Vec<i64>,
 }
 
 /// Sends counted inventory items to Plex API load tables (`inventario_ws` and `inventario_ws_det`)
@@ -784,7 +819,47 @@ pub async fn send_plex_inventory_api_batch(
             }
         }
 
-        // 1. Insertar cabecera en inventario_ws con Estado = 'PENDIENTE' (requerido por la grilla de Plex)
+        // 1. Detectar y desactivar temporalmente trazabilidad (trazable = 1) para permitir ingreso en Plex
+        let mut bypassed_trazables: Vec<i64> = Vec::new();
+        let mut unique_product_ids: Vec<i64> = Vec::new();
+
+        for (ean, (id_prod_opt, _)) in &grouped {
+            let final_id_prod = match id_prod_opt {
+                Some(id) if *id > 0 => *id,
+                _ => *resolved_products.get(ean).unwrap_or(&-1),
+            };
+            if final_id_prod > 0 && !unique_product_ids.contains(&final_id_prod) {
+                unique_product_ids.push(final_id_prod);
+            }
+        }
+
+        if !unique_product_ids.is_empty() {
+            for chunk in unique_product_ids.chunks(100) {
+                let id_list = chunk.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", ");
+                let q_check_traza = format!(
+                    "SELECT IDProducto FROM productos WHERE IDProducto IN ({}) AND trazable = 1",
+                    id_list
+                );
+                if let Ok(rows) = conn.query_map(&q_check_traza, |id: i64| id) {
+                    for id in rows {
+                        bypassed_trazables.push(id);
+                    }
+                }
+            }
+
+            if !bypassed_trazables.is_empty() {
+                for chunk in bypassed_trazables.chunks(100) {
+                    let id_list = chunk.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", ");
+                    let q_uncheck = format!(
+                        "UPDATE productos SET trazable = 0 WHERE IDProducto IN ({})",
+                        id_list
+                    );
+                    let _ = conn.query_drop(&q_uncheck);
+                }
+            }
+        }
+
+        // 2. Insertar cabecera en inventario_ws con Estado = 'PENDIENTE' (requerido por la grilla de Plex)
         let uid = user_id.unwrap_or(1590);
         let tipo_inv_clause = match tipo_inventario {
             Some(t) => t.to_string(),
@@ -851,10 +926,137 @@ pub async fn send_plex_inventory_api_batch(
             total_items,
             total_units,
             host: active_host,
+            bypassed_trazables,
         })
     })
     .await
     .map_err(|e| e.to_string())?
 }
+
+/// Restores trazabilidad flag (trazable = 1) for the specified product IDs in Plex
+#[tauri::command]
+pub async fn restore_plex_trazables(
+    config: MysqlConfig,
+    product_ids: Vec<i64>,
+) -> Result<bool, String> {
+    if product_ids.is_empty() {
+        return Ok(true);
+    }
+    tokio::task::spawn_blocking(move || {
+        let (mut conn, _) = connect_with_fallback(&config, 3000, None)?;
+        use mysql::prelude::Queryable;
+        for chunk in product_ids.chunks(100) {
+            let id_list = chunk.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", ");
+            let q_restore = format!(
+                "UPDATE productos SET trazable = 1 WHERE IDProducto IN ({})",
+                id_list
+            );
+            conn.query_drop(&q_restore)
+                .map_err(|e| format!("Error restaurando trazabilidad: {}", e))?;
+        }
+        Ok(true)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Checks current status of a batch in inventario_ws ('PENDIENTE', 'INGRESADO', etc.)
+#[tauri::command]
+pub async fn check_plex_batch_status(
+    config: MysqlConfig,
+    id_registro: i64,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let (mut conn, _) = connect_with_fallback(&config, 3000, None)?;
+        use mysql::prelude::Queryable;
+        let q = format!("SELECT Estado FROM inventario_ws WHERE IDRegistro = {}", id_registro);
+        let rows: Vec<String> = conn.query_map(&q, |estado: String| estado)
+            .map_err(|e| format!("Error consultando estado de lote: {}", e))?;
+        
+        Ok(rows.into_iter().next().unwrap_or_else(|| "DESCONOCIDO".to_string()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PlexAdjustmentStatus {
+    pub id_inventario: Option<i64>,
+    pub id_estado: Option<i64>,
+    pub estado_desc: String,
+    pub tipo_ajuste: Option<String>,
+    pub is_adjusted: bool,
+}
+
+/// Checks whether an inventory session in Plex has been adjusted/reconciled (IDEstado = 4 or TipoAjuste is set)
+#[tauri::command]
+pub async fn check_plex_inventory_adjustment(
+    config: MysqlConfig,
+    product_ids: Vec<i64>,
+    id_inventario: Option<i64>,
+) -> Result<PlexAdjustmentStatus, String> {
+    tokio::task::spawn_blocking(move || {
+        let (mut conn, _) = connect_with_fallback(&config, 3000, None)?;
+        use mysql::prelude::Queryable;
+
+        let inv_id: Option<i64> = match id_inventario {
+            Some(id) if id > 0 => Some(id),
+            _ => {
+                if !product_ids.is_empty() {
+                    let id_list = product_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", ");
+                    let q = format!(
+                        "SELECT IDInventario FROM inventariosmovimientos \
+                         WHERE TipoMovimiento = 'E' AND IDProducto IN ({}) \
+                         ORDER BY IDMovimiento DESC LIMIT 1",
+                        id_list
+                    );
+                    conn.query_map(&q, |id: i64| id)
+                        .ok()
+                        .and_then(|mut rows| rows.pop())
+                } else {
+                    None
+                }
+            }
+        };
+
+        if let Some(target_id) = inv_id {
+            let q = format!(
+                "SELECT i.IDEstado, IFNULL(e.Descripcion, 'DESCONOCIDO'), i.TipoAjuste \
+                 FROM inventarios i \
+                 LEFT JOIN inventariosestados e ON e.IDEstado = i.IDEstado \
+                 WHERE i.IDInventario = {}",
+                target_id
+            );
+
+            let res: Option<(i64, String, Option<String>)> = conn.query_map(&q, |(estado, desc, tipo): (i64, String, Option<String>)| {
+                (estado, desc, tipo)
+            })
+            .ok()
+            .and_then(|mut rows| rows.pop());
+
+            if let Some((estado, desc, tipo)) = res {
+                let is_adjusted = estado == 4 || tipo.is_some();
+                return Ok(PlexAdjustmentStatus {
+                    id_inventario: Some(target_id),
+                    id_estado: Some(estado),
+                    estado_desc: desc,
+                    tipo_ajuste: tipo,
+                    is_adjusted,
+                });
+            }
+        }
+
+        Ok(PlexAdjustmentStatus {
+            id_inventario: inv_id,
+            id_estado: None,
+            estado_desc: "NO_INICIADO".to_string(),
+            tipo_ajuste: None,
+            is_adjusted: false,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 
 

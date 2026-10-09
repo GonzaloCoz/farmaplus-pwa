@@ -32,7 +32,6 @@ const ExpirationControl = lazy(() => import("./pages/ExpirationControl"));
 const CyclicInventory = lazy(() => import("./pages/CyclicInventory"));
 const CyclicInventoryDetail = lazy(() => import("./pages/CyclicInventoryDetail"));
 
-const Reports = lazy(() => import("./pages/Reports"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Login = lazy(() => import("./pages/Login"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -41,13 +40,11 @@ const SmartAnalystPage = lazy(() => import("./pages/SmartAnalystPage"));
 const AdminAudit = lazy(() => import("./pages/AdminAudit"));
 
 const AdminUsers = lazy(() => import("./pages/AdminUsers"));
-const BranchComparison = lazy(() => import("./pages/BranchComparison"));
 const TrainingCenter = lazy(() => import("./pages/TrainingCenter"));
 const PostDetail = lazy(() => import("./pages/PostDetail"));
 const AdminEditor = lazy(() => import("./pages/AdminEditor"));
 const DataCollectorPage = lazy(() => import("./pages/DataCollectorPage"));
 const RequestsPage = lazy(() => import("./pages/RequestsPage"));
-const ReportDetail = lazy(() => import("@/components/ReportDetail"));
 
 
 const queryClient = new QueryClient({
@@ -210,38 +207,7 @@ const AppRoutes = () => {
               }
             />
 
-            <Route
-              path="reportes"
-              element={
-                <Suspense fallback={<PageSkeleton />}>
-                  <PageTransition>
-                    <Reports />
-                  </PageTransition>
-                </Suspense>
-              }
-            />
-            <Route
-              path="reportes/:reportId"
-              element={
-                <Suspense fallback={<PageSkeleton />}>
-                  <PageTransition>
-                    <ReportDetail />
-                  </PageTransition>
-                </Suspense>
-              }
-            />
-            <Route
-              path="comparativa"
-              element={
-                <AdminRoute>
-                  <Suspense fallback={<PageSkeleton />}>
-                    <PageTransition>
-                      <BranchComparison />
-                    </PageTransition>
-                  </Suspense>
-                </AdminRoute>
-              }
-            />
+
             <Route
               path="configuracion"
               element={

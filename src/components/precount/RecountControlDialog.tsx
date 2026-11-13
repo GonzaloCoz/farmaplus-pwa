@@ -44,7 +44,7 @@ interface RecountControlDialogProps {
     onApplied?: () => void;
 }
 
-const DEFAULT_WEB_BASE_URL = 'https://gonzalocoz.github.io/farmaplus-pwa';
+const DEFAULT_WEB_BASE_URL = 'https://farmaplus.vercel.app';
 
 export function RecountControlDialog({
     open,

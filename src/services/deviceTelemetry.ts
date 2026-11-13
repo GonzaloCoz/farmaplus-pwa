@@ -33,10 +33,27 @@ export interface DeviceTelemetryData {
 
 let sessionStartTime = Date.now();
 let knownLocations: Map<string, number> = new Map(); // location_tag -> unitsCount
+let lastDbUpsertTime = 0;
+let lastDbLocation: string | null = null;
+let announcedJoinSessionId: string | null = null;
+
+export function cleanupTelemetryChannel() {
+    if (telemetryChannel) {
+        try {
+            supabase.removeChannel(telemetryChannel);
+        } catch {}
+        telemetryChannel = null;
+    }
+    telemetrySessionId = null;
+    announcedJoinSessionId = null;
+}
 
 export function resetTelemetrySession() {
     sessionStartTime = Date.now();
     knownLocations.clear();
+    lastDbUpsertTime = 0;
+    lastDbLocation = null;
+    cleanupTelemetryChannel();
 }
 
 /**
@@ -81,13 +98,21 @@ export async function getOrInitTelemetryChannel(sessionId: string) {
         return telemetryChannel;
     }
 
+    // Si había un canal previo de otra sesión o cerrado/con error, limpiarlo para evitar fuga de sockets
+    if (telemetryChannel && (telemetrySessionId !== sessionId || telemetryChannel.state === 'closed' || telemetryChannel.state === 'errored')) {
+        try {
+            supabase.removeChannel(telemetryChannel);
+        } catch {}
+        telemetryChannel = null;
+    }
+
     // Check if an existing channel already exists on the supabase client (e.g. DeviceMonitorView)
     const existing = supabase.getChannels().find(
         (ch: any) => ch.topic === `realtime:precount_presence:${sessionId}` || ch.subTopic === `precount_presence:${sessionId}`
     );
 
     if (existing) {
-        if (existing.state === 'closed') {
+        if (existing.state === 'closed' || existing.state === 'errored') {
             try {
                 supabase.removeChannel(existing);
             } catch {}
@@ -146,8 +171,13 @@ export async function getOrderedSectorSummary(sessionId: string, targetDeviceId?
         let allItems = await db.items
             .where('session_id')
             .equals(sessionId)
-            .reverse()
-            .sortBy('scanned_at');
+            .toArray();
+
+        allItems.sort((a, b) => {
+            const timeA = a.scanned_at ? new Date(a.scanned_at).getTime() : 0;
+            const timeB = b.scanned_at ? new Date(b.scanned_at).getTime() : 0;
+            return timeB - timeA;
+        });
 
         // Filtrar exclusivamente los items correspondientes a este dispositivo / terminal
         allItems = allItems.filter(rec => {
@@ -361,58 +391,67 @@ export async function emitDeviceTelemetry(options: {
         window.dispatchEvent(new CustomEvent('precount:device_heartbeat', { detail: telemetry }));
     }
 
-    // 3. Emitir por Supabase Realtime (Presence State + Broadcast de Heartbeat)
+    // 3. Emitir por Supabase Realtime (Presence State + Broadcast compacto)
+    const isFirstJoinForSession = announcedJoinSessionId !== sessionId;
     try {
         const channel = await getOrInitTelemetryChannel(sessionId);
         if (channel) {
             // Track presence (queda persistido en el cluster de Supabase mientras el cliente esté online)
             await channel.track(telemetry);
             
-            // Broadcast para listeners inmediatos
-            await channel.send({
-                type: 'broadcast',
-                event: 'device_joined',
-                payload: telemetry,
-            });
-            await channel.send({
-                type: 'broadcast',
-                event: 'device_heartbeat',
-                payload: telemetry,
-            });
-
-            // Compatibilidad con usePreCount (que escucha precount_sync)
-            try {
-                const syncCh = supabase.getChannels().find(
-                    (c: any) => c.topic === `realtime:precount_sync:${sessionId}` || c.subTopic === `precount_sync:${sessionId}`
-                );
-                if (syncCh) {
-                    await syncCh.send({
-                        type: 'broadcast',
-                        event: 'device_joined',
-                        payload: telemetry,
-                    });
-                }
-            } catch {}
+            // Enviar device_joined solo al anunciar ingreso a la sesión, y device_heartbeat en actualizaciones
+            if (isFirstJoinForSession) {
+                announcedJoinSessionId = sessionId;
+                await channel.send({
+                    type: 'broadcast',
+                    event: 'device_joined',
+                    payload: telemetry,
+                });
+                try {
+                    const syncCh = supabase.getChannels().find(
+                        (c: any) => c.topic === `realtime:precount_sync:${sessionId}` || c.subTopic === `precount_sync:${sessionId}`
+                    );
+                    if (syncCh) {
+                        await syncCh.send({
+                            type: 'broadcast',
+                            event: 'device_joined',
+                            payload: telemetry,
+                        });
+                    }
+                } catch {}
+            } else {
+                await channel.send({
+                    type: 'broadcast',
+                    event: 'device_heartbeat',
+                    payload: telemetry,
+                });
+            }
         }
     } catch (err) {
         console.warn('[Telemetry] Error enviando telemetría a Supabase:', err);
     }
 
-    // 4. Actualizar tabla precount_connected_devices en Supabase (garantiza persistencia e inmediatez si Realtime re-conecta)
-    try {
-        await (supabase as any).from('precount_connected_devices').upsert({
-            session_id: sessionId,
-            device_id: deviceId,
-            device_name: telemetry.userName,
-            device_type: telemetry.deviceType,
-            device_model: telemetry.deviceModel,
-            battery_level: telemetry.batteryLevel,
-            is_charging: telemetry.isCharging,
-            current_location: activeLoc || null,
-            last_seen: new Date().toISOString()
-        });
-    } catch (dbErr) {
-        console.debug('[Telemetry] Error actualizando precount_connected_devices:', dbErr);
+    // 4. Actualizar tabla precount_connected_devices en Supabase con throttling (máx 1 vez cada 15s salvo cambio de sector)
+    const nowMs = Date.now();
+    const locChanged = (activeLoc || null) !== lastDbLocation;
+    if (locChanged || nowMs - lastDbUpsertTime >= 15000) {
+        lastDbUpsertTime = nowMs;
+        lastDbLocation = activeLoc || null;
+        try {
+            await (supabase as any).from('precount_connected_devices').upsert({
+                session_id: sessionId,
+                device_id: deviceId,
+                device_name: telemetry.userName,
+                device_type: telemetry.deviceType,
+                device_model: telemetry.deviceModel,
+                battery_level: telemetry.batteryLevel,
+                is_charging: telemetry.isCharging,
+                current_location: activeLoc || null,
+                last_seen: new Date().toISOString()
+            });
+        } catch (dbErr) {
+            console.debug('[Telemetry] Error actualizando precount_connected_devices:', dbErr);
+        }
     }
 }
 

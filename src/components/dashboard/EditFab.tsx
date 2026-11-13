@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from "motion/react";
 import { Plus } from '@untitledui/icons';
 import { Edit01 as Edit3, CheckCircle as Check, LayoutGrid01 as Grid3x3, RefreshCw01 as RotateCcw } from '@untitledui/icons';
 import { cn } from '@/lib/utils';

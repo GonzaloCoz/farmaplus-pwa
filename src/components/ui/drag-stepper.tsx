@@ -44,10 +44,18 @@ export function Stepper({
   const isManualRef = useRef(isManualInput);
   isManualRef.current = isManualInput;
 
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const minRef = useRef(min);
+  minRef.current = min;
+  const maxRef = useRef(max);
+  maxRef.current = max;
+
   // Sincronizar tempInput cuando el prop value cambia externamente (solo si no está escribiendo activamente)
   useEffect(() => {
     if (!isManualInput) {
       setTempInput(String(v));
+      tempInputRef.current = String(v);
     }
   }, [v, isManualInput]);
 
@@ -71,25 +79,34 @@ export function Stepper({
     return () => {
       clearTimeout(repeatTimer.current);
       clearInterval(repeatInterval.current);
-      if (isManualRef.current && tempInputRef.current.trim() !== "") {
-        const parsed = parseInt(tempInputRef.current, 10);
-        if (!isNaN(parsed)) {
-          onChange?.(clamp(parsed, min, max));
+      if (isManualRef.current) {
+        isManualRef.current = false;
+        const raw = (inputRef.current?.value ?? tempInputRef.current).trim();
+        if (raw !== "") {
+          const parsed = parseInt(raw, 10);
+          if (!isNaN(parsed)) {
+            onChangeRef.current?.(clamp(parsed, minRef.current, maxRef.current));
+          }
         }
       }
     };
-  }, [min, max, onChange]);
+  }, []);
 
   const handleCommitManualInput = () => {
+    if (!isManualInput) return;
     setIsManualInput(false);
-    const raw = (inputRef.current?.value ?? tempInput).trim();
+    isManualRef.current = false;
+    const raw = (inputRef.current?.value ?? tempInputRef.current).trim();
     if (raw === "") {
-      updateVal(min);
+      // Si el usuario borró todo y salió, restauramos el valor original en lugar de forzar a 1
+      setTempInput(String(v));
+      tempInputRef.current = String(v);
       return;
     }
     const parsed = parseInt(raw, 10);
     if (isNaN(parsed)) {
       setTempInput(String(v));
+      tempInputRef.current = String(v);
       return;
     }
     updateVal(parsed);
@@ -99,7 +116,9 @@ export function Stepper({
     if (disabled) return;
     e.stopPropagation();
     setIsManualInput(true);
+    isManualRef.current = true;
     setTempInput(String(v));
+    tempInputRef.current = String(v);
   };
 
   // Manejo de botones +/- con click inmediato y soporte de repetición al mantener presionado
@@ -110,7 +129,9 @@ export function Stepper({
     let baseVal = v;
     if (isManualInput) {
       setIsManualInput(false);
-      const parsed = parseInt(tempInput.trim(), 10);
+      isManualRef.current = false;
+      const raw = (inputRef.current?.value ?? tempInputRef.current).trim();
+      const parsed = parseInt(raw, 10);
       if (!isNaN(parsed)) {
         baseVal = clamp(parsed, min, max);
       }
@@ -170,6 +191,7 @@ export function Stepper({
               const text = e.target.value;
               if (text === "" || /^\d+$/.test(text)) {
                 setTempInput(text);
+                tempInputRef.current = text;
               }
             }}
             onBlur={handleCommitManualInput}

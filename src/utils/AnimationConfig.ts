@@ -1,7 +1,7 @@
 // Expressive Animation Configuration
 // Fluid, fast, and expressive animations
 
-import { Variants } from "framer-motion";
+import { Variants } from "motion/react";
 
 // Animation Durations (in seconds)
 export const DURATION = {

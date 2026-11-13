@@ -13,6 +13,8 @@ export interface User {
     branchSheet?: string;
     permissions?: string[];
     assignedBranches?: string[];
+    avatarUrl?: string | null;
+    avatarMode?: 'initials' | 'photo';
 }
 
 interface UserContextType {
@@ -20,6 +22,7 @@ interface UserContextType {
     login: (username: string, password?: string) => Promise<boolean>;
     selectBranch: (branchName: string) => Promise<void>;
     clearBranchSelection: () => void;
+    updateUser: (partial: Partial<User>) => void;
     logout: () => void;
     isLoading: boolean;
     allBranches: string[];
@@ -34,10 +37,86 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         const storedUser = localStorage.getItem('farmaplus_user');
+        let parsedStored: User | null = null;
         if (storedUser) {
-            setUser(JSON.parse(storedUser));
+            try {
+                parsedStored = JSON.parse(storedUser);
+                setUser(parsedStored);
+            } catch {
+                localStorage.removeItem('farmaplus_user');
+            }
         }
         setIsLoading(false);
+
+        // Revalidar rol, permisos y sucursal contra la sesión real de Supabase (Mitigación CF-07)
+        if (parsedStored) {
+            (async () => {
+                try {
+                    const { data: authData, error: authError } = await supabase.auth.getUser();
+                    if (authError || !authData?.user) return;
+
+                    const { data: profileData, error: profileError } = await supabase
+                        .from('profiles')
+                        .select(`*, branches (name)`)
+                        .eq('id', authData.user.id)
+                        .maybeSingle();
+
+                    if (profileError || !profileData) return;
+                    const profile = profileData as any;
+
+                    if (profile.active === false && profile.role !== 'admin') {
+                        setUser(null);
+                        localStorage.removeItem('farmaplus_user');
+                        await supabase.auth.signOut();
+                        return;
+                    }
+
+                    const trueRole = (profile.role as 'admin' | 'branch' | 'mod') || 'branch';
+                    const [zonalResponse, permissions] = await Promise.all([
+                        trueRole === 'mod'
+                            ? (supabase as any).from('zonal_branches').select(`branches (name)`).eq('zonal_id', profile.id)
+                            : Promise.resolve({ data: [] }),
+                        permissionsService.getRolePermissions(trueRole)
+                    ]);
+
+                    let assignedBranches: string[] = [];
+                    if (zonalResponse.data && zonalResponse.data.length > 0) {
+                        assignedBranches = zonalResponse.data.map((zb: any) => zb.branches?.name).filter(Boolean);
+                    }
+
+                    const finalPermissions = [...permissions];
+                    if (profile.username === 'gcoz' && !finalPermissions.includes('MANAGE_USERS')) {
+                        finalPermissions.push('MANAGE_USERS');
+                    }
+
+                    const defaultBranchName = profile.branches?.name || 'Casa Central';
+                    const canSwitchBranch = trueRole === 'admin' || trueRole === 'mod';
+
+                    const verifiedUser: User = {
+                        id: profile.id,
+                        username: profile.username,
+                        name: profile.full_name || profile.username,
+                        role: trueRole,
+                        branchName: canSwitchBranch ? (parsedStored?.branchName || defaultBranchName) : defaultBranchName,
+                        branchId: canSwitchBranch ? (parsedStored?.branchId || profile.branch_id) : profile.branch_id,
+                        branchSheet: canSwitchBranch ? (parsedStored?.branchSheet || defaultBranchName) : defaultBranchName,
+                        permissions: finalPermissions,
+                        assignedBranches: assignedBranches || [],
+                        avatarUrl: profile.avatar_url !== undefined ? profile.avatar_url : parsedStored?.avatarUrl,
+                        avatarMode: (localStorage.getItem(`app-avatar-mode:${profile.id}`) as 'initials' | 'photo' | null)
+                            || (profile.avatar_mode === 'photo' || profile.avatar_mode === 'initials' ? profile.avatar_mode : parsedStored?.avatarMode)
+                    };
+
+                    const serializedVerified = JSON.stringify(verifiedUser);
+                    if (serializedVerified !== storedUser) {
+                        setUser(verifiedUser);
+                        localStorage.setItem('farmaplus_user', serializedVerified);
+                    }
+                } catch (err) {
+                    console.warn("[UserContext] No se pudo revalidar perfil en segundo plano:", err);
+                }
+            })();
+        }
     }, []);
 
     useEffect(() => {
@@ -124,7 +203,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                 branchId: profile.branch_id,
                 branchSheet: profile.branches?.name || 'Casa Central',
                 permissions: finalPermissions,
-                assignedBranches: assignedBranches || []
+                assignedBranches: assignedBranches || [],
+                avatarUrl: profile.avatar_url ?? null,
+                avatarMode: profile.avatar_mode === 'photo' ? 'photo' : profile.avatar_mode === 'initials' ? 'initials' : undefined
             };
 
             persistUser(newUser);
@@ -140,6 +221,15 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         setUser(user);
         localStorage.setItem('farmaplus_user', JSON.stringify(user));
         setIsLoading(false);
+    };
+
+    const updateUser = (partial: Partial<User>) => {
+        setUser((prev) => {
+            if (!prev) return prev;
+            const next = { ...prev, ...partial };
+            localStorage.setItem('farmaplus_user', JSON.stringify(next));
+            return next;
+        });
     };
 
     const selectBranch = async (branchName: string) => {
@@ -187,6 +277,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
             login, 
             selectBranch, 
             clearBranchSelection, 
+            updateUser,
             logout, 
             isLoading, 
             allBranches: user?.role === 'admin' ? allBranches : allBranches.filter(b => b.toLowerCase() !== 'devotox') 

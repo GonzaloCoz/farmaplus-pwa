@@ -13,10 +13,9 @@ export function TrainingCenterButton({
     className
 }: TrainingCenterButtonProps) {
     const { openWindow } = useWindowManager();
-    const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
 
     const handleOpenForo = () => {
-        openWindow("/foro", "Centro de Capacitación");
+        openWindow("/foro", "Capacitación", undefined, false);
     };
 
     return (
@@ -29,7 +28,6 @@ export function TrainingCenterButton({
                 surfaceClasses(3),
                 className
             )}
-            style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
             title="Centro de Capacitación"
         >
             <NotebookBookmark className="w-5 h-5 text-current" />

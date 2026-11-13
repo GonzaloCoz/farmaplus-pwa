@@ -1,4 +1,5 @@
-import { isTauriEnvironment } from './mysqlTauriBridge';
+import { isTauriEnvironment, ensureConfigPassword } from './mysqlTauriBridge';
+export { isTauriEnvironment };
 import type { MysqlConfig } from './mysqlTauriBridge';
 import { getBranchMysqlHostConfig } from '@/lib/branchNetworkMap';
 
@@ -13,6 +14,9 @@ export interface LocalProductRecord {
     subrubro?: string;
     laboratory?: string;
     barcode: string;
+    is_hidden?: boolean;
+    is_traceable?: boolean;
+    gtin?: string;
 }
 
 export interface LocalProductInput {
@@ -25,6 +29,9 @@ export interface LocalProductInput {
     category?: string;
     subrubro?: string;
     laboratory?: string;
+    is_hidden?: boolean;
+    is_traceable?: boolean;
+    gtin?: string;
     eans: string[];
 }
 
@@ -120,6 +127,8 @@ export async function syncMysqlToLocalDb(
             user: configOrBranch.user || 'root',
             password: configOrBranch.password || '',
             database: configOrBranch.database || 'plex',
+            include_catalog_eans: (configOrBranch as any).include_catalog_eans ?? false,
+            include_hidden_inactive: (configOrBranch as any).include_hidden_inactive ?? false,
         };
     } else {
         config = {
@@ -132,9 +141,10 @@ export async function syncMysqlToLocalDb(
     }
 
     try {
+        const readyConfig = await ensureConfigPassword(config);
         const { invoke } = await import('@tauri-apps/api/core');
         return await invoke<SyncSummary>('sync_mysql_to_local_db', {
-            config,
+            config: readyConfig,
             customQuery: customQuery || null,
         });
     } catch (err: any) {

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "@/contexts/UserContext";
 import { HelpCircle } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 const Beams = React.lazy(() => import("@/components/ui/Beams"));
 import { InputGroup, InputField } from "@/components/ui/input-group";
 import { StatefulButton, type ButtonState } from "@/components/ui/stateful-button";

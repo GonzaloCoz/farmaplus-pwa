@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   createContext,
@@ -22,7 +22,7 @@ import {
   type Ref,
   type RefObject,
 } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 import { spring } from "@/lib/springs";
@@ -38,10 +38,10 @@ import { FluidHoverHighlight } from "@/components/ui/fluid-hover-highlight";
 const useIsoLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
-// ─── Menu scope ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Menu scope â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
 // One scope per SidebarMenu tree: a single fluid-hover system plus the
-// traveling overlays — hover background, active background(s), focus ring —
+// traveling overlays â€” hover background, active background(s), focus ring â€”
 // that glide between every visible row, sub-menu rows included, so the hover
 // moves from a parent into its children as one continuous piece. Sub rows
 // live inside positioned ancestors, so their rects are accumulated into the
@@ -54,7 +54,7 @@ interface MenuScopeValue {
   setRowButton: (row: HTMLElement, button: HTMLElement | null) => void;
   setRowActive: (row: HTMLElement, active: boolean) => void;
   hoveredRowEl: HTMLElement | null;
-  /** Every visible active row, in DOM order — a parent section marker and
+  /** Every visible active row, in DOM order â€” a parent section marker and
    *  the current row inside its sub-tree can be active at once. */
   activeRows: HTMLElement[];
   firstRowEl: HTMLElement | null;
@@ -68,12 +68,12 @@ const MenuScopeContext = createContext<MenuScopeValue | null>(null);
 
 interface MenuItemContextValue {
   rowRef: RefObject<HTMLLIElement | null>;
-  /** Ref callback for the row's <li> — also replays the row's active flag
+  /** Ref callback for the row's <li> â€” also replays the row's active flag
    *  to the scope, covering the windows where the ref is detached. */
   attachRow: (node: HTMLLIElement | null) => void;
   isHovered: boolean;
   isActiveRow: boolean;
-  /** True inside SidebarMenuSubItem — actions center on the shorter row. */
+  /** True inside SidebarMenuSubItem â€” actions center on the shorter row. */
   isSubRow: boolean;
   setActive: (active: boolean) => void;
   setButtonEl: (el: HTMLElement | null) => void;
@@ -92,7 +92,7 @@ const MenuItemContext = createContext<MenuItemContextValue | null>(null);
  *  action flows in the wrapper's row instead of positioning itself. */
 const MenuActionsClusterContext = createContext(false);
 
-/** True while the element sits inside a collapsed sub-tree — clipped away,
+/** True while the element sits inside a collapsed sub-tree â€” clipped away,
  *  so it must be invisible to hover, highlights, and keyboard order. Rows
  *  stay registered either way: unregistering on every toggle would churn the
  *  fluid hover measurements and blink the overlays. */
@@ -160,7 +160,7 @@ interface MenuScope {
 
 interface MenuScopeOptions {
   /** Draw the traveling keyboard focus ring. Off, keyboard focus moves the
-   *  hover background only — for menus whose rows are the whole surface,
+   *  hover background only â€” for menus whose rows are the whole surface,
    *  like a settings dialog's section list. @default true */
   focusRing?: boolean;
 }
@@ -209,12 +209,12 @@ function useMenuScope(
   // never pass an index prop and conditional rows just work. The fluid hover
   // system measures the row's BUTTON, not the <li>: a row hosting an expanded
   // sub-tree is a tall <li>, and hit-testing against that whole box would hand
-  // the sub-tree's gaps and gutter to the parent — the button strip is the
+  // the sub-tree's gaps and gutter to the parent â€” the button strip is the
   // only part that is really "the row".
   const syncRows = useCallback(() => {
     const sorted = [...rowsRef.current].sort(byDomOrder);
     // The ref updates synchronously (not just at the next render): callers in
-    // the same commit — a row registering, its button turning active — must
+    // the same commit â€” a row registering, its button turning active â€” must
     // see the row set they just changed, or the first recompute of a mount
     // filters every row out against the previous render's empty list.
     orderedRowsRef.current = sorted;
@@ -269,8 +269,8 @@ function useMenuScope(
     });
   }, [recomputeActive, setActiveIndex]);
 
-  // A row's rect spans the whole <li> — which grows when it hosts an expanded
-  // sub-menu — so overlay heights are clamped to the row's button box. The
+  // A row's rect spans the whole <li> â€” which grows when it hosts an expanded
+  // sub-menu â€” so overlay heights are clamped to the row's button box. The
   // 48px fallback (the tallest row, size="lg") guarantees the highlight can
   // never cover an expanded sub-tree even if the button lookup misses.
   const overlayRect = useCallback(
@@ -287,7 +287,7 @@ function useMenuScope(
 
   // While a popup anchored in the sidebar is open (a row action's or the
   // header/footer rows' dropdown), hover tracking freezes across every menu
-  // scope — otherwise a non-modal popup lets rows underneath keep
+  // scope â€” otherwise a non-modal popup lets rows underneath keep
   // highlighting. Popup triggers are detected by the primitives' open
   // attributes (Radix data-state, Base UI data-popup-open); collapsible rows
   // only set aria-expanded, so they never match.
@@ -311,7 +311,7 @@ function useMenuScope(
   const onFocus = useCallback(
     (e: React.FocusEvent) => {
       const target = e.target as HTMLElement;
-      // Only the row's main button drives the traveling highlight and ring —
+      // Only the row's main button drives the traveling highlight and ring â€”
       // actions keep their own static focus rings.
       if (!target.closest('[data-sidebar="menu-button"],[data-sidebar="menu-sub-button"]')) return;
       const row = target.closest(
@@ -339,7 +339,7 @@ function useMenuScope(
     [containerRef, setActiveIndex]
   );
 
-  // Arrow/Home/End over every button in DOM order, sub rows included — only
+  // Arrow/Home/End over every button in DOM order, sub rows included â€” only
   // the root scope binds it so nested scopes don't double-handle.
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -356,7 +356,7 @@ function useMenuScope(
       if (currentIdx === -1) return;
       e.preventDefault();
       // Keep handled arrows from also reaching window-level listeners (the
-      // docs site's ←/→ page navigation) — same rule as AskUserQuestions.
+      // docs site's â†/â†’ page navigation) â€” same rule as AskUserQuestions.
       e.stopPropagation();
       if (e.key === "Home") items[0]?.focus();
       else if (e.key === "End") items[items.length - 1]?.focus();
@@ -387,11 +387,11 @@ function useMenuScope(
   );
 
   const shape = useShape();
-  // Every active row gets its own background — the buttons' own text styling
+  // Every active row gets its own background â€” the buttons' own text styling
   // already lights each active row, so the overlays must match. Keys are the
   // row's level (root, or its sub-menu) plus its occurrence within that
-  // level: the usual case — one active per level, e.g. a current section
-  // marker plus the current page inside its sub-tree — keeps a stable key,
+  // level: the usual case â€” one active per level, e.g. a current section
+  // marker plus the current page inside its sub-tree â€” keeps a stable key,
   // so the background GLIDES when the selection moves instead of remounting.
   const rowLevel = useCallback(
     (row: HTMLElement) =>
@@ -399,9 +399,9 @@ function useMenuScope(
     [containerRef]
   );
   // A rect change has two causes with two right answers. The highlight moving
-  // to a DIFFERENT row springs — that's the glide. The same row itself moving
-  // — a sibling sub-tree collapsing above reflows every row below on every
-  // frame of its own spring — must snap, or the overlay chases the row it is
+  // to a DIFFERENT row springs â€” that's the glide. The same row itself moving
+  // â€” a sibling sub-tree collapsing above reflows every row below on every
+  // frame of its own spring â€” must snap, or the overlay chases the row it is
   // sitting on with a trailing second spring. Targets are compared against
   // the previous COMMIT (the effect below), not the previous render, so
   // strict mode's double render can't eat a genuine row change.
@@ -458,7 +458,7 @@ function useMenuScope(
 
   const overlays = isMeasured ? (
     <>
-      {/* Active row backgrounds — one per active row (see activeRects above) */}
+      {/* Active row backgrounds â€” one per active row (see activeRects above) */}
       <AnimatePresence>
         {activeRects.map(({ key, rect, rowChanged }) => (
           <motion.div
@@ -535,7 +535,7 @@ function useMenuScope(
   };
 }
 
-// ─── SidebarMenu ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ SidebarMenu â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface SidebarMenuProps extends HTMLAttributes<HTMLUListElement> {
   /** Pins the menu's rows to one step of the size ladder. Omitted, they
@@ -575,7 +575,7 @@ const SidebarMenu = forwardRef<HTMLUListElement, SidebarMenuProps>(
 );
 SidebarMenu.displayName = "SidebarMenu";
 
-// ─── SidebarMenuItem / SidebarMenuSubItem ────────────────────────────────────
+// â”€â”€â”€ SidebarMenuItem / SidebarMenuSubItem â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type SidebarMenuItemProps = LiHTMLAttributes<HTMLLIElement>;
 
@@ -587,7 +587,7 @@ function useMenuRow(rowRef: RefObject<HTMLLIElement | null>, isSubRow = false) {
 
   // The button's setActive effect can fire while this row's <li> ref is
   // detached: a child's layout effects run before its parent's ref attaches
-  // — at mount, and on EVERY re-render whose inline ref identity changes
+  // â€” at mount, and on EVERY re-render whose inline ref identity changes
   // (React detaches the old callback, nulling the ref, before the layout
   // phase). The flag holds the truth through that window, and attachRow
   // re-syncs the scope whenever the <li> lands.
@@ -603,7 +603,7 @@ function useMenuRow(rowRef: RefObject<HTMLLIElement | null>, isSubRow = false) {
    *  the scope may have missed while the ref was detached. */
   const attachRow = useCallback(
     (node: HTMLLIElement | null) => {
-      rowRef.current = node;
+      (rowRef as React.MutableRefObject<HTMLLIElement | null>).current = node;
       if (node && setRowActive) setRowActive(node, activeFlagRef.current);
     },
     [setRowActive, rowRef]
@@ -676,10 +676,10 @@ function useMenuRow(rowRef: RefObject<HTMLLIElement | null>, isSubRow = false) {
   );
 }
 
-// ─── Trailing-gutter math ────────────────────────────────────────────────────
+// â”€â”€â”€ Trailing-gutter math â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
 // The label reserves exactly the trailing run it has to clear, plus one gap
-// — the same rule the section header's label follows, so a row's chevron and
+// â€” the same rule the section header's label follows, so a row's chevron and
 // a section header's chevron each sit one 4px gap from their action run.
 // A run is: the badge's 24px slot (rightmost when present), the action
 // cluster (24px apiece, 4px between), and a gap where both appear.
@@ -743,7 +743,7 @@ const SidebarMenuSubItem = forwardRef<HTMLLIElement, SidebarMenuSubItemProps>(
     const rowRef = useRef<HTMLLIElement>(null);
     const item = useMenuRow(rowRef, true);
     const { attachRow } = item;
-    // Stable ref callback — same reason as SidebarMenuItem's.
+    // Stable ref callback â€” same reason as SidebarMenuItem's.
     const refCb = useCallback(
       (node: HTMLLIElement | null) => {
         attachRow(node);
@@ -768,11 +768,11 @@ const SidebarMenuSubItem = forwardRef<HTMLLIElement, SidebarMenuSubItemProps>(
 );
 SidebarMenuSubItem.displayName = "SidebarMenuSubItem";
 
-// ─── Row label (ghost-span weight animation) ─────────────────────────────────
+// â”€â”€â”€ Row label (ghost-span weight animation) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Splits leading string children out as the label so it can get the
  *  ghost-span weight treatment; remaining element children (dots, trailing
- *  icons) render as flex siblings after it — outside the text-box-trimmed
+ *  icons) render as flex siblings after it â€” outside the text-box-trimmed
  *  span, which would clip an inline SVG, and where `ml-auto` can push a
  *  trailing control to the row's end. */
 function MenuRowLabel({
@@ -817,7 +817,7 @@ function MenuRowLabel({
             Both cells truncate so a long label clips with an ellipsis
             instead of wrapping the row. The trim box spans cap height to
             baseline, so the overflow clip would shave ascenders and
-            descenders — symmetric padding extends the clip box past both
+            descenders â€” symmetric padding extends the clip box past both
             and the negative margins cancel it out of the row's height. */}
         <span
           className="col-start-1 row-start-1 invisible truncate pt-[0.25em] -mt-[0.25em] pb-[0.25em] -mb-[0.25em] [text-box:trim-both_cap_alphabetic]"
@@ -844,7 +844,7 @@ function MenuRowLabel({
   );
 }
 
-// ─── SidebarMenuButton ───────────────────────────────────────────────────────
+// â”€â”€â”€ SidebarMenuButton â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const sidebarMenuButtonVariants = cva(
   // The trailing gutter is an exact reservation published by the row (see
@@ -873,11 +873,11 @@ export interface SidebarMenuButtonProps
   size?: "default" | "sm" | "lg";
   icon?: IconComponent;
   /** Semantic thread state for status-dot navigation. Drives the dot
-   *  visuals (`active`/`unread` → filled, `idle` → ring), stamps
+   *  visuals (`active`/`unread` â†’ filled, `idle` â†’ ring), stamps
    *  `data-status` on the button, appends visually-hidden "unread" text for
    *  screen readers, and `"active"` implies `isActive`. */
   status?: "active" | "unread" | "idle";
-  /** Visual-only dot in the icon column — the escape hatch when the
+  /** Visual-only dot in the icon column â€” the escape hatch when the
    *  semantic `status` vocabulary doesn't fit. Overrides the dot derived
    *  from `status`. Ignored when `icon` is set. */
   dot?: "filled" | "ring";
@@ -1028,7 +1028,7 @@ const SidebarMenuButton = forwardRef<HTMLButtonElement, SidebarMenuButtonProps>(
 );
 SidebarMenuButton.displayName = "SidebarMenuButton";
 
-// ─── SidebarMenuAction ───────────────────────────────────────────────────────
+// â”€â”€â”€ SidebarMenuAction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface SidebarMenuActionProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   showOnHover?: boolean;
@@ -1080,24 +1080,24 @@ const SidebarMenuAction = forwardRef<HTMLButtonElement, SidebarMenuActionProps>(
           // One icon size across the sidebar: row actions match the leading
           // icons and the section header's actions, all on the size ladder.
           // Normalize bare icons to the site's 1.5 stroke (library defaults
-          // vary), thickening to 2 on hover — Button's icon-only treatment.
+          // vary), thickening to 2 on hover â€” Button's icon-only treatment.
           "[&_svg]:size-[var(--icon-size)] [&_svg]:shrink-0 [&_svg]:stroke-[1.5] [&_svg]:transition-[stroke-width] [&_svg]:duration-80 hover:[&_svg]:stroke-[2]",
           shape.item,
           // Reveal on the OWN row only. A sub action must not use the
-          // menu-item group — its nearest one is the parent li, which would
+          // menu-item group â€” its nearest one is the parent li, which would
           // light every sibling sub action on any hover inside the sub-tree.
           !inCluster &&
             showOnHover &&
             (item?.isSubRow
               ? "opacity-0 group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:opacity-100 data-[state=open]:opacity-100 aria-expanded:opacity-100"
-              // Tracks the row's own button (its peer), not the <li> — a row
+              // Tracks the row's own button (its peer), not the <li> â€” a row
               // that hosts a sub-menu wraps its children too, and hovering a
               // child should not light the parent's action.
               : "opacity-0 peer-hover/menu-button:opacity-100 peer-focus-visible/menu-button:opacity-100 hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 aria-expanded:opacity-100"),
           className
         ),
         onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
-          // The action often sits on a row composed via `render` — keep its
+          // The action often sits on a row composed via `render` â€” keep its
           // click from also triggering the row.
           event.stopPropagation();
           onClick?.(event);
@@ -1111,7 +1111,7 @@ const SidebarMenuAction = forwardRef<HTMLButtonElement, SidebarMenuActionProps>(
 );
 SidebarMenuAction.displayName = "SidebarMenuAction";
 
-// ─── SidebarMenuActions ──────────────────────────────────────────────────────
+// â”€â”€â”€ SidebarMenuActions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface SidebarMenuActionsProps extends HTMLAttributes<HTMLDivElement> {
   /** Hide the cluster until the row is hovered or focused. */
@@ -1163,7 +1163,7 @@ const SidebarMenuActions = forwardRef<HTMLDivElement, SidebarMenuActionsProps>(
 );
 SidebarMenuActions.displayName = "SidebarMenuActions";
 
-// ─── SidebarMenuBadge ────────────────────────────────────────────────────────
+// â”€â”€â”€ SidebarMenuBadge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export type SidebarMenuBadgeProps = HTMLAttributes<HTMLDivElement>;
 
@@ -1199,14 +1199,14 @@ const SidebarMenuBadge = forwardRef<HTMLDivElement, SidebarMenuBadgeProps>(
 );
 SidebarMenuBadge.displayName = "SidebarMenuBadge";
 
-// ─── SidebarMenuSkeleton ─────────────────────────────────────────────────────
+// â”€â”€â”€ SidebarMenuSkeleton â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface SidebarMenuSkeletonProps extends HTMLAttributes<HTMLDivElement> {
   showIcon?: boolean;
 }
 
 // Deterministic width cycle (not Math.random) so server and client render the
-// same markup — a random width per render is a hydration mismatch.
+// same markup â€” a random width per render is a hydration mismatch.
 const SKELETON_WIDTHS = ["62%", "74%", "55%", "82%", "68%"];
 
 const SidebarMenuSkeleton = forwardRef<HTMLDivElement, SidebarMenuSkeletonProps>(
@@ -1244,7 +1244,7 @@ const SidebarMenuSkeleton = forwardRef<HTMLDivElement, SidebarMenuSkeletonProps>
 );
 SidebarMenuSkeleton.displayName = "SidebarMenuSkeleton";
 
-// ─── SidebarMenuSub ──────────────────────────────────────────────────────────
+// â”€â”€â”€ SidebarMenuSub â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface SidebarMenuSubProps extends HTMLAttributes<HTMLUListElement> {
   /** Built-in measured-height collapse. Omitted, the sub-menu is always
@@ -1267,7 +1267,7 @@ const SidebarMenuSub = forwardRef<HTMLUListElement, SidebarMenuSubProps>(
     }, [open, refreshVisibility]);
 
     // Measured-height collapse: animate between 0 and the content's real
-    // offsetHeight — never to "auto", which framer measures wrong under a
+    // offsetHeight â€” never to "auto", which framer measures wrong under a
     // scaled ancestor.
     const [contentHeight, setContentHeight] = useState<number | null>(null);
     useIsoLayoutEffect(() => {
@@ -1295,7 +1295,7 @@ const SidebarMenuSub = forwardRef<HTMLUListElement, SidebarMenuSubProps>(
     return (
       <motion.div
         data-slot="sidebar-menu-sub-wrapper"
-        // `animate` stays defined from the first render — framer ignores an
+        // `animate` stays defined from the first render â€” framer ignores an
         // animate prop that appears later in the element's life. Until the
         // content is measured, a closed sub collapses via the h-0 class and
         // an open one keeps its natural height.
@@ -1306,7 +1306,7 @@ const SidebarMenuSub = forwardRef<HTMLUListElement, SidebarMenuSubProps>(
             ? { height: open ? contentHeight : 0, opacity: open ? 1 : 0 }
             : { opacity: open ? 1 : 0 }
         }
-        // Do NOT simplify this to `open ? spring.moderate : …` — see the
+        // Do NOT simplify this to `open ? spring.moderate : â€¦` â€” see the
         // togglingRef note above. Springing on a re-measure stacks a second
         // spring on a nested sub's own collapse.
         transition={
@@ -1347,7 +1347,7 @@ const SidebarMenuSub = forwardRef<HTMLUListElement, SidebarMenuSubProps>(
 );
 SidebarMenuSub.displayName = "SidebarMenuSub";
 
-// ─── SidebarMenuSubButton ────────────────────────────────────────────────────
+// â”€â”€â”€ SidebarMenuSubButton â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface SidebarMenuSubButtonProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
   isActive?: boolean;
@@ -1425,7 +1425,7 @@ const SidebarMenuSubButton = forwardRef<HTMLAnchorElement, SidebarMenuSubButtonP
             )}
           />
         )}
-        {/* Sub-rows keep the parent rows' type size — only the row height
+        {/* Sub-rows keep the parent rows' type size â€” only the row height
             steps down. */}
         <MenuRowLabel
           content={content}

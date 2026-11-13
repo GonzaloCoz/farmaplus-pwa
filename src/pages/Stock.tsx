@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion } from "motion/react";
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { ChevronRight as ArrowRight, Clock, Laptop01 as Laptop, Phone as Smartphone, Zap, Upload01 as Upload, Database01 as Database } from '@untitledui/icons';

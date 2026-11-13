@@ -18,6 +18,8 @@ import {
 import { notify } from '@/lib/notifications';
 import { useUser } from '@/contexts/UserContext';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
+import { isTauriEnvironment } from '@/services/mysqlTauriBridge';
+import { compressJsonToGzipBase64, decompressGzipBase64ToJson } from '@/lib/compression';
 
 /**
  * Expande el master_catalog a filas de db.precount_products: UNA fila por EAN.
@@ -41,6 +43,9 @@ function expandCatalogToDbProducts(catalog: any[], sessionId: string) {
                 rubro: p.rubro || p.category || '',
                 stock: p.systemStock || 0,
                 id_producto: p.id_producto || '',
+                is_traceable: p.is_traceable || p.trazable === 1 || false,
+                gtin: p.gtin || '',
+                is_hidden: p.is_hidden || false,
                 session_id: sessionId
             });
         });
@@ -116,6 +121,7 @@ export function usePreCount(): UsePreCountReturn {
     const [receivedFiles, setReceivedFiles] = useState<ReceivedFile[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isDownloadingCatalog, setIsDownloadingCatalog] = useState(false);
+    const isStartingSessionRef = useRef(false);
     const { user } = useUser();
 
     // LIVE QUERY for items - This is our source of truth
@@ -499,7 +505,7 @@ export function usePreCount(): UsePreCountReturn {
                 if (error) throw error;
 
                 if (data && data.content) {
-                    const parsedCatalog = JSON.parse(data.content);
+                    const parsedCatalog = await decompressGzipBase64ToJson(data.content);
                     console.log(`[Sync] Catálogo descargado con éxito. Productos: ${parsedCatalog.length}`);
                     
                     // Guardar en la base de datos local IndexedDB
@@ -507,11 +513,38 @@ export function usePreCount(): UsePreCountReturn {
                         master_catalog: parsedCatalog
                     });
 
-                    // Guardar productos en la tabla db.precount_products
-                    // Se expande: una fila por EAN para que cualquier EAN secundario sea buscable
-                    const dbProducts = expandCatalogToDbProducts(parsedCatalog, session.id);
-                    await db.precount_products.bulkPut(dbProducts);
-                    console.log(`[Sync] Guardados localmente ${dbProducts.length} filas EAN en db.precount_products (${parsedCatalog.length} productos)`);
+                    // Guardar productos en la tabla db.precount_products solo en Web/PWA
+                    if (!isTauriEnvironment()) {
+                        const dbProducts = expandCatalogToDbProducts(parsedCatalog, session.id);
+                        const CHUNK_SIZE = 5000;
+                        for (let i = 0; i < dbProducts.length; i += CHUNK_SIZE) {
+                            await db.precount_products.bulkPut(dbProducts.slice(i, i + CHUNK_SIZE));
+                        }
+                        console.log(`[Sync] Guardados localmente ${dbProducts.length} filas EAN en db.precount_products (${parsedCatalog.length} productos)`);
+                    } else {
+                        // En Tauri, asegurar que SQLite stock_local.db tenga estos productos indexados
+                        try {
+                            const { importCatalogToLocalDb } = await import('@/services/tauriLocalDb');
+                            const localInputs = parsedCatalog.map((item: any) => ({
+                                id_producto: item.id_producto || item.id || '',
+                                troquel: item.troquel,
+                                name: item.name,
+                                stock: item.systemStock ?? item.stock ?? 0,
+                                sale_price: item.salePrice || item.sale_price || 0,
+                                cost: item.cost || 0,
+                                category: item.rubro || item.category,
+                                subrubro: item.subrubro,
+                                laboratory: item.laboratory,
+                                is_hidden: item.is_hidden ?? false,
+                                is_traceable: item.is_traceable ?? item.trazable ?? false,
+                                gtin: item.gtin,
+                                eans: (item.eans && item.eans.length > 0) ? item.eans : [item.ean],
+                            }));
+                            await importCatalogToLocalDb(localInputs);
+                        } catch (sqliteErr) {
+                            console.warn('[usePreCount] Error sincronizando a SQLite local:', sqliteErr);
+                        }
+                    }
 
                     // Actualizar el estado local de la sesión
                     setSession(prev => prev && prev.id === session.id ? {
@@ -555,6 +588,7 @@ export function usePreCount(): UsePreCountReturn {
     const sessionId = session?.id;
     useEffect(() => {
         const restoreProducts = async () => {
+            if (isTauriEnvironment()) return; // En Tauri, SQLite gestiona la base local sin bloquear el renderizado
             if (!sessionId || !session?.master_catalog || session.master_catalog.length === 0) return;
             try {
                 const count = await db.precount_products.where('session_id').equals(sessionId).count();
@@ -562,7 +596,10 @@ export function usePreCount(): UsePreCountReturn {
                     console.log(`[Sync] db.precount_products está vacío para la sesión activa ${sessionId}. Restaurando desde master_catalog...`);
                     // Expansión: una fila por EAN para que EANs secundarios sean buscables
                     const dbProducts = expandCatalogToDbProducts(session.master_catalog, sessionId);
-                    await db.precount_products.bulkPut(dbProducts);
+                    const CHUNK_SIZE = 5000;
+                    for (let i = 0; i < dbProducts.length; i += CHUNK_SIZE) {
+                        await db.precount_products.bulkPut(dbProducts.slice(i, i + CHUNK_SIZE));
+                    }
                     console.log(`[Sync] Restauradas ${dbProducts.length} filas EAN para la sesión ${sessionId} en db.precount_products (${session.master_catalog.length} productos)`);
                 }
             } catch (err) {
@@ -595,13 +632,16 @@ export function usePreCount(): UsePreCountReturn {
     // Iniciar nueva sesión
     const startSession = async (sector: string, masterCatalog?: any[], syncPin?: string, profile?: 'sucursal' | 'sap') => {
         if (!user) return;
+        if (isStartingSessionRef.current) return;
         
         // PREVENCIÓN: Si ya tenemos una sesión activa con este mismo sector y el mismo PIN, no crear una nueva.
-        if (session && session.sector === sector && session.status === 'active' && session.sync_pin === syncPin) {
+        const currentSess = sessionRef.current || session;
+        if (currentSess && currentSess.sector === sector && currentSess.status === 'active' && currentSess.sync_pin === syncPin) {
             console.log('[Sync] Session already active with same PIN, skipping creation.');
             return;
         }
 
+        isStartingSessionRef.current = true;
         setIsLoading(true);
         try {
             const newSession = await createSession(sector, user.branchId, masterCatalog, syncPin, profile);
@@ -611,17 +651,20 @@ export function usePreCount(): UsePreCountReturn {
             localStorage.setItem('precount_session_id', newSession.id);
             sessionStorage.setItem('active_precount_session_id', newSession.id);
             
-            // Guardar productos del catálogo maestro localmente en db.precount_products
-            // Se expande: una fila por EAN para que cualquier EAN secundario sea buscable
-            if (masterCatalog && masterCatalog.length > 0) {
+            // Guardar productos del catálogo maestro localmente en db.precount_products solo en Web/PWA
+            if (!isTauriEnvironment() && masterCatalog && masterCatalog.length > 0) {
                 const dbProducts = expandCatalogToDbProducts(masterCatalog, newSession.id);
-                await db.precount_products.bulkPut(dbProducts);
+                const CHUNK_SIZE = 5000;
+                for (let i = 0; i < dbProducts.length; i += CHUNK_SIZE) {
+                    await db.precount_products.bulkPut(dbProducts.slice(i, i + CHUNK_SIZE));
+                }
                 console.log(`[Sync] Guardados localmente ${dbProducts.length} filas EAN en db.precount_products al iniciar sesión (${masterCatalog.length} productos)`);
             }
             
-            // Encolar la subida del catálogo a Supabase para sincronización offline-first
+            // Encolar la subida del catálogo comprimido (gzip) a Supabase para sincronización offline-first
             if (masterCatalog && masterCatalog.length > 0) {
-                console.log('[Sync] Queueing master catalog upload for session:', newSession.id);
+                console.log('[Sync] Queueing compressed master catalog upload for session:', newSession.id);
+                const compressed = await compressJsonToGzipBase64(masterCatalog);
                 const { syncManager } = await import('@/services/syncManager');
                 await syncManager.addToQueue({
                     type: 'create',
@@ -631,7 +674,7 @@ export function usePreCount(): UsePreCountReturn {
                         device_id: 'system',
                         device_name: 'System',
                         filename: 'master_catalog.json',
-                        content: JSON.stringify(masterCatalog)
+                        content: compressed
                     }
                 });
             }
@@ -643,6 +686,7 @@ export function usePreCount(): UsePreCountReturn {
             console.error('Error starting session:', error);
             notify.error("Error", "No se pudo crear la sesión");
         } finally {
+            isStartingSessionRef.current = false;
             setIsLoading(false);
         }
     };

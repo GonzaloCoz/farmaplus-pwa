@@ -330,6 +330,7 @@
 	padding: 1rem;
 	font-size: 0.875rem;
 	line-height: 1.25rem;
+	color: rgba(0, 0, 0, 0.82);
 	contain: layout style paint;
 	content-visibility: auto;
 }

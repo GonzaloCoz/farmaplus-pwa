@@ -232,6 +232,8 @@ export interface Database {
                     active: boolean
                     created_at: string
                     permissions: string[] | null
+                    avatar_url: string | null
+                    avatar_mode: string | null
                 }
                 Insert: {
                     id?: string
@@ -242,6 +244,8 @@ export interface Database {
                     active?: boolean
                     created_at?: string
                     permissions?: string[] | null
+                    avatar_url?: string | null
+                    avatar_mode?: string | null
                 }
                 Update: {
                     id?: string
@@ -252,6 +256,8 @@ export interface Database {
                     active?: boolean
                     created_at?: string
                     permissions?: string[] | null
+                    avatar_url?: string | null
+                    avatar_mode?: string | null
                 }
                 Relationships: [
                     {
@@ -406,6 +412,42 @@ export interface Database {
                     sector?: string
                     date?: string
                     created_at?: string
+                }
+                Relationships: []
+            }
+            calendar_events: {
+                Row: {
+                    id: string
+                    title: string
+                    event_date: string
+                    start_time: string | null
+                    end_time: string | null
+                    targets: Json
+                    created_by: string | null
+                    created_at: string
+                    updated_at: string
+                }
+                Insert: {
+                    id?: string
+                    title: string
+                    event_date: string
+                    start_time?: string | null
+                    end_time?: string | null
+                    targets?: Json
+                    created_by?: string | null
+                    created_at?: string
+                    updated_at?: string
+                }
+                Update: {
+                    id?: string
+                    title?: string
+                    event_date?: string
+                    start_time?: string | null
+                    end_time?: string | null
+                    targets?: Json
+                    created_by?: string | null
+                    created_at?: string
+                    updated_at?: string
                 }
                 Relationships: []
             }
@@ -811,6 +853,23 @@ export interface Database {
                     laboratory: string | null
                     id_producto: string | null
                 }[]
+            }
+            notify_calendar_event: {
+                Args: {
+                    p_event_id: string
+                    p_title: string
+                    p_message: string
+                    p_notify_admin?: boolean
+                    p_notify_zonal?: boolean
+                    p_notify_branch?: boolean
+                }
+                Returns: number
+            }
+            delete_calendar_event_notifications: {
+                Args: {
+                    p_event_id: string
+                }
+                Returns: number
             }
         }
         Enums: {

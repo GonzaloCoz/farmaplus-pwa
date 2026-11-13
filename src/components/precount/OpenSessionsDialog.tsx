@@ -64,11 +64,15 @@ export function OpenSessionsDialog({
             // 1. Cargar primero de la base local Dexie (Offline-First garantizado)
             let localList: OpenSessionData[] = [];
             try {
-                const localActive = await db.sessions
+                let localActive = await db.sessions
                     .where('status')
                     .equals('active')
                     .reverse()
                     .sortBy('start_time');
+
+                if (branchId && user?.role !== 'admin') {
+                    localActive = localActive.filter(s => s.branch_id === branchId);
+                }
 
                 localList = await Promise.all(localActive.map(async (s: any) => {
                     const localItems = await db.items.where('session_id').equals(s.id).toArray();
@@ -121,9 +125,9 @@ export function OpenSessionsDialog({
                     .eq('status', 'active')
                     .order('start_time', { ascending: false });
 
-                // Filtrar por sucursal solo si NO es admin
+                // Filtrar estrictamente por sucursal si NO es admin
                 if (branchId && user?.role !== 'admin') {
-                    query = query.or(`branch_id.eq.${branchId},branch_id.is.null`);
+                    query = query.eq('branch_id', branchId);
                 }
 
                 const res = await query;
@@ -148,32 +152,59 @@ export function OpenSessionsDialog({
             };
 
             if (sessionRows) {
-                const remoteFormatted: OpenSessionData[] = sessionRows.map((s: any) => {
-                    const items = s.items || [];
-                    const total_products = items.length;
-                    const total_units = items.reduce((acc: number, item: any) => acc + (item.quantity || 0), 0);
-                    const bName = resolveBranchDisplay(s.sector || '', s.branch_id);
+                const pendingSessionActions = await db.pendingActions
+                    .where('entity').equals('session')
+                    .toArray();
+                const deletedIds = new Set(
+                    pendingSessionActions.filter(a => (a as any).type === 'delete').map(d => d.data.id)
+                );
+                const pendingCreateIds = new Set(
+                    pendingSessionActions.filter(a => (a as any).type === 'create').map(c => c.data.id)
+                );
 
-                    return {
-                        id: s.id,
-                        sector: s.sector || "General",
-                        start_time: s.start_time,
-                        status: s.status,
-                        sync_pin: s.sync_pin || "",
-                        branch_id: s.branch_id,
-                        branch_name: bName,
-                        user_id: s.user_id,
-                        total_products,
-                        total_units,
-                        profile: s.profile
-                    };
-                });
+                const remoteFormatted: OpenSessionData[] = sessionRows
+                    .filter((s: any) => !deletedIds.has(s.id))
+                    .map((s: any) => {
+                        const items = s.items || [];
+                        const total_products = items.length;
+                        const total_units = items.reduce((acc: number, item: any) => acc + (item.quantity || 0), 0);
+                        const bName = resolveBranchDisplay(s.sector || '', s.branch_id);
 
-                // Merge: priorizamos remoto pero conservamos locales que aún no hayan impactado
+                        return {
+                            id: s.id,
+                            sector: s.sector || "General",
+                            start_time: s.start_time,
+                            status: s.status,
+                            sync_pin: s.sync_pin || "",
+                            branch_id: s.branch_id,
+                            branch_name: bName,
+                            user_id: s.user_id,
+                            total_products,
+                            total_units,
+                            profile: s.profile
+                        };
+                    });
+
                 const remoteIds = new Set(remoteFormatted.map(r => r.id));
+
+                // Purgar de Dexie cualquier sesión local que ya fue eliminada en el servidor y no tiene un create pendiente
+                for (const l of localList) {
+                    if (!remoteIds.has(l.id) && !pendingCreateIds.has(l.id)) {
+                        try {
+                            await db.sessions.delete(l.id);
+                            await db.items.where('session_id').equals(l.id).delete();
+                            await db.locations.where('session_id').equals(l.id).delete();
+                            await db.precount_products.where('session_id').equals(l.id).delete();
+                        } catch (purgeErr) {
+                            console.warn("[OpenSessionsDialog] Error purgando sesión obsoleta de Dexie:", purgeErr);
+                        }
+                    }
+                }
+
+                // Merge: priorizamos remoto y solo conservamos locales que realmente tengan un create pendiente offline
                 const combined = [
                     ...remoteFormatted,
-                    ...localList.filter(l => !remoteIds.has(l.id)).map(l => ({
+                    ...localList.filter(l => !remoteIds.has(l.id) && pendingCreateIds.has(l.id)).map(l => ({
                         ...l,
                         branch_name: resolveBranchDisplay(l.sector, l.branch_id)
                     }))
@@ -184,6 +215,12 @@ export function OpenSessionsDialog({
                     setSelectedId(prev => (prev && combined.some(f => f.id === prev)) ? prev : combined[0].id);
                 } else {
                     setSelectedId(null);
+                    if (typeof window !== 'undefined') {
+                        localStorage.removeItem('last_precount_session_id');
+                        localStorage.removeItem('precount_session_id');
+                        localStorage.removeItem('active_precount_session_id');
+                        sessionStorage.removeItem('active_precount_session_id');
+                    }
                 }
             } else if (localList.length > 0) {
                 const formattedLocal = localList.map(l => ({

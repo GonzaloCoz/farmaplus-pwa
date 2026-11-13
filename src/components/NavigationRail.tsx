@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import type { ComponentType } from "react";
 import { Badge } from "./Badge";

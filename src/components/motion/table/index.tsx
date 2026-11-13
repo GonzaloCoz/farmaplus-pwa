@@ -2,7 +2,7 @@
 
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useReducedMotion } from "motion/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from "react";
 import { Checkbox } from "@/components/motion/checkbox";
 import { cn } from "@/lib/utils";
 import { EditableCell } from "./editable-cell";
@@ -56,6 +56,9 @@ export function Table<T>({
   onRowClick,
   dense = false,
   headerClassName,
+  renderExpandedRow,
+  expandedRowIds,
+  expandedRowHeight = 240,
 }: TableProps<T>) {
   const reduce = useReducedMotion();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -104,10 +107,21 @@ export function Table<T>({
       onSelectionChange,
     });
 
+  const expandedSet = useMemo(
+    () => new Set(expandedRowIds || []),
+    [expandedRowIds],
+  );
+
   const virtualizer = useVirtualizer({
     count: sortedRows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => rowHeight,
+    estimateSize: (index) => {
+      const entry = sortedRows[index];
+      if (entry && expandedSet.has(entry.id)) {
+        return rowHeight + expandedRowHeight;
+      }
+      return rowHeight;
+    },
     overscan,
   });
 
@@ -265,81 +279,96 @@ export function Table<T>({
                 {virtualItems.map((vItem) => {
                   const entry = sortedRows[vItem.index];
                   const isSelected = selected.has(entry.id);
+                  const isExpanded = expandedSet.has(entry.id);
                   return (
-                    <tr
-                      key={entry.id}
-                      ref={(el) => {
-                        rowRefs.current[entry.id] = el;
-                      }}
-                      data-selected={isSelected}
-                      style={{ height: rowHeight }}
-                      onPointerEnter={
-                        hasRowMenu
-                          ? () => activateRow(entry.id, vItem.index)
-                          : undefined
-                      }
-                      onPointerLeave={hasRowMenu ? deactivateRow : undefined}
-                      onClick={onRowClick ? () => onRowClick(entry.row) : undefined}
-                      className={cn(
-                        "border-border/40 border-b transition-colors",
-                        (entry.row as any)?.isAdding && "relative z-10 overflow-visible",
-                        "data-[selected=true]:bg-primary/5",
-                        "hover:bg-zinc-500/5 dark:hover:bg-white/5",
-                        onRowClick && "cursor-pointer",
-                      )}
-                    >
-                      {selectable ? (
-                        <td className="text-center">
-                          <div className="flex items-center justify-center">
-                            <Checkbox
-                              checked={isSelected}
-                              onCheckedChange={() => toggleRow(entry.id)}
-                              aria-label={`Select row ${vItem.index + 1}`}
-                            />
-                          </div>
-                        </td>
+                    <Fragment key={entry.id}>
+                      <tr
+                        key={entry.id}
+                        ref={(el) => {
+                          rowRefs.current[entry.id] = el;
+                        }}
+                        data-selected={isSelected}
+                        style={{ height: rowHeight }}
+                        onPointerEnter={
+                          hasRowMenu
+                            ? () => activateRow(entry.id, vItem.index)
+                            : undefined
+                        }
+                        onPointerLeave={hasRowMenu ? deactivateRow : undefined}
+                        onClick={onRowClick ? () => onRowClick(entry.row) : undefined}
+                        className={cn(
+                          "border-border/40 border-b transition-colors",
+                          (entry.row as any)?.isAdding && "relative z-10 overflow-visible",
+                          "data-[selected=true]:bg-primary/5",
+                          "hover:bg-zinc-500/5 dark:hover:bg-white/5",
+                          onRowClick && "cursor-pointer",
+                          isExpanded && "bg-muted/15 dark:bg-muted/10 border-b-0",
+                        )}
+                      >
+                        {selectable ? (
+                          <td className="text-center">
+                            <div className="flex items-center justify-center">
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={() => toggleRow(entry.id)}
+                                aria-label={`Select row ${vItem.index + 1}`}
+                              />
+                            </div>
+                          </td>
+                        ) : null}
+                        {(() => {
+                          let skipCount = 0;
+                          return orderedColumns.map((column, colIndex) => {
+                            if (skipCount > 0) {
+                              skipCount--;
+                              return null;
+                            }
+                            const span = column.colSpan ? column.colSpan(entry.row) : 1;
+                            if (span > 1) {
+                              skipCount = span - 1;
+                            }
+                            return (
+                              <td
+                                key={column.key}
+                                colSpan={span > 1 ? span : undefined}
+                                className={cn(
+                                  span > 1 || (entry.row as any)?.isAdding ? "overflow-visible relative" : "truncate",
+                                  "text-foreground",
+                                  dense ? "px-1.5 text-xs" : "pl-2.5",
+                                  alignText(column.align),
+                                  colIndex === orderedColumns.length - 1
+                                    ? (dense ? "pr-2" : "pr-6")
+                                    : (dense ? "pr-1.5" : "pr-2.5"),
+                                )}
+                              >
+                                {!column.cell && column.editable ? (
+                                  <EditableCell
+                                    value={String(readCell(entry.row, column) ?? "")}
+                                    label={`${column.key} for row ${vItem.index + 1}`}
+                                    onChange={(next) =>
+                                      onCellEdit?.(entry.id, column.key, next)
+                                    }
+                                  />
+                                ) : (
+                                  readCell(entry.row, column)
+                                )}
+                              </td>
+                            );
+                          });
+                        })()}
+                      </tr>
+                      {isExpanded && renderExpandedRow ? (
+                        <tr
+                          key={`${entry.id}-expanded`}
+                          data-expanded="true"
+                          className="border-b border-border/40 bg-zinc-500/[0.03] dark:bg-white/[0.02]"
+                        >
+                          <td colSpan={leadColumns} className="p-0">
+                            {renderExpandedRow(entry.row)}
+                          </td>
+                        </tr>
                       ) : null}
-                      {(() => {
-                        let skipCount = 0;
-                        return orderedColumns.map((column, colIndex) => {
-                          if (skipCount > 0) {
-                            skipCount--;
-                            return null;
-                          }
-                          const span = column.colSpan ? column.colSpan(entry.row) : 1;
-                          if (span > 1) {
-                            skipCount = span - 1;
-                          }
-                          return (
-                            <td
-                              key={column.key}
-                              colSpan={span > 1 ? span : undefined}
-                              className={cn(
-                                span > 1 || (entry.row as any)?.isAdding ? "overflow-visible relative" : "truncate",
-                                "text-foreground",
-                                dense ? "px-1.5 text-xs" : "pl-2.5",
-                                alignText(column.align),
-                                colIndex === orderedColumns.length - 1
-                                  ? (dense ? "pr-2" : "pr-6")
-                                  : (dense ? "pr-1.5" : "pr-2.5"),
-                              )}
-                            >
-                              {!column.cell && column.editable ? (
-                                <EditableCell
-                                  value={String(readCell(entry.row, column) ?? "")}
-                                  label={`${column.key} for row ${vItem.index + 1}`}
-                                  onChange={(next) =>
-                                    onCellEdit?.(entry.id, column.key, next)
-                                  }
-                                />
-                              ) : (
-                                readCell(entry.row, column)
-                              )}
-                            </td>
-                          );
-                        });
-                      })()}
-                    </tr>
+                    </Fragment>
                   );
                 })}
                 {paddingBottom > 0 ? (

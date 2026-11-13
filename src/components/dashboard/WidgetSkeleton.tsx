@@ -1,10 +1,7 @@
-
 import { Skeleton } from "@/components/ui/skeleton";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 
 interface WidgetSkeletonProps {
-    variant?: 'default' | 'analyst' | 'progress' | 'table' | 'calendar' | 'chart';
+    variant?: 'default' | 'analyst' | 'progress' | 'table' | 'chart';
 }
 
 export function WidgetSkeleton({ variant = 'default' }: WidgetSkeletonProps) {
@@ -39,33 +36,6 @@ export function WidgetSkeleton({ variant = 'default' }: WidgetSkeletonProps) {
                     <Skeleton className="h-32 flex-1 rounded-t-lg" />
                     <Skeleton className="h-16 flex-1 rounded-t-lg" />
                     <Skeleton className="h-12 flex-1 rounded-t-lg" />
-                </div>
-            </div>
-        );
-    }
-
-    if (variant === 'calendar') {
-        return (
-            <div className="h-full flex flex-col p-5 gap-3">
-                <div className="flex justify-between items-center">
-                    <Skeleton className="h-5 w-28" />
-                    <Skeleton className="h-6 w-6 rounded-full" />
-                </div>
-                {/* Calendar grid header skeleton (D L M M J V S) */}
-                <div className="flex justify-between px-2 pt-2">
-                    {Array.from({ length: 7 }).map((_, i) => (
-                        <Skeleton key={i} className="h-4 w-4 rounded-full" />
-                    ))}
-                </div>
-                {/* Active day selection skeleton */}
-                <div className="flex justify-between px-2 pt-1 pb-2">
-                    {Array.from({ length: 7 }).map((_, i) => (
-                        <Skeleton key={i} className={cn("h-7 w-7 rounded-full", i === 1 && "bg-foreground/20")} />
-                    ))}
-                </div>
-                {/* Upcoming events empty state skeleton */}
-                <div className="flex-1 border border-dashed border-border/40 rounded-xl flex items-center justify-center min-h-[100px]">
-                    <Skeleton className="h-4 w-36" />
                 </div>
             </div>
         );

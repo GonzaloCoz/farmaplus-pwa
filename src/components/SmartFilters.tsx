@@ -106,7 +106,6 @@ export function SmartFilters({ onFilterChange, activeFilters }: SmartFiltersProp
                 selected={activeFilters.date}
                 onSelect={handleDateSelect}
                 className="rounded-md border shadow-sm"
-                locale={es}
             />
         </div>
     );

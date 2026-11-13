@@ -10,6 +10,12 @@ pub struct MysqlConfig {
     pub user: String,
     pub password: Option<String>,
     pub database: String,
+    #[serde(default)]
+    pub include_catalog_eans: Option<bool>,
+    #[serde(default)]
+    pub include_hidden_inactive: Option<bool>,
+    #[serde(default)]
+    pub fallback_hosts: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -42,6 +48,19 @@ pub struct MysqlProductRecord {
     pub subrubro: Option<String>,
     pub laboratory: Option<String>,
     pub secondary_eans: Vec<String>,
+    pub is_hidden: bool,
+    #[serde(default)]
+    pub is_traceable: bool,
+    #[serde(default)]
+    pub gtin: Option<String>,
+    #[serde(default)]
+    pub id_producto_padre: Option<String>,
+    #[serde(default)]
+    pub unidades_padre: Option<f64>,
+    #[serde(default)]
+    pub parent_ean: Option<String>,
+    #[serde(default)]
+    pub parent_name: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -64,32 +83,48 @@ pub fn get_candidate_hosts(host: &str) -> Vec<String> {
     let h = host.trim();
     let mut candidates = vec![h.to_string()];
     
-    // If 10.0.X.Y -> add 192.168.X.Y
-    if h.starts_with("10.0.") {
-        let parts: Vec<&str> = h.split('.').collect();
-        if parts.len() == 4 {
-            let alt = format!("192.168.{}.{}", parts[2], parts[3]);
-            if !candidates.contains(&alt) {
-                candidates.push(alt);
-            }
-        }
-    }
-    // If 192.168.X.Y -> add 10.0.X.Y
-    else if h.starts_with("192.168.") {
-        let parts: Vec<&str> = h.split('.').collect();
-        if parts.len() == 4 {
-            let alt = format!("10.0.{}.{}", parts[2], parts[3]);
-            if !candidates.contains(&alt) {
-                candidates.push(alt);
-            }
-        }
-    } else if h == "localhost" {
+    // Solo permitir loopback/localhost como fallback local seguro.
+    // Se elimina el fallback cruzado de subredes (10.0.X.Y <-> 192.168.X.Y)
+    // para evitar saltos accidentales de sucursales en caso de timeout.
+    if h == "localhost" {
         candidates.push("127.0.0.1".to_string());
     } else if h == "127.0.0.1" {
         candidates.push("localhost".to_string());
     }
     
     candidates
+}
+
+fn format_mysql_conn_error(err: &mysql::Error, _host: &str, _port: u16) -> String {
+    match err {
+        mysql::Error::MySqlError(my_err) => match my_err.code {
+            1045 | 1044 => "Error de autenticación: Acceso denegado al servidor local de Plex. Verifique las credenciales.".to_string(),
+            1049 => "Base de datos desconocida: La base de datos de Plex no existe en el servidor local.".to_string(),
+            1130 => "Host no autorizado: El servidor local de Plex no permite conexiones remotas desde este equipo.".to_string(),
+            _ => format!("Error en el servidor local de Plex (Código {}).", my_err.code),
+        },
+        mysql::Error::IoError(io_err) => match io_err.kind() {
+            std::io::ErrorKind::TimedOut => {
+                "Tiempo de espera agotado al conectar con el servidor local de Plex. Verifique la conexión a la red de la sucursal.".to_string()
+            }
+            std::io::ErrorKind::ConnectionRefused => {
+                "Conexión rechazada: El servicio MySQL de Plex no responde en el servidor local.".to_string()
+            }
+            std::io::ErrorKind::ConnectionReset => {
+                "Conexión reiniciada por el servidor local de Plex o la red interna.".to_string()
+            }
+            _ => "Error de red al conectar con el servidor local de Plex.".to_string(),
+        },
+        mysql::Error::DriverError(drv_err) => {
+            let msg = format!("{:?}", drv_err);
+            if msg.to_lowercase().contains("timeout") {
+                "Tiempo de espera agotado al comunicar con el servidor local de Plex.".to_string()
+            } else {
+                "Error de comunicación del driver con el servidor local de Plex.".to_string()
+            }
+        }
+        _ => "No se pudo establecer conexión con el servidor local de Plex.".to_string(),
+    }
 }
 
 fn build_opts_for_host(config: &MysqlConfig, host: &str, timeout_ms: u64) -> OptsBuilder {
@@ -107,13 +142,10 @@ fn build_opts_for_host(config: &MysqlConfig, host: &str, timeout_ms: u64) -> Opt
         .read_timeout(Some(Duration::from_secs(45)))
         .write_timeout(Some(Duration::from_secs(15)));
 
-    let default_pass = std::env::var("PLEX_MYSQL_PASSWORD").unwrap_or_else(|_| "m@st3rpl3x0nz3".to_string());
-    let effective_pass = match config.password.as_deref() {
-        Some(p) if !p.trim().is_empty() => p,
-        _ => &default_pass,
-    };
-    if !effective_pass.is_empty() {
-        builder = builder.pass(Some(effective_pass));
+    if let Some(pass) = config.password.as_deref() {
+        if !pass.trim().is_empty() {
+            builder = builder.pass(Some(pass));
+        }
     }
 
     builder
@@ -124,33 +156,78 @@ pub fn connect_with_fallback(
     timeout_ms: u64,
     mut logs: Option<&mut Vec<String>>,
 ) -> Result<(mysql::PooledConn, String), String> {
-    let candidates = get_candidate_hosts(&config.host);
+    let mut candidates = get_candidate_hosts(&config.host);
+    if let Some(ref fallbacks) = config.fallback_hosts {
+        for fb in fallbacks {
+            let trimmed = fb.trim().to_string();
+            if !trimmed.is_empty() && !candidates.contains(&trimmed) {
+                candidates.push(trimmed);
+            }
+        }
+    }
+
+    let effective_timeout_ms = timeout_ms.max(5000);
     let mut last_err = String::new();
+    const MAX_RETRIES: usize = 2; // 1 intento inicial + hasta 2 reintentos rápidos (total 3 intentos)
 
     for (idx, candidate) in candidates.iter().enumerate() {
         if idx > 0 {
             if let Some(ref mut l) = logs {
-                l.push(format!("⚠️ Fallback automático: Intentando IP alternativa '{}'...", candidate));
+                l.push(format!("⚠️ Fallback: Intentando host seguro alternativo '{}'...", candidate));
             }
         }
 
-        let opts = build_opts_for_host(config, candidate, timeout_ms);
-        match Pool::new(opts) {
-            Ok(pool) => match pool.get_conn() {
+        let opts = build_opts_for_host(config, candidate, effective_timeout_ms);
+        let pool = match Pool::new(opts) {
+            Ok(p) => p,
+            Err(e) => {
+                let err_msg = format_mysql_conn_error(&e, candidate, config.port);
+                eprintln!("[MySQL] Error al inicializar pool para {}:{}: {:?}", candidate, config.port, e);
+                last_err = err_msg;
+                continue;
+            }
+        };
+
+        for attempt in 0..=MAX_RETRIES {
+            if attempt > 0 {
+                // Breve pausa antes del reintento rápido (250ms, 500ms) para tolerar jitter de VPN
+                std::thread::sleep(Duration::from_millis(250 * attempt as u64));
+                if let Some(ref mut l) = logs {
+                    l.push(format!(
+                        "⚠️ Reintentando conexión con '{}' (intento {}/{})...",
+                        candidate,
+                        attempt + 1,
+                        MAX_RETRIES + 1
+                    ));
+                }
+            }
+
+            match pool.get_conn() {
                 Ok(conn) => {
-                    if idx > 0 {
+                    if idx > 0 || attempt > 0 {
                         if let Some(ref mut l) = logs {
-                            l.push(format!("✓ Conexión exitosa mediante fallback a '{}'", candidate));
+                            l.push(format!("✓ Conexión exitosa a '{}' (intento {})", candidate, attempt + 1));
                         }
                     }
                     return Ok((conn, candidate.clone()));
                 }
                 Err(e) => {
-                    last_err = format!("Error al conectar a {}:{}: {}", candidate, config.port, e);
+                    eprintln!("[MySQL] Intento {} a {} falló: {:?}", attempt + 1, candidate, e);
+                    let is_fatal_auth_or_db = match &e {
+                        mysql::Error::MySqlError(my_err) => {
+                            my_err.code == 1045 || my_err.code == 1044 || my_err.code == 1049 || my_err.code == 1130
+                        }
+                        _ => false,
+                    };
+                    last_err = format_mysql_conn_error(&e, candidate, config.port);
+                    if let Some(ref mut l) = logs {
+                        l.push(format!("Fallo en '{}': {}", candidate, last_err));
+                    }
+                    if is_fatal_auth_or_db {
+                        // Error de credenciales o base inexistente: no reintentar
+                        break;
+                    }
                 }
-            },
-            Err(e) => {
-                last_err = format!("Error de configuración para {}: {}", candidate, e);
             }
         }
     }
@@ -162,7 +239,7 @@ pub fn connect_with_fallback(
 #[tauri::command]
 pub async fn test_mysql_connection(config: MysqlConfig) -> Result<MysqlTestResult, String> {
     tokio::task::spawn_blocking(move || {
-        let (mut conn, connected_host) = connect_with_fallback(&config, 5000, None)?;
+        let (mut conn, _connected_host) = connect_with_fallback(&config, 5000, None)?;
 
         let version: Option<String> = conn
             .query_first("SELECT VERSION()")
@@ -178,21 +255,9 @@ pub async fn test_mysql_connection(config: MysqlConfig) -> Result<MysqlTestResul
             .query("SHOW TABLES")
             .unwrap_or_default();
 
-        let fallback_note = if connected_host != config.host {
-            format!(" (conectado vía fallback a {})", connected_host)
-        } else {
-            String::new()
-        };
-
         Ok(MysqlTestResult {
             success: true,
-            message: format!(
-                "Conexión exitosa a MySQL en {}:{}{} (DB: '{}')",
-                connected_host,
-                config.port,
-                fallback_note,
-                current_db.clone().unwrap_or_else(|| "Ninguna".into())
-            ),
+            message: "Conexión exitosa al servidor de Plex.".to_string(),
             server_version: version,
             current_database: current_db,
             tables_count: tables.len(),
@@ -206,7 +271,7 @@ pub async fn test_mysql_connection(config: MysqlConfig) -> Result<MysqlTestResul
 #[tauri::command]
 pub async fn list_mysql_tables(config: MysqlConfig) -> Result<Vec<String>, String> {
     tokio::task::spawn_blocking(move || {
-        let (mut conn, _) = connect_with_fallback(&config, 2000, None)?;
+        let (mut conn, _) = connect_with_fallback(&config, 5000, None)?;
 
         let tables: Vec<String> = conn
             .query("SHOW TABLES")
@@ -222,7 +287,7 @@ pub async fn list_mysql_tables(config: MysqlConfig) -> Result<Vec<String>, Strin
 #[tauri::command]
 pub async fn describe_mysql_table(config: MysqlConfig, table_name: String) -> Result<Vec<MysqlColumnInfo>, String> {
     tokio::task::spawn_blocking(move || {
-        let (mut conn, _) = connect_with_fallback(&config, 2000, None)?;
+        let (mut conn, _) = connect_with_fallback(&config, 5000, None)?;
 
         // Sanitize table name to prevent basic injection
         let clean_table = table_name.replace(['`', ';', ' '], "");
@@ -258,11 +323,13 @@ pub async fn execute_mysql_raw_query(
     tokio::task::spawn_blocking(move || {
         let trimmed = query.trim();
         let upper = trimmed.to_uppercase();
-        if !upper.starts_with("SELECT") && !upper.starts_with("SHOW") && !upper.starts_with("DESCRIBE") && !upper.starts_with("EXPLAIN") {
-            return Err("Por seguridad, solo se permiten consultas de lectura (SELECT, SHOW, DESCRIBE).".into());
+        if (!upper.starts_with("SELECT") && !upper.starts_with("SHOW") && !upper.starts_with("DESCRIBE") && !upper.starts_with("EXPLAIN"))
+            || trimmed.contains(';')
+        {
+            return Err("Por seguridad, solo se permiten consultas de lectura de una sola sentencia (SELECT, SHOW, DESCRIBE).".into());
         }
 
-        let (mut conn, _) = connect_with_fallback(&config, 1500, None)?;
+        let (mut conn, _) = connect_with_fallback(&config, 5000, None)?;
 
         let final_query = if let Some(lim) = limit {
             if !upper.contains("LIMIT") {
@@ -332,22 +399,45 @@ pub async fn fetch_mysql_stock(
 ) -> Result<MysqlStockResult, String> {
     tokio::task::spawn_blocking(move || {
         let mut logs = Vec::new();
-        logs.push(format!("Conectando a MySQL en {}:{}/{}...", config.host, config.port, config.database));
+        logs.push(format!("Conectando a MySQL en {}:****/{}...", config.host, config.database));
 
-        let (mut conn, connected_host) = connect_with_fallback(&config, 2500, Some(&mut logs))?;
+        let (mut conn, connected_host) = connect_with_fallback(&config, 5000, Some(&mut logs))?;
         if connected_host != config.host {
             logs.push(format!("Conectado a host alternativo: {}", connected_host));
         }
 
+        // Calibrar group_concat_max_len antes de la consulta maestra para que MySQL 5.1.44
+        // no trunque la agregación de códigos de barra alternativos (GROUP_CONCAT) al límite por defecto de 1024 bytes.
+        if let Err(e) = conn.query_drop("SET SESSION group_concat_max_len = 65535") {
+            logs.push(format!("⚠️ Advertencia al fijar group_concat_max_len: {}", e));
+        } else {
+            logs.push("Configurado SET SESSION group_concat_max_len = 65535 para códigos de barra alternativos.".into());
+        }
+
         let sql = if let Some(q) = custom_query {
-            if !q.trim().is_empty() {
+            let trimmed = q.trim();
+            if !trimmed.is_empty() {
+                let upper = trimmed.to_uppercase();
+                if !upper.starts_with("SELECT") || trimmed.contains(';') {
+                    return Err("Por seguridad, custom_query solo permite sentencias SELECT individuales.".into());
+                }
                 logs.push("Ejecutando consulta SQL personalizada...".into());
-                q
+                trimmed.to_string()
             } else {
-                build_default_stock_query(&mut conn, &mut logs)?
+                build_default_stock_query(
+                    &mut conn,
+                    &mut logs,
+                    config.include_catalog_eans.unwrap_or(false),
+                    config.include_hidden_inactive.unwrap_or(false),
+                )?
             }
         } else {
-            build_default_stock_query(&mut conn, &mut logs)?
+            build_default_stock_query(
+                &mut conn,
+                &mut logs,
+                config.include_catalog_eans.unwrap_or(false),
+                config.include_hidden_inactive.unwrap_or(false),
+            )?
         };
 
         logs.push(format!("SQL: {}", sql));
@@ -395,6 +485,13 @@ pub async fn fetch_mysql_stock(
         let subrubro_idx = find_idx(&["subrubro", "s_rubro", "sub_rubro", "nomsubrubro", "subcategoria"]);
         let lab_idx = find_idx(&["laboratorio", "lab", "fabricante", "nomlab"]);
         let codebars_alt_idx = find_idx(&["codigosbarraalternativos", "codigos_barra_alternativos", "secondary_eans", "cbs_alt"]);
+        let visible_idx = find_idx(&["visible", "oculto"]);
+        let trazable_idx = find_idx(&["trazable", "is_traceable"]);
+        let gtin_idx = find_idx(&["gtin", "codigogtin"]);
+        let id_padre_idx = find_idx(&["id_producto_padre", "idproductopadre"]);
+        let unidades_padre_idx = find_idx(&["unidades_padre", "unidadespadre"]);
+        let parent_ean_idx = find_idx(&["parent_ean"]);
+        let parent_name_idx = find_idx(&["parent_name"]);
 
         logs.push(format!("Columnas detectadas en resultado: {:?}", col_names));
 
@@ -405,26 +502,35 @@ pub async fn fetch_mysql_stock(
 
             let get_string = |idx_opt: Option<usize>, fallback: &str| -> String {
                 idx_opt
-                    .and_then(|idx| {
-                        row.get_opt::<String, _>(idx)
-                            .and_then(|r| r.ok())
-                            .or_else(|| row.get_opt::<i64, _>(idx).and_then(|r| r.ok()).map(|n| n.to_string()))
+                    .and_then(|idx| row.get_opt::<mysql::Value, _>(idx).and_then(|r| r.ok()))
+                    .map(|v| match v {
+                        mysql::Value::Bytes(b) => String::from_utf8_lossy(&b).trim().to_string(),
+                        mysql::Value::Int(n) => n.to_string(),
+                        mysql::Value::UInt(n) => n.to_string(),
+                        mysql::Value::Float(f) => f.to_string(),
+                        mysql::Value::Double(d) => d.to_string(),
+                        _ => fallback.to_string(),
                     })
-                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
                     .unwrap_or_else(|| fallback.to_string())
             };
 
             let get_f64 = |idx_opt: Option<usize>| -> f64 {
                 idx_opt
-                    .and_then(|idx| {
-                        row.get_opt::<f64, _>(idx)
-                            .and_then(|r| r.ok())
-                            .or_else(|| row.get_opt::<i64, _>(idx).and_then(|r| r.ok()).map(|n| n as f64))
-                            .or_else(|| {
-                                row.get_opt::<String, _>(idx)
-                                     .and_then(|r| r.ok())
-                                     .and_then(|s| s.trim().replace(',', ".").parse::<f64>().ok())
-                            })
+                    .and_then(|idx| row.get_opt::<mysql::Value, _>(idx).and_then(|r| r.ok()))
+                    .map(|v| match v {
+                        mysql::Value::Float(f) => f as f64,
+                        mysql::Value::Double(d) => d,
+                        mysql::Value::Int(n) => n as f64,
+                        mysql::Value::UInt(n) => n as f64,
+                        mysql::Value::Bytes(b) => {
+                            String::from_utf8_lossy(&b)
+                                .trim()
+                                .replace(',', ".")
+                                .parse::<f64>()
+                                .unwrap_or(0.0)
+                        }
+                        _ => 0.0,
                     })
                     .unwrap_or(0.0)
             };
@@ -459,6 +565,40 @@ pub async fn fetch_mysql_stock(
                 ean = id.clone();
             }
 
+            let is_hidden = visible_idx
+                .map(|idx| {
+                    let v = get_string(Some(idx), "1");
+                    v == "0" || v.eq_ignore_ascii_case("false")
+                })
+                .unwrap_or(false);
+
+            let is_traceable = trazable_idx
+                .map(|idx| {
+                    let v = get_string(Some(idx), "0");
+                    v == "1" || v.eq_ignore_ascii_case("true")
+                })
+                .unwrap_or(false);
+
+            let gtin = gtin_idx
+                .map(|idx| get_string(Some(idx), ""))
+                .filter(|g| !g.is_empty() && g != "0");
+
+            let id_producto_padre = id_padre_idx
+                .map(|idx| get_string(Some(idx), ""))
+                .filter(|v| !v.is_empty() && v != "0");
+
+            let unidades_padre = unidades_padre_idx
+                .map(|idx| get_f64(Some(idx)))
+                .filter(|v| *v > 1.0);
+
+            let parent_ean = parent_ean_idx
+                .map(|idx| get_string(Some(idx), ""))
+                .filter(|v| !v.is_empty());
+
+            let parent_name = parent_name_idx
+                .map(|idx| get_string(Some(idx), "").trim().to_string())
+                .filter(|v| !v.is_empty());
+
             parsed_products.push(MysqlProductRecord {
                 id: if id.is_empty() { ean.clone() } else { id },
                 name,
@@ -471,15 +611,23 @@ pub async fn fetch_mysql_stock(
                 subrubro,
                 laboratory,
                 secondary_eans,
+                is_hidden,
+                is_traceable,
+                gtin,
+                id_producto_padre,
+                unidades_padre,
+                parent_ean,
+                parent_name,
             });
         }
 
         let total = parsed_products.len();
-        logs.push(format!("Catálogo MySQL procesado con éxito: {} productos importados.", total));
+        let with_stock_count = parsed_products.iter().filter(|p| p.stock > 0.0).count();
+        logs.push(format!("Catálogo MySQL procesado con éxito: {} productos importados ({} con stock > 0).", total, with_stock_count));
 
         Ok(MysqlStockResult {
             success: true,
-            message: format!("Se importaron {} productos exitosamente desde MySQL.", total),
+            message: format!("Se importaron {} productos exitosamente desde MySQL ({} con stock).", total, with_stock_count),
             total_products: total,
             products: parsed_products,
             logs,
@@ -490,7 +638,12 @@ pub async fn fetch_mysql_stock(
 }
 
 /// Detects probable table structure if no custom query was provided
-fn build_default_stock_query(conn: &mut mysql::PooledConn, logs: &mut Vec<String>) -> Result<String, String> {
+fn build_default_stock_query(
+    conn: &mut mysql::PooledConn,
+    logs: &mut Vec<String>,
+    include_catalog_eans: bool,
+    include_hidden_inactive: bool,
+) -> Result<String, String> {
     let tables: Vec<String> = conn
         .query("SHOW TABLES")
         .map_err(|e| format!("Error buscando tablas: {}", e))?;
@@ -509,6 +662,10 @@ fn build_default_stock_query(conn: &mut mysql::PooledConn, logs: &mut Vec<String
         let has_labs = lower_tables.iter().any(|t| t == "laboratorios");
         let has_rubros = lower_tables.iter().any(|t| t == "rubros");
         let has_subrubros = lower_tables.iter().any(|t| t == "subrubros");
+        let has_padre_cols: bool = conn
+            .query_first::<mysql::Row, _>("SHOW COLUMNS FROM productos LIKE 'IdProductoPadre'")
+            .map(|r| r.is_some())
+            .unwrap_or(false);
 
         logs.push("Esquema estándar Plex detectado (productos + stock + rubros + subrubros). Generando JOIN optimizado...".into());
 
@@ -556,29 +713,85 @@ fn build_default_stock_query(conn: &mut mysql::PooledConn, logs: &mut Vec<String
             "'' AS SubRubro,"
         };
 
+        let padre_join = if has_padre_cols {
+            "LEFT JOIN productos PP ON PP.IDProducto = P.IdProductoPadre"
+        } else {
+            ""
+        };
+        let padre_select = if has_padre_cols {
+            "IFNULL(P.IdProductoPadre, 0) AS id_producto_padre, \
+             IFNULL(P.UnidadesPadre, 0) AS unidades_padre, \
+             IFNULL(PP.Codebar, '') AS parent_ean, \
+             TRIM(CONCAT(IFNULL(PP.Producto, ''), ' ', IFNULL(PP.Presentacion, ''))) AS parent_name,"
+        } else {
+            "0 AS id_producto_padre, 0 AS unidades_padre, '' AS parent_ean, '' AS parent_name,"
+        };
+
+        if include_hidden_inactive {
+            logs.push("Modo ocultos/inactivos activo: Incluyendo productos con Visible=0 o Activo='N'.".into());
+        }
+
+        let (stock_join, where_clause) = match (include_catalog_eans, include_hidden_inactive) {
+            (true, true) => {
+                logs.push("Modo complementario activo: Incluyendo productos (incluso ocultos/inactivos) con EAN sin stock en sucursal.".into());
+                (
+                    "LEFT JOIN stock S ON S.IDProducto = P.IDProducto",
+                    "WHERE (P.servicio = 0 OR P.servicio IS NULL) \
+                     AND (S.IDProducto IS NOT NULL OR (P.Codebar IS NOT NULL AND P.Codebar != ''))"
+                )
+            }
+            (true, false) => {
+                logs.push("Modo complementario activo: Incluyendo productos activos con EAN sin stock en sucursal.".into());
+                (
+                    "LEFT JOIN stock S ON S.IDProducto = P.IDProducto",
+                    "WHERE (P.Activo = 'S' OR P.Activo = '1') \
+                     AND (P.servicio = 0 OR P.servicio IS NULL) \
+                     AND ((P.visible = 1 OR P.visible = '1') OR S.IDProducto IS NOT NULL OR (P.Codebar IS NOT NULL AND P.Codebar != ''))"
+                )
+            }
+            (false, true) => (
+                "JOIN stock S ON S.IDProducto = P.IDProducto",
+                "WHERE (P.servicio = 0 OR P.servicio IS NULL)"
+            ),
+            (false, false) => (
+                "JOIN stock S ON S.IDProducto = P.IDProducto",
+                "WHERE (P.Activo = 'S' OR P.Activo = '1') \
+                 AND (P.servicio = 0 OR P.servicio IS NULL) \
+                 AND (P.visible = 1 OR P.visible = '1')"
+            ),
+        };
+
         let plex_query = format!(
             "SELECT \
                 P.IDProducto AS id_producto, \
                 P.Troquel AS troquel, \
                 P.Codebar AS ean, \
                 CONCAT(P.Producto, ' ', IFNULL(P.Presentacion, '')) AS producto, \
-                S.Cantidad AS stock, \
-                P.Costo AS costo, \
+                IFNULL(S.Cantidad, 0) AS stock, \
+                IFNULL(NULLIF(P.costoPPP, 0), P.Costo) AS costo, \
                 P.UltimoPrecio AS precio, \
+                P.visible AS visible, \
+                IFNULL(P.trazable, 0) AS trazable, \
+                IFNULL(P.gtin, '') AS gtin, \
+                {} \
                 {} \
                 {} \
                 {} \
                 {} \
                 P.Activo AS activo \
             FROM productos P \
-            INNER JOIN stock S ON S.IDProducto = P.IDProducto \
+            {} \
+            {} \
+            {} \
             {} \
             {} \
             {} \
             {} \
             GROUP BY P.IDProducto \
             ORDER BY P.IDProducto ASC",
-            codebars_select, labs_select, rubros_select, subrubros_select, codebars_join, labs_join, rubros_join, subrubros_join
+            codebars_select, labs_select, rubros_select, subrubros_select, padre_select,
+            stock_join, codebars_join, labs_join, rubros_join, subrubros_join, padre_join,
+            where_clause
         );
 
         return Ok(plex_query);
@@ -620,7 +833,7 @@ pub async fn create_plex_inventory_session(
     terminal_id: Option<i64>,
 ) -> Result<CreatePlexInventoryResult, String> {
     tokio::task::spawn_blocking(move || {
-        let (mut conn, active_host) = connect_with_fallback(&config, 3000, None)?;
+        let (mut conn, active_host) = connect_with_fallback(&config, 5000, None)?;
 
         let uid = user_id.unwrap_or(1590); // Gonzalo Coz por defecto
         let tid = terminal_id.unwrap_or(168);
@@ -674,7 +887,7 @@ pub async fn get_plex_open_inventory_sessions(
     config: MysqlConfig,
 ) -> Result<GetPlexOpenSessionsResult, String> {
     tokio::task::spawn_blocking(move || {
-        let (mut conn, active_host) = connect_with_fallback(&config, 3000, None)?;
+        let (mut conn, active_host) = connect_with_fallback(&config, 5000, None)?;
 
         let query = "SELECT \
             i.IDInventario, \
@@ -757,7 +970,7 @@ pub async fn send_plex_inventory_api_batch(
             return Err("No se proporcionaron productos para enviar a Plex.".into());
         }
 
-        let (mut conn, active_host) = connect_with_fallback(&config, 3000, None)?;
+        let (mut conn, active_host) = connect_with_fallback(&config, 5000, None)?;
 
         // Agrupar items por código de barra (Codebar)
         use std::collections::HashMap;
@@ -943,7 +1156,7 @@ pub async fn restore_plex_trazables(
         return Ok(true);
     }
     tokio::task::spawn_blocking(move || {
-        let (mut conn, _) = connect_with_fallback(&config, 3000, None)?;
+        let (mut conn, _) = connect_with_fallback(&config, 5000, None)?;
         use mysql::prelude::Queryable;
         for chunk in product_ids.chunks(100) {
             let id_list = chunk.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(", ");
@@ -967,7 +1180,7 @@ pub async fn check_plex_batch_status(
     id_registro: i64,
 ) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
-        let (mut conn, _) = connect_with_fallback(&config, 3000, None)?;
+        let (mut conn, _) = connect_with_fallback(&config, 5000, None)?;
         use mysql::prelude::Queryable;
         let q = format!("SELECT Estado FROM inventario_ws WHERE IDRegistro = {}", id_registro);
         let rows: Vec<String> = conn.query_map(&q, |estado: String| estado)
@@ -996,7 +1209,7 @@ pub async fn check_plex_inventory_adjustment(
     id_inventario: Option<i64>,
 ) -> Result<PlexAdjustmentStatus, String> {
     tokio::task::spawn_blocking(move || {
-        let (mut conn, _) = connect_with_fallback(&config, 3000, None)?;
+        let (mut conn, _) = connect_with_fallback(&config, 5000, None)?;
         use mysql::prelude::Queryable;
 
         let inv_id: Option<i64> = match id_inventario {
@@ -1058,5 +1271,417 @@ pub async fn check_plex_inventory_adjustment(
     .map_err(|e| e.to_string())?
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PlexOperatorVerification {
+    pub is_authorized: bool,
+    pub id_usuario: Option<i64>,
+    pub user_name: String,
+    pub full_name: String,
+    pub profile: String,
+    pub is_admin: bool,
+    pub message: String,
+}
+
+#[tauri::command]
+pub async fn verify_plex_operator(
+    config: MysqlConfig,
+    user_name: String,
+) -> Result<PlexOperatorVerification, String> {
+    tokio::task::spawn_blocking(move || {
+        let (mut conn, _) = connect_with_fallback(&config, 5000, None)?;
+        use mysql::prelude::Queryable;
+
+        let clean_user = user_name.trim();
+        let q = format!(
+            "SELECT u.IDUsuario, u.Nombre, u.NombreCompleto, IFNULL(p.Perfil, 'SIN PERFIL'), IFNULL(u.Administrador, 'N') \
+             FROM usuarios u \
+             LEFT JOIN usuariosperfiles p ON u.IdPerfil = p.IDPerfil \
+             WHERE (u.Nombre = '{0}' OR u.NombreCompleto LIKE '%{0}%') AND u.Activo = 'S' \
+             LIMIT 1",
+            clean_user.replace('\'', "''")
+        );
+
+        let row: Option<(i64, String, String, String, String)> = conn
+            .query_map(&q, |(id, nom, nom_comp, perf, adm): (i64, String, String, String, String)| {
+                (id, nom, nom_comp, perf, adm)
+            })
+            .ok()
+            .and_then(|mut r| r.pop());
+
+        if let Some((id, nom, nom_comp, perf, adm)) = row {
+            let perf_upper = perf.to_uppercase();
+            let is_admin = adm.to_uppercase() == "S";
+            let is_authorized = is_admin
+                || perf_upper.contains("ENCARGAD")
+                || perf_upper.contains("SUB")
+                || perf_upper.contains("INVENTARIO");
+
+            let msg = if is_authorized {
+                format!("Operador autorizado: {} ({})", nom_comp, perf)
+            } else {
+                format!("El usuario {} ({}) no posee rol de Encargado/Subencargado.", nom_comp, perf)
+            };
+
+            return Ok(PlexOperatorVerification {
+                is_authorized,
+                id_usuario: Some(id),
+                user_name: nom,
+                full_name: nom_comp,
+                profile: perf,
+                is_admin,
+                message: msg,
+            });
+        }
+
+        Ok(PlexOperatorVerification {
+            is_authorized: false,
+            id_usuario: None,
+            user_name: clean_user.to_string(),
+            full_name: String::new(),
+            profile: "NO ENCONTRADO".to_string(),
+            is_admin: false,
+            message: format!("No se encontró un usuario activo con nombre '{}' en la sucursal.", clean_user),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn get_plex_branch_operators(
+    config: MysqlConfig,
+) -> Result<Vec<PlexOperatorVerification>, String> {
+    tokio::task::spawn_blocking(move || {
+        let (mut conn, _) = connect_with_fallback(&config, 5000, None)?;
+        use mysql::prelude::Queryable;
+
+        let q = "SELECT u.IDUsuario, u.Nombre, u.NombreCompleto, IFNULL(p.Perfil, 'SIN PERFIL'), IFNULL(u.Administrador, 'N') \
+                 FROM usuarios u \
+                 LEFT JOIN usuariosperfiles p ON u.IdPerfil = p.IDPerfil \
+                 WHERE u.Activo = 'S' AND (u.Administrador = 'S' OR p.Perfil LIKE '%ENCARGAD%' OR p.Perfil LIKE '%SUB%' OR p.Perfil LIKE '%INVENTARIO%' OR p.Perfil LIKE '%ADM%') \
+                 ORDER BY u.NombreCompleto ASC";
+
+        let rows: Vec<(i64, String, String, String, String)> = conn
+            .query_map(q, |(id, nom, nom_comp, perf, adm): (i64, String, String, String, String)| {
+                (id, nom, nom_comp, perf, adm)
+            })
+            .map_err(|e| format!("Error cargando operadores de Plex: {}", e))?;
+
+        let operators = rows
+            .into_iter()
+            .map(|(id, nom, nom_comp, perf, adm)| {
+                let is_admin = adm.to_uppercase() == "S";
+                PlexOperatorVerification {
+                    is_authorized: true,
+                    id_usuario: Some(id),
+                    user_name: nom,
+                    full_name: nom_comp.clone(),
+                    profile: perf.clone(),
+                    is_admin,
+                    message: format!("Operador: {} ({})", nom_comp, perf),
+                }
+            })
+            .collect();
+
+        Ok(operators)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PlexAdjustmentItemInput {
+    pub id_producto: Option<String>,
+    pub ean: String,
+    pub quantity: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PlexAdjustmentResult {
+    pub success: bool,
+    pub alta_id: Option<i64>,
+    pub baja_id: Option<i64>,
+    pub total_altas: usize,
+    pub total_bajas: usize,
+    pub message: String,
+    pub logs: Vec<String>,
+}
+
+
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct NextAdjustmentIdsResult {
+    pub next_shortage_id: Option<i64>,
+    pub next_surplus_id: Option<i64>,
+}
+
+#[tauri::command]
+pub async fn get_next_plex_adjustment_ids(
+    config: MysqlConfig,
+    branch_id: i64,
+    has_shortage: bool,
+    has_surplus: bool,
+) -> Result<NextAdjustmentIdsResult, String> {
+    tokio::task::spawn_blocking(move || {
+        let (mut conn, _) = connect_with_fallback(&config, 5000, None)?;
+        use mysql::prelude::Queryable;
+
+        let query = "SELECT AUTO_INCREMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stock_operaciones'";
+        let mut next_id: i64 = conn.query_first::<i64, _>(query)
+            .ok()
+            .flatten()
+            .unwrap_or(0);
+
+        if next_id == 0 {
+            next_id = conn.query_first::<i64, _>("SELECT IFNULL(MAX(IDOperacion), 0) + 1 FROM stock_operaciones")
+                .ok()
+                .flatten()
+                .unwrap_or(1);
+        }
+
+        let format_id = |op_id: i64| -> i64 {
+            if branch_id > 0 {
+                branch_id * 10_000_000 + op_id
+            } else {
+                op_id
+            }
+        };
+
+        let mut next_shortage_id = None;
+        let mut next_surplus_id = None;
+        let mut current = next_id;
+
+        if has_shortage {
+            next_shortage_id = Some(format_id(current));
+            current += 1;
+        }
+
+        if has_surplus {
+            next_surplus_id = Some(format_id(current));
+        }
+
+        Ok(NextAdjustmentIdsResult {
+            next_shortage_id,
+            next_surplus_id,
+        })
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn execute_plex_cyclic_adjustments(
+    config: MysqlConfig,
+    operator_id: i64,
+    operator_name: String,
+    branch_id: i64,
+    lab_name: String,
+    shortages: Vec<PlexAdjustmentItemInput>,
+    surpluses: Vec<PlexAdjustmentItemInput>,
+) -> Result<PlexAdjustmentResult, String> {
+    tokio::task::spawn_blocking(move || {
+        // Validación antifraude en vivo: comprobar que Plex no esté en pantalla de bloqueo
+        if let Ok(session) = crate::plex_session::check_plex_session() {
+            if session.running && !session.logged_in {
+                return Err("Operación bloqueada: Plex está en pantalla de bloqueo por inactividad. Ingrese con credencial para autorizar.".to_string());
+            }
+        }
+
+        let (mut conn, _) = connect_with_fallback(&config, 5000, None)?;
+        use mysql::prelude::Queryable;
+
+        let mut logs = Vec::new();
+        logs.push(format!("Iniciando Ajustes de Stock Plex para {} en Sucursal {}", lab_name, branch_id));
+
+        let obs_alta = "INVENTARIO CICLICO".to_string();
+        let obs_baja = "INVENTARIO CICLICO".to_string();
+
+        let mut alta_op_id: Option<i64> = None;
+        let mut baja_op_id: Option<i64> = None;
+
+        // 1. PROCESAR BAJAS (Faltantes) - Motivo 1 (Faltante)
+        if !shortages.is_empty() {
+            let mut tx = conn.start_transaction(mysql::TxOpts::default())
+                .map_err(|e| format!("Error iniciando transacción para Bajas: {}", e))?;
+
+            let q_head = format!(
+                "INSERT INTO stock_operaciones (FechaHora, IdUsuario, idMotivoOpStock, Observacion) \
+                 VALUES (NOW(), {}, 1, '{}')",
+                operator_id, obs_baja.replace('\'', "''")
+            );
+            tx.query_drop(&q_head).map_err(|e| format!("Error en cabecera Bajas: {}", e))?;
+            let op_id: i64 = tx.last_insert_id().unwrap_or(0) as i64;
+            let id_global = branch_id * 10000000 + op_id;
+
+            let q_glob = format!("UPDATE stock_operaciones SET IDGlobal = {} WHERE IDOperacion = {}", id_global, op_id);
+            tx.query_drop(&q_glob).ok();
+
+            for item in &shortages {
+                let qty = item.quantity.abs();
+                if qty == 0 { continue; }
+
+                let prod_row: Option<(i64, f64, f64, f64)> = if let Some(pid_num) = item.id_producto.as_deref().and_then(|s| s.trim().parse::<i64>().ok()) {
+                    tx.exec_first(
+                        "SELECT IDProducto, IFNULL(Costo, 0), IFNULL(UltimoCosto, 0), IFNULL(UltimoPrecio, 0) FROM productos WHERE IDProducto = ? LIMIT 1",
+                        (pid_num,),
+                    ).ok().flatten()
+                } else {
+                    tx.exec_first(
+                        "SELECT IDProducto, IFNULL(Costo, 0), IFNULL(UltimoCosto, 0), IFNULL(UltimoPrecio, 0) FROM productos WHERE Codebar = ? LIMIT 1",
+                        (&item.ean,),
+                    ).ok().flatten()
+                };
+
+                if let Some((prod_id, costo, ult_costo, precio)) = prod_row {
+                    let q_det = format!(
+                        "INSERT INTO stock_operaciones_detalle \
+                         (IDOperacion, IDProducto, NroLote, FechaVencimiento, Serie, Cantidad, Unidades, UnidadesProducto, Costo, UltimoCosto, Precio) \
+                         VALUES ({}, {}, '', NULL, '', {}, 0, 1, {}, {}, {})",
+                        op_id, prod_id, qty, costo, ult_costo, precio
+                    );
+                    tx.query_drop(&q_det).map_err(|e| format!("Error en detalle Baja (prod {}): {}", prod_id, e))?;
+
+                    let q_stk = format!(
+                        "INSERT INTO stock (IDProducto, Cantidad, Unidades, Minimo, maximo, seguridad) \
+                         VALUES ({0}, -{1}, 0, 0, 0, 0) \
+                         ON DUPLICATE KEY UPDATE Cantidad = Cantidad - {1}",
+                        prod_id, qty
+                    );
+                    tx.query_drop(&q_stk).map_err(|e| format!("Error actualizando stock Baja (prod {}): {}", prod_id, e))?;
+
+                    let q_mov = format!(
+                        "INSERT INTO stockmovimientos \
+                         (IDProducto, IDUsuario, Fecha, Hora, TipoMovimiento, Cantidad, Unidades, Referencia, IDOperacionStock) \
+                         VALUES ({}, {}, CURDATE(), CURTIME(), 'E', -{}, 0, 'Baja de Stock', {})",
+                        prod_id, operator_id, qty, op_id
+                    );
+                    tx.query_drop(&q_mov).ok();
+
+                    let log_sess = format!("usr={};dll=Stock;ver=12.4.2.1", operator_name.replace('\'', "''"));
+                    let q_log = format!(
+                        "INSERT INTO log_stock (IDProducto, Cantidad, Unidades, Minimo, Log_Session, Log_Date, Log_Type) \
+                         VALUES ({}, (SELECT Cantidad FROM stock WHERE IDProducto = {}), 0, 0, '{}', NOW(), 'UPDATE')",
+                        prod_id, prod_id, log_sess
+                    );
+                    tx.query_drop(&q_log).ok();
+                }
+            }
+
+            tx.commit().map_err(|e| format!("Error haciendo commit de Bajas: {}", e))?;
+            baja_op_id = Some(if branch_id > 0 { id_global } else { op_id });
+            logs.push(format!("Bajas registradas con éxito (Operación #{}, IDGlobal {})", op_id, id_global));
+        }
+
+        // 2. PROCESAR ALTAS (Sobrantes) - Motivo 9 (Inventario Alta)
+        if !surpluses.is_empty() {
+            let mut tx = conn.start_transaction(mysql::TxOpts::default())
+                .map_err(|e| format!("Error iniciando transacción para Altas: {}", e))?;
+
+            let q_head = format!(
+                "INSERT INTO stock_operaciones (FechaHora, IdUsuario, idMotivoOpStock, Observacion) \
+                 VALUES (NOW(), {}, 9, '{}')",
+                operator_id, obs_alta.replace('\'', "''")
+            );
+            tx.query_drop(&q_head).map_err(|e| format!("Error en cabecera Altas: {}", e))?;
+            let op_id: i64 = tx.last_insert_id().unwrap_or(0) as i64;
+            let id_global = branch_id * 10000000 + op_id;
+
+            let q_glob = format!("UPDATE stock_operaciones SET IDGlobal = {} WHERE IDOperacion = {}", id_global, op_id);
+            tx.query_drop(&q_glob).ok();
+
+            for item in &surpluses {
+                let qty = item.quantity.abs();
+                if qty == 0 { continue; }
+
+                let prod_row: Option<(i64, f64, f64, f64)> = if let Some(pid_num) = item.id_producto.as_deref().and_then(|s| s.trim().parse::<i64>().ok()) {
+                    tx.exec_first(
+                        "SELECT IDProducto, IFNULL(Costo, 0), IFNULL(UltimoCosto, 0), IFNULL(UltimoPrecio, 0) FROM productos WHERE IDProducto = ? LIMIT 1",
+                        (pid_num,),
+                    ).ok().flatten()
+                } else {
+                    tx.exec_first(
+                        "SELECT IDProducto, IFNULL(Costo, 0), IFNULL(UltimoCosto, 0), IFNULL(UltimoPrecio, 0) FROM productos WHERE Codebar = ? LIMIT 1",
+                        (&item.ean,),
+                    ).ok().flatten()
+                };
+
+                if let Some((prod_id, costo, ult_costo, precio)) = prod_row {
+                    let q_det = format!(
+                        "INSERT INTO stock_operaciones_detalle \
+                         (IDOperacion, IDProducto, NroLote, FechaVencimiento, Serie, Cantidad, Unidades, UnidadesProducto, Costo, UltimoCosto, Precio) \
+                         VALUES ({}, {}, '', NULL, '', {}, 0, 1, {}, {}, {})",
+                        op_id, prod_id, qty, costo, ult_costo, precio
+                    );
+                    tx.query_drop(&q_det).map_err(|e| format!("Error en detalle Alta (prod {}): {}", prod_id, e))?;
+
+                    let q_stk = format!(
+                        "INSERT INTO stock (IDProducto, Cantidad, Unidades, Minimo, maximo, seguridad) \
+                         VALUES ({0}, {1}, 0, 0, 0, 0) \
+                         ON DUPLICATE KEY UPDATE Cantidad = Cantidad + {1}",
+                        prod_id, qty
+                    );
+                    tx.query_drop(&q_stk).map_err(|e| format!("Error actualizando stock Alta (prod {}): {}", prod_id, e))?;
+
+                    let q_mov = format!(
+                        "INSERT INTO stockmovimientos \
+                         (IDProducto, IDUsuario, Fecha, Hora, TipoMovimiento, Cantidad, Unidades, Referencia, IDOperacionStock) \
+                         VALUES ({}, {}, CURDATE(), CURTIME(), 'E', {}, 0, 'Alta de Stock', {})",
+                        prod_id, operator_id, qty, op_id
+                    );
+                    tx.query_drop(&q_mov).ok();
+
+                    let log_sess = format!("usr={};dll=Stock;ver=12.4.2.1", operator_name.replace('\'', "''"));
+                    let q_log = format!(
+                        "INSERT INTO log_stock (IDProducto, Cantidad, Unidades, Minimo, Log_Session, Log_Date, Log_Type) \
+                         VALUES ({}, (SELECT Cantidad FROM stock WHERE IDProducto = {}), 0, 0, '{}', NOW(), 'UPDATE')",
+                        prod_id, prod_id, log_sess
+                    );
+                    tx.query_drop(&q_log).ok();
+                }
+            }
+
+            tx.commit().map_err(|e| format!("Error haciendo commit de Altas: {}", e))?;
+            alta_op_id = Some(if branch_id > 0 { id_global } else { op_id });
+            logs.push(format!("Altas registradas con éxito (Operación #{}, IDGlobal {})", op_id, id_global));
+        }
+
+        Ok(PlexAdjustmentResult {
+            success: true,
+            alta_id: alta_op_id,
+            baja_id: baja_op_id,
+            total_altas: surpluses.len(),
+            total_bajas: shortages.len(),
+            message: format!("Ajustes impactados en Plex correctamente (Altas: {}, Bajas: {}).", surpluses.len(), shortages.len()),
+            logs,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_candidate_hosts_prevents_cross_subnet_switching() {
+        // Sucursal 4 Retiro II (10.0.4.10) NUNCA debe incluir 192.168.4.10 (Sucursal 22 Flores)
+        let candidates_suc_4 = get_candidate_hosts("10.0.4.10");
+        assert_eq!(candidates_suc_4, vec!["10.0.4.10"]);
+        assert!(!candidates_suc_4.contains(&"192.168.4.10".to_string()));
+
+        // Sucursal 22 Flores (192.168.22.10) tampoco debe saltar a 10.0.22.10
+        let candidates_suc_22 = get_candidate_hosts("192.168.22.10");
+        assert_eq!(candidates_suc_22, vec!["192.168.22.10"]);
+        assert!(!candidates_suc_22.contains(&"10.0.22.10".to_string()));
+    }
+
+    #[test]
+    fn test_candidate_hosts_localhost_fallback() {
+        let localhost = get_candidate_hosts("localhost");
+        assert_eq!(localhost, vec!["localhost", "127.0.0.1"]);
+
+        let loopback = get_candidate_hosts("127.0.0.1");
+        assert_eq!(loopback, vec!["127.0.0.1", "localhost"]);
+    }
+}
 
 

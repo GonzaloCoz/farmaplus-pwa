@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { notify } from '@/lib/notifications';
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -139,21 +139,28 @@ export default function CyclicInventory() {
   // Lab Removal Request State
   const [removalModalOpen, setRemovalModalOpen] = useState(false);
   const [removalLabData, setRemovalLabData] = useState<{ labName: string; category?: string; round?: number } | null>(null);
+  const loadedBranchRef = useRef<string | null>(null);
 
-  const loadLabs = useCallback(async () => {
-    if (!user?.branchSheet) {
+  const branchSheet = user?.branchSheet;
+  const branchName = user?.branchName;
+
+  const loadLabs = useCallback(async (options?: { silent?: boolean }) => {
+    if (!branchSheet) {
       setIsLoading(false);
       return;
     }
-    setIsLoading(true);
+    const isFirstLoadForBranch = loadedBranchRef.current !== branchSheet;
+    if (isFirstLoadForBranch && !options?.silent) {
+      setIsLoading(true);
+    }
 
     try {
       // 1. Cargar en paralelo todas las consultas independientes
       const [allBranchRequests, allowedLabs, config, inventoryStats] = await Promise.all([
-        requestsService.getRequests(user.branchSheet),
-        getLaboratoriesForBranch(user.branchSheet),
-        cyclicInventoryService.getBranchConfig(user.branchSheet),
-        cyclicInventoryService.getAllCyclicInventories(user.branchSheet)
+        requestsService.getRequests(branchSheet),
+        getLaboratoriesForBranch(branchSheet),
+        cyclicInventoryService.getBranchConfig(branchSheet),
+        cyclicInventoryService.getAllCyclicInventories(branchSheet)
       ]);
 
       const approvedBajas = allBranchRequests
@@ -257,13 +264,14 @@ export default function CyclicInventory() {
       });
 
       setLaboratories(mergedData);
+      loadedBranchRef.current = branchSheet;
 
       // Contar ajustes históricos reales del ledger (con ID de PLEX)
       try {
         const { count, error: ledgerErr } = await supabase
           .from('inventory_ledger' as any)
           .select('id', { count: 'exact', head: true })
-          .eq('branch_name', normalizeString(user.branchSheet))
+          .eq('branch_name', normalizeString(branchSheet))
           .or('adjustment_id_shortage.not.is.null,adjustment_id_surplus.not.is.null');
 
         if (!ledgerErr && count !== null) {
@@ -277,32 +285,41 @@ export default function CyclicInventory() {
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [branchSheet]);
 
   useEffect(() => {
     loadLabs();
 
-    // Suscripción Realtime para actualizar la vista de laboratorios cuando se apruebe o rechace una solicitud
+    // Suscripción Realtime para actualizar la vista de laboratorios en segundo plano
+    // solo cuando cambie una solicitud de la sucursal activa (sin disparar skeletons)
     const channel = supabase
-      .channel('cyclic-inventory-requests-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, () => {
-        loadLabs();
+      .channel(`cyclic-inventory-requests-realtime-${branchSheet || 'default'}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, (payload) => {
+        const record = (payload.new || payload.old) as { branch_name?: string } | undefined;
+        if (
+          record?.branch_name &&
+          branchSheet &&
+          normalizeString(record.branch_name) !== normalizeString(branchSheet)
+        ) {
+          return;
+        }
+        loadLabs({ silent: true });
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [loadLabs]);
+  }, [loadLabs, branchSheet]);
 
   // Obtener estado de bloqueo
   useEffect(() => {
     const checkLockStatus = async () => {
-      if (!user?.branchName) return;
+      if (!branchName) return;
       try {
-        const config = await cyclicInventoryService.getBranchConfig(user.branchName);
+        const config = await cyclicInventoryService.getBranchConfig(branchName);
         const status = await cyclicInventoryService.isInventoryLocked(
-          user.branchName,
+          branchName,
           config.days,
           config.startDate
         );
@@ -312,7 +329,7 @@ export default function CyclicInventory() {
       }
     };
     checkLockStatus();
-  }, [user]);
+  }, [branchName]);
 
   // Listener para datos de Excel desde el Launcher (Electron)
   useEffect(() => {
@@ -787,7 +804,7 @@ export default function CyclicInventory() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="w-full max-w-none mx-auto pt-3 pb-32 lg:pb-10 px-4 lg:px-6 space-y-4 lg:space-y-6">
       {/* Lock Status Alert */}
       {lockStatus.isLocked && user?.role === 'branch' && (
         <Alert className="border-destructive/50 bg-destructive/10">
@@ -868,8 +885,9 @@ export default function CyclicInventory() {
                      : ((totalPositiveUnits + totalNegativeUnits) < 0 ? "-" : (totalPositiveUnits + totalNegativeUnits) > 0 ? "+" : "")
                    }
                    suffix={metricViewMode === 'units' ? " u." : ""}
+                   style={{ fontVariationSettings: "'wght' 550, 'opsz' 24" }}
                    className={cn(
-                    "font-bold tracking-tight text-xl sm:text-2xl",
+                    "font-semibold tracking-[0.005em] text-xl sm:text-2xl tabular-nums",
                     (metricViewMode === 'currency' ? totalDifference : (totalPositiveUnits + totalNegativeUnits)) < 0 
                       ? "text-financial-negative" 
                       : (metricViewMode === 'currency' ? totalDifference : (totalPositiveUnits + totalNegativeUnits)) > 0 
@@ -877,7 +895,7 @@ export default function CyclicInventory() {
                         : "text-foreground"
                    )}
                 />
-                <span className={cn("text-xs font-bold", totalDifference !== 0 ? (totalDifference < 0 ? "text-financial-negative-muted" : "text-financial-positive-muted") : "text-muted-foreground")}>
+                <span className={cn("text-xs font-medium tabular-nums", totalDifference !== 0 ? (totalDifference < 0 ? "text-financial-negative-muted" : "text-financial-positive-muted") : "text-muted-foreground")}>
                   {totalDifference < 0 ? "↓" : totalDifference > 0 ? "↑" : ""}{netTrend.value}%
                 </span>
               </div>
@@ -896,9 +914,10 @@ export default function CyclicInventory() {
                   } 
                   prefix={metricViewMode === 'currency' ? "$" : ""}
                   suffix={metricViewMode === 'units' ? " u." : ""}
-                  className="font-bold tracking-tight text-xl sm:text-2xl text-foreground"
+                  style={{ fontVariationSettings: "'wght' 550, 'opsz' 24" }}
+                  className="font-semibold tracking-[0.005em] text-xl sm:text-2xl tabular-nums text-foreground"
                 />
-                <span className="text-xs font-bold text-muted-foreground/60">
+                <span className="text-xs font-medium tabular-nums text-muted-foreground/60">
                   {absoluteTrend.value}%
                 </span>
               </div>
@@ -917,9 +936,10 @@ export default function CyclicInventory() {
                   } 
                   prefix={metricViewMode === 'currency' ? "$" : ""}
                   suffix={metricViewMode === 'units' ? " u." : ""}
-                  className="font-bold tracking-tight text-xl sm:text-2xl text-financial-negative"
+                  style={{ fontVariationSettings: "'wght' 550, 'opsz' 24" }}
+                  className="font-semibold tracking-[0.005em] text-xl sm:text-2xl tabular-nums text-financial-negative"
                 />
-                <span className={cn("text-xs font-bold", totalNegative !== 0 ? "text-financial-negative-muted" : "text-muted-foreground")}>
+                <span className={cn("text-xs font-medium tabular-nums", totalNegative !== 0 ? "text-financial-negative-muted" : "text-muted-foreground")}>
                   {totalNegative !== 0 ? "↓" : ""}{negativeTrend.value}%
                 </span>
               </div>
@@ -938,9 +958,10 @@ export default function CyclicInventory() {
                   } 
                   prefix={metricViewMode === 'currency' ? "$" : ""}
                   suffix={metricViewMode === 'units' ? " u." : ""}
-                  className="font-bold tracking-tight text-xl sm:text-2xl text-financial-positive"
+                  style={{ fontVariationSettings: "'wght' 550, 'opsz' 24" }}
+                  className="font-semibold tracking-[0.005em] text-xl sm:text-2xl tabular-nums text-financial-positive"
                 />
-                <span className={cn("text-xs font-bold", totalPositive !== 0 ? "text-financial-positive-muted" : "text-muted-foreground")}>
+                <span className={cn("text-xs font-medium tabular-nums", totalPositive !== 0 ? "text-financial-positive-muted" : "text-muted-foreground")}>
                   {totalPositive !== 0 ? "↑" : ""}{positiveTrend.value}%
                 </span>
               </div>
@@ -951,9 +972,9 @@ export default function CyclicInventory() {
 
       {/* Filtros y Búsqueda */}
       <Tabs value={categoryFilter} onValueChange={(v) => setCategoryFilter(v as FilterCategory)} className="w-full">
-        <div className="flex flex-col md:flex-row md:items-center justify-between transition-all gap-4 mb-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-3">
           {/* Filtros de Categoría */}
-          <TabsList>
+          <TabsList className="w-fit shrink-0">
             <TabItem value="MEDICAMENTOS" label="Medicamentos" />
             <TabItem value="PERFUMERIA" label="Perfumería" />
             <TabItem value="ACCESORIOS" label="Accesorios" />
@@ -961,7 +982,7 @@ export default function CyclicInventory() {
           </TabsList>
 
         {/* Toolbar de Acciones */}
-        <div className="flex items-center gap-2.5 flex-1 justify-end">
+        <div className="flex items-center gap-2 flex-1 justify-end">
           {/* Botón de Solicitudes antes del buscador */}
           <Button 
             variant="tertiary" 
@@ -969,6 +990,7 @@ export default function CyclicInventory() {
             onClick={() => navigate('/solicitudes')}
             className="shrink-0"
             title="Ver Solicitudes"
+            aria-label="Ver Solicitudes"
           >
             <FileSearch02 className="text-muted-foreground group-hover:text-foreground transition-colors" />
           </Button>
@@ -978,6 +1000,7 @@ export default function CyclicInventory() {
             <InputField
               index={0}
               placeholder="Buscar por nombre..."
+              aria-label="Buscar laboratorio por nombre"
               icon={icons.search}
               value={searchTerm}
               onChange={setSearchTerm}
@@ -992,6 +1015,8 @@ export default function CyclicInventory() {
                 <Button 
                   variant="tertiary" 
                   size="icon"
+                  title="Ordenar y filtrar"
+                  aria-label="Ordenar y filtrar laboratorios"
                 >
                   <Filter className="text-muted-foreground group-hover:text-foreground transition-colors" />
                 </Button>
@@ -1065,6 +1090,8 @@ export default function CyclicInventory() {
                   variant="tertiary" 
                   size="icon" 
                   disabled={isProcessingMassAction}
+                  title="Más opciones"
+                  aria-label="Más opciones de inventario"
                 >
                   <MoreVertical className="text-muted-foreground group-hover:text-foreground transition-colors" />
                 </Button>
@@ -1143,7 +1170,7 @@ export default function CyclicInventory() {
           {categoryFilter === cat && (
             <>
               {viewMode === 'grid' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 min-[1640px]:grid-cols-5 gap-4">
                   {renderedLabs.map((lab) => (
                     <LaboratoryCard
                       key={lab.labName}
@@ -1521,7 +1548,7 @@ export default function CyclicInventory() {
           category={removalLabData.category}
           branchName={user?.branchSheet}
           onSuccess={() => {
-            loadLabs();
+            loadLabs({ silent: true });
           }}
         />
       )}

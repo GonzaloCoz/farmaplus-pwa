@@ -1,5 +1,5 @@
 import { forwardRef, useImperativeHandle, useEffect } from "react";
-import { motion, useAnimate } from "framer-motion";
+import { motion, useAnimate } from "motion/react";
 
 export interface AnimatedIconProps {
   size?: number;

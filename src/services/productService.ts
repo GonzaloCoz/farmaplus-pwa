@@ -254,6 +254,25 @@ export async function getLaboratoriesForBranch(branchName: string): Promise<{ na
         const limit = 1000;
         const cleanBranch = normalizeString(branchName);
         const upperBranch = (branchName || '').trim().toUpperCase();
+
+        // Enrutamiento aislado para Saladillo a la nueva tabla cyclic_labs
+        if (cleanBranch.toLowerCase() === 'saladillo') {
+            const { data, error } = await (supabase.from('cyclic_labs') as any)
+                .select('laboratory, category, round')
+                .eq('branch_slug', 'saladillo')
+                .neq('state', 'hibernated');
+
+            if (error) {
+                console.error('[ProductService] Error fetching cyclic_labs for saladillo:', error);
+                return [];
+            }
+            return (data || []).map((r: any) => ({
+                name: r.laboratory,
+                category: r.category,
+                round: Number(r.round || 1)
+            }));
+        }
+
         while (true) {
             const { data, error } = await supabase
                 .from('branch_laboratories')

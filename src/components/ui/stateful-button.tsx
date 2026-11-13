@@ -3,7 +3,7 @@ import {
   motion,
   useReducedMotion,
   type Variants,
-} from "framer-motion";
+} from "motion/react";
 import { Check, Loader2, X } from "lucide-react";
 import {
   forwardRef,

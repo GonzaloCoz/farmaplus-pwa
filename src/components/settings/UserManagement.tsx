@@ -11,7 +11,7 @@ import { permissionsService } from "@/services/permissionsService";
 import { Plus } from '@untitledui/icons';
 import { Users01 as Users, Shield01 as Shield, RefreshCw01 as RefreshCw, SearchLg as Search, ChevronDown, ChevronUp, Edit01 as Edit2, Trash01 as Trash2, User01 as UserIcon, Mail01 as Mail, Lock01 as Lock } from '@untitledui/icons';
 import { cn } from "@/lib/utils";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import React from "react";
 
 interface Profile {

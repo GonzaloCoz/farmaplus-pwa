@@ -30,9 +30,9 @@ function isTauriEnvironment(): boolean {
 
 // Mapa de subredes internas de contingencia (solo resuelto en runtime nativo Desktop)
 const SUBNET_192_OCTETS: Record<number, number> = {
-    2: 42, 4: 22, 5: 43, 6: 14, 7: 25, 8: 27, 9: 24, 10: 26, 11: 17,
-    15: 12, 16: 19, 17: 2, 19: 3, 21: 6, 25: 10, 28: 29, 30: 31, 31: 32,
-    35: 34, 37: 36, 38: 38, 39: 37, 40: 45, 42: 44, 43: 18, 48: 43, 49: 47
+    2: 42, 4: 22, 5: 20, 6: 14, 7: 25, 8: 27, 9: 24, 10: 26, 11: 17,
+    15: 12, 16: 19, 17: 2, 19: 3, 21: 6, 25: 10, 30: 31, 31: 32,
+    34: 23, 35: 34, 38: 38, 39: 37, 40: 45, 42: 44, 43: 18, 48: 43, 49: 47
 };
 
 const SUBNET_10_OCTETS: Record<number, number> = {
@@ -47,6 +47,7 @@ export function resolveBranchIp(branchId: number): string {
     if (!isTauriEnvironment()) {
         return '127.0.0.1';
     }
+    // Branch 1 (FP ADM)
     if (branchId === 1) {
         return '172.30.40.63';
     }
@@ -133,6 +134,11 @@ const RAW_BRANCH_METADATA = [
     { branchId: 74, name: 'PALERMO IV', code: 'S74', sigla: 'SUC74' },
     { branchId: 75, name: 'DEVOTO III', code: 'S75', sigla: 'SUC75' },
     { branchId: 76, name: 'PILAR II', code: 'S76', sigla: 'SUC76' },
+    { branchId: 104, name: 'VILLA URQUIZA IV', code: 'S104', sigla: 'SUC104' },
+    { branchId: 105, name: 'BALVANERA', code: 'S105', sigla: 'SUC105' },
+    { branchId: 106, name: 'BALVANERA II', code: 'S106', sigla: 'SUC106' },
+    { branchId: 107, name: 'COLEGIALES', code: 'S107', sigla: 'SUC107' },
+    { branchId: 108, name: 'RECOLETA VI', code: 'S108', sigla: 'SUC108' },
 ];
 
 export const OFFICIAL_71_BRANCHES: OfficialBranchInfo[] = RAW_BRANCH_METADATA.map((b) => ({

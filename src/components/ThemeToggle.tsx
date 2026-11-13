@@ -1,5 +1,5 @@
 import { Moon01 as Moon, Sun } from '@untitledui/icons';
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { useTheme } from "@/hooks/useTheme";
 
 export function ThemeToggle() {

@@ -1,20 +1,28 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { spring, exitFallbackMs } from "@/lib/springs";
+import { omit } from "@/lib/omit";
 import { useSurface, SurfaceProvider } from "@/lib/surface-context";
 import { surfaceClasses } from "@/lib/surface-classes";
 
 // Built on Base UI Dialog rather than Base UI Drawer: Drawer's
 // swipe-to-dismiss writes inline `transform` + `--drawer-swipe-movement-*`
 // CSS vars onto its Popup and expects CSS-transition choreography (plus a
-// mandatory <Drawer.Viewport>), which fights framer-motion's transform
+// mandatory <Drawer.Viewport>), which fights Motion's transform
 // management on the same element. Dialog provides everything we actually
 // need — scroll lock (scrollbar-gap safe, blocks iOS touch scrolling),
 // focus trap, focus restore timed after close, Esc + outside-click
-// dismissal — while leaving the slide animation to framer-motion.
+// dismissal — while leaving the slide animation to Motion.
 
 interface MobileDrawerProps {
   open: boolean;
@@ -23,7 +31,7 @@ interface MobileDrawerProps {
   triggerRef?: RefObject<HTMLElement | null>;
 }
 
-// Props framer-motion redefines with incompatible signatures; they must not
+// Props Motion redefines with incompatible signatures; they must not
 // be forwarded from Base UI's render-prop payload onto a motion.div.
 type MotionSafeDivProps = Omit<
   React.HTMLAttributes<HTMLDivElement>,
@@ -35,6 +43,37 @@ type MotionSafeDivProps = Omit<
   | "onAnimationIteration"
 >;
 
+// Base UI unmounts a closing popup once the animations it can detect on the
+// popup element end. It misses the Motion exit spring, which it cuts.
+// A close that calls preventUnmountOnClose() in onOpenChange stays mounted
+// until the content calls actionsRef.unmount(). A close made by setting
+// `open` never reaches onOpenChange, so the root stays open until that close
+// is replayed through actionsRef.close(), which does.
+function usePopupExit(open: boolean, setOpen: (open: boolean) => void) {
+  const actionsRef = useRef<DialogPrimitive.Root.Actions | null>(null);
+  const [rootOpen, setRootOpen] = useState(open);
+  if (open && !rootOpen) setRootOpen(true);
+  useLayoutEffect(() => {
+    if (open || !rootOpen) return;
+    // The root fills actionsRef before this effect runs; without it, close
+    // straight away rather than stay open.
+    if (actionsRef.current) actionsRef.current.close();
+    else setRootOpen(false);
+  }, [open, rootOpen]);
+  const onOpenChange = (
+    next: boolean,
+    details: { preventUnmountOnClose: () => void }
+  ) => {
+    if (!next) {
+      details.preventUnmountOnClose();
+      setRootOpen(false);
+    }
+    // A replayed close finds `open` already false: nothing to report.
+    if (next !== open) setOpen(next);
+  };
+  return { actionsRef, rootOpen: open || rootOpen, onOpenChange };
+}
+
 export function MobileDrawer({
   open,
   onClose,
@@ -44,10 +83,12 @@ export function MobileDrawer({
   const substrate = useSurface();
   const level = Math.min(substrate + 2, 8);
 
-  // With `actionsRef` set, Base UI defers unmounting the portal on close
-  // until `actionsRef.current.unmount()` is called, letting the
-  // framer-motion exit tween below play out first.
-  const actionsRef = useRef<DialogPrimitive.Root.Actions | null>(null);
+  // A close holds Base UI's unmount until the Motion exit tween below
+  // has played (see usePopupExit). The drawer only reports closes: opening
+  // is the parent's job.
+  const { actionsRef, rootOpen, onOpenChange } = usePopupExit(open, (next) => {
+    if (!next) onClose();
+  });
 
   // Fallback release for the deferred unmount: onAnimationComplete on the
   // panel is the primary signal, but rAF-driven animation callbacks can
@@ -61,14 +102,12 @@ export function MobileDrawer({
       exitFallbackMs(spring.moderate)
     );
     return () => clearTimeout(id);
-  }, [open]);
+  }, [open, actionsRef]);
 
   return (
     <DialogPrimitive.Root
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) onClose();
-      }}
+      open={rootOpen}
+      onOpenChange={onOpenChange}
       actionsRef={actionsRef}
     >
       <DialogPrimitive.Portal>
@@ -78,14 +117,14 @@ export function MobileDrawer({
             to /80 in explicit dark mode. */}
         <DialogPrimitive.Backdrop
           render={(backdropProps) => {
-            const {
-              style: _style,
-              ...rest
-            } = backdropProps as React.HTMLAttributes<HTMLDivElement>;
+            const rest = omit(
+              backdropProps as React.HTMLAttributes<HTMLDivElement>,
+              ["style"]
+            );
             return (
               <motion.div
                 {...(rest as MotionSafeDivProps)}
-                className="fixed inset-0 bg-black/40 dark:bg-black/80 z-40"
+                className="fixed inset-0 bg-black/40 dark:bg-black/80 z-[var(--z-overlay,40)]"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: open ? 1 : 0 }}
                 transition={open ? { duration: 0.16 } : spring.moderate.exit}
@@ -106,7 +145,7 @@ export function MobileDrawer({
             return (
               <motion.div
                 {...(rest as MotionSafeDivProps)}
-                className={`fixed top-0 left-0 bottom-0 w-64 ${surfaceClasses(level, 3)} z-50 overflow-y-auto p-4`}
+                className={`fixed top-0 left-0 bottom-0 w-64 ${surfaceClasses(level, 3)} z-[var(--z-modal,50)] overflow-y-auto p-4`}
                 style={baseStyle as React.CSSProperties | undefined}
                 initial={{ x: "-100%" }}
                 animate={{ x: open ? 0 : "-100%" }}

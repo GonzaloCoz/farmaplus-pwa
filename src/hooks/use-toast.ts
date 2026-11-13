@@ -1,7 +1,7 @@
 import * as React from "react";
-import { toast as sonnerToast } from "sonner";
+import { notify, sileo } from "@/lib/notifications";
 
-export function toast(props: {
+function toastFn(props: {
   title?: React.ReactNode;
   description?: React.ReactNode;
   variant?: "default" | "destructive";
@@ -9,14 +9,14 @@ export function toast(props: {
   [key: string]: any;
 }) {
   const { title, description, variant, action } = props;
+  const titleStr = typeof title === 'string' ? title : String(title || '');
+  const descStr = typeof description === 'string' ? description : description ? String(description) : undefined;
   
-  const options: any = { description };
+  const options: any = { description: descStr };
   
   if (action && React.isValidElement(action)) {
-    // Attempt to extract text and onClick from ToastAction
     const actionElement = action as React.ReactElement<any>;
     const onClick = actionElement.props.onClick || (() => {});
-    // Use children as label if it's a string, otherwise fallback
     const label = typeof actionElement.props.children === 'string' 
       ? actionElement.props.children 
       : (actionElement.props.altText || "Action");
@@ -25,15 +25,17 @@ export function toast(props: {
   }
 
   if (variant === "destructive") {
-    return sonnerToast.error(title as string, options);
+    return notify.error(titleStr, descStr, options);
   }
-  return sonnerToast(title as string, options);
+  return notify.info(titleStr, descStr, options);
 }
+
+export const toast = Object.assign(toastFn, notify);
 
 export function useToast() {
   return {
     toast,
-    dismiss: (toastId?: string | number) => sonnerToast.dismiss(toastId),
-    toasts: [] // Mock to prevent errors in existing consumers mapping over state
+    dismiss: (toastId?: string | number) => sileo.dismiss(toastId ? String(toastId) : (undefined as any)),
+    toasts: []
   };
 }

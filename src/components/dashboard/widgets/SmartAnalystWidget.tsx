@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getAllExpirationItems } from '@/services/expirationDB';
 import { CpuChip01 as BrainCircuit, AlertTriangle, ChevronRight as ArrowRight, CheckCircle } from '@untitledui/icons';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from "motion/react";
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useNavigate } from 'react-router-dom';

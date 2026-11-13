@@ -1,9 +1,10 @@
 import { db, PendingAction } from './db';
 import { supabase } from '@/integrations/supabase/client';
+import { auditService } from './auditService';
 
 export class SyncManager {
     private isSyncing = false;
-    private maxRetries = 3;
+    private maxRetries = 5;
     private debounceTimer: NodeJS.Timeout | null = null;
     private recurringInterval: NodeJS.Timeout | null = null;
     private pendingItemCount = 0;
@@ -13,6 +14,7 @@ export class SyncManager {
     private readonly DEBOUNCE_INTERVAL_MS = 10000; // 10s tras último escaneo
     private readonly MAX_BATCH_THRESHOLD = 20;     // Disparo forzado al acumular 20 lecturas continuas
     private readonly RECURRING_INTERVAL_MS = 15000; // Chequeo periódico de rutina cada 15s
+    private readonly SLOW_BATCH_THRESHOLD_MS = 1500; // Umbral de alerta REA para lotes lentos
 
     constructor() {
         if (typeof window !== 'undefined') {
@@ -49,10 +51,10 @@ export class SyncManager {
     /**
      * Emite un evento en el DOM para que los componentes UI muestren estado de sincronización
      */
-    private emitSyncStatus(isSyncing: boolean, pendingCount: number) {
+    private emitSyncStatus(isSyncing: boolean, pendingCount: number, latencyMs?: number) {
         if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('precount:sync_status', {
-                detail: { isSyncing, pendingCount, timestamp: Date.now() }
+                detail: { isSyncing, pendingCount, latencyMs, timestamp: Date.now() }
             }));
         }
     }
@@ -120,23 +122,25 @@ export class SyncManager {
     }
 
     async processQueue() {
-        console.log(`[SyncManager] processQueue called. isSyncing: ${this.isSyncing}, onLine: ${navigator.onLine}`);
         if (this.isSyncing || !navigator.onLine) return;
 
         this.isSyncing = true;
+        let lastBatchLatencyMs: number | undefined;
 
         try {
-            const pendingActions = await db.pendingActions
+            const allPending = await db.pendingActions
                 .where('status')
-                .anyOf('pending', 'failed') // Retry failed ones too
+                .anyOf('pending', 'failed')
                 .sortBy('timestamp');
 
+            // Filtrar acciones que no hayan superado el límite de reintentos (evita loops infinitos)
+            const pendingActions = allPending.filter(a => (a.retries || 0) < this.maxRetries);
+
             if (pendingActions.length === 0) {
-                console.log('[SyncManager] No pending actions to sync.');
                 return;
             }
             
-            console.log(`[SyncManager] Processing queue (${pendingActions.length} items)`);
+            this.emitSyncStatus(true, pendingActions.length);
 
             // Group item upserts to batch them
             const itemUpserts: PendingAction[] = [];
@@ -152,17 +156,18 @@ export class SyncManager {
 
             // 1. Process Batchable Item Upserts
             if (itemUpserts.length > 0) {
-                // Batch size of 50 is safe for Nano instances
                 const BATCH_SIZE = 50;
                 for (let i = 0; i < itemUpserts.length; i += BATCH_SIZE) {
+                    if (!navigator.onLine) break;
+
                     const currentBatch = itemUpserts.slice(i, i + BATCH_SIZE);
                     const batchIds = currentBatch.map(a => a.id!).filter(Boolean);
                     
                     await db.pendingActions.where('id').anyOf(batchIds).modify({ status: 'syncing' });
+                    const startMs = performance.now();
 
                     try {
                         const itemsData = currentBatch.map(a => {
-                            // Ensure scanned_by is a valid UUID or null to avoid DB error 400
                             const isValidUUID = (id?: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id || '');
                             const scannedBy = isValidUUID(a.data.scanned_by) ? a.data.scanned_by : null;
 
@@ -186,34 +191,71 @@ export class SyncManager {
 
                         if (error) throw error;
 
+                        const durationMs = Math.round(performance.now() - startMs);
+                        lastBatchLatencyMs = durationMs;
+
                         // Success! Update local state
                         const localItemIds = currentBatch.map(a => a.data.id).filter(Boolean);
                         await db.items.where('id').anyOf(localItemIds).modify({ synced: 1 });
                         await db.pendingActions.where('id').anyOf(batchIds).delete();
 
-                        console.log(`SyncManager: Successfully synced batch of ${currentBatch.length} items`);
+                        if (durationMs >= this.SLOW_BATCH_THRESHOLD_MS) {
+                            console.warn(`[SyncManager][REA] Lote lento detectado: ${durationMs}ms para ${currentBatch.length} ítems`);
+                            auditService.logAction({
+                                action: 'SYNC_BATCH_SLOW',
+                                entityType: 'SYSTEM',
+                                details: {
+                                    batchSize: currentBatch.length,
+                                    latencyMs: durationMs,
+                                    deviceName: currentBatch[0]?.data?.device_name || 'Terminal',
+                                    sessionId: currentBatch[0]?.data?.session_id
+                                }
+                            }).catch(() => {});
+                        }
 
                         // Throttle to let the DB breathe (Nano tier)
                         if (i + BATCH_SIZE < itemUpserts.length) {
-                            await new Promise(resolve => setTimeout(resolve, 500));
+                            await new Promise(resolve => setTimeout(resolve, 400));
                         }
                     } catch (error: any) {
-                        console.error(`Batch sync failed (${error.status || 'unknown'}):`, error);
+                        const durationMs = Math.round(performance.now() - startMs);
+                        console.error(`Batch sync failed (${error.status || 'unknown'}) after ${durationMs}ms:`, error);
+
+                        auditService.logAction({
+                            action: 'SYNC_QUEUE_ERROR',
+                            entityType: 'SYSTEM',
+                            details: {
+                                batchSize: currentBatch.length,
+                                latencyMs: durationMs,
+                                error: error?.message || String(error),
+                                deviceName: currentBatch[0]?.data?.device_name || 'Terminal',
+                            }
+                        }).catch(() => {});
+
+                        // Si se perdió la conexión de red, devolver el lote a estado 'pending' sin disparar N peticiones individuales
+                        if (!navigator.onLine) {
+                            await db.pendingActions.where('id').anyOf(batchIds).modify({ status: 'pending' });
+                            break;
+                        }
                         
-                        // FALLBACK: If batch fails, try items individually
-                        console.log(`[SyncManager] Falling back to individual sync for batch of ${currentBatch.length} items...`);
-                        
+                        // FALLBACK controlado: intentar individualmente pero cortando de inmediato si cae la red o hay timeout
                         for (const action of currentBatch) {
+                            if (!navigator.onLine) {
+                                if (action.id) {
+                                    await db.pendingActions.update(action.id, { status: 'pending' });
+                                }
+                                continue;
+                            }
                             try {
                                 await this.executeAction(action);
-                                // If success, cleanup
                                 if (action.id) await db.pendingActions.delete(action.id);
                                 if (action.data?.id) await db.items.update(action.data.id, { synced: 1 });
                             } catch (indError: any) {
                                 console.error(`[SyncManager] Individual item sync failed for ${action.data?.ean}:`, indError);
                                 if (action.id) {
                                     await db.pendingActions.update(action.id, { 
-                                        status: 'failed', 
+                                        status: 'failed',
+                                        retries: (action.retries || 0) + 1,
                                         error: indError.message || 'Individual sync error' 
                                     });
                                 }
@@ -225,7 +267,7 @@ export class SyncManager {
 
             // 2. Process Individual Actions (Sessions, deletes, etc.)
             for (const action of otherActions) {
-                if (!action.id) continue;
+                if (!action.id || !navigator.onLine) continue;
                 await db.pendingActions.update(action.id, { status: 'syncing' });
                 try {
                     await this.executeAction(action);
@@ -237,9 +279,7 @@ export class SyncManager {
                     await db.pendingActions.delete(action.id);
                 } catch (error: any) {
                     console.error('Individual sync failed:', error);
-                    // If conflict (duplicate key), session is already present on server
                     if (action.entity === 'session' && (error?.code === '23505' || error?.status === 409)) {
-                        console.log(`[SyncManager] Session ${action.data?.id} already exists on Supabase. Marking as synced.`);
                         if (action.data?.id) {
                             await db.sessions.update(action.data.id, { synced: 1 });
                         }
@@ -247,7 +287,8 @@ export class SyncManager {
                         continue;
                     }
                     await db.pendingActions.update(action.id, { 
-                        status: 'failed', 
+                        status: 'failed',
+                        retries: (action.retries || 0) + 1,
                         error: error.message || 'Action error' 
                     });
                 }
@@ -255,10 +296,14 @@ export class SyncManager {
         } finally {
             this.isSyncing = false;
             try {
-                const remaining = await db.pendingActions.where('status').anyOf('pending', 'failed').count();
-                this.emitSyncStatus(false, remaining);
+                const remaining = await db.pendingActions
+                    .where('status')
+                    .anyOf('pending', 'failed')
+                    .filter(a => (a.retries || 0) < this.maxRetries)
+                    .count();
+                this.emitSyncStatus(false, remaining, lastBatchLatencyMs);
             } catch {
-                this.emitSyncStatus(false, 0);
+                this.emitSyncStatus(false, 0, lastBatchLatencyMs);
             }
         }
     }
@@ -267,7 +312,7 @@ export class SyncManager {
         const { entity, type, data } = action;
 
         if (entity === 'session') {
-            const { synced, master_catalog, totalProducts, totalUnits, errorCount, ...sessionData } = data; // Strip local-only fields
+            const { synced, master_catalog, totalProducts, totalUnits, errorCount, ...sessionData } = data;
 
             if (type === 'create') {
                 const { error } = await supabase.from('precount_sessions').upsert(sessionData, { onConflict: 'id' });
@@ -286,16 +331,12 @@ export class SyncManager {
                 const { error } = await supabase.from('precount_sessions').update(updates).eq('id', id);
                 if (error) throw error;
             } else if (type === 'delete') {
-                // First delete all items belonging to this session to avoid FK issues
                 await supabase.from('precount_items').delete().eq('session_id', data.id);
-                
-                // Then delete the session
                 const { error } = await supabase.from('precount_sessions').delete().eq('id', data.id);
                 if (error) throw error;
             }
         } else if (entity === 'item') {
             if (type === 'create') {
-                // Use upsert RPC for atoms / scans (additive)
                 const { error } = await supabase.rpc('upsert_precount_item', {
                     p_id: data.id,
                     p_session_id: data.session_id,
@@ -310,7 +351,6 @@ export class SyncManager {
                 });
                 if (error) throw error;
             } else if (type === 'update') {
-                // Direct absolute update for item modifications (stepper, quantity edits, sector)
                 const { id, ...updates } = data;
                 const cleanUpdates: any = {};
                 if (updates.quantity !== undefined) cleanUpdates.quantity = updates.quantity;

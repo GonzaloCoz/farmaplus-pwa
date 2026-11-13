@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Farmaplus",
+  "productName": "MiPlus",
   "version": "0.1.0",
   "identifier": "com.farmaplus.desktop",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Farmaplus Desktop",
+        "title": "MiPlus Desktop",
         "width": 1360,
         "height": 860,
         "minWidth": 900,
@@ -22,7 +22,7 @@
         "fullscreen": false,
         "decorations": false,
         "shadow": true,
-        "additionalBrowserArgs": "--enable-gpu-rasterization --enable-zero-copy --ignore-gpu-blocklist --disable-features=CalculateNativeWinOcclusion"
+        "additionalBrowserArgs": "--enable-gpu-rasterization --enable-zero-copy --ignore-gpu-blocklist --disable-features=CalculateNativeWinOcclusion --disable-http-cache"
       }
     ],
     "security": {
@@ -32,6 +32,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -42,8 +43,8 @@
     "fileAssociations": [
       {
         "ext": ["xlsx", "xls", "csv"],
-        "name": "Planilla de Inventario Farmaplus",
-        "description": "Abrir archivo de stock en Farmaplus Desktop",
+        "name": "Planilla de Inventario MiPlus",
+        "description": "Abrir archivo de stock en MiPlus Desktop",
         "role": "Viewer"
       }
     ],

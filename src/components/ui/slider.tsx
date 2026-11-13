@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   forwardRef,
@@ -18,7 +18,7 @@ import {
   animate,
   AnimatePresence,
   type MotionValue,
-} from "framer-motion";
+} from "motion/react";
 import { Slider as SliderPrimitive } from "@base-ui/react/slider";
 import { cn } from "@/lib/utils";
 import { useSizeVariant, type SizeVariant } from "@/lib/size-context";
@@ -33,7 +33,7 @@ import { useShape } from "@/lib/shape-context";
 type SliderValue = number | [number, number];
 type ValuePosition = "left" | "right" | "top" | "bottom" | "tooltip";
 
-/** Props of the compact engine — the feature-rich design (ranges, discrete
+/** Props of the compact engine â€” the feature-rich design (ranges, discrete
  *  step lists, value display) that renders the ladder's compact step. The
  *  public <Slider> accepts these plus `variant` and `size`. */
 interface SliderEngineProps
@@ -187,7 +187,7 @@ function ValueDisplay({
     if (editingIndex === index) {
       return (
         <span className="inline-grid text-[13px]">
-          {/* Ghost for layout stability — widest possible value */}
+          {/* Ghost for layout stability â€” widest possible value */}
           <span
             className="col-start-1 row-start-1 invisible"
             style={{ fontVariationSettings: fontWeights.medium }}
@@ -237,7 +237,7 @@ function ValueDisplay({
 
 
   const widestValue = isRange
-    ? `${label ? `${label}: ` : ""}${formatValue(max)} — ${formatValue(max)}`
+    ? `${label ? `${label}: ` : ""}${formatValue(max)} â€” ${formatValue(max)}`
     : `${label ? `${label}: ` : ""}${formatValue(max)}`;
 
   return (
@@ -252,7 +252,7 @@ function ValueDisplay({
           : fontWeights.normal,
       }}
     >
-      {/* Invisible ghost — reserves width of widest possible value */}
+      {/* Invisible ghost â€” reserves width of widest possible value */}
       <span
         className="col-start-1 row-start-1 invisible whitespace-nowrap"
         style={{ fontVariationSettings: fontWeights.medium }}
@@ -267,7 +267,7 @@ function ValueDisplay({
         {isRange ? (
           <>
             {renderValue(0)}
-            <span className="mx-1 text-muted-foreground/50">—</span>
+            <span className="mx-1 text-muted-foreground/50">â€”</span>
             {renderValue(1)}
           </>
         ) : (
@@ -314,7 +314,7 @@ function TooltipValue({ value, formatValue, motionX }: TooltipValueProps) {
 }
 
 // ---------------------------------------------------------------------------
-// CompactSlider — the compact-step design (formerly the only `Slider`).
+// CompactSlider â€” the compact-step design (formerly the only `Slider`).
 // ---------------------------------------------------------------------------
 
 const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
@@ -509,7 +509,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
     }, [isRange, motionX0, motionX1]);
 
     // --- Sync motion values on value change (keyboard, programmatic) ---
-    // Depend on a primitive key rather than the `values` array — its identity
+    // Depend on a primitive key rather than the `values` array â€” its identity
     // changes every render (toRadixValue allocates), which would restart the
     // animation on unrelated re-renders (hover/tooltip state churn).
     const valuesKey = values.join(",");
@@ -777,7 +777,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
       />
     );
 
-    // --- Render visual thumb (not Radix — purely visual) ---
+    // --- Render visual thumb (not Radix â€” purely visual) ---
     const renderVisualThumb = (index: number) => {
       const motionX = index === 0 ? motionX0 : motionX1;
       return (
@@ -893,7 +893,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
             </AnimatePresence>
           )}
 
-          {/* Base UI Slider — invisible, provides ARIA + keyboard nav */}
+          {/* Base UI Slider â€” invisible, provides ARIA + keyboard nav */}
           <SliderPrimitive.Root
             value={
               stepValues
@@ -949,7 +949,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
           >
-            {/* Extended hit area — 8px beyond each edge */}
+            {/* Extended hit area â€” 8px beyond each edge */}
             <div
               className="absolute cursor-ew-resize"
               style={{ left: -8, right: -8, top: 0, bottom: 0 }}
@@ -1033,7 +1033,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
 
             </motion.div>
 
-            {/* Step dots — masked so filled side is hidden */}
+            {/* Step dots â€” masked so filled side is hidden */}
             {stepDots.length > 0 && (
               <motion.div
                 className="absolute left-0 right-0 pointer-events-none"
@@ -1090,7 +1090,7 @@ const CompactSlider = forwardRef<HTMLDivElement, SliderEngineProps>(
 CompactSlider.displayName = "SliderCompact";
 
 // ---------------------------------------------------------------------------
-// ComfortableSlider — the default-step design (pips / scrubber layouts).
+// ComfortableSlider â€” the default-step design (pips / scrubber layouts).
 // ---------------------------------------------------------------------------
 
 interface SliderComfortableProps
@@ -1154,7 +1154,7 @@ const ComfortableSlider = forwardRef<HTMLDivElement, SliderComfortableProps>(
       (el: HTMLDivElement | null) => {
         containerRef.current = el;
         if (typeof ref === "function") (ref as React.RefCallback<HTMLDivElement>)(el);
-        else if (ref) (ref as React.RefObject<HTMLDivElement | null>).current = el;
+        else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = el;
       },
       [ref]
     );
@@ -1208,7 +1208,7 @@ const ComfortableSlider = forwardRef<HTMLDivElement, SliderComfortableProps>(
         const el = containerRef.current;
         if (!el) return;
         const rect = el.getBoundingClientRect();
-        // Use clientWidth (padding box) — CSS % and absolute left/width are relative to it
+        // Use clientWidth (padding box) â€” CSS % and absolute left/width are relative to it
         const w = el.clientWidth;
         if (w <= 0 || rect.width <= 0) return;
         // Normalize cursor to layout space so it matches `w` (layout, padding
@@ -1233,7 +1233,7 @@ const ComfortableSlider = forwardRef<HTMLDivElement, SliderComfortableProps>(
         const snappedPercent = max === min ? 0 : (snappedVal - min) / (max - min);
         const snappedX = snappedPercent * w;
 
-        // Current handle position — for pips, match the visual fill edge offset
+        // Current handle position â€” for pips, match the visual fill edge offset
         const currentPercent = fillPercent.get();
         let handleX: number;
         if (variant === "pips") {
@@ -1380,7 +1380,7 @@ const ComfortableSlider = forwardRef<HTMLDivElement, SliderComfortableProps>(
           computeHoverPreview(e.clientX);
         }}
       >
-        {/* Extended hit area — 8px beyond each edge */}
+        {/* Extended hit area â€” 8px beyond each edge */}
         <div
           className="absolute cursor-ew-resize"
           style={{ left: -8, right: -8, top: 0, bottom: 0 }}
@@ -1389,7 +1389,7 @@ const ComfortableSlider = forwardRef<HTMLDivElement, SliderComfortableProps>(
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
         />
-        {/* Hover value tooltip — outside overflow-hidden container */}
+        {/* Hover value tooltip â€” outside overflow-hidden container */}
         <AnimatePresence>
           {hoverPreview && showHoverTooltip && !isPressed && (
             <motion.div
@@ -1477,7 +1477,7 @@ const ComfortableSlider = forwardRef<HTMLDivElement, SliderComfortableProps>(
           }}
         />
 
-        {/* Pips: dots layer — z-[1] */}
+        {/* Pips: dots layer â€” z-[1] */}
         {variant === "pips" && (
           <motion.div
             className="absolute inset-0 flex justify-between items-center px-3 pointer-events-none z-[1]"
@@ -1507,7 +1507,7 @@ const ComfortableSlider = forwardRef<HTMLDivElement, SliderComfortableProps>(
           </motion.div>
         )}
 
-        {/* Pips: label + value BG layer — z-[2] (occludes dots behind text) */}
+        {/* Pips: label + value BG layer â€” z-[2] (occludes dots behind text) */}
         {variant === "pips" && (
           <div className="absolute inset-0 flex items-center px-2 z-[2] pointer-events-none" aria-hidden>
             {label && (
@@ -1524,7 +1524,7 @@ const ComfortableSlider = forwardRef<HTMLDivElement, SliderComfortableProps>(
           </div>
         )}
 
-        {/* Pips: fill — z-[3] */}
+        {/* Pips: fill â€” z-[3] */}
         {variant === "pips" && (
           <motion.div
             className="absolute left-0 top-0 bottom-0 pointer-events-none z-[3]"
@@ -1535,7 +1535,7 @@ const ComfortableSlider = forwardRef<HTMLDivElement, SliderComfortableProps>(
           />
         )}
 
-        {/* Pips: handle line — z-[3] */}
+        {/* Pips: handle line â€” z-[3] */}
         {variant === "pips" && (
           <motion.div
             className="absolute rounded-full pointer-events-none z-[3]"
@@ -1557,7 +1557,7 @@ const ComfortableSlider = forwardRef<HTMLDivElement, SliderComfortableProps>(
           />
         )}
 
-        {/* Pips: label + value text layer — z-[4] */}
+        {/* Pips: label + value text layer â€” z-[4] */}
         {variant === "pips" && (
           <div className="absolute inset-0 flex items-center px-2 z-[4] pointer-events-none">
             {label && (
@@ -1663,7 +1663,7 @@ const ComfortableSlider = forwardRef<HTMLDivElement, SliderComfortableProps>(
 ComfortableSlider.displayName = "SliderComfortable";
 
 // ---------------------------------------------------------------------------
-// Slider — the public component, riding the size ladder.
+// Slider â€” the public component, riding the size ladder.
 //
 // The two historical designs are the two ladder steps: the comfortable
 // pips/scrubber design renders at the default step, the dense original
@@ -1711,7 +1711,7 @@ const Slider = forwardRef<HTMLDivElement, SliderProps>(
       label,
       formatValue,
       disabled,
-      // Compact-engine-only fields — all undefined on this path (any defined
+      // Compact-engine-only fields â€” all undefined on this path (any defined
       // one would have routed to the compact engine above).
       steps: _steps,
       showSteps: _showSteps,
@@ -1747,7 +1747,7 @@ const Slider = forwardRef<HTMLDivElement, SliderProps>(
 
 Slider.displayName = "Slider";
 
-/** @deprecated The comfortable design is now the ladder's default step —
+/** @deprecated The comfortable design is now the ladder's default step â€”
  *  render <Slider> (optionally with `variant`) instead. */
 const SliderComfortable = ComfortableSlider;
 

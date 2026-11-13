@@ -5,6 +5,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { Search, type LucideIcon } from "lucide-react";
 import {
   type ReactNode,
+  type ComponentType,
   useCallback,
   useEffect,
   useId,
@@ -22,7 +23,7 @@ export type CommandItem = {
   group?: string;
   hint?: string;
   keywords?: string[];
-  icon?: LucideIcon;
+  icon?: ComponentType<any>;
   badge?: ReactNode;
   onSelect: () => void;
 };

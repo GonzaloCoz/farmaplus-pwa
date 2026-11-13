@@ -59,6 +59,8 @@ export interface OutdatedWarningData {
 export function useInventoryUpload({ labName, branchName, currentItems, onItemsUpdated }: UseInventoryUploadProps) {
     const [isUploading, setIsUploading] = useState(false);
     const [isSyncingMysql, setIsSyncingMysql] = useState(false);
+    const [mysqlSyncStatus, setMysqlSyncStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+    const [hasNewSkuAlert, setHasNewSkuAlert] = useState(false);
     const [showMismatchDialog, setShowMismatchDialog] = useState(false);
     const [mismatchData, setMismatchData] = useState<MismatchData | null>(null);
 
@@ -913,9 +915,10 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
         }
 
         setIsSyncingMysql(true);
+        setMysqlSyncStatus('loading');
 
         try {
-            const { fetchCyclicLabStockFromMysql } = await import('@/services/mysqlTauriBridge');
+            const { fetchCyclicLabStockFromMysql, formatSyncErrorMessage } = await import('@/services/mysqlTauriBridge');
 
             // Leer los items actuales más recientes desde DB para merge seguro
             let mergedCurrentItems: CyclicItem[] = currentItems;
@@ -928,36 +931,118 @@ export function useInventoryUpload({ labName, branchName, currentItems, onItemsU
                 console.warn("Using React state for current items:", e);
             }
 
-            const result = await fetchCyclicLabStockFromMysql(branchName, labName, mergedCurrentItems);
+            // ponytail: sincronización completa directa. Trae nuevos SKUs y actualiza stock del sistema preservando conteos y estados
+            const result = await fetchCyclicLabStockFromMysql(
+                branchName, 
+                labName, 
+                mergedCurrentItems, 
+                false
+            );
 
             if (!result.success) {
-                notify.error("Error al sincronizar", result.message);
+                setMysqlSyncStatus('error');
+                setTimeout(() => setMysqlSyncStatus('idle'), 3000);
+                notify.error("Error al importar", formatSyncErrorMessage(result.message));
                 return;
             }
 
             onItemsUpdated(result.items);
-
             await cyclicInventoryService.purgeAndSaveLabInventory(branchName, labName, result.items);
+            setMysqlSyncStatus('success');
+            setHasNewSkuAlert(false);
+            setTimeout(() => setMysqlSyncStatus('idle'), 2500);
 
-            notify.success(
-                "Sincronización Exitosa",
-                `Se sincronizaron ${result.items.length} productos desde Plex (${result.totalUnits} unidades en stock).`
-            );
+            if (result.addedCount > 0) {
+                notify.success(
+                    "Sincronización Exitosa",
+                    `Se incorporaron ${result.addedCount} SKU(s) nuevos y se actualizó el stock desde Plex.`
+                );
+            } else {
+                notify.success(
+                    "Sincronización Exitosa",
+                    `Se actualizó el stock de los ${result.items.length} productos desde Plex.`
+                );
+            }
         } catch (err: any) {
+            setMysqlSyncStatus('error');
+            setTimeout(() => setMysqlSyncStatus('idle'), 3000);
             console.error("Error in MySQL Sync:", err);
+            const rawMessage = typeof err === 'string' ? err : err?.message || err?.toString() || '';
+            const { formatSyncErrorMessage } = await import('@/services/mysqlTauriBridge');
             notify.error(
-                "Fallo de Conexión",
-                err?.message || err?.toString() || "No se pudo conectar con el servidor MySQL de Plex."
+                "Fallo de conexión",
+                formatSyncErrorMessage(rawMessage)
             );
         } finally {
             setIsSyncingMysql(false);
         }
     };
 
+    const [isRefreshingStock, setIsRefreshingStock] = useState(false);
+
+    const handleRefreshStock = async () => {
+        if (isUploading || isSyncingMysql || isRefreshingStock) return;
+        if (!currentItems || currentItems.length === 0) {
+            notify.info("Sin productos", "No hay productos cargados en la tabla para refrescar.");
+            return;
+        }
+
+        setIsRefreshingStock(true);
+        try {
+            const { fetchCyclicLabStockFromMysql, formatSyncErrorMessage } = await import('@/services/mysqlTauriBridge');
+
+            let baseItems: CyclicItem[] = currentItems;
+            try {
+                const dbItems = await cyclicInventoryService.getLabInventory(branchName, labName);
+                if (dbItems && dbItems.length > 0) {
+                    baseItems = dbItems;
+                }
+            } catch (e) {
+                console.warn("Using React state for current items:", e);
+            }
+
+            const result = await fetchCyclicLabStockFromMysql(branchName, labName, baseItems, true);
+
+            if (!result.success) {
+                notify.error("Error al refrescar", formatSyncErrorMessage(result.message));
+                return;
+            }
+
+            onItemsUpdated(result.items);
+            await cyclicInventoryService.purgeAndSaveLabInventory(branchName, labName, result.items);
+
+            const changed = result.changedCount ?? 0;
+            if (changed > 0) {
+                notify.success(
+                    "Stock Refrescado",
+                    `Se actualizó el stock de la tabla. ${changed} producto${changed > 1 ? 's tuvieron' : ' tuvo'} cambios en Plex.`
+                );
+            } else {
+                notify.info(
+                    "Stock al día",
+                    "Todas las unidades de la tabla coinciden con el stock actual de Plex."
+                );
+            }
+        } catch (err: any) {
+            console.error("Error in refresh stock:", err);
+            const rawMessage = typeof err === 'string' ? err : err?.message || err?.toString() || '';
+            const { formatSyncErrorMessage } = await import('@/services/mysqlTauriBridge');
+            notify.error("Fallo de conexión", formatSyncErrorMessage(rawMessage));
+        } finally {
+            setIsRefreshingStock(false);
+        }
+    };
+
     return {
         isUploading,
         isSyncingMysql,
+        mysqlSyncStatus,
+        setMysqlSyncStatus,
+        hasNewSkuAlert,
+        setHasNewSkuAlert,
         handleMysqlSync,
+        isRefreshingStock,
+        handleRefreshStock,
         handleFileUpload,
         handleElectronImport,
         showMismatchDialog,

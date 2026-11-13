@@ -3,23 +3,43 @@
 import {
   useRef,
   useState,
-  useEffect,
   createContext,
   useContext,
   forwardRef,
   type ReactNode,
   type HTMLAttributes,
 } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";
 import { cn } from "@/lib/utils";
 import { spring } from "@/lib/springs";
+import { omit } from "@/lib/omit";
 import { fontWeights } from "@/lib/font-weight";
 import { useFluidHover, useRegisterFluidHoverItem } from "@/hooks/use-fluid-hover";
-import { useMergeSplitBlocks, SelectionBackgrounds } from "@/hooks/use-merge-split";
+import {
+  useMergeSplitBlocks,
+  useSelectionRuns,
+  SelectionBackgrounds,
+} from "@/hooks/use-merge-split";
 import { useShape } from "@/lib/shape-context";
 import { SizeProvider, useSize, type SizeVariant } from "@/lib/size-context";
 import { FluidHoverHighlight } from "@/components/ui/fluid-hover-highlight";
+
+// ---------------------------------------------------------------------------
+// CheckboxGroup is a vertical list of CheckboxItem rows sharing one fluid
+// hover scope. The group paints everything that spans rows: the checked
+// backgrounds (contiguous checked rows merge into one block), the hover
+// highlight, and one focus ring that springs between rows. Each row is the
+// focusable role="checkbox" element; the primitive inside it is only the
+// square and its check mark. The parent owns state: the group reads the
+// whole checked set, each item its own `checked` and `onToggle`.
+// ---------------------------------------------------------------------------
+
+// True only while a row's mousedown handler moves focus onto the row. Chrome
+// reports a focus() call from script as :focus-visible, so without this flag
+// every click would draw the keyboard focus ring. focus() fires its focus
+// events synchronously, so the flag never outlives that one call.
+let pointerFocusRedirect = false;
 
 interface CheckboxGroupContextValue {
   registerItem: (index: number, element: HTMLElement | null) => void;
@@ -39,9 +59,11 @@ function useCheckboxGroup() {
 
 interface CheckboxGroupProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode;
+  /** Checked row indices. The group needs the whole set, not just each row's
+   *  `checked`, to merge contiguous rows into one background. */
   checkedIndices: Set<number>;
   /** Pins the group's rows to one step of the size ladder (default 36px,
-   *  compact 28px — see /docs/sizes). Omitted, it follows the surrounding
+   *  compact 28px). Omitted, it follows the surrounding
    *  SizeProvider. */
   size?: SizeVariant;
 }
@@ -49,8 +71,6 @@ interface CheckboxGroupProps extends HTMLAttributes<HTMLDivElement> {
 const CheckboxGroup = forwardRef<HTMLDivElement, CheckboxGroupProps>(
   ({ children, checkedIndices, size, className, ...props }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const groupIdCounter = useRef(0);
-    const prevGroupMap = useRef(new Map<number, number>());
 
     const hover = useFluidHover(containerRef);
     const {
@@ -61,38 +81,11 @@ const CheckboxGroup = forwardRef<HTMLDivElement, CheckboxGroupProps>(
       registerItem,
     } = hover;
 
-    // Group contiguous checked indices into runs with stable IDs
-    const runs: { start: number; end: number }[] = [];
-    const sortedChecked = [...checkedIndices].sort((a, b) => a - b);
-    for (const idx of sortedChecked) {
-      const last = runs[runs.length - 1];
-      if (last && idx === last.end + 1) {
-        last.end = idx;
-      } else {
-        runs.push({ start: idx, end: idx });
-      }
-    }
-
-    // Assign stable IDs: reuse previous ID if any member overlaps
-    const usedIds = new Set<number>();
-    const newGroupMap = new Map<number, number>();
-    const checkedGroups = runs.map((run) => {
-      let stableId: number | null = null;
-      for (let i = run.start; i <= run.end; i++) {
-        const prevId = prevGroupMap.current.get(i);
-        if (prevId !== undefined && !usedIds.has(prevId)) {
-          stableId = prevId;
-          break;
-        }
-      }
-      const id = stableId ?? ++groupIdCounter.current;
-      usedIds.add(id);
-      for (let i = run.start; i <= run.end; i++) {
-        newGroupMap.set(i, id);
-      }
-      return { ...run, id };
-    });
-    prevGroupMap.current = newGroupMap;
+    // Contiguous checked rows, each run with a stable ID. The ID keys the
+    // background block, so keeping it lets framer grow or shrink the block in
+    // place when a neighbour is checked instead of exiting the old block and
+    // entering a new one.
+    const checkedGroups = useSelectionRuns([...checkedIndices]);
 
     const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
 
@@ -101,6 +94,8 @@ const CheckboxGroup = forwardRef<HTMLDivElement, CheckboxGroupProps>(
 
     // Selected backgrounds, with the merge/split boundary animation when one
     // unchecked row bridges or splits two checked runs.
+    // The hook owns that choreography and its timing; the group only supplies
+    // the runs, the measured row rects and the corner radius for the shape.
     const blocks = useMergeSplitBlocks(checkedGroups, itemRects, shape.mergedRadius);
 
     const group = (
@@ -115,6 +110,9 @@ const CheckboxGroup = forwardRef<HTMLDivElement, CheckboxGroupProps>(
           onMouseMove={handlers.onMouseMove}
           onMouseLeave={handlers.onMouseLeave}
           onClick={handlers.onClick}
+          // Focus drives the same activeIndex as hover, so the highlight, the
+          // border and the label color follow the keyboard too. The focus ring
+          // shows for keyboard focus only, never after a click.
           onFocus={(e) => {
             const indexAttr = (e.target as HTMLElement)
               .closest("[data-fluid-hover-index]")
@@ -122,8 +120,13 @@ const CheckboxGroup = forwardRef<HTMLDivElement, CheckboxGroupProps>(
             if (indexAttr != null) {
               const idx = Number(indexAttr);
               setActiveIndex(idx);
+              // A row focused by its own mousedown gets no ring, even though
+              // the browser reports that focus as :focus-visible.
               setFocusedIndex(
-                (e.target as HTMLElement).matches(":focus-visible") ? idx : null
+                !pointerFocusRedirect &&
+                  (e.target as HTMLElement).matches(":focus-visible")
+                  ? idx
+                  : null
               );
             }
           }}
@@ -143,6 +146,8 @@ const CheckboxGroup = forwardRef<HTMLDivElement, CheckboxGroupProps>(
             const currentIdx = items.indexOf(e.target as HTMLElement);
             if (currentIdx === -1) return;
 
+            // Up/Down move focus only, wrapping at both ends; Home/End jump to
+            // the first and last row. Space or Enter on a row toggles it.
             if (["ArrowDown", "ArrowUp"].includes(e.key)) {
               e.preventDefault();
               const next = e.key === "ArrowDown"
@@ -158,6 +163,7 @@ const CheckboxGroup = forwardRef<HTMLDivElement, CheckboxGroupProps>(
             }
           }}
           role="group"
+          // select-none keeps rapid clicks on rows from selecting the label text.
           className={cn(
             "relative flex flex-col w-72 max-w-full select-none",
             className
@@ -176,6 +182,9 @@ const CheckboxGroup = forwardRef<HTMLDivElement, CheckboxGroupProps>(
           />
 
           {/* Focus ring */}
+          {/* One shared ring springs between rows on spring.fast. It sits 2px
+              outside the row and shape.focusRing is the row radius + 2px, so
+              the corners stay concentric; z-20 lifts it above the rows. */}
           <AnimatePresence>
             {focusRect && (
               <motion.div
@@ -218,17 +227,11 @@ interface CheckboxItemProps extends HTMLAttributes<HTMLDivElement> {
 const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
   ({ label, index, checked, onToggle, className, ...props }, ref) => {
     const internalRef = useRef<HTMLDivElement>(null);
-    const hasMounted = useRef(false);
     const { registerItem, activeIndex } = useCheckboxGroup();
 
     useRegisterFluidHoverItem(registerItem, index, internalRef);
 
-    useEffect(() => {
-      hasMounted.current = true;
-    }, []);
-
     const isActive = activeIndex === index;
-    const skipAnimation = !hasMounted.current;
     const shape = useShape();
     const sizeClasses = useSize();
     const compact = sizeClasses.variant === "compact";
@@ -241,13 +244,17 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
           else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
         }}
         data-fluid-hover-index={index}
+        // Every row is its own tab stop: checkboxes toggle independently, so
+        // there is no roving tabindex.
         tabIndex={0}
+        // The row, not the primitive, carries the role, state and name: it is
+        // the element that takes focus.
         role="checkbox"
         aria-checked={checked}
         aria-label={label}
         onClick={onToggle}
         onMouseDown={(e) => {
-          // Clicking the 15px checkbox square would natively focus the hidden
+          // Clicking the 16px checkbox square would natively focus the hidden
           // primitive (nearest focusable ancestor of the click target), after
           // which arrow-key nav dead-zones: the group keydown handler can't
           // find the target among the row wrappers. Prevent the native focus
@@ -258,8 +265,15 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
           );
           if (interactive && interactive !== e.currentTarget) return;
           e.preventDefault();
-          e.currentTarget.focus();
+          pointerFocusRedirect = true;
+          try {
+            e.currentTarget.focus();
+          } finally {
+            pointerFocusRedirect = false;
+          }
         }}
+        // The row is a div, so it handles Space and Enter itself;
+        // preventDefault keeps Space from scrolling the page.
         onKeyDown={(e) => {
           if (e.key === " " || e.key === "Enter") {
             e.preventDefault();
@@ -267,29 +281,40 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
           }
         }}
         className={cn(
-          // Fixed height (was py-1.5 around a 19.5px line box ≈ 31.5px) so the
-          // text-box trim on the label doesn't shrink the row.
-          `relative z-10 flex ${sizeClasses.control} items-center ${sizeClasses.gap} ${shape.item} ${sizeClasses.px} cursor-pointer outline-none`,
+          // A floor, not a fixed height: one line sits on the ladder's control
+          // height (the padding alone stays under it, so the text-box trim on
+          // the label can't shrink the row), and a long label wraps and grows
+          // the row instead of spilling into the next one.
+          `relative z-10 flex ${compact ? "min-h-7 py-2" : "min-h-9 py-3"} items-center ${sizeClasses.gap} ${shape.item} ${sizeClasses.px} cursor-pointer outline-none`,
           className
         )}
         {...props}
       >
-        {/* Checkbox — Base UI primitive for accessibility */}
+        {/* Checkbox: Base UI primitive for accessibility. It has no
+            onCheckedChange on purpose; the row toggles for it (see onClick). */}
         <CheckboxPrimitive.Root
           checked={checked}
-          onCheckedChange={() => onToggle()}
+          // Out of the tab order and hidden from assistive tech: the row already
+          // is the checkbox, so exposing the primitive too would announce every
+          // option twice.
           tabIndex={-1}
           aria-hidden
           className={cn(
             "relative shrink-0 appearance-none bg-transparent p-0 border-0 outline-none cursor-pointer",
             compact ? "w-[14px] h-[14px]" : "w-[16px] h-[16px]"
           )}
-          onClick={(e) => e.stopPropagation()}
+          // A click on the square reaches the row's onClick once: Base UI
+          // replays it on its hidden input but stops that copy there (since
+          // 1.7), so the original must bubble. Listening to onCheckedChange
+          // as well would toggle a second time and undo the first.
         >
           {/* Border */}
+          {/* Checked: the border turns transparent and the check alone marks
+              the state. Unchecked: hover or focus darkens it from border to
+              neutral-400 (neutral-500 dark) over 80ms. */}
           <div
             className={cn(
-              "absolute inset-0 border-solid transition-all duration-80",
+              "absolute inset-0 border-solid transition-[border-color] duration-80",
               compact ? "rounded-[4px]" : "rounded-[5px]",
               checked
                 ? "border-[1.5px] border-transparent"
@@ -299,21 +324,29 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
             )}
           />
           {/* Check mark */}
-          <AnimatePresence>
+          {/* keepMounted hands unmounting to AnimatePresence: without it Base UI
+              drops the indicator as soon as the box unchecks and the retract
+              never plays. */}
+          {/* initial={false}: a row checked at mount shows the finished
+              check instead of drawing it, so default selections don't
+              animate on page load. */}
+          <AnimatePresence initial={false}>
             {checked && (
               <CheckboxPrimitive.Indicator
                 keepMounted
                 render={(indicatorProps) => {
-                  const {
-                    style: _s,
-                    onDrag: _onDrag,
-                    onDragStart: _onDragStart,
-                    onDragEnd: _onDragEnd,
-                    onAnimationStart: _onAnimationStart,
-                    onAnimationEnd: _onAnimationEnd,
-                    onAnimationIteration: _onAnimationIteration,
-                    ...rest
-                  } = indicatorProps as React.HTMLAttributes<SVGSVGElement>;
+                  const rest = omit(
+                    indicatorProps as React.HTMLAttributes<SVGSVGElement>,
+                    [
+                      "style",
+                      "onDrag",
+                      "onDragStart",
+                      "onDragEnd",
+                      "onAnimationStart",
+                      "onAnimationEnd",
+                      "onAnimationIteration",
+                    ]
+                  );
                   return (
                     <motion.svg
                       {...rest}
@@ -330,9 +363,12 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 1 }}
                     >
+                      {/* The check draws itself: pathLength 0 → 1 over
+                          0.08s easeOut on check, back to 0 over 0.04s
+                          easeIn on uncheck. */}
                       <motion.path
                         d="M6 12L10 16L18 8"
-                        initial={{ pathLength: skipAnimation ? 1 : 0 }}
+                        initial={{ pathLength: 0 }}
                         animate={{
                           pathLength: 1,
                           transition: { duration: 0.08, ease: "easeOut" },
@@ -353,7 +389,9 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
         {/* Label */}
         {/* Both stacked spans carry the text-box trim so the invisible bold
             sizer and the visible label keep identical boxes. */}
-        <span className={cn("inline-grid", sizeClasses.text)}>
+        <span className={cn("inline-grid min-w-0 [overflow-wrap:anywhere]", sizeClasses.text)}>
+          {/* Always semibold, so the grid cell is sized for the heaviest
+              weight and the row never shifts when the label gains weight. */}
           <span
             className="col-start-1 row-start-1 invisible [text-box:trim-both_cap_alphabetic]"
             style={{ fontVariationSettings: fontWeights.semibold }}
@@ -361,6 +399,9 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
           >
             {label}
           </span>
+          {/* Weight changes only when checked ('wght' 400 → 550), so weight
+              marks state; color goes muted → foreground when checked, hovered
+              or focused. Both transition over 80ms. */}
           <span
             className={cn(
               "col-start-1 row-start-1 transition-[color,font-variation-settings] duration-80 [text-box:trim-both_cap_alphabetic]",

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { notify } from '@/lib/notifications';
 import { CyclicItem, cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { useLabInventoryQuery } from './useInventoryQueries';
@@ -16,12 +16,33 @@ export function useInventorySync({ branchName, labName, items, onItemsLoaded, ro
     const [isSaving, setIsSaving] = useState(false);
     const setIsLoading = (loading: boolean) => { }; // Compatibilidad con el controlador
 
-    // Actualizar estado local cuando cambian los datos de la consulta
+    const itemsRef = useRef(items);
+    itemsRef.current = items;
+
+    // Actualizar estado local cuando cambian los datos de la consulta, preservando PVP y metadata en memoria
     useEffect(() => {
-        if (queryData) {
+        if (queryData && queryData.length > 0) {
+            const existingMap = new Map<string, CyclicItem>();
+            (itemsRef.current || []).forEach(it => {
+                if (it.ean) existingMap.set(it.ean, it);
+                if (it.id_producto) existingMap.set(it.id_producto, it);
+            });
+
+            const merged = queryData.map(qItem => {
+                const existing = existingMap.get(qItem.ean) || (qItem.id_producto ? existingMap.get(qItem.id_producto) : undefined);
+                const price = (qItem.price && qItem.price > 0) ? qItem.price : (existing?.price || 0);
+                const is_hidden = qItem.is_hidden ?? existing?.is_hidden ?? false;
+                return {
+                    ...qItem,
+                    price,
+                    is_hidden
+                };
+            });
+            onItemsLoaded(merged);
+        } else if (queryData && queryData.length === 0) {
             onItemsLoaded(queryData);
         }
-    }, [queryData, onItemsLoaded]);
+    }, [queryData]);
 
     const isLoading = queryLoading;
 

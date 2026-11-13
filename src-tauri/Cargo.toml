@@ -1,8 +1,8 @@
 [package]
 name = "farmaplus"
 version = "0.1.0"
-description = "Farmaplus Desktop"
-authors = ["Farmaplus"]
+description = "MiPlus Desktop"
+authors = ["MiPlus"]
 license = ""
 repository = "https://github.com/GonzaloCoz/farmaplus-pwa"
 edition = "2021"
@@ -12,26 +12,32 @@ rust-version = "1.77.2"
 name = "farmaplus_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "MiPlus"
+path = "src/main.rs"
+
 [build-dependencies]
-tauri-build = { version = "2.6.3", features = [] }
+tauri-build = { version = "2.7.4", features = [] }
 
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.11.3", features = [] }
+tauri = { version = "2.12.5", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
-tokio = { version = "1.43", features = ["full"] }
+tokio = { version = "1.54", features = ["full"] }
 mysql = { version = "25" }
-flate2 = { version = "1.0", features = ["rust_backend"] }
-rusqlite = { version = "0.31", features = ["bundled"] }
+flate2 = { version = "1.1", features = ["rust_backend"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [profile.release]
-opt-level = "z"
-lto = true
+opt-level = 3
+lto = "thin"
 codegen-units = 1
-panic = "abort"
 strip = true
+debug = false
+panic = "unwind"
+

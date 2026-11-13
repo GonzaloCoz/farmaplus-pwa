@@ -65,6 +65,9 @@
   --celeste-baja-border: oklch(0.65 0.08 220 / 0.45);
   --celeste-baja-bg: oklch(0.65 0.08 220 / 0.05);
 
+  /* Indicador semántico de notificación no leída (OKLCH - Light, hue 240 constante) */
+  --notification-unread: oklch(0.62 0.142 240);
+
   /* ── Financial Status Colors (OKLCH - Light) ── */
   --financial-positive: oklch(0.38 0.14 155);
   --financial-positive-muted: oklch(0.48 0.12 155);
@@ -209,6 +212,9 @@
     --celeste-baja-border: oklch(0.74 0.08 218 / 0.40);
     --celeste-baja-bg: oklch(0.74 0.08 218 / 0.06);
 
+    /* Indicador semántico de notificación no leída (OKLCH - Dark, hue 240 constante) */
+    --notification-unread: oklch(0.74 0.132 240);
+
     /* ── Financial Status Colors (OKLCH - Dark Mode) ── */
     --financial-positive: oklch(0.86 0.12 155);
     --financial-positive-muted: oklch(0.76 0.10 155 / 0.85);
@@ -294,6 +300,9 @@
   --celeste-baja-border: oklch(0.65 0.08 220 / 0.45);
   --celeste-baja-bg: oklch(0.65 0.08 220 / 0.05);
 
+  /* Indicador semántico de notificación no leída (OKLCH - Light, hue 240 constante) */
+  --notification-unread: oklch(0.62 0.142 240);
+
   /* ── Financial Status Colors (OKLCH - Light) ── */
   --financial-positive: oklch(0.38 0.14 155);
   --financial-positive-muted: oklch(0.48 0.12 155);
@@ -372,6 +381,9 @@
   --celeste-baja: oklch(0.74 0.08 218);
   --celeste-baja-border: oklch(0.74 0.08 218 / 0.40);
   --celeste-baja-bg: oklch(0.74 0.08 218 / 0.06);
+
+  /* Indicador semántico de notificación no leída (OKLCH - Dark, hue 240 constante) */
+  --notification-unread: oklch(0.74 0.132 240);
 
   /* ── Financial Status Colors (OKLCH - Dark Mode) ── */
   --financial-positive: oklch(0.86 0.12 155);
@@ -644,6 +656,8 @@
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary-muted: var(--primary-muted);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-light: var(--destructive-light);
   --color-hover: var(--hover);
@@ -751,6 +765,7 @@ body {
   min-height: 100vh;
   overscroll-behavior-y: none;
   background-color: var(--background);
+  color: var(--foreground);
   font-family: 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

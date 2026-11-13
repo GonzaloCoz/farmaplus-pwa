@@ -4,7 +4,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Camera01 as Camera, XClose as X, CheckCircle, AlertCircle, LayersTwo01 as Layers, Trash01 as Trash2 } from '@untitledui/icons';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from "motion/react";
 import { notify } from '@/lib/notifications';
 import { useHaptic } from '@/hooks/useHaptic';
 import { Switch } from '@/components/ui/switch';

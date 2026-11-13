@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { SearchLg as Search, LayoutGrid01 as Package } from '@untitledui/icons';
 import { Input } from '@/components/ui/input';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from "motion/react";
 import { searchProducts, Product } from '@/services/preCountDB';
 import { cn } from '@/lib/utils';
 

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 // Base UI flavour of the Fluid Functionalism scroll area. Same API and
 // behaviour as the Radix flavour (registry/radix/scroll-area.tsx): shape-system
@@ -206,7 +206,7 @@ const ScrollAreaViewport = forwardRef<any, any>(
         className={cn("size-full rounded-[inherit]", className)}
         {...props}
       >
-        <ScrollAreaPrimitive.Content>
+        <ScrollAreaPrimitive.Content className="h-full min-h-full">
           {children}
         </ScrollAreaPrimitive.Content>
       </ScrollAreaPrimitive.Viewport>

@@ -31,7 +31,7 @@ import {
     CheckCircle,
     AlertCircle,
     Terminal,
-    Table01 as TableIcon,
+    Table as TableIcon,
     Download01 as Download,
     SearchLg as Search,
     Eye,
@@ -234,7 +234,7 @@ export const MysqlDirectImportModal: React.FC<MysqlDirectImportModalProps> = ({
                                 Tauri Desktop
                             </Badge>
                         ) : (
-                            <Badge variant="destructive" className="gap-1 px-3 py-1 text-xs">
+                            <Badge color="red" variant="solid" className="gap-1 px-3 py-1 text-xs">
                                 <AlertCircle className="w-3.5 h-3.5" />
                                 Modo Web (Requiere Tauri)
                             </Badge>

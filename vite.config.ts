@@ -147,7 +147,7 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks: {
             'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-            'animation-vendor': ['framer-motion', 'motion'],
+            'animation-vendor': ['motion'],
             'tanstack-vendor': ['@tanstack/react-query', '@tanstack/react-table', '@tanstack/react-virtual'],
             'three-vendor': ['three', '@react-three/fiber', '@react-three/drei'],
             'ui-vendor': ['@base-ui/react'],
@@ -181,8 +181,6 @@ export default defineConfig(({ mode }) => {
         'react-dom',
         'react-router-dom',
         '@supabase/supabase-js',
-        'react-window',
-        'react-virtualized-auto-sizer',
       ],
       exclude: ['xlsx'], // xlsx causes Rollup issues, load dynamically instead
       esbuildOptions: {

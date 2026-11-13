@@ -1,5 +1,28 @@
-import { QRCodeCanvas } from 'qrcode.react';
-import { cn } from '@/lib/utils';
+import { useEffect, useRef } from 'react';
+import QRCode from 'qrcode';
+
+function QRCanvas({ value, size = 120 }: { value: string; size?: number }) {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+
+    useEffect(() => {
+        if (!canvasRef.current || !value) return;
+        QRCode.toCanvas(
+            canvasRef.current,
+            value,
+            {
+                width: size,
+                margin: 0,
+                errorCorrectionLevel: 'H',
+                color: { dark: '#000000', light: '#ffffff' },
+            },
+            (err) => {
+                if (err) console.error('Error generating QR canvas:', err);
+            }
+        );
+    }, [value, size]);
+
+    return <canvas ref={canvasRef} width={size} height={size} />;
+}
 
 interface QRPrintLayoutProps {
     quantities: Record<string, number>;
@@ -31,12 +54,7 @@ export function QRPrintLayout({ quantities, branchName }: QRPrintLayoutProps) {
                         className="flex flex-col items-center justify-center border-2 border-dashed border-gray-300 p-4 rounded-xl aspect-square bg-white print:border-gray-200 print:rounded-none print:shadow-none"
                     >
                         <div className="bg-white p-2 mb-2">
-                            <QRCodeCanvas 
-                                value={label.code} 
-                                size={120}
-                                level="H"
-                                includeMargin={false}
-                            />
+                            <QRCanvas value={label.code} size={120} />
                         </div>
                         <span className="text-[10px] uppercase tracking-tighter font-black text-gray-400 mb-0.5">
                             {label.name}

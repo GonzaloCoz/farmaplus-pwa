@@ -1,5 +1,5 @@
 import React, { useState, memo, useCallback, useMemo, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from "motion/react";
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { FluidCheckbox } from '@/components/ui/fluid-checkbox';
@@ -27,6 +27,7 @@ export interface CyclicItem {
     systemQuantity: number;
     countedQuantity: number;
     cost: number;
+    price?: number;
     status: 'pending' | 'controlled' | 'adjusted';
     category?: string;
     wasReadjusted?: boolean;
@@ -35,6 +36,7 @@ export interface CyclicItem {
     surplusId?: string;
     readjustmentReason?: string;
     id_producto?: string;
+    is_hidden?: boolean;
 }
 
 interface PopoverRowCellProps {
@@ -91,9 +93,16 @@ const PopoverRowCell = memo(function PopoverRowCell({
             <PopoverTrigger render={
                 <div className="flex items-center min-w-0 cursor-pointer group/cell py-0.5 select-none">
                     <div className="flex flex-col gap-0.5 min-w-0">
-                        <span className="font-medium text-xs truncate max-w-[200px] sm:max-w-xs md:max-w-md group-hover/cell:text-primary transition-colors">
-                            {item.name}
-                        </span>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="font-medium text-xs truncate max-w-[200px] sm:max-w-xs md:max-w-md group-hover/cell:text-primary transition-colors">
+                                {item.name}
+                            </span>
+                            {item.is_hidden && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0">
+                                    Oculto
+                                </span>
+                            )}
+                        </div>
                         {item.wasReadjusted && (
                             <span className="text-[10px] text-muted-foreground/60 font-medium whitespace-nowrap">
                                 Ajuste Anterior
@@ -109,9 +118,16 @@ const PopoverRowCell = memo(function PopoverRowCell({
             >
                 <div className="space-y-4">
                     <div>
-                        <p className="text-sm font-semibold text-foreground truncate">
-                            {item.name}
-                        </p>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            <p className="text-sm font-semibold text-foreground truncate">
+                                {item.name}
+                            </p>
+                            {item.is_hidden && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0">
+                                    Oculto en Plex
+                                </span>
+                            )}
+                        </div>
                         <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
                             EAN: {item.ean}
                         </p>
@@ -196,7 +212,9 @@ interface CyclicInventoryListProps {
     onRevert?: (id: string) => void;
     readOnly?: boolean;
     isPending?: boolean;
+    tabType?: 'pending' | 'controlled' | 'adjusted';
     isExcelUploaded?: boolean;
+    requiresStockRefresh?: boolean;
     lastAdjustmentIds?: {
         shortage: string;
         surplus: string;
@@ -204,6 +222,7 @@ interface CyclicInventoryListProps {
     className?: string;
     actions?: React.ReactNode;
     tabsSlot?: React.ReactNode;
+    isExpanded?: boolean;
 }
 
 export const CyclicInventoryList = memo(function CyclicInventoryList({
@@ -214,12 +233,16 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
     onRevert,
     readOnly = false,
     isPending = false,
+    tabType,
     isExcelUploaded = false,
+    requiresStockRefresh = false,
     lastAdjustmentIds,
     className,
     actions,
-    tabsSlot
+    tabsSlot,
+    isExpanded = false
 }: CyclicInventoryListProps) {
+    const resolvedTab = tabType || (isPending ? 'pending' : 'controlled');
     const [searchValue, setSearchValue] = useState("");
     const deferredSearch = React.useDeferredValue(searchValue);
     const [selectedDiffFilter, setSelectedDiffFilter] = useState("all");
@@ -347,10 +370,15 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
             width: "280px",
             sortValue: (row) => row.name,
             cell: (row) => readOnly ? (
-                <div className="flex items-center min-w-0 py-0.5 select-none">
+                <div className="flex items-center gap-1.5 min-w-0 py-0.5 select-none">
                     <span className="font-medium text-xs truncate max-w-[220px] sm:max-w-xs md:max-w-sm text-foreground">
                         {row.name}
                     </span>
+                    {row.is_hidden && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0">
+                            Oculto
+                        </span>
+                    )}
                 </div>
             ) : (
                 <PopoverRowCell
@@ -361,50 +389,130 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
             )
         });
 
-        // Rubro
-        cols.push({
-            key: "category",
-            header: "Rubro",
-            sortable: true,
-            width: "120px",
-            sortValue: (row) => row.category || '',
-            cell: (row) => (
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-tight truncate block">
-                    {row.category || 'Varios'}
-                </span>
-            )
-        });
+        // Columnas de Stock y Precios
+        if (resolvedTab === 'pending') {
+            // Stock Sist. (movido entre Producto y PVP)
+            cols.push({
+                key: "systemQuantity",
+                header: "Stock Sist.",
+                sortable: true,
+                width: "95px",
+                sortValue: (row) => row.systemQuantity,
+                cell: (row) => (
+                    <span className="text-xs font-semibold tabular-nums text-foreground">
+                        {row.systemQuantity}
+                    </span>
+                )
+            });
 
-        // Precio
-        cols.push({
-            key: "cost",
-            header: "Precio",
-            sortable: true,
-            width: "100px",
-            sortValue: (row) => row.cost,
-            cell: (row) => (
-                <span className="text-xs font-medium text-foreground tabular-nums">
-                    ${row.cost.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-            )
-        });
+            // PVP (Precio de Venta al Público)
+            cols.push({
+                key: "price",
+                header: "PVP",
+                sortable: true,
+                width: "105px",
+                sortValue: (row) => (row.price && row.price > 0) ? row.price : (row.cost || 0),
+                cell: (row) => {
+                    const val = (row.price && row.price > 0) ? row.price : (row.cost || 0);
+                    return (
+                        <span className="text-xs font-medium text-foreground tabular-nums">
+                            ${val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                    );
+                }
+            });
 
-        // Cantidad (Físico)
-        cols.push({
-            key: "quantity",
-            header: "Cantidad",
-            sortable: true,
-            width: "85px",
-            sortValue: (row) => row.countedQuantity,
-            cell: (row) => (
-                <span className="text-xs font-semibold tabular-nums text-foreground">
-                    {row.countedQuantity}
-                </span>
-            )
-        });
+            // PVP Total (Stock Sist. * PVP)
+            cols.push({
+                key: "pvpTotal",
+                header: "PVP Total",
+                sortable: true,
+                width: "115px",
+                sortValue: (row) => {
+                    const pvp = (row.price && row.price > 0) ? row.price : (row.cost || 0);
+                    return (row.systemQuantity || 0) * pvp;
+                },
+                cell: (row) => {
+                    const pvp = (row.price && row.price > 0) ? row.price : (row.cost || 0);
+                    const total = (row.systemQuantity || 0) * pvp;
+                    return (
+                        <span className={cn(
+                            "text-xs font-semibold tabular-nums",
+                            total < 0 ? "text-red-600 dark:text-red-400" : "text-foreground"
+                        )}>
+                            {total < 0 ? '-' : ''}${Math.abs(total).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                    );
+                }
+            });
 
-        // Columnas exclusivas para vistas Controlados y Ajustados (ocultas en Pendientes)
-        if (!isPending) {
+            // Costo
+            cols.push({
+                key: "cost",
+                header: "Costo",
+                sortable: true,
+                width: "105px",
+                sortValue: (row) => row.cost ?? 0,
+                cell: (row) => {
+                    const val = row.cost ?? 0;
+                    return (
+                        <span className="text-xs font-medium text-foreground tabular-nums">
+                            ${val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                    );
+                }
+            });
+
+            // Costo Total (Stock Sist. * Costo)
+            cols.push({
+                key: "costTotal",
+                header: "Costo Total",
+                sortable: true,
+                width: "115px",
+                sortValue: (row) => (row.systemQuantity || 0) * (row.cost ?? 0),
+                cell: (row) => {
+                    const cost = row.cost ?? 0;
+                    const total = (row.systemQuantity || 0) * cost;
+                    return (
+                        <span className={cn(
+                            "text-xs font-semibold tabular-nums",
+                            total < 0 ? "text-red-600 dark:text-red-400" : "text-foreground"
+                        )}>
+                            {total < 0 ? '-' : ''}${Math.abs(total).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                    );
+                }
+            });
+        } else if (resolvedTab === 'controlled') {
+            // CONTROLADOS: Rubro, Cantidad, Sist / Dif, PVP, Costo (sin Id Ajuste, sin Total ($))
+            // Rubro
+            cols.push({
+                key: "category",
+                header: "Rubro",
+                sortable: true,
+                width: "120px",
+                sortValue: (row) => row.category || '',
+                cell: (row) => (
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-tight truncate block">
+                        {row.category || 'Varios'}
+                    </span>
+                )
+            });
+
+            // Conteo (Físico en Controlados)
+            cols.push({
+                key: "quantity",
+                header: "Conteo",
+                sortable: true,
+                width: "85px",
+                sortValue: (row) => row.countedQuantity,
+                cell: (row) => (
+                    <span className="text-xs font-semibold tabular-nums text-foreground">
+                        {row.countedQuantity}
+                    </span>
+                )
+            });
+
             // Sist / Dif
             cols.push({
                 key: "sistDif",
@@ -439,15 +547,147 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                 }
             });
 
+            // PVP
+            cols.push({
+                key: "price",
+                header: "PVP",
+                sortable: true,
+                width: "105px",
+                sortValue: (row) => (row.price && row.price > 0) ? row.price : (row.cost || 0),
+                cell: (row) => {
+                    const val = (row.price && row.price > 0) ? row.price : (row.cost || 0);
+                    return (
+                        <span className="text-xs font-medium text-foreground tabular-nums">
+                            ${val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                    );
+                }
+            });
+
+            // Costo
+            cols.push({
+                key: "cost",
+                header: "Costo",
+                sortable: true,
+                width: "105px",
+                sortValue: (row) => row.cost ?? 0,
+                cell: (row) => {
+                    const val = row.cost ?? 0;
+                    return (
+                        <span className="text-xs font-medium text-foreground tabular-nums">
+                            ${val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                    );
+                }
+            });
+        } else {
+            // AJUSTADOS: Rubro, Cantidad, Sist / Dif, PVP, Costo, Total ($), Id Ajuste
+            // Rubro
+            cols.push({
+                key: "category",
+                header: "Rubro",
+                sortable: true,
+                width: "120px",
+                sortValue: (row) => row.category || '',
+                cell: (row) => (
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-tight truncate block">
+                        {row.category || 'Varios'}
+                    </span>
+                )
+            });
+
+            // Conteo (Físico en Ajustados)
+            cols.push({
+                key: "quantity",
+                header: "Conteo",
+                sortable: true,
+                width: "85px",
+                sortValue: (row) => row.countedQuantity,
+                cell: (row) => (
+                    <span className="text-xs font-semibold tabular-nums text-foreground">
+                        {row.countedQuantity}
+                    </span>
+                )
+            });
+
+            // Sist / Dif
+            cols.push({
+                key: "sistDif",
+                header: "Sist / Dif",
+                sortable: true,
+                width: "115px",
+                sortValue: (row) => row.countedQuantity - row.systemQuantity,
+                cell: (row) => {
+                    const diff = row.countedQuantity - row.systemQuantity;
+                    const hasDiff = diff !== 0;
+
+                    return (
+                        <div className="flex items-center justify-start gap-1.5 text-xs tabular-nums">
+                            <span className="text-muted-foreground font-medium">
+                                {row.systemQuantity}
+                            </span>
+                            <span className="text-muted-foreground/60">/</span>
+                            {hasDiff ? (
+                                <Badge 
+                                    variant="outline" 
+                                    size="compact"
+                                    color={diff > 0 ? "green" : "red"}
+                                    className="font-bold tabular-nums"
+                                >
+                                    {diff > 0 ? `+${diff}` : diff}
+                                </Badge>
+                            ) : (
+                                <span className="text-muted-foreground/60 font-medium text-xs">–</span>
+                            )}
+                        </div>
+                    );
+                }
+            });
+
+            // PVP
+            cols.push({
+                key: "price",
+                header: "PVP",
+                sortable: true,
+                width: "105px",
+                sortValue: (row) => (row.price && row.price > 0) ? row.price : (row.cost || 0),
+                cell: (row) => {
+                    const val = (row.price && row.price > 0) ? row.price : (row.cost || 0);
+                    return (
+                        <span className="text-xs font-medium text-foreground tabular-nums">
+                            ${val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                    );
+                }
+            });
+
+            // Costo
+            cols.push({
+                key: "cost",
+                header: "Costo",
+                sortable: true,
+                width: "105px",
+                sortValue: (row) => row.cost ?? 0,
+                cell: (row) => {
+                    const val = row.cost ?? 0;
+                    return (
+                        <span className="text-xs font-medium text-foreground tabular-nums">
+                            ${val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                    );
+                }
+            });
+
+            // Total ($)
             cols.push({
                 key: "differenceValue",
                 header: "Total ($)",
                 sortable: true,
                 width: "110px",
-                sortValue: (row) => (row.countedQuantity - row.systemQuantity) * row.cost,
+                sortValue: (row) => (row.countedQuantity - row.systemQuantity) * (row.cost || 0),
                 cell: (row) => {
                     const diff = row.countedQuantity - row.systemQuantity;
-                    const diffValue = diff * row.cost;
+                    const diffValue = diff * (row.cost || 0);
                     return (
                         <p className={cn(
                             "text-xs font-medium tabular-nums",
@@ -459,6 +699,7 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                 }
             });
 
+            // Id Ajuste
             cols.push({
                 key: "idAjuste",
                 header: "Id Ajuste",
@@ -489,7 +730,7 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
         handleToggleRow, 
         isExcelUploaded, 
         onUpdateQuantity, 
-        isPending
+        resolvedTab
     ]);
 
     return (
@@ -497,7 +738,10 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
             {/* Contenedor exterior estilo Fluid */}
             <div className="w-full bg-surface-2/60 dark:bg-surface-2/40 border border-border/40 rounded-[24px] p-[2px] transition-all duration-200 shadow-xs">
                 {/* Recuadro interior blanco/más claro */}
-                <div className="w-full bg-white dark:bg-surface-3 border border-border/40 rounded-[22px] p-2 sm:p-3 shadow-xs min-h-[560px] flex flex-col relative">
+                <div className={cn(
+                    "w-full bg-white dark:bg-surface-3 border border-border/40 rounded-[22px] p-2 sm:p-3 shadow-xs flex flex-col relative transition-all duration-300",
+                    isExpanded ? "min-h-[740px]" : "min-h-[560px]"
+                )}>
                     
                     {/* Barra de controles: Buscador + Filtros */}
                     <div className="sticky top-0 z-30 bg-white/95 dark:bg-surface-3/95 backdrop-blur-md -mx-2 sm:-mx-3 -mt-2 sm:-mt-3 px-3 sm:px-4 py-3 rounded-t-[22px] border-b border-border/40 flex flex-wrap items-center justify-between gap-3 transition-colors shadow-2xs">
@@ -558,7 +802,7 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                             resizable
                             reorderable
                             defaultSort={null}
-                            height={520}
+                            height={isExpanded ? 700 : 520}
                             rowHeight={40}
                             dense={true}
                             overscan={5}
@@ -566,10 +810,16 @@ export const CyclicInventoryList = memo(function CyclicInventoryList({
                             emptyState={
                                 <div className="flex flex-col items-center justify-center p-12 text-muted-foreground text-xs gap-1.5">
                                     <span className="font-semibold text-foreground text-sm">
-                                        {searchValue ? "No se encontraron productos coincidentes" : "No hay productos registrados en este estado"}
+                                        {requiresStockRefresh && resolvedTab === 'pending'
+                                            ? "Actualización de stock requerida"
+                                            : searchValue 
+                                            ? "No se encontraron productos coincidentes" 
+                                            : "No hay productos registrados en este estado"}
                                     </span>
                                     <span className="text-muted-foreground text-xs">
-                                        {searchValue 
+                                        {requiresStockRefresh && resolvedTab === 'pending'
+                                            ? "Sincronizá el stock de la tabla para retomar el conteo de los ítems pendientes."
+                                            : searchValue 
                                             ? "Probá ajustando la búsqueda o los filtros seleccionados." 
                                             : "Los productos cargados aparecerán en esta tabla."}
                                     </span>

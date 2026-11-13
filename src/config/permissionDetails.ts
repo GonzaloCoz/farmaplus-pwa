@@ -21,12 +21,6 @@ export const PERMISSION_DETAILS: PermissionDetail[] = [
         category: 'Personalización'
     },
     {
-        id: '4',
-        code: 'MANAGE_CALENDAR_EVENTS',
-        description: 'Gestionar Eventos de Calendario',
-        category: 'Operaciones'
-    },
-    {
         id: '5',
         code: 'MANAGE_INVENTORY_CONFIG',
         description: 'Configurar Plazos de Inventario',

@@ -9,7 +9,7 @@ import {
   type HTMLAttributes,
 } from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { useIcon } from "@/lib/icon-context";
 import { spring } from "@/lib/springs";
@@ -191,7 +191,7 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
                 >)}
                 className={cn(
                   container ? "absolute" : "fixed",
-                  "left-1/2 top-1/2 z-50 w-[calc(100%-2rem)]",
+                  "left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] text-foreground",
                   surfaceClasses(dialogLevel),
                   "p-6 focus:outline-none",
                   size === "sm" && (compact ? "max-w-[360px]" : "max-w-[400px]"),
@@ -224,7 +224,7 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
                           className="absolute right-3 top-3"
                         >
                           <XIcon />
-                          <span className="sr-only">Close</span>
+                          <span className="sr-only">Cerrar</span>
                         </Button>
                       }
                     />

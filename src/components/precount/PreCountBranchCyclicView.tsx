@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -48,6 +48,7 @@ import {
 } from "@/components/ui/dropdown";
 import { CyclicInventoryList } from '@/components/CyclicInventoryList';
 import { PreCountConfigView } from './PreCountConfigView';
+import { PreCountConfig2View } from './PreCountConfig2View';
 import { PreCountProductsView } from './PreCountProductsView';
 import { PreCountFilesView } from './PreCountFilesView';
 import { db } from '@/services/db';
@@ -444,12 +445,13 @@ export function PreCountBranchCyclicView({
         }
     ], []);
 
-    // Update window tab title with lab name
+    // Update window tab title with lab name (locked to the tab where this view opened)
+    const originWindowId = useRef(activeWindowId);
     useEffect(() => {
-        if (activeWindowId && labName) {
-            updateWindowMeta(activeWindowId, labName, <ClipboardList className="w-4 h-4" />);
+        if (originWindowId.current && labName) {
+            updateWindowMeta(originWindowId.current, labName, <ClipboardList className="w-4 h-4" />);
         }
-    }, [activeWindowId, labName, updateWindowMeta]);
+    }, [labName, updateWindowMeta]);
 
     // Keyboard listener for Admin Mode (Ctrl + B)
     useEffect(() => {
@@ -754,6 +756,7 @@ export function PreCountBranchCyclicView({
                                         <TabItem value="productos" label="Productos" />
                                         <TabItem value="archivos" label="Archivos" />
                                         <TabItem value="configuracion" label="Configuración" />
+                                        <TabItem value="configuracion2" label="Configuración 2" />
                                     </TabsList>
 
                                     {/* Al fondo a la derecha: Título de inventario y subtítulo en la misma línea de los tabs */}
@@ -978,6 +981,10 @@ export function PreCountBranchCyclicView({
                                             }
                                         }}
                                     />
+                                </TabPanel>
+
+                                <TabPanel value="configuracion2" className="flex-1 min-h-0 pt-2 w-full flex flex-col">
+                                    <PreCountConfig2View />
                                 </TabPanel>
                             </Tabs>
                         </div>

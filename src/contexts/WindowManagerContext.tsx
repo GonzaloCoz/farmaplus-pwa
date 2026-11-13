@@ -1,8 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { v4 as uuidv4 } from 'uuid';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getTabMetaForPath } from '@/config/tabConfig';
-import { useUser } from './UserContext';
 
 export interface WindowInstance {
     id: string;
@@ -26,11 +24,9 @@ interface WindowManagerContextType {
 const WindowContext = createContext<WindowManagerContextType | undefined>(undefined);
 
 export const WindowManagerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const { user } = useUser();
     const location = useLocation();
     const navigate = useNavigate();
-    const isNavigationTriggeredByContext = useRef(false);
-    const lastProcessedPath = useRef(location.pathname);
+    const switchingToId = useRef<string | null>(null);
 
     const [windows, setWindows] = useState<WindowInstance[]>(() => {
         let hashPath = typeof window !== 'undefined' && window.location.hash ? window.location.hash.replace(/^#/, '') : '';
@@ -40,98 +36,63 @@ export const WindowManagerProvider: React.FC<{ children: React.ReactNode }> = ({
 
         const { title, icon } = getTabMetaForPath(initialPath);
         return [{
-            id: uuidv4(),
+            id: crypto.randomUUID(),
             path: initialPath,
             title,
             icon,
             isClosable: true
         }];
     });
+
     const [activeWindowId, setActiveWindowId] = useState<string | null>(() => windows[0]?.id || null);
 
-    // 1. Sync Active Window Changes -> Global URL
+    // Sync active window metadata whenever location.pathname changes (internal navigation only)
     useEffect(() => {
-        const activeWin = windows.find(w => w.id === activeWindowId);
-        if (activeWin && activeWin.path !== location.pathname) {
-            isNavigationTriggeredByContext.current = true;
-            lastProcessedPath.current = activeWin.path;
-            navigate(activeWin.path);
-        }
-    }, [activeWindowId]); // Only when active tab SWITCHES
-
-    // 2. Sync Global URL -> Active Window Path
-    useEffect(() => {
-        // Skip if this change was triggered by our own context (tab switch)
-        if (isNavigationTriggeredByContext.current) {
-            isNavigationTriggeredByContext.current = false;
+        // Prevent tab switch navigation from erroneously renaming the previous tab
+        if (switchingToId.current) {
+            if (activeWindowId === switchingToId.current) {
+                switchingToId.current = null;
+            }
             return;
         }
 
-        if (lastProcessedPath.current === location.pathname) return;
-        lastProcessedPath.current = location.pathname;
+        if (!activeWindowId) return;
 
-        if (activeWindowId) {
-            const activeWin = windows.find(w => w.id === activeWindowId);
-            if (activeWin) {
-                // PROTECTION: If active window is FIXED (e.g. reminder), DO NOT overwrite its path.
-                // Instead, find or create a new window for the new path.
-                if (activeWin.isClosable === false) {
-                    const existing = windows.find(w => w.path === location.pathname);
-                    if (existing) {
-                        setActiveWindowId(existing.id);
-                    } else {
-                        const id = uuidv4();
-                        const meta = getTabMetaForPath(location.pathname);
-                        setWindows(prev => [...prev, {
-                            id,
-                            path: location.pathname,
-                            title: meta.title,
-                            icon: meta.icon,
-                            isClosable: true
-                        }]);
-                        setActiveWindowId(id);
-                    }
-                    return;
-                }
+        setWindows(prev => {
+            const activeWin = prev.find(w => w.id === activeWindowId);
+            if (!activeWin || activeWin.path === location.pathname) return prev;
 
-                // Normal behavior: update current active window's path
-                if (activeWin.path !== location.pathname) {
-                    const meta = getTabMetaForPath(location.pathname);
-                    setWindows(prev => prev.map(w =>
-                        w.id === activeWindowId
-                            ? { ...w, path: location.pathname, title: meta.title, icon: meta.icon }
-                            : w
-                    ));
-                }
-            }
-        }
-    }, [location.pathname, activeWindowId, windows]);
+            const meta = getTabMetaForPath(location.pathname);
+            return prev.map(w =>
+                w.id === activeWindowId
+                    ? { ...w, path: location.pathname, title: meta.title, icon: meta.icon }
+                    : w
+            );
+        });
+    }, [location.pathname, activeWindowId]);
 
-
-
-    const openWindow = useCallback((path: string, title?: string, icon?: React.ReactNode, forceNew: boolean = true) => {
-        const id = uuidv4();
+    const openWindow = useCallback((path: string, customTitle?: string, customIcon?: React.ReactNode, forceNew: boolean = false) => {
         const meta = getTabMetaForPath(path);
-        const newWindow: WindowInstance = {
-            id,
-            path,
-            title: title || meta.title,
-            icon: icon || meta.icon,
-            isClosable: true
-        };
+        const title = customTitle || meta.title;
+        const icon = customIcon || meta.icon;
 
         setWindows(prev => {
             if (!forceNew) {
                 const existing = prev.find(w => w.path === path);
                 if (existing) {
+                    switchingToId.current = existing.id;
                     setActiveWindowId(existing.id);
+                    navigate(existing.path);
                     return prev;
                 }
             }
+            const id = crypto.randomUUID();
+            switchingToId.current = id;
             setActiveWindowId(id);
-            return [...prev, newWindow];
+            navigate(path);
+            return [...prev, { id, path, title, icon, isClosable: true }];
         });
-    }, []);
+    }, [navigate]);
 
     const closeWindow = useCallback((id: string) => {
         setWindows(prev => {
@@ -143,15 +104,33 @@ export const WindowManagerProvider: React.FC<{ children: React.ReactNode }> = ({
 
             if (activeWindowId === id) {
                 if (newWindows.length > 0) {
-                    const nextActive = newWindows[index] || newWindows[index - 1];
+                    const nextActive = newWindows[index] || newWindows[index - 1] || newWindows[0];
+                    switchingToId.current = nextActive.id;
                     setActiveWindowId(nextActive.id);
+                    navigate(nextActive.path);
                 } else {
-                    setActiveWindowId(null);
+                    const fallbackId = crypto.randomUUID();
+                    const meta = getTabMetaForPath('/');
+                    switchingToId.current = fallbackId;
+                    setActiveWindowId(fallbackId);
+                    navigate('/');
+                    return [{ id: fallbackId, path: '/', title: meta.title, icon: meta.icon, isClosable: true }];
                 }
             }
             return newWindows;
         });
-    }, [activeWindowId]);
+    }, [activeWindowId, navigate]);
+
+    const setActiveWindow = useCallback((id: string) => {
+        if (id === activeWindowId) return;
+        const target = windows.find(w => w.id === id);
+        if (!target) return;
+        switchingToId.current = id;
+        setActiveWindowId(id);
+        if (target.path !== location.pathname) {
+            navigate(target.path);
+        }
+    }, [activeWindowId, windows, location.pathname, navigate]);
 
     const updateWindowPath = useCallback((id: string, path: string) => {
         setWindows(prev => prev.map(w => w.id === id ? { ...w, path } : w));
@@ -162,19 +141,13 @@ export const WindowManagerProvider: React.FC<{ children: React.ReactNode }> = ({
     }, []);
 
     const closeAllWindows = useCallback(() => {
-        setWindows(prev => {
-            const remaining = prev.filter(w => w.isClosable === false);
-            if (remaining.length > 0) {
-                setActiveWindowId(remaining[0].id);
-                return remaining;
-            } else {
-                const id = uuidv4();
-                const meta = getTabMetaForPath('/');
-                setActiveWindowId(id);
-                return [{ id, path: '/', title: meta.title, icon: meta.icon, isClosable: true }];
-            }
-        });
-    }, []);
+        const id = crypto.randomUUID();
+        const meta = getTabMetaForPath('/');
+        switchingToId.current = id;
+        setWindows([{ id, path: '/', title: meta.title, icon: meta.icon, isClosable: true }]);
+        setActiveWindowId(id);
+        navigate('/');
+    }, [navigate]);
 
     return (
         <WindowContext.Provider value={{
@@ -182,7 +155,7 @@ export const WindowManagerProvider: React.FC<{ children: React.ReactNode }> = ({
             activeWindowId,
             openWindow,
             closeWindow,
-            setActiveWindow: setActiveWindowId,
+            setActiveWindow,
             updateWindowPath,
             updateWindowMeta,
             closeAllWindows

@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Laptop01 as Laptop, Phone as Smartphone, Play, StopSquare as StopCircle, Users01 as UsersGroupTwoRounded, File02 as DocumentText, RefreshCw01 as Refresh, TrendUp01 as TrendingUp, TrendDown01 as TrendingDown, SearchLg as Search, FilterLines as Filter, ChevronDown } from '@untitledui/icons';
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { notify } from "@/lib/notifications";
 import * as XLSX from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,9 +10,7 @@ import { useUser } from "@/contexts/UserContext";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FixedSizeList as List } from "react-window";
-import AutoSizer from "react-virtualized-auto-sizer";
-import type { ListChildComponentProps } from "react-window";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "@/lib/utils";
 
 interface StockRecountServerProps {
@@ -285,7 +283,15 @@ export const StockRecountServer: React.FC<StockRecountServerProps> = ({ file, on
       });
   }, [recountItems, searchTerm, filterTab]);
 
-  const RecountRow = ({ index, style, data }: ListChildComponentProps) => {
+  const listParentRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: filteredItems.length,
+    getScrollElement: () => listParentRef.current,
+    estimateSize: () => 80,
+    overscan: 5,
+  });
+
+  const RecountRow = ({ index, style, data }: { index: number; style: React.CSSProperties; data: RecountItem[] }) => {
     const item = data[index];
     const diff = item.counted_qty - item.systemStock;
     const diffValue = diff * item.cost;
@@ -555,20 +561,33 @@ export const StockRecountServer: React.FC<StockRecountServerProps> = ({ file, on
                 <div className="col-span-2 text-right pr-4">Total ($)</div>
               </div>
 
-              <div className="h-[500px] bg-background rounded-xl border border-border/40 overflow-hidden shadow-inner relative">
-                <AutoSizer>
-                  {({ height, width }) => (
-                    <List
-                      height={height}
-                      itemCount={filteredItems.length}
-                      itemSize={80}
-                      width={width}
-                      itemData={filteredItems}
-                    >
-                      {RecountRow}
-                    </List>
-                  )}
-                </AutoSizer>
+              <div
+                ref={listParentRef}
+                className="h-[500px] bg-background rounded-xl border border-border/40 overflow-y-auto overflow-x-hidden shadow-inner relative"
+              >
+                <div
+                  style={{
+                    height: `${rowVirtualizer.getTotalSize()}px`,
+                    width: '100%',
+                    position: 'relative',
+                  }}
+                >
+                  {rowVirtualizer.getVirtualItems().map((virtualRow) => (
+                    <RecountRow
+                      key={virtualRow.key}
+                      index={virtualRow.index}
+                      data={filteredItems}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: `${virtualRow.size}px`,
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                    />
+                  ))}
+                </div>
                 {filteredItems.length === 0 && (
                   <div className="absolute inset-0 flex items-center justify-center text-muted-foreground italic">
                     No se encontraron productos con los filtros actuales

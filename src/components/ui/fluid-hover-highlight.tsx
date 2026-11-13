@@ -5,29 +5,20 @@ import {
   AnimatePresence,
   useReducedMotion,
   type Transition,
-} from "framer-motion";
+} from "motion/react";
 import { cn } from "@/lib/utils";
 import { spring } from "@/lib/springs";
 import type { ItemRect, UseFluidHoverReturn } from "@/hooks/use-fluid-hover";
-
-// ---------------------------------------------------------------------------
-// The one hover highlight every fluid hover list renders: an absolutely
-// positioned fill that springs between the rects `useFluidHover` measures.
-// Consumers used to hand-roll this motion.div; this is that block, once.
-//
-//   const hover = useFluidHover(ref);
-//   <FluidHoverHighlight hover={hover} className={shape.bg} />
-//
-// It owns no layout opinion beyond `absolute`: radius, z-index, and the
-// offsetParent (the container must be `relative`) are the consumer's.
-// ---------------------------------------------------------------------------
 
 /** What the highlight reads off the hook: the highlighted index, the
  *  measured rects, whether they are current, and the pointer session. */
 export type FluidHoverSource = Pick<
   UseFluidHoverReturn,
-  "activeIndex" | "itemRects" | "isMeasured" | "sessionRef"
->;
+  "activeIndex" | "itemRects" | "isMeasured"
+> & {
+  session?: number;
+  sessionRef?: React.RefObject<number>;
+};
 
 interface HighlightFromHook {
   /** The hook's return value. The highlight sits on
@@ -45,9 +36,9 @@ interface HighlightFromRect {
    *  the rect to sit on, in the container's coordinate space. `null` hides
    *  the highlight (it fades out on `spring.fast.exit`). */
   rect: ItemRect | null;
-  /** `sessionRef.current` from `useFluidHover`. It increments when the
-   *  cursor enters the container, which re-keys the highlight so it fades in
-   *  at `from ?? rect` instead of sliding over from wherever it was last. */
+  /** `session` from `useFluidHover`. It steps when the cursor enters the
+   *  container, which re-keys the highlight so it fades in at `from ?? rect`
+   *  instead of sliding over from wherever it was last. */
   session: number;
   hover?: never;
   hidden?: never;
@@ -57,6 +48,10 @@ export type FluidHoverHighlightProps = (HighlightFromHook | HighlightFromRect) &
   /** Where a fresh session fades in from. A dropdown passes its checked row,
    *  a nav menu its active route. Defaults to the rect itself. */
   from?: ItemRect | null;
+  /** `false` starts a fresh session opaque instead of fading in: for a
+   *  `from` under a filled item (the calendar's range start), so the
+   *  highlight reads as sliding out of it. */
+  fadeIn?: boolean;
   /** Radius, z-index, anything else. Merged onto
    *  `absolute bg-hover pointer-events-none`. */
   className?: string;
@@ -94,23 +89,23 @@ export function resolveHighlightSource(
   props: FluidHoverHighlightProps
 ): { rect: ItemRect | null; session: number } {
   if (props.hover) {
-    const { activeIndex, itemRects, isMeasured, sessionRef } = props.hover;
+    const { activeIndex, itemRects, isMeasured } = props.hover;
     const rect =
       !props.hidden && isMeasured && activeIndex !== null
         ? (itemRects[activeIndex] ?? null)
         : null;
-    return { rect, session: sessionRef.current };
+    const session =
+      (props.hover.session !== undefined
+        ? props.hover.session
+        : props.hover.sessionRef?.current) ?? 0;
+    return { rect, session };
   }
   return { rect: props.rect, session: props.session };
 }
 
 export function FluidHoverHighlight(props: FluidHoverHighlightProps) {
-  const { from, className, transition } = props;
+  const { from, fadeIn = true, className, transition } = props;
   const { rect, session } = resolveHighlightSource(props);
-  // Reads the OS media query directly, so an installed copy honours reduced
-  // motion without the app wrapping its tree in MotionConfig. A wrapped app
-  // gets the same result twice over: the travel is a transform, which
-  // MotionConfig reduces too.
   const reduceMotion = useReducedMotion() ?? false;
   return (
     <AnimatePresence>
@@ -118,16 +113,11 @@ export function FluidHoverHighlight(props: FluidHoverHighlightProps) {
         <motion.div
           key={session}
           data-slot="fluid-hover-highlight"
-          // Pinned to the container's padding corner and moved with a
-          // transform, so the travel runs on the compositor instead of
-          // re-laying out every frame. Width and height are real layout
-          // values, but they only change when the target rect's size does,
-          // which in most lists is never.
           className={cn(
             "pointer-events-none absolute left-0 top-0 bg-hover",
             className
           )}
-          initial={{ opacity: 0, ...toTarget(from ?? rect) }}
+          initial={{ opacity: fadeIn ? 0 : 1, ...toTarget(from ?? rect) }}
           animate={{ opacity: 1, ...toTarget(rect) }}
           exit={{ opacity: 0, transition: spring.fast.exit }}
           transition={resolveHighlightTransition(transition, reduceMotion)}

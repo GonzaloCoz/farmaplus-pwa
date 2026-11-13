@@ -224,15 +224,25 @@ const THEME_FILLS = {
 	dark: "#f2f2f2",
 } as const;
 
+function readDocumentTheme(): "light" | "dark" {
+	if (typeof document !== "undefined") {
+		if (document.documentElement.classList.contains("dark")) return "dark";
+		if (document.documentElement.classList.contains("light")) return "light";
+	}
+	if (typeof window !== "undefined") {
+		return window.matchMedia("(prefers-color-scheme: dark)").matches
+			? "dark"
+			: "light";
+	}
+	return "light";
+}
+
 function useResolvedTheme(
 	theme: "light" | "dark" | "system" | undefined,
 ): "light" | "dark" {
 	const [resolved, setResolved] = useState<"light" | "dark">(() => {
 		if (theme === "light" || theme === "dark") return theme;
-		if (typeof window === "undefined") return "light";
-		return window.matchMedia("(prefers-color-scheme: dark)").matches
-			? "dark"
-			: "light";
+		return readDocumentTheme();
 	});
 
 	useEffect(() => {
@@ -240,12 +250,24 @@ function useResolvedTheme(
 			setResolved(theme);
 			return;
 		}
+		const sync = () => setResolved(readDocumentTheme());
+		sync();
+
 		const mq = window.matchMedia("(prefers-color-scheme: dark)");
-		const handler = (e: MediaQueryListEvent) =>
-			setResolved(e.matches ? "dark" : "light");
-		setResolved(mq.matches ? "dark" : "light");
-		mq.addEventListener("change", handler);
-		return () => mq.removeEventListener("change", handler);
+		mq.addEventListener("change", sync);
+		window.addEventListener("theme-change", sync);
+
+		const observer = new MutationObserver(sync);
+		observer.observe(document.documentElement, {
+			attributes: true,
+			attributeFilter: ["class"],
+		});
+
+		return () => {
+			mq.removeEventListener("change", sync);
+			window.removeEventListener("theme-change", sync);
+			observer.disconnect();
+		};
 	}, [theme]);
 
 	return resolved;
@@ -256,7 +278,7 @@ export function Toaster({
 	position = "top-right",
 	offset,
 	options,
-	theme,
+	theme = "system",
 }: SileoToasterProps) {
 	store.position = position;
 	if (options !== undefined) {

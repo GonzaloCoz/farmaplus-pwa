@@ -18,7 +18,7 @@ import type { IconComponent } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import { fontWeights } from "@/lib/font-weight";
 import { useShape } from "@/lib/shape-context";
-import { useProximityHover } from "@/hooks/use-proximity-hover";
+import { useFluidHover, useRegisterFluidHoverItem } from "@/hooks/use-fluid-hover";
 
 interface InputGroupContextValue {
   registerItem: (index: number, element: HTMLElement | null) => void;
@@ -47,12 +47,8 @@ const InputGroup = forwardRef<HTMLDivElement, InputGroupProps>(
       (child: any) => child?.type?.displayName === "InputGroupInput"
     );
 
-    const { activeIndex, handlers, registerItem, measureItems } =
-      useProximityHover(containerRef);
-
-    useEffect(() => {
-      measureItems();
-    }, [measureItems, children]);
+    const { activeIndex, handlers, registerItem } =
+      useFluidHover(containerRef);
 
     const contextValue = useMemo(
       () => ({ registerItem, activeIndex }),
@@ -89,7 +85,7 @@ const InputGroup = forwardRef<HTMLDivElement, InputGroupProps>(
           // hook measures items via offsetTop and compares against
           // container-relative mouse coords, so the two coordinate spaces must
           // share this origin (same as every other proximity consumer).
-          className={cn("relative flex flex-col gap-3 w-72 max-w-full", className)}
+          className={cn("relative flex flex-col gap-3 w-80 max-w-full", className)}
           {...props}
         >
           {children}
@@ -104,6 +100,7 @@ InputGroup.displayName = "InputGroup";
 interface InputFieldProps
   extends Omit<InputHTMLAttributes<HTMLInputElement>, "onChange" | "index" | "size"> {
   label?: string;
+  description?: string;
   placeholder?: string;
   icon?: IconComponent;
   index: number;
@@ -115,12 +112,14 @@ interface InputFieldProps
   className?: string;
   inputClassName?: string;
   size?: "default" | "compact";
+  endAdornment?: ReactNode;
 }
 
 const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
   (
     {
       label,
+      description,
       placeholder,
       icon: Icon,
       index,
@@ -132,6 +131,7 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
       className,
       inputClassName,
       size = "default",
+      endAdornment,
       ...props
     },
     ref
@@ -142,10 +142,7 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
     const [isFocused, setIsFocused] = useState(false);
     const shape = useShape();
 
-    useEffect(() => {
-      registerItem(index, internalRef.current);
-      return () => registerItem(index, null);
-    }, [index, registerItem]);
+    useRegisterFluidHoverItem(registerItem, index, internalRef);
 
     const isActive = activeIndex === index;
     const labelActive = isActive || isFocused;
@@ -158,29 +155,15 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
       setIsFocused(false);
     };
 
-    // Input container classes
-    let bgClass: string;
-    let ringClass: string;
-
-    if (disabled) {
-      bgClass = "bg-transparent";
-      ringClass = "ring-border";
-    } else if (error) {
-      bgClass = isFocused ? "bg-card" : isActive ? "bg-destructive-light/60" : "bg-transparent";
-      ringClass = isFocused || isActive ? "ring-destructive/50" : "ring-transparent";
-    } else if (isFocused) {
-      bgClass = "bg-card";
-      ringClass = "ring-border";
-    } else if (isActive) {
-      bgClass = "bg-muted/50";
-      ringClass = "ring-border";
-    } else if (alwaysShowBorder) {
-      bgClass = "bg-card";
-      ringClass = "ring-border";
-    } else {
-      bgClass = "bg-transparent";
-      ringClass = "ring-transparent";
-    }
+    // The ring never moves at rest, like the Select trigger's border. Focus
+    // darkens it to a neutral 40% and wins over the error tint while the
+    // value is being fixed; hover only adds the fill.
+    const ringClass = isFocused && !disabled
+      ? "ring-foreground/40"
+      : error
+        ? "ring-destructive/50"
+        : "ring-border";
+    const bgClass = isActive && !isFocused && !disabled ? "bg-hover" : "bg-transparent";
 
     return (
       // Base UI Field wires the accessibility plumbing: Field.Label's htmlFor
@@ -202,7 +185,7 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
       >
         {/* Label */}
         {label && (
-          <Field.Label className="inline-grid text-[13px] pl-3">
+          <Field.Label className="inline-grid text-[length:var(--fs-body,13px)] leading-[var(--lh-body,20px)]">
             <span
               className="col-start-1 row-start-1 invisible"
               style={{ fontVariationSettings: fontWeights.semibold }}
@@ -231,11 +214,12 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
             // padding) focused the input. Keep that, without disturbing the
             // input's own caret placement.
             if (e.target === inputRef.current) return;
+            if ((e.target as HTMLElement)?.closest("button")) return;
             e.preventDefault();
             inputRef.current?.focus();
           }}
           className={cn(
-            `flex items-center gap-2 ${shape.input} ring-1 transition-all duration-80`,
+            `flex items-center gap-2 ${shape.input} ring-1 ring-inset transition-[color,background-color,border-radius,box-shadow] duration-80`,
             size === "compact" ? "h-7 px-2.5 gap-1.5 text-xs" : "h-9 px-3",
             bgClass,
             ringClass,
@@ -263,21 +247,36 @@ const InputField = forwardRef<HTMLDivElement, InputFieldProps>(
             onBlur={handleBlur}
             placeholder={placeholder}
             className={cn(
-              "w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground outline-none font-[inherit]",
+              "w-full rounded-none bg-transparent text-[length:var(--fs-body,13px)] leading-[var(--lh-body,20px)] pointer-coarse:text-[16px] text-foreground placeholder:text-muted-foreground outline-none font-[inherit]",
               size === "compact" && "text-xs"
             )}
             style={{ fontVariationSettings: fontWeights.normal }}
             {...props}
           />
+          {endAdornment && (
+            <div className="shrink-0 flex items-center">
+              {endAdornment}
+            </div>
+          )}
         </div>
+
+        {/* Optional description */}
+        {description && !error && (
+          <Field.Description
+            className="text-[length:var(--fs-caption,12px)] leading-[var(--lh-caption,16px)] text-pretty text-muted-foreground"
+            style={{ fontVariationSettings: fontWeights.normal }}
+          >
+            {description}
+          </Field.Description>
+        )}
 
         {/* Error message — `match` pins it visible while our controlled
             `error` prop is standing. */}
         {error && (
           <Field.Error
             match
-            className="text-[12px] text-destructive pl-3"
-            style={{ fontVariationSettings: fontWeights.medium }}
+            className="text-[length:var(--fs-caption,12px)] leading-[var(--lh-caption,16px)] text-destructive"
+            style={{ fontVariationSettings: fontWeights.normal }}
           >
             {error}
           </Field.Error>

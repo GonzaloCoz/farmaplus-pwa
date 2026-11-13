@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from "motion/react";
 import { Plus } from '@untitledui/icons';
 import { Scan as ScanBarcode, File02 as FileSpreadsheet, Save01 as Save, XClose as X, SearchLg as Search } from '@untitledui/icons';
 import { Button } from '@/components/ui/button';

@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { Delete, Check, Plus, Minus } from '@untitledui/icons';
-import { motion, AnimatePresence, useDragControls } from 'framer-motion';
+import { motion, AnimatePresence, useDragControls } from "motion/react";
 import { useState, useEffect, useRef } from 'react';
 
 interface NumericKeyboardProps {

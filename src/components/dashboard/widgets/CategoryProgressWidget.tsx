@@ -8,7 +8,7 @@ import { getLaboratoriesForBranch } from '@/services/preCountDB';
 import { useUser } from '@/contexts/UserContext';
 import { notify } from '@/lib/notifications';
 import { hasPermission } from '@/config/permissions';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from "motion/react";
 import * as htmlToImage from 'html-to-image';
 import { useDashboardMetrics } from '@/hooks/useDashboardMetrics';
 import { BarChart } from '@/components/charts/bar-chart';

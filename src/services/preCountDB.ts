@@ -1,22 +1,26 @@
 import { db, LocalSession, LocalItem } from './db';
 import { syncManager } from './syncManager';
-import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '@/integrations/supabase/client';
 import { isTauriEnvironment } from '@/services/mysqlTauriBridge';
+import { decompressGzipBase64ToJson } from '@/lib/compression';
 
 // Device Identification Utility
 export const getDeviceId = () => {
     let id = localStorage.getItem('precount_device_id');
     if (!id) {
-        id = `dev-${uuidv4().substring(0, 8)}`;
+        id = `dev-${crypto.randomUUID().substring(0, 8)}`;
         localStorage.setItem('precount_device_id', id);
     }
     return id;
 };
 
 export const getDeviceName = () => {
+    const configuredName = typeof window !== 'undefined' ? localStorage.getItem('precount_device_name') : null;
+    if (configuredName && configuredName.trim() && configuredName !== 'Generic Device') {
+        return configuredName.trim();
+    }
     try {
-        const storedUser = localStorage.getItem('farmaplus_user');
+        const storedUser = typeof window !== 'undefined' ? localStorage.getItem('farmaplus_user') : null;
         if (storedUser) {
             const parsed = JSON.parse(storedUser);
             if (parsed.name || parsed.username) {
@@ -24,7 +28,7 @@ export const getDeviceName = () => {
             }
         }
     } catch {}
-    return localStorage.getItem('precount_device_name') || 'Generic Device';
+    return 'Generic Device';
 };
 
 // Re-export product functionality from the new service
@@ -57,6 +61,14 @@ export interface MasterCatalogItem {
     laboratory?: string;
     rubro?: string;
     subrubro?: string;
+    is_hidden?: boolean;
+    is_traceable?: boolean;
+    gtin?: string;
+    id_producto_padre?: string;
+    unidades_padre?: number;
+    parent_ean?: string;
+    parent_name?: string;
+    is_parent?: boolean;
 }
 
 export interface PreCountSession extends LocalSession {
@@ -70,12 +82,25 @@ export interface PreCountSession extends LocalSession {
 
 export type PreCountItem = LocalItem;
 
+export const getCachedUserId = (): string | undefined => {
+    try {
+        const storedUser = typeof window !== 'undefined' ? localStorage.getItem('farmaplus_user') : null;
+        if (storedUser) {
+            const parsed = JSON.parse(storedUser);
+            if (parsed?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.id)) {
+                return parsed.id;
+            }
+        }
+    } catch {}
+    return undefined;
+};
+
 // --- Sesiones ---
 
 export async function createSession(sector: string, branch_id?: string, master_catalog?: MasterCatalogItem[], sync_pin?: string, profile?: 'sucursal' | 'sap'): Promise<PreCountSession> {
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData.user?.id;
-    const sessionId = uuidv4();
+    const userId = getCachedUserId();
+
+    const sessionId = crypto.randomUUID();
     const now = new Date().toISOString();
 
     const newSession: PreCountSession = {
@@ -94,11 +119,12 @@ export async function createSession(sector: string, branch_id?: string, master_c
     // 1. Save to Local DB
     await db.sessions.add(newSession);
 
-    // 2. Queue for Sync
+    // 2. Queue for Sync (no incluir master_catalog para evitar saturar IndexedDB en offlineQueue; se gestiona por precount_device_files)
+    const { master_catalog: _mc, ...sessionToQueue } = newSession;
     await syncManager.addToQueue({
         type: 'create',
         entity: 'session',
-        data: newSession
+        data: sessionToQueue
     });
 
     return newSession;
@@ -113,20 +139,24 @@ export async function getActiveSessions(options?: { branchId?: string, role?: st
         .reverse()
         .sortBy('start_time') as PreCountSession[];
 
-    // 1.1 Filter local by branch if provided, but allow global sessions (branch_id null)
+    // 1.1 Filter local by branch if provided for branch role
     if (options?.branchId && options.role === 'branch') {
-        localSessions = localSessions.filter(s => s.branch_id === options.branchId || !s.branch_id);
+        localSessions = localSessions.filter(s => s.branch_id === options.branchId);
     }
 
     // 2. If online, try to fetch/sync from Supabase to get latest counts
     if (navigator.onLine) {
         try {
-            // Get pending deletes to avoid resurrecting them
-            const pendingDeletes = await db.pendingActions
+            // Get pending actions for sessions to avoid resurrecting deleted ones or purging newly created offline ones
+            const pendingSessionActions = await db.pendingActions
                 .where('entity').equals('session')
-                .and(a => (a as any).type === 'delete')
                 .toArray();
-            const deletedIds = new Set(pendingDeletes.map(d => d.data.id));
+            const deletedIds = new Set(
+                pendingSessionActions.filter(a => (a as any).type === 'delete').map(d => d.data.id)
+            );
+            const pendingCreateIds = new Set(
+                pendingSessionActions.filter(a => (a as any).type === 'create').map(c => c.data.id)
+            );
 
             let query: any = supabase
                 .from('precount_sessions')
@@ -136,9 +166,9 @@ export async function getActiveSessions(options?: { branchId?: string, role?: st
                 `)
                 .eq('status', 'active');
             
-            // Filter by branch on server if branch user, but allow global sessions (branch_id null)
+            // Filter strictly by branch on server if branch user
             if (options?.branchId && options.role === 'branch') {
-                query = query.or(`branch_id.eq.${options.branchId},branch_id.is.null`);
+                query = query.eq('branch_id', options.branchId);
             }
 
             const { data: remoteSessions, error: sError } = await query;
@@ -149,9 +179,11 @@ export async function getActiveSessions(options?: { branchId?: string, role?: st
                 // Filter out those we just deleted locally but haven't synced yet
                 const filteredRemote = rawSessions.filter(rs => !deletedIds.has(rs.id));
 
-                // Purgar de Dexie sesiones que fueron eliminadas en Supabase
-                for (const ls of localSessions) {
-                    if (!remoteIds.has(ls.id) && !deletedIds.has(ls.id)) {
+                // Purgar de Dexie cualquier sesión local que ya no exista en Supabase y no tenga un create pendiente
+                const allLocalActive = await db.sessions.where('status').equals('active').toArray();
+                for (const ls of allLocalActive) {
+                    const belongsToScope = !(options?.branchId && options.role === 'branch') || ls.branch_id === options.branchId;
+                    if (belongsToScope && !remoteIds.has(ls.id) && !pendingCreateIds.has(ls.id)) {
                         await db.sessions.delete(ls.id);
                         await db.items.where('session_id').equals(ls.id).delete();
                         await db.locations.where('session_id').equals(ls.id).delete();
@@ -159,15 +191,18 @@ export async function getActiveSessions(options?: { branchId?: string, role?: st
                     }
                 }
 
-                // Update local sessions with remote ones (simple merge and sync counts)
+                // Update local sessions with remote ones (simple merge and sync counts, preserving local master_catalog)
                 for (const rs of filteredRemote) {
                     const { items: _items, ...sessionData } = rs;
-                    const remoteTotalProducts = rs.items?.length || 0;
-                    const remoteTotalUnits = rs.items?.reduce((sum: number, it: any) => sum + (it.quantity || 0), 0) || 0;
+                    const existingLocal = (localSessions.find(ls => ls.id === rs.id) || await db.sessions.get(rs.id)) as any;
 
                     await db.sessions.put({
+                        ...existingLocal,
                         ...sessionData,
-                        synced: 1
+                        synced: 1,
+                        master_catalog: existingLocal?.master_catalog || rs.master_catalog || [],
+                        profile: existingLocal?.profile || rs.profile || 'sucursal',
+                        errorCount: existingLocal?.errorCount || rs.errorCount || 0
                     } as LocalSession);
                 }
                 
@@ -177,6 +212,10 @@ export async function getActiveSessions(options?: { branchId?: string, role?: st
                     .equals('active')
                     .reverse()
                     .sortBy('start_time') as PreCountSession[];
+
+                if (options?.branchId && options.role === 'branch') {
+                    localSessions = localSessions.filter(s => s.branch_id === options.branchId);
+                }
             }
         } catch (error) {
             console.error('Error fetching remote sessions:', error);
@@ -256,6 +295,113 @@ export async function endSession(id: string): Promise<void> {
 
 // --- Items ---
 
+export interface ParentChildRule {
+    id_producto_padre: string;
+    unidades_padre: number;
+    parent_ean?: string;
+    parent_name?: string;
+}
+
+export async function resolveParentChildRule(
+    sessionId: string,
+    ean?: string,
+    idProducto?: string
+): Promise<ParentChildRule | null> {
+    if (!sessionId) return null;
+    try {
+        let match: any = null;
+        if (ean) {
+            match = await db.precount_products
+                .where('[session_id+ean]')
+                .equals([sessionId, ean])
+                .first();
+        }
+        if (!match && idProducto) {
+            match = await db.precount_products
+                .where('session_id')
+                .equals(sessionId)
+                .filter(p => String(p.id_producto).trim() === String(idProducto).trim())
+                .first();
+        }
+        if (!match) {
+            const sess = await db.sessions.get(sessionId);
+            const mc = sess?.master_catalog;
+            if (Array.isArray(mc)) {
+                match = mc.find((p: any) =>
+                    (ean && (p.ean === ean || (Array.isArray(p.eans) && p.eans.includes(ean)))) ||
+                    (idProducto && String(p.id_producto).trim() === String(idProducto).trim())
+                );
+            }
+        }
+        if (match && match.id_producto_padre && Number(match.unidades_padre) > 1) {
+            const parentId = String(match.id_producto_padre).trim();
+            const selfId = String(match.id_producto || idProducto || '').trim();
+            if (parentId && parentId !== '0' && parentId !== selfId) {
+                return {
+                    id_producto_padre: parentId,
+                    unidades_padre: Number(match.unidades_padre),
+                    parent_ean: match.parent_ean || undefined,
+                    parent_name: match.parent_name || undefined,
+                };
+            }
+        }
+    } catch {}
+    return null;
+}
+
+/**
+ * Aplica la conversión Padre-Hijo sobre un mapa consolidado de productos
+ * (usado en la tabla Admin y al compilar la exportación consolidada a Plex).
+ */
+export function applyParentChildConversionToMap(
+    compiledMap: Map<string, { id_producto: string; ean: string; quantity: number }>,
+    catalog: MasterCatalogItem[]
+): void {
+    if (!catalog || catalog.length === 0 || compiledMap.size === 0) return;
+
+    const ruleByKey = new Map<string, ParentChildRule>();
+    for (const item of catalog) {
+        if (item.id_producto_padre && Number(item.unidades_padre) > 1) {
+            const rule: ParentChildRule = {
+                id_producto_padre: String(item.id_producto_padre).trim(),
+                unidades_padre: Number(item.unidades_padre),
+                parent_ean: item.parent_ean,
+                parent_name: item.parent_name,
+            };
+            if (item.id_producto) ruleByKey.set(String(item.id_producto).trim(), rule);
+            if (item.ean) ruleByKey.set(String(item.ean).trim(), rule);
+        }
+    }
+
+    for (const [key, entry] of Array.from(compiledMap.entries())) {
+        const rule = ruleByKey.get(entry.id_producto) || ruleByKey.get(entry.ean) || ruleByKey.get(key);
+        if (!rule || rule.unidades_padre <= 1) continue;
+        if (entry.quantity < rule.unidades_padre) continue;
+
+        const parentsToAdd = Math.floor(entry.quantity / rule.unidades_padre);
+        const remainder = entry.quantity % rule.unidades_padre;
+        if (parentsToAdd <= 0) continue;
+
+        const parentKey = rule.id_producto_padre;
+        const parentEntry = compiledMap.get(parentKey);
+        if (parentEntry) {
+            parentEntry.quantity += parentsToAdd;
+        } else {
+            compiledMap.set(parentKey, {
+                id_producto: rule.id_producto_padre,
+                ean: rule.parent_ean || rule.id_producto_padre,
+                quantity: parentsToAdd,
+            });
+        }
+
+        if (remainder > 0) {
+            entry.quantity = remainder;
+        } else {
+            compiledMap.delete(key);
+        }
+    }
+}
+
 export async function upsertPreCountItem(item: { 
     session_id: string, 
     ean: string, 
@@ -265,16 +411,19 @@ export async function upsertPreCountItem(item: {
     location_tag?: string,
     laboratory?: string,
     rubro?: string,
-    device_name?: string
+    device_name?: string,
+    _skipParentConversion?: boolean,
+    _targetDeviceId?: string
 }): Promise<PreCountItem> {
-    const { data: userData } = await supabase.auth.getUser();
+    const userId = getCachedUserId();
     const deviceId = getDeviceId();
+    const targetDeviceId = (item._targetDeviceId && item._targetDeviceId.trim()) ? item._targetDeviceId.trim() : deviceId;
     const effectiveDeviceName = (item.device_name && item.device_name.trim()) ? item.device_name.trim() : getDeviceName();
 
     // Check if item exists locally FOR THIS DEVICE AND LOCATION
     const existingItem = await db.items
         .where('[session_id+ean+device_id]')
-        .equals([item.session_id, item.ean, deviceId])
+        .equals([item.session_id, item.ean, targetDeviceId])
         .filter(i => i.location_tag === item.location_tag)
         .first();
 
@@ -305,15 +454,47 @@ export async function upsertPreCountItem(item: {
     }
 
     const now = new Date().toISOString();
+    let effectiveInputQty = existingItem ? (existingItem.quantity + item.quantity) : item.quantity;
+
+    // Conversión automática Hijo -> Padre cuando alcanza o supera unidades_padre
+    if (!item._skipParentConversion && effectiveInputQty > 0) {
+        const rule = await resolveParentChildRule(item.session_id, item.ean, resolvedIdProducto);
+        if (rule && rule.unidades_padre > 1 && effectiveInputQty >= rule.unidades_padre) {
+            const parentsToAdd = Math.floor(effectiveInputQty / rule.unidades_padre);
+            const remainderQty = effectiveInputQty % rule.unidades_padre;
+
+            const parentItem = await upsertPreCountItem({
+                session_id: item.session_id,
+                ean: rule.parent_ean || rule.id_producto_padre,
+                product_name: rule.parent_name || `Producto ${rule.id_producto_padre}`,
+                quantity: parentsToAdd,
+                id_producto: rule.id_producto_padre,
+                location_tag: item.location_tag,
+                laboratory: item.laboratory,
+                rubro: item.rubro,
+                device_name: effectiveDeviceName,
+                _skipParentConversion: true,
+            });
+
+            if (remainderQty <= 0) {
+                if (existingItem) {
+                    await deletePreCountItem(existingItem.id);
+                }
+                return parentItem;
+            }
+            effectiveInputQty = remainderQty;
+        }
+    }
+
     let resultItem: LocalItem;
 
     if (existingItem) {
         // Update existing
-        const newQuantity = existingItem.quantity + item.quantity;
+        const newQuantity = effectiveInputQty;
         await db.items.update(existingItem.id, {
             quantity: newQuantity,
             scanned_at: now,
-            synced: 1, // Optimistic: assume success
+            synced: 0, // Unsynced until confirmed by syncManager
             id_producto: resolvedIdProducto || existingItem.id_producto,
             laboratory: item.laboratory || existingItem.laboratory,
             rubro: item.rubro || existingItem.rubro,
@@ -324,6 +505,7 @@ export async function upsertPreCountItem(item: {
             ...existingItem, 
             quantity: newQuantity, 
             scanned_at: now, 
+            synced: 0,
             id_producto: resolvedIdProducto || existingItem.id_producto,
             laboratory: item.laboratory || existingItem.laboratory,
             rubro: item.rubro || existingItem.rubro,
@@ -333,18 +515,18 @@ export async function upsertPreCountItem(item: {
     } else {
         // Create new
         const newItem: LocalItem = {
-            id: uuidv4(),
+            id: crypto.randomUUID(),
             session_id: item.session_id,
             ean: item.ean,
             product_name: item.product_name,
-            quantity: item.quantity,
+            quantity: effectiveInputQty,
             scanned_at: now,
-            scanned_by: userData.user?.id,
-            synced: 1, // Optimistic: assume success
+            scanned_by: userId,
+            synced: 0, // Unsynced until confirmed by syncManager
             id_producto: resolvedIdProducto || undefined,
             laboratory: item.laboratory,
             rubro: item.rubro,
-            device_id: deviceId,
+            device_id: targetDeviceId,
             device_name: effectiveDeviceName,
             location_tag: item.location_tag
         };
@@ -361,10 +543,11 @@ export async function upsertPreCountItem(item: {
             session_id: item.session_id,
             ean: item.ean,
             product_name: item.product_name,
-            quantity: existingItem ? resultItem.quantity : item.quantity,
-            scanned_by: userData.user?.id,
+            quantity: resultItem.quantity,
+            scanned_by: userId,
+            scanned_at: resultItem.scanned_at,
             id_producto: resolvedIdProducto || existingItem?.id_producto,
-            device_id: deviceId,
+            device_id: targetDeviceId,
             device_name: effectiveDeviceName,
             location_tag: item.location_tag
         }
@@ -397,6 +580,35 @@ export async function getSessionSummary(sessionId: string): Promise<{
 }
 
 export async function updatePreCountItem(id: string, updates: Partial<PreCountItem>): Promise<void> {
+    const preItem = await db.items.get(id);
+    if (preItem && updates.quantity !== undefined && updates.quantity > 0) {
+        const rule = await resolveParentChildRule(preItem.session_id, preItem.ean, preItem.id_producto);
+        if (rule && rule.unidades_padre > 1 && updates.quantity >= rule.unidades_padre) {
+            const parentsToAdd = Math.floor(updates.quantity / rule.unidades_padre);
+            const remainderQty = updates.quantity % rule.unidades_padre;
+
+            await upsertPreCountItem({
+                session_id: preItem.session_id,
+                ean: rule.parent_ean || rule.id_producto_padre,
+                product_name: rule.parent_name || `Producto ${rule.id_producto_padre}`,
+                quantity: parentsToAdd,
+                id_producto: rule.id_producto_padre,
+                location_tag: updates.location_tag ?? preItem.location_tag,
+                laboratory: preItem.laboratory,
+                rubro: preItem.rubro,
+                device_name: preItem.device_name,
+                _skipParentConversion: true,
+                _targetDeviceId: preItem.device_id,
+            });
+
+            if (remainderQty <= 0) {
+                await deletePreCountItem(id);
+                return;
+            }
+            updates = { ...updates, quantity: remainderQty };
+        }
+    }
+
     // 1. Update Local
     await db.items.update(id, { ...updates, synced: 0 });
     const item = await db.items.get(id);
@@ -478,7 +690,13 @@ export async function deletePreCountItems(ids: string[]): Promise<void> {
 }
 
 export async function getPreCountItemsBySessionId(sessionId: string): Promise<PreCountItem[]> {
-    return await db.items.where('session_id').equals(sessionId).reverse().sortBy('scanned_at');
+    const items = await db.items.where('session_id').equals(sessionId).toArray();
+    items.sort((a, b) => {
+        const timeA = a.scanned_at ? new Date(a.scanned_at).getTime() : 0;
+        const timeB = b.scanned_at ? new Date(b.scanned_at).getTime() : 0;
+        return timeB - timeA;
+    });
+    return items;
 }
 
 export async function initDB() {
@@ -809,11 +1027,36 @@ async function findLocalSessionByPin(pin: string): Promise<PreCountSession | nul
     }
 }
 
+export async function registerConnectedDevice(sessionId: string, overrideDeviceName?: string): Promise<void> {
+    if (!sessionId) return;
+    try {
+        const deviceId = getDeviceId();
+        const deviceName = (overrideDeviceName && overrideDeviceName.trim()) ? overrideDeviceName.trim() : getDeviceName();
+        const isZebra = (typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent) && !isTauriEnvironment()) ||
+            deviceName.toLowerCase().includes('zebra') ||
+            deviceName.toLowerCase().includes('tc2');
+        await (supabase as any).from('precount_connected_devices').upsert({
+            session_id: sessionId,
+            device_id: deviceId,
+            device_name: deviceName,
+            device_type: isZebra ? 'zebra' : 'pc',
+            device_model: isZebra ? 'Zebra TC22' : 'PC',
+            status: 'online',
+            last_seen: new Date().toISOString()
+        });
+    } catch (devErr) {
+        console.warn('[preCountDB] Error registrando dispositivo en Supabase:', devErr);
+    }
+}
+
 /**
  * Direct lookup for a session by its sync PIN.
  * Used when a device tries to join but doesn't have the session in its local list yet.
  */
-export async function getSessionByPin(pin: string): Promise<PreCountSession | null> {
+export async function getSessionByPin(
+    pin: string,
+    options?: { skipDeviceRegistration?: boolean }
+): Promise<PreCountSession | null> {
     const cleanPin = pin.trim();
     if (!cleanPin || cleanPin.length !== 6) return null;
 
@@ -866,7 +1109,7 @@ export async function getSessionByPin(pin: string): Promise<PreCountSession | nu
 
                 if (fileData && fileData.content) {
                     masterCatalog = typeof fileData.content === 'string' 
-                        ? JSON.parse(fileData.content) 
+                        ? await decompressGzipBase64ToJson(fileData.content) 
                         : fileData.content;
                 }
             } catch (fileErr) {
@@ -891,33 +1134,23 @@ export async function getSessionByPin(pin: string): Promise<PreCountSession | nu
         // Guardar sesión en Dexie local para acceso offline inmediato
         await db.sessions.put(session as any);
 
-        // Guardar productos en precount_products para el lector de código de barras
-        if (masterCatalog && masterCatalog.length > 0) {
+        // Guardar productos en precount_products para el lector de código de barras solo en Web/PWA
+        // En Tauri de escritorio, SQLite (stock_local.db) gestiona los productos sin congelar el hilo UI
+        if (!isTauriEnvironment() && masterCatalog && masterCatalog.length > 0) {
             try {
                 const dbProducts = expandCatalogToDbProducts(masterCatalog, session.id);
-                await db.precount_products.bulkPut(dbProducts);
+                const CHUNK_SIZE = 5000;
+                for (let i = 0; i < dbProducts.length; i += CHUNK_SIZE) {
+                    await db.precount_products.bulkPut(dbProducts.slice(i, i + CHUNK_SIZE));
+                }
             } catch (prodErr) {
                 console.warn('[preCountDB] Error guardando productos de catálogo en Dexie:', prodErr);
             }
         }
 
-        // Registrar presencia de este dispositivo en Supabase
-        try {
-            const deviceId = getDeviceId();
-            const deviceName = getDeviceName();
-            const isZebra = (typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent) && !isTauriEnvironment()) ||
-                deviceName.toLowerCase().includes('zebra') ||
-                deviceName.toLowerCase().includes('tc2');
-            await (supabase as any).from('precount_connected_devices').upsert({
-                session_id: session.id,
-                device_id: deviceId,
-                device_name: deviceName,
-                device_type: isZebra ? 'zebra' : 'pc',
-                device_model: isZebra ? 'Zebra TC22' : 'PC',
-                last_seen: new Date().toISOString()
-            });
-        } catch (devErr) {
-            console.warn('[preCountDB] Error registrando dispositivo en Supabase:', devErr);
+        // Registrar presencia de este dispositivo en Supabase (salvo que se difiera hasta confirmar operador)
+        if (!options?.skipDeviceRegistration) {
+            await registerConnectedDevice(session.id);
         }
 
         return session;
@@ -928,4 +1161,617 @@ export async function getSessionByPin(pin: string): Promise<PreCountSession | nu
     }
 }
 
+// ============ RECUENTO DE DIFERENCIAS (ZEBRA & MÓVIL) ============
 
+export interface RecountPositionItem {
+    posCode: string;
+    deviceName: string;
+    quantity: number;
+}
+
+export interface RecountProductDiff {
+    ean: string;
+    eans?: string[];
+    name: string;
+    id_producto?: string;
+    laboratory?: string;
+    rubro?: string;
+    systemStock: number;
+    countedStock: number;
+    difference: number;
+    positions: RecountPositionItem[];
+}
+
+export interface OnlineRecountDevice {
+    device_id: string;
+    device_name: string;
+    platform: 'zebra' | 'web';
+    status: 'online' | 'recounting' | 'completed';
+    assigned_count?: number;
+    last_seen?: string;
+}
+
+export interface RecountDeviceAssignment {
+    device_id: string;
+    device_name: string;
+    platform: 'zebra' | 'web';
+    assigned_at: string;
+    items: RecountProductDiff[];
+}
+
+export interface RecountResultItemSubmission {
+    ean: string;
+    eans?: string[];
+    id_producto?: string;
+    name: string;
+    initialQty: number;
+    recountedQty: number;
+    positions?: RecountPositionItem[];
+}
+
+export interface RecountResultSubmission {
+    device_id: string;
+    device_name: string;
+    platform: 'zebra' | 'web';
+    submitted_at: string;
+    items: RecountResultItemSubmission[];
+}
+
+export async function getRecountDifferences(sessionId: string, includeUncountedCatalog: boolean = false): Promise<RecountProductDiff[]> {
+    if (!sessionId) return [];
+
+    try {
+        // 1. Obtener todos los items contados en esta sesión desde Dexie
+        const items = await db.items.where('session_id').equals(sessionId).toArray();
+
+        // 2. Obtener catálogo y productos de la sesión
+        const sessionProducts = await db.precount_products.where('session_id').equals(sessionId).toArray();
+        const session = await db.sessions.get(sessionId);
+
+        // Mapa de catálogo por EAN y mapa de todos los EANs relacionados por id_producto
+        const catalogMap = new Map<string, { name: string; systemStock: number; lab?: string; rubro?: string; id_producto?: string }>();
+        const eansByIdProducto = new Map<string, Set<string>>();
+        const registerRelatedEan = (idProd: string | undefined, eanVal: string | undefined) => {
+            if (!idProd || !eanVal) return;
+            const idKey = String(idProd).trim();
+            const cleanEan = String(eanVal).trim();
+            if (!idKey || !cleanEan) return;
+            let set = eansByIdProducto.get(idKey);
+            if (!set) {
+                set = new Set<string>();
+                eansByIdProducto.set(idKey, set);
+            }
+            set.add(cleanEan);
+        };
+
+        sessionProducts.forEach(p => {
+            if (p.ean) {
+                registerRelatedEan(p.id_producto, p.ean);
+                catalogMap.set(p.ean.trim().toLowerCase(), {
+                    name: p.name,
+                    systemStock: p.stock ?? (p as any).systemStock ?? 0,
+                    lab: p.laboratory,
+                    rubro: p.rubro,
+                    id_producto: p.id_producto
+                });
+            }
+        });
+
+        if (session?.master_catalog && Array.isArray(session.master_catalog)) {
+            session.master_catalog.forEach((p: any) => {
+                const eans: string[] = (p.eans && p.eans.length > 0) ? p.eans : [p.ean];
+                eans.filter(Boolean).forEach(ean => {
+                    registerRelatedEan(p.id_producto, ean);
+                    if (!catalogMap.has(ean.trim().toLowerCase())) {
+                        catalogMap.set(ean.trim().toLowerCase(), {
+                            name: p.name,
+                            systemStock: p.systemStock ?? p.stock ?? 0,
+                            lab: p.laboratory,
+                            rubro: p.rubro || p.category,
+                            id_producto: p.id_producto
+                        });
+                    }
+                });
+            });
+        }
+
+        // Si aún no hay catálogo cargado y hay internet, intentar recuperar master_catalog.json desde Supabase
+        if (catalogMap.size === 0 && navigator.onLine) {
+            try {
+                const { data: fileData } = await (supabase as any)
+                    .from('precount_device_files')
+                    .select('content')
+                    .eq('session_id', sessionId)
+                    .eq('device_id', 'system')
+                    .eq('filename', 'master_catalog.json')
+                    .maybeSingle();
+
+                if (fileData?.content) {
+                    const downloadedCatalog = await decompressGzipBase64ToJson(fileData.content);
+                    if (downloadedCatalog && Array.isArray(downloadedCatalog) && downloadedCatalog.length > 0) {
+                        await db.sessions.update(sessionId, { master_catalog: downloadedCatalog });
+                        downloadedCatalog.forEach((p: any) => {
+                            const eans: string[] = (p.eans && p.eans.length > 0) ? p.eans : [p.ean];
+                            eans.filter(Boolean).forEach(ean => {
+                                catalogMap.set(ean.trim().toLowerCase(), {
+                                    name: p.name,
+                                    systemStock: p.systemStock ?? p.stock ?? 0,
+                                    lab: p.laboratory,
+                                    rubro: p.rubro || p.category,
+                                    id_producto: p.id_producto
+                                });
+                            });
+                        });
+                    }
+                }
+            } catch (fileErr) {
+                console.warn('[preCountDB] Error recuperando catálogo desde Supabase:', fileErr);
+            }
+        }
+
+        // Si estamos en Tauri de escritorio, enriquecer productos faltantes desde stock_local.db SQLite
+        if (isTauriEnvironment()) {
+            try {
+                const { searchLocalBarcode } = await import('@/services/tauriLocalDb');
+                for (const it of items) {
+                    if (!it.ean) continue;
+                    const key = it.ean.trim().toLowerCase();
+                    if (!catalogMap.has(key)) {
+                        const localProd = await searchLocalBarcode(it.ean);
+                        if (localProd) {
+                            catalogMap.set(key, {
+                                name: localProd.name,
+                                systemStock: localProd.stock,
+                                lab: localProd.laboratory,
+                                rubro: localProd.category,
+                                id_producto: localProd.id_producto
+                            });
+                        }
+                    }
+                }
+            } catch (tauriErr) {
+                console.warn('[preCountDB] Error buscando catálogo en SQLite local:', tauriErr);
+            }
+        }
+
+        // 3. Agrupar conteo por EAN y por posición
+        const countedMap = new Map<string, {
+            ean: string;
+            name: string;
+            lab?: string;
+            rubro?: string;
+            positions: Map<string, { posCode: string; deviceName: string; quantity: number }>;
+            totalQty: number;
+        }>();
+
+        for (const it of items) {
+            if (!it.ean) continue;
+            const key = it.ean.trim().toLowerCase();
+            let prod = countedMap.get(key);
+            if (!prod) {
+                const cat = catalogMap.get(key);
+                prod = {
+                    ean: it.ean.trim(),
+                    name: it.product_name || cat?.name || `Producto ${it.ean}`,
+                    lab: it.laboratory || cat?.lab,
+                    rubro: it.rubro || cat?.rubro,
+                    positions: new Map(),
+                    totalQty: 0
+                };
+                countedMap.set(key, prod);
+            }
+
+            const posCode = it.location_tag || 'ESP-01';
+            const deviceName = it.device_name || 'ZEBRA-01';
+            const posKey = `${posCode}___${deviceName}`;
+
+            const existingPos = prod.positions.get(posKey);
+            if (existingPos) {
+                existingPos.quantity += Number(it.quantity) || 0;
+            } else {
+                prod.positions.set(posKey, {
+                    posCode,
+                    deviceName,
+                    quantity: Number(it.quantity) || 0
+                });
+            }
+            prod.totalQty += Number(it.quantity) || 0;
+        }
+
+        // 4. Identificar diferencias
+        const results: RecountProductDiff[] = [];
+
+        // A) Productos que fueron contados y tienen diferencias respecto al stock teórico
+        for (const [key, counted] of countedMap.entries()) {
+            const cat = catalogMap.get(key);
+            const systemStock = cat?.systemStock ?? 0;
+            const diff = counted.totalQty - systemStock;
+
+            // Si hay diferencia entre lo contado y el teórico (o si no tiene stock teórico pero fue contado)
+            if (diff !== 0) {
+                const related = new Set<string>([counted.ean]);
+                if (cat?.id_producto && eansByIdProducto.has(String(cat.id_producto).trim())) {
+                    eansByIdProducto.get(String(cat.id_producto).trim())!.forEach(e => related.add(e));
+                }
+                results.push({
+                    ean: counted.ean,
+                    eans: Array.from(related),
+                    name: counted.name,
+                    laboratory: counted.lab,
+                    rubro: counted.rubro,
+                    id_producto: cat?.id_producto,
+                    systemStock,
+                    countedStock: counted.totalQty,
+                    difference: diff,
+                    positions: Array.from(counted.positions.values())
+                });
+            }
+        }
+
+        // B) Solo si se solicita expresamente: productos del catálogo que NO fueron contados pero tenían stock en sistema
+        if (includeUncountedCatalog) {
+            for (const [key, cat] of catalogMap.entries()) {
+                if (!countedMap.has(key) && cat.systemStock > 0) {
+                    results.push({
+                        ean: key,
+                        name: cat.name,
+                        laboratory: cat.lab,
+                        rubro: cat.rubro,
+                        id_producto: cat.id_producto,
+                        systemStock: cat.systemStock,
+                        countedStock: 0,
+                        difference: -cat.systemStock,
+                        positions: [{
+                            posCode: 'Sin Asignar',
+                            deviceName: 'Sistema',
+                            quantity: 0
+                        }]
+                    });
+                }
+            }
+        }
+
+        return results;
+    } catch (err) {
+        console.error('[preCountDB] Error calculando diferencias de recuento:', err);
+        return [];
+    }
+}
+
+export async function exportRecountDifferencesToCloud(sessionId: string): Promise<number> {
+    const diffs = await getRecountDifferences(sessionId);
+    if (!diffs || diffs.length === 0) return 0;
+
+    // Cache local inmediato
+    if (typeof window !== 'undefined') {
+        localStorage.setItem(`recount_differences_${sessionId}`, JSON.stringify(diffs));
+    }
+
+    // Subir a Supabase precount_device_files
+    try {
+        await (supabase as any)
+            .from('precount_device_files')
+            .delete()
+            .eq('session_id', sessionId)
+            .eq('filename', 'recount_differences.json');
+
+        const { error: fileErr } = await (supabase as any)
+            .from('precount_device_files')
+            .insert({
+                session_id: sessionId,
+                device_id: 'system',
+                device_name: 'Admin PC',
+                filename: 'recount_differences.json',
+                content: JSON.stringify(diffs)
+            });
+
+        if (fileErr) {
+            console.warn('[Supabase] Error subiendo recount_differences.json:', fileErr);
+        } else {
+            console.log('[Supabase] recount_differences.json subido con éxito:', diffs.length, 'productos');
+        }
+    } catch (e) {
+        console.warn('[Supabase] Excepción al subir recount_differences.json:', e);
+    }
+
+    return diffs.length;
+}
+
+/**
+ * Reparte los productos con diferencia de forma equitativa (EANs únicos, sin repetirse)
+ * entre las terminales online (Zebras y celulares Web) y sube cada asignación a Supabase.
+ */
+export async function distributeRecountDifferencesToDevices(
+    sessionId: string,
+    devices: OnlineRecountDevice[]
+): Promise<{ totalDiffs: number; assignments: Record<string, RecountDeviceAssignment> }> {
+    const diffs = await getRecountDifferences(sessionId);
+    if (!diffs || diffs.length === 0 || !devices || devices.length === 0) {
+        return { totalDiffs: diffs?.length || 0, assignments: {} };
+    }
+
+    const now = new Date().toISOString();
+    const assignments: Record<string, RecountDeviceAssignment> = {};
+    for (const dev of devices) {
+        assignments[dev.device_id] = {
+            device_id: dev.device_id,
+            device_name: dev.device_name,
+            platform: dev.platform,
+            assigned_at: now,
+            items: []
+        };
+    }
+
+    // Reparto round-robin para garantizar cantidad X equitativa y EANs únicos por terminal
+    diffs.forEach((diffItem, idx) => {
+        const targetDevice = devices[idx % devices.length];
+        assignments[targetDevice.device_id].items.push(diffItem);
+    });
+
+    // Limpiar asignaciones, estado y resultados anteriores de esta sesión
+    await (supabase as any)
+        .from('precount_device_files')
+        .delete()
+        .eq('session_id', sessionId)
+        .in('filename', ['recount_session_state.json', 'recount_assignments.json', 'recount_differences.json']);
+    await (supabase as any)
+        .from('precount_device_files')
+        .delete()
+        .eq('session_id', sessionId)
+        .like('filename', 'recount_differences_%');
+    await (supabase as any)
+        .from('precount_device_files')
+        .delete()
+        .eq('session_id', sessionId)
+        .like('filename', 'recount_result_%');
+
+    const rowsToInsert: any[] = [
+        {
+            session_id: sessionId,
+            device_id: 'system',
+            device_name: 'Admin PC',
+            filename: 'recount_session_state.json',
+            content: JSON.stringify({ status: 'started', started_at: now })
+        },
+        {
+            session_id: sessionId,
+            device_id: 'system',
+            device_name: 'Admin PC',
+            filename: 'recount_assignments.json',
+            content: JSON.stringify({
+                version: 1,
+                session_id: sessionId,
+                generated_at: now,
+                total_diffs: diffs.length,
+                assignments
+            })
+        }
+    ];
+
+    for (const dev of devices) {
+        rowsToInsert.push({
+            session_id: sessionId,
+            device_id: dev.device_id,
+            device_name: dev.device_name,
+            filename: `recount_differences_${dev.device_id}.json`,
+            content: JSON.stringify(assignments[dev.device_id].items)
+        });
+    }
+
+    const { error } = await (supabase as any)
+        .from('precount_device_files')
+        .insert(rowsToInsert);
+    if (error) {
+        throw new Error(`Error subiendo asignaciones de recuento: ${error.message}`);
+    }
+
+    return { totalDiffs: diffs.length, assignments };
+}
+
+export async function setRecountSessionState(
+    sessionId: string,
+    status: 'idle' | 'waiting' | 'started'
+): Promise<void> {
+    if (!sessionId) return;
+    try {
+        await (supabase as any)
+            .from('precount_device_files')
+            .delete()
+            .eq('session_id', sessionId)
+            .eq('filename', 'recount_session_state.json');
+
+        await (supabase as any)
+            .from('precount_device_files')
+            .insert({
+                session_id: sessionId,
+                device_id: 'system',
+                device_name: 'Admin PC',
+                filename: 'recount_session_state.json',
+                content: JSON.stringify({ status, updated_at: new Date().toISOString() })
+            });
+    } catch (e) {
+        console.warn('[preCountDB] Error actualizando recount_session_state.json:', e);
+    }
+}
+
+export async function getRecountSessionState(sessionId: string): Promise<'idle' | 'waiting' | 'started'> {
+    if (!sessionId) return 'idle';
+    try {
+        const { data } = await (supabase as any)
+            .from('precount_device_files')
+            .select('content')
+            .eq('session_id', sessionId)
+            .eq('filename', 'recount_session_state.json')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        if (data?.content) {
+            const parsed = typeof data.content === 'string' ? JSON.parse(data.content) : data.content;
+            if (parsed?.status === 'waiting' || parsed?.status === 'started') {
+                return parsed.status;
+            }
+        }
+    } catch {}
+    return 'idle';
+}
+
+/**
+ * Descarga los resultados de recuento enviados por las terminales (Zebras / Móvil Web).
+ */
+export async function fetchRecountResultSubmissions(sessionId: string): Promise<RecountResultSubmission[]> {
+    if (!sessionId) return [];
+    const { data, error } = await (supabase as any)
+        .from('precount_device_files')
+        .select('content, device_id, device_name, created_at')
+        .eq('session_id', sessionId)
+        .like('filename', 'recount_result_%');
+
+    if (error || !data) return [];
+
+    const submissions: RecountResultSubmission[] = [];
+    for (const row of data) {
+        if (!row.content) continue;
+        try {
+            const parsed = JSON.parse(row.content);
+            if (Array.isArray(parsed)) {
+                submissions.push({
+                    device_id: row.device_id || 'unknown',
+                    device_name: row.device_name || row.device_id || 'Terminal',
+                    platform: 'zebra',
+                    submitted_at: row.created_at || new Date().toISOString(),
+                    items: parsed
+                });
+            } else if (parsed && Array.isArray(parsed.items)) {
+                submissions.push({
+                    device_id: parsed.device_id || row.device_id || 'unknown',
+                    device_name: parsed.device_name || row.device_name || 'Terminal',
+                    platform: parsed.platform || 'web',
+                    submitted_at: parsed.submitted_at || row.created_at || new Date().toISOString(),
+                    items: parsed.items
+                });
+            }
+        } catch {
+            // Ignorar JSON malformado
+        }
+    }
+    return submissions;
+}
+
+/**
+ * Aplica los conteos confirmados desde el recuento de diferencias a la sesión activa
+ * antes de transmitir el inventario definitivo a Plex.
+ */
+export async function applyRecountResultsToSession(
+    sessionId: string,
+    submissions: RecountResultSubmission[]
+): Promise<{ updatedProducts: number }> {
+    if (!sessionId || !submissions || submissions.length === 0) {
+        return { updatedProducts: 0 };
+    }
+
+    const sessionItems = await db.items.where('session_id').equals(sessionId).toArray();
+    let updatedProducts = 0;
+
+    for (const sub of submissions) {
+        for (const item of sub.items) {
+            const newTotal = Math.max(0, Math.floor(Number(item.recountedQty) || 0));
+            const candidateEans = new Set<string>([
+                String(item.ean || '').trim().toLowerCase(),
+                ...(item.eans || []).map(e => String(e).trim().toLowerCase())
+            ].filter(Boolean));
+
+            const matchingRows = sessionItems.filter(row => {
+                const rowEan = String(row.ean || '').trim().toLowerCase();
+                const rowProdId = String(row.id_producto || '').trim();
+                return candidateEans.has(rowEan) || (item.id_producto && rowProdId === String(item.id_producto).trim());
+            });
+
+            if (matchingRows.length === 0) {
+                if (newTotal > 0) {
+                    await upsertPreCountItem({
+                        session_id: sessionId,
+                        ean: item.ean,
+                        product_name: item.name,
+                        quantity: newTotal,
+                        id_producto: item.id_producto,
+                        location_tag: item.positions?.[0]?.posCode || 'REC-01',
+                        device_name: sub.device_name,
+                    });
+                    updatedProducts++;
+                }
+                continue;
+            }
+
+            const currentTotal = matchingRows.reduce((acc, r) => acc + (Number(r.quantity) || 0), 0);
+            if (currentTotal === newTotal) continue;
+
+            // Ajustar sobre la primera fila y poner en 0 (eliminar) las adicionales si el total bajó
+            const primaryRow = matchingRows[0];
+            if (matchingRows.length > 1) {
+                for (let i = 1; i < matchingRows.length; i++) {
+                    await deletePreCountItem(matchingRows[i].id);
+                }
+            }
+            if (newTotal <= 0) {
+                await deletePreCountItem(primaryRow.id);
+            } else {
+                await updatePreCountItem(primaryRow.id, { quantity: newTotal });
+            }
+            updatedProducts++;
+        }
+    }
+
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('precount:item_added'));
+    }
+
+    return { updatedProducts };
+}
+
+export interface PreCountSerialRecord {
+    session_id: string;
+    location_tag: string;
+    id_producto: string;
+    ean?: string;
+    gtin?: string;
+    serial?: string;
+    lot?: string;
+    expiry?: string;
+    no_serial: boolean;
+    raw_datamatrix?: string;
+    device_id?: string;
+    device_name?: string;
+    scanned_by?: string;
+}
+
+export async function savePreCountSerial(record: PreCountSerialRecord): Promise<boolean> {
+    try {
+        const { error } = await (supabase as any)
+            .from('precount_serials')
+            .insert(record);
+        if (error) {
+            console.warn('[preCountDB] Error insertando serie trazable:', error);
+            return false;
+        }
+        return true;
+    } catch (e) {
+        console.error('[preCountDB] Excepción guardando serie trazable:', e);
+        return false;
+    }
+}
+
+export async function getPreCountSerials(sessionId: string): Promise<any[]> {
+    try {
+        const { data, error } = await (supabase as any)
+            .from('precount_serials')
+            .select('*')
+            .eq('session_id', sessionId)
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        console.error('[preCountDB] Error obteniendo series de sesión:', e);
+        return [];
+    }
+}

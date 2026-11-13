@@ -1,17 +1,15 @@
 import { useState, useMemo, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { useUser } from "@/contexts/UserContext";
 import { useDashboardLayout } from "@/hooks/useDashboardLayout";
 import { useDashboardMetrics } from "@/hooks/useDashboardMetrics";
 import { WidgetContainer } from "@/components/dashboard/WidgetContainer";
-import { CalendarModal } from "@/components/dashboard/CalendarModal";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { GlobalSearchInput } from "@/components/dashboard/GlobalSearchInput";
 import { WidgetRenderer } from "@/components/dashboard/WidgetRenderer";
 import { WidgetErrorBoundary } from "@/components/dashboard/WidgetErrorBoundary";
 import { ConfigDialog } from "@/components/dashboard/ConfigDialog";
-import { hasPermission } from "@/config/permissions";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -45,17 +43,6 @@ export default function Dashboard() {
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [cycleFilter, setCycleFilter] = useState<'current' | 'previous'>('current');
 
-  // Calendar State
-  const [showCalendar, setShowCalendar] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-
-  const openCalendarForIso = useCallback((iso?: string) => {
-    const d = iso ? new Date(iso) : new Date();
-    d.setHours(12, 0, 0, 0);
-    setSelectedDate(d);
-    setShowCalendar(true);
-  }, []);
-
   const handleEditConfig = useCallback(() => setShowConfigDialog(true), []);
 
   // Filter widgets permission
@@ -65,7 +52,7 @@ export default function Dashboard() {
 
   return (
     <motion.div
-      className="pt-3 pb-6 px-4 lg:px-6 space-y-4 lg:space-y-6"
+      className="pt-5 lg:pt-6 pb-6 px-4 lg:px-6 space-y-5 lg:space-y-6"
       variants={containerVariants}
       initial="hidden"
       animate="show"
@@ -97,7 +84,6 @@ export default function Dashboard() {
                   globalProgress={globalProgress}
                   assignedDays={assignedDays}
                   cycleStartDate={cycleStartDate}
-                  onDateClick={openCalendarForIso}
                   onEditConfig={handleEditConfig}
                   isLocked={isLocked}
                   lockReason={lockReason}
@@ -119,12 +105,6 @@ export default function Dashboard() {
         currentAssignedDays={assignedDays}
         currentStartDate={cycleStartDate}
         onSave={updateConfig}
-      />
-
-      <CalendarModal
-        open={showCalendar}
-        onOpenChange={setShowCalendar}
-        initialDate={selectedDate}
       />
 
     </motion.div>

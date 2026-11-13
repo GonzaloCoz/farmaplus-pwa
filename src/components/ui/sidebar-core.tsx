@@ -21,7 +21,7 @@ import {
   type HTMLAttributes,
   type Ref,
 } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { spring, exitFallbackMs } from "@/lib/springs";
 import { fontWeights } from "@/lib/font-weight";

@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -28,10 +28,11 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import PackageAdd01Icon from "@hugeicons/core-free-icons/PackageAdd01Icon";
 import Delete01Icon from "@hugeicons/core-free-icons/Delete01Icon";
 import DeletePutBackIcon from "@hugeicons/core-free-icons/DeletePutBackIcon";
-import { fontWeights } from "@/lib/font-weight";
-import { Database, RefreshCw as LucideRefreshCw, Ellipsis as EllipsisIcon } from 'lucide-react';
+import { Database, RefreshCw as LucideRefreshCw, Ellipsis as EllipsisIcon, Smartphone } from 'lucide-react';
+import { exportRecountDifferencesToCloud } from '@/services/preCountDB';
 import { LabRemovalModal } from "@/components/LabRemovalModal";
 import { SendPlexApiDialog } from './SendPlexApiDialog';
+import { RecountControlDialog } from './RecountControlDialog';
 import { OpenSessionsDialog } from './OpenSessionsDialog';
 import {
     InputGroup,
@@ -48,9 +49,11 @@ import {
 import { CyclicInventoryList } from '@/components/CyclicInventoryList';
 import { DeviceMonitorView } from './DeviceMonitorView';
 import { PreCountConfigView } from './PreCountConfigView';
+import { PreCountConfig2View } from './PreCountConfig2View';
 import { PreCountProductsView } from './PreCountProductsView';
 import { PreCountSummaryView } from './PreCountSummaryView';
 import { PreCountFilesView } from './PreCountFilesView';
+import { fontWeights } from "@/lib/font-weight";
 import { CheckboxGroup, CheckboxItem } from '@/components/ui/checkbox-group';
 import { Field, FieldLabel } from '@/components/ui/field';
 import { Form } from '@/components/ui/form';
@@ -398,12 +401,13 @@ export function PreCountAdminCyclicView({
         }
     ], []);
 
-    // Update window tab title with lab name
+    // Update window tab title with lab name (locked to the tab where this view opened)
+    const originWindowId = useRef(activeWindowId);
     useEffect(() => {
-        if (activeWindowId && labName) {
-            updateWindowMeta(activeWindowId, labName, <ClipboardList className="w-4 h-4" />);
+        if (originWindowId.current && labName) {
+            updateWindowMeta(originWindowId.current, labName, <ClipboardList className="w-4 h-4" />);
         }
-    }, [activeWindowId, labName, updateWindowMeta]);
+    }, [labName, updateWindowMeta]);
 
     // Keyboard listener for Admin Mode (Ctrl + B)
     useEffect(() => {
@@ -496,23 +500,38 @@ export function PreCountAdminCyclicView({
 
     const [removalModalOpen, setRemovalModalOpen] = useState(false);
     const [showPlexApiModal, setShowPlexApiModal] = useState(false);
+    const [showRecountControlModal, setShowRecountControlModal] = useState(false);
     const [scannedTableItems, setScannedTableItems] = useState<any[]>([]);
+    const [isExportingRecount, setIsExportingRecount] = useState(false);
+
+    const handleExportRecountToZebra = async () => {
+        const targetSessionId = sessionId || (typeof window !== 'undefined' ? (localStorage.getItem('last_precount_session_id') || localStorage.getItem('precount_session_id')) : '');
+        if (!targetSessionId) {
+            toast.warning("Sin sesión activa", "Debe iniciar o seleccionar una sesión para controlar diferencias.");
+            return;
+        }
+        setShowRecountControlModal(true);
+    };
 
     const effectiveBranchName = useMemo(() => {
+        if (branchName && branchName.trim()) return branchName.trim();
         if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('plex_target_branch') || localStorage.getItem('precount_config_selected_branch');
+            const saved = localStorage.getItem('precount_config_selected_branch') || localStorage.getItem('plex_target_branch');
             if (saved && saved.trim()) return saved.replace(/\s*\([^)]*\)/, '').trim();
         }
-        return branchName || user?.branchName || 'FP ADM (Pruebas)';
+        return user?.branchName || 'FP ADM (Pruebas)';
     }, [branchName, user?.branchName]);
 
     const effectiveBranchIp = useMemo(() => {
+        // Si hay sessionId activo, dejar que SendPlexApiDialog resuelva la IP desde activeSession.branch_id
+        // para no pisarla con una IP residual en localStorage de otra sesión.
+        if (sessionId) return undefined;
         if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('plex_target_ip') || localStorage.getItem('precount_config_server_ip');
+            const saved = localStorage.getItem('precount_config_server_ip') || localStorage.getItem('plex_target_ip');
             if (saved && saved.trim()) return saved.trim();
         }
         return undefined;
-    }, []);
+    }, [sessionId]);
 
     const handleExportExcel = () => {
         const listToExport = items.length > 0
@@ -726,6 +745,7 @@ export function PreCountAdminCyclicView({
                                         <TabItem value="archivos" label="Archivos" />
                                         <TabItem value="monitor" label="Monitor" />
                                         <TabItem value="configuracion" label="Configuración" />
+                                        <TabItem value="configuracion2" label="Configuración 2" />
                                     </TabsList>
 
                                     {/* Al fondo a la derecha: Título de inventario y subtítulo en la misma línea de los tabs */}
@@ -908,6 +928,26 @@ export function PreCountAdminCyclicView({
                                                     <DiffIcon className="size-3.5" />
                                                 </Button>
 
+                                                {/* Botón Exportar para Recuento (Zebra) */}
+                                                <Button
+                                                    variant="tertiary"
+                                                    size="icon"
+                                                    onClick={handleExportRecountToZebra}
+                                                    disabled={isExportingRecount}
+                                                    aria-label="Exportar para Recuento (Zebra)"
+                                                    title="Exportar productos con diferencia para recuento en Zebra"
+                                                    className={cn(
+                                                        "h-8 w-8 rounded-lg border border-border bg-transparent hover:bg-hover text-muted-foreground hover:text-foreground transition-all duration-80 cursor-pointer",
+                                                        isExportingRecount && "opacity-50 pointer-events-none"
+                                                    )}
+                                                >
+                                                    {isExportingRecount ? (
+                                                        <LucideRefreshCw className="size-3.5 animate-spin" />
+                                                    ) : (
+                                                        <Smartphone className="size-3.5" />
+                                                    )}
+                                                </Button>
+
                                                 {/* Botón Transmitir a Plex (Carga API) */}
                                                 <Button
                                                     variant="tertiary"
@@ -980,6 +1020,10 @@ export function PreCountAdminCyclicView({
                                             }
                                         }}
                                     />
+                                </TabPanel>
+
+                                <TabPanel value="configuracion2" className="flex-1 min-h-0 pt-2 w-full flex flex-col">
+                                    <PreCountConfig2View />
                                 </TabPanel>
                             </Tabs>
                         </div>
@@ -1510,6 +1554,13 @@ export function PreCountAdminCyclicView({
                     : undefined
                 }
                 sessionId={sessionId}
+            />
+
+            {/* Modal Control de Diferencias (QR + Reparto por Terminal + Recepción) */}
+            <RecountControlDialog
+                open={showRecountControlModal}
+                onOpenChange={setShowRecountControlModal}
+                sessionId={sessionId || (typeof window !== 'undefined' ? (localStorage.getItem('last_precount_session_id') || localStorage.getItem('precount_session_id') || '') : '')}
             />
 
             {/* Modal Visualizador de Sesiones Abiertas */}

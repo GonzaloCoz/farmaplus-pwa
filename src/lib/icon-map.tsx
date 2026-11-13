@@ -17,6 +17,7 @@ import {
   Circle,
   SquareLibrary,
   Clock,
+  Calendar,
   Star,
   Settings,
   Plus,
@@ -68,6 +69,7 @@ import HiMoon from "@hugeicons/core-free-icons/Moon01Icon";
 import HiRectangle from "@hugeicons/core-free-icons/DashboardCircleIcon";
 import HiLibrary from "@hugeicons/core-free-icons/LibraryIcon";
 import HiClock from "@hugeicons/core-free-icons/Clock01Icon";
+import HiCalendar from "@hugeicons/core-free-icons/Calendar01Icon";
 import HiStar from "@hugeicons/core-free-icons/StarIcon";
 import HiSettings from "@hugeicons/core-free-icons/Settings01Icon";
 import HiPlus from "@hugeicons/core-free-icons/PlusSignIcon";
@@ -116,6 +118,7 @@ import {
   Circle as UuiCircle,
   BookClosed as UuiBook,
   Clock as UuiClock,
+  Calendar as UuiCalendar,
   Star01 as UuiStar,
   Settings01 as UuiSettings,
   Plus as UuiPlus,
@@ -164,7 +167,7 @@ export type IconLibrary = "lucide" | "tabler" | "phosphor" | "hugeicons" | "unti
 export type IconName =
   | "chevron-right" | "chevron-down" | "x" | "copy" | "menu" | "dot"
   | "monitor" | "sun" | "moon" | "rectangle-horizontal" | "circle"
-  | "square-library" | "clock" | "star" | "settings"
+  | "square-library" | "clock" | "calendar" | "star" | "settings"
   | "plus" | "arrow-left" | "arrow-right" | "arrow-up" | "search" | "loader"
   | "users" | "lock" | "mail" | "bell" | "shield" | "palette"
   | "lightbulb" | "rocket" | "heart" | "paintbrush" | "brain"
@@ -226,6 +229,7 @@ const lucideMap: Record<IconName, IconComponent> = {
   "circle": Circle,
   "square-library": SquareLibrary,
   "clock": Clock,
+  "calendar": Calendar,
   "star": Star,
   "settings": Settings,
   "plus": Plus,
@@ -276,6 +280,7 @@ const hugeiconsMap: Record<IconName, IconComponent> = {
   "circle": hugeicons(HiDot),
   "square-library": hugeicons(HiLibrary),
   "clock": hugeicons(HiClock),
+  "calendar": hugeicons(HiCalendar),
   "star": hugeicons(HiStar),
   "settings": hugeicons(HiSettings),
   "plus": hugeicons(HiPlus),
@@ -326,6 +331,7 @@ const untitleduiMap: Record<IconName, IconComponent> = {
   "circle": untitledui(UuiCircle),
   "square-library": untitledui(UuiBook),
   "clock": untitledui(UuiClock),
+  "calendar": untitledui(UuiCalendar),
   "star": untitledui(UuiStar),
   "settings": untitledui(UuiSettings),
   "plus": untitledui(UuiPlus),

@@ -2,11 +2,10 @@ import { HashRouter, Route, Routes, Outlet, useLocation, Navigate } from "react-
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, lazy, Suspense, useState, useRef } from "react";
-import { AnimatePresence, MotionConfig } from "framer-motion";
+import { AnimatePresence, MotionConfig } from "motion/react";
 
 import { AppLayout } from "./components/AppLayout";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster as SileoToaster } from "@/components/ui/sileo";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { PageTransition } from "./components/PageTransition";
@@ -21,6 +20,14 @@ import { DashboardSkeleton } from "./components/DashboardSkeleton";
 import { PageSkeleton } from "./components/skeletons/PageSkeleton";
 import { initDB } from "@/services/preCountDB";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { WindowManagerProvider } from "./contexts/WindowManagerContext";
+import { LayoutProvider } from "./contexts/LayoutContext";
+import { GlobalContextMenu } from "@/components/ui/context-menu";
+import {
+  useSystemModules,
+  DEFAULT_CONSTRUCTION_PAGES,
+  type ConstructionPageKey,
+} from "@/hooks/useSystemModules";
 
 // Lazy load de todas las páginas para reducir bundle inicial
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -45,6 +52,8 @@ const PostDetail = lazy(() => import("./pages/PostDetail"));
 const AdminEditor = lazy(() => import("./pages/AdminEditor"));
 const DataCollectorPage = lazy(() => import("./pages/DataCollectorPage"));
 const RequestsPage = lazy(() => import("./pages/RequestsPage"));
+const LiveSalesTerminal = lazy(() => import("./pages/LiveSalesTerminal"));
+const Construction = lazy(() => import("./pages/Construction"));
 
 
 const queryClient = new QueryClient({
@@ -62,6 +71,12 @@ const queryClient = new QueryClient({
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, isLoading } = useUser();
 
+  useEffect(() => {
+    if (user) {
+      useSystemModules.getState().initRealtimeSync();
+    }
+  }, [user]);
+
   if (isLoading) {
     return <DashboardSkeleton />;
   }
@@ -71,6 +86,26 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   }
 
   return <>{children}</>;
+};
+
+const ConstructionRoute = ({
+  pageKey,
+  titleOverride,
+  children,
+}: {
+  pageKey: ConstructionPageKey;
+  titleOverride?: string;
+  children?: React.ReactNode;
+}) => {
+  const isUnderConstruction = useSystemModules(
+    (state) => state.modules.constructionPages?.[pageKey] ?? DEFAULT_CONSTRUCTION_PAGES[pageKey]
+  );
+
+  if (isUnderConstruction) {
+    return <Construction titleOverride={titleOverride} />;
+  }
+
+  return <>{children ?? <div className="w-full h-full" />}</>;
 };
 
 const AdminRoute = ({ children }: { children: React.ReactNode }) => {
@@ -141,7 +176,49 @@ const AppRoutes = () => {
               element={
                 <Suspense fallback={<DashboardSkeleton />}>
                   <PageTransition>
-                    <RequestsPage />
+                    <ConstructionRoute pageKey="solicitudes" titleOverride="Solicitudes">
+                      <RequestsPage />
+                    </ConstructionRoute>
+                  </PageTransition>
+                </Suspense>
+              }
+            />
+            <Route
+              path="interfarmacias"
+              element={
+                <Suspense fallback={<DashboardSkeleton />}>
+                  <PageTransition>
+                    <ConstructionRoute pageKey="interfarmacias" titleOverride="Interfarmacias" />
+                  </PageTransition>
+                </Suspense>
+              }
+            />
+            <Route
+              path="trazabilidad"
+              element={
+                <Suspense fallback={<DashboardSkeleton />}>
+                  <PageTransition>
+                    <ConstructionRoute pageKey="trazabilidad" titleOverride="Trazabilidad" />
+                  </PageTransition>
+                </Suspense>
+              }
+            />
+            <Route
+              path="movimientos"
+              element={
+                <Suspense fallback={<DashboardSkeleton />}>
+                  <PageTransition>
+                    <ConstructionRoute pageKey="movimientos" titleOverride="Movimientos" />
+                  </PageTransition>
+                </Suspense>
+              }
+            />
+            <Route
+              path="terminal-ventas"
+              element={
+                <Suspense fallback={<DashboardSkeleton />}>
+                  <PageTransition>
+                    <LiveSalesTerminal />
                   </PageTransition>
                 </Suspense>
               }
@@ -151,7 +228,9 @@ const AppRoutes = () => {
               element={
                 <Suspense fallback={<DashboardSkeleton />}>
                   <PageTransition>
-                    <Stock />
+                    <ConstructionRoute pageKey="stock" titleOverride="Stock">
+                      <Stock />
+                    </ConstructionRoute>
                   </PageTransition>
                 </Suspense>
               }
@@ -161,7 +240,9 @@ const AppRoutes = () => {
               element={
                 <Suspense fallback={<DashboardSkeleton />}>
                   <PageTransition>
-                    <PreCount />
+                    <ConstructionRoute pageKey="stock" titleOverride="Stock">
+                      <PreCount />
+                    </ConstructionRoute>
                   </PageTransition>
                 </Suspense>
               }
@@ -171,7 +252,9 @@ const AppRoutes = () => {
               element={
                 <Suspense fallback={<DashboardSkeleton />}>
                   <PageTransition>
-                    <StockRecountMobile />
+                    <ConstructionRoute pageKey="stock" titleOverride="Stock">
+                      <StockRecountMobile />
+                    </ConstructionRoute>
                   </PageTransition>
                 </Suspense>
               }
@@ -181,7 +264,9 @@ const AppRoutes = () => {
               element={
                 <Suspense fallback={<DashboardSkeleton />}>
                   <PageTransition>
-                    <ExpirationControl />
+                    <ConstructionRoute pageKey="control-vencimiento" titleOverride="Control de Vencimiento">
+                      <ExpirationControl />
+                    </ConstructionRoute>
                   </PageTransition>
                 </Suspense>
               }
@@ -191,7 +276,9 @@ const AppRoutes = () => {
               element={
                 <Suspense fallback={<DashboardSkeleton />}>
                   <PageTransition>
-                    <CyclicInventory />
+                    <ConstructionRoute pageKey="inventario-ciclico" titleOverride="Inventarios Cíclicos">
+                      <CyclicInventory />
+                    </ConstructionRoute>
                   </PageTransition>
                 </Suspense>
               }
@@ -201,7 +288,9 @@ const AppRoutes = () => {
               element={
                 <Suspense fallback={<DashboardSkeleton />}>
                   <PageTransition>
-                    <CyclicInventoryDetail />
+                    <ConstructionRoute pageKey="inventario-ciclico" titleOverride="Inventarios Cíclicos">
+                      <CyclicInventoryDetail />
+                    </ConstructionRoute>
                   </PageTransition>
                 </Suspense>
               }
@@ -260,7 +349,9 @@ const AppRoutes = () => {
               element={
                 <Suspense fallback={<PageSkeleton />}>
                   <PageTransition>
-                    <SmartAnalystPage />
+                    <ConstructionRoute pageKey="control-vencimiento" titleOverride="Control de Vencimiento">
+                      <SmartAnalystPage />
+                    </ConstructionRoute>
                   </PageTransition>
                 </Suspense>
               }
@@ -329,321 +420,7 @@ const AppRoutes = () => {
   );
 };
 
-
-
-
-import { WindowManagerProvider } from "./contexts/WindowManagerContext";
-
-// Toggle to temporarily pause/suspend the entire application UI
-const MAINTENANCE_MODE = false;
-
-// Playable Chrome T-Rex Dino Game
-const ChromeDinoGame = () => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [gameState, setGameState] = useState<'START' | 'PLAYING' | 'GAME_OVER'>('START');
-  const [score, setScore] = useState(0);
-  const [highScore, setHighScore] = useState(() => {
-    return parseInt(localStorage.getItem('dino_high_score') || '0', 10);
-  });
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Detect dark mode
-    const isDark = document.documentElement.classList.contains('dark') || document.body.classList.contains('dark');
-    const colorTheme = isDark ? '#e8eaed' : '#535353';
-    const groundColor = isDark ? '#5c5f62' : '#d2d2d2';
-
-    // Set canvas dimensions
-    canvas.width = 600;
-    canvas.height = 150;
-
-    let animationFrameId: number;
-    let isJumping = false;
-    const groundY = 130;
-    const dinoHeight = 36;
-    const dinoWidth = 34;
-    const startDinoY = groundY - dinoHeight; // 94
-    let dinoY = startDinoY; 
-    let dinoVy = 0;
-    const gravity = 0.5;
-    const jumpStrength = -9.5;
-
-    // Obstacles
-    interface Obstacle {
-      x: number;
-      width: number;
-      height: number;
-      speed: number;
-    }
-    let obstacles: Obstacle[] = [];
-    let obstacleTimer = 0;
-    let currentScore = 0;
-    let speedMultiplier = 1;
-
-    // Dino animation frame
-    let dinoFrame = 0;
-
-    // Handle inputs
-    const handleJump = () => {
-      if (gameState === 'START') {
-        setGameState('PLAYING');
-      } else if (gameState === 'PLAYING' && !isJumping) {
-        dinoVy = jumpStrength;
-        isJumping = true;
-      } else if (gameState === 'GAME_OVER') {
-        // Reset game
-        dinoY = startDinoY;
-        dinoVy = 0;
-        isJumping = false;
-        obstacles = [];
-        obstacleTimer = 0;
-        currentScore = 0;
-        speedMultiplier = 1;
-        setScore(0);
-        setGameState('PLAYING');
-      }
-    };
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space' || e.code === 'ArrowUp') {
-        e.preventDefault();
-        handleJump();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    
-    // Add event listener to canvas for clicks/taps
-    const onCanvasClick = (e: MouseEvent) => {
-      e.preventDefault();
-      handleJump();
-    };
-    const onCanvasTouch = (e: TouchEvent) => {
-      e.preventDefault();
-      handleJump();
-    };
-
-    canvas.addEventListener('click', onCanvasClick);
-    canvas.addEventListener('touchstart', onCanvasTouch);
-
-    // Drawing functions
-    const drawDino = (ctx: CanvasRenderingContext2D, y: number, frame: number) => {
-      ctx.fillStyle = colorTheme;
-      const x = 50; // Dino fixed X
-      
-      // Head
-      ctx.fillRect(x + 16, y + 0, 16, 4); // Top of head
-      ctx.fillRect(x + 14, y + 4, 20, 4); // Forehead / snout
-      ctx.fillRect(x + 14, y + 8, 20, 4); // Eye level
-      ctx.fillRect(x + 14, y + 12, 12, 4); // Jaw
-      ctx.fillRect(x + 18, y + 16, 12, 2); // Mouth bottom
-      
-      // Eye
-      ctx.fillStyle = isDark ? '#202124' : '#ffffff';
-      ctx.fillRect(x + 18, y + 4, 2, 2);
-      ctx.fillStyle = colorTheme;
-
-      // Neck & Body
-      ctx.fillRect(x + 8, y + 12, 8, 14); // Back / neck
-      ctx.fillRect(x + 0, y + 16, 20, 12); // Main body
-      ctx.fillRect(x + 0, y + 20, 24, 6);  // Chest
-      
-      // Tail
-      ctx.fillRect(x - 4, y + 14, 4, 8);
-      ctx.fillRect(x - 8, y + 16, 4, 6);
-      
-      // Arms
-      ctx.fillRect(x + 22, y + 18, 4, 2);
-      ctx.fillRect(x + 22, y + 20, 2, 2);
-
-      // Legs
-      if (gameState === 'PLAYING') {
-        const legToggle = Math.floor(frame / 6) % 2 === 0;
-        if (legToggle) {
-          // Leg 1 down
-          ctx.fillRect(x + 6, y + 28, 4, 6);
-          ctx.fillRect(x + 6, y + 34, 6, 2);
-          // Leg 2 bent
-          ctx.fillRect(x + 14, y + 28, 4, 4);
-        } else {
-          // Leg 1 bent
-          ctx.fillRect(x + 6, y + 28, 4, 4);
-          // Leg 2 down
-          ctx.fillRect(x + 14, y + 28, 4, 6);
-          ctx.fillRect(x + 14, y + 34, 6, 2);
-        }
-      } else {
-        // Standing
-        ctx.fillRect(x + 6, y + 28, 4, 6);
-        ctx.fillRect(x + 6, y + 34, 6, 2);
-        ctx.fillRect(x + 14, y + 28, 4, 6);
-        ctx.fillRect(x + 14, y + 34, 6, 2);
-      }
-    };
-
-    const drawCactus = (ctx: CanvasRenderingContext2D, x: number, width: number, height: number) => {
-      ctx.fillStyle = colorTheme;
-      // Main stem
-      ctx.fillRect(x + width / 3, groundY - height, width / 3, height);
-      // Left arm
-      ctx.fillRect(x, groundY - height * 0.7, width / 3, 4);
-      ctx.fillRect(x, groundY - height * 0.7 - 6, 4, 6);
-      // Right arm
-      ctx.fillRect(x + width * 2/3, groundY - height * 0.8, width / 3, 4);
-      ctx.fillRect(x + width - 4, groundY - height * 0.8 - 8, 4, 8);
-    };
-
-    const drawGround = (ctx: CanvasRenderingContext2D) => {
-      ctx.strokeStyle = groundColor;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(0, groundY);
-      ctx.lineTo(600, groundY);
-      ctx.stroke();
-
-      // Ground details
-      ctx.fillStyle = groundColor;
-      ctx.fillRect(100, groundY + 5, 5, 1);
-      ctx.fillRect(250, groundY + 8, 12, 1);
-      ctx.fillRect(400, groundY + 4, 8, 1);
-      ctx.fillRect(550, groundY + 6, 4, 1);
-    };
-
-    // Game loop
-    const update = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      // Draw ground
-      drawGround(ctx);
-
-      // Physics/Logic
-      if (gameState === 'PLAYING') {
-        dinoFrame++;
-        
-        // Gravity
-        dinoVy += gravity;
-        dinoY += dinoVy;
-
-        if (dinoY >= startDinoY) {
-          dinoY = startDinoY;
-          dinoVy = 0;
-          isJumping = false;
-        }
-
-        // Spawn obstacles
-        obstacleTimer--;
-        if (obstacleTimer <= 0) {
-          const height = 18 + Math.random() * 20;
-          const width = 12 + Math.random() * 8;
-          obstacles.push({
-            x: 600,
-            width,
-            height,
-            speed: 4.5 * speedMultiplier
-          });
-          obstacleTimer = 80 + Math.random() * 70;
-        }
-
-        // Move and draw obstacles
-        for (let i = obstacles.length - 1; i >= 0; i--) {
-          const obs = obstacles[i];
-          obs.x -= obs.speed;
-
-          drawCactus(ctx, obs.x, obs.width, obs.height);
-
-          // Check collision (AABB)
-          const dinoLeft = 50 - 2;
-          const dinoRight = 50 + 26;
-          const dinoTop = dinoY + 2;
-          const dinoBottom = dinoY + dinoHeight;
-
-          const obsLeft = obs.x;
-          const obsRight = obs.x + obs.width;
-          const obsTop = groundY - obs.height;
-          const obsBottom = groundY;
-
-          if (
-            dinoRight > obsLeft &&
-            dinoLeft < obsRight &&
-            dinoBottom > obsTop &&
-            dinoTop < obsBottom
-          ) {
-            setGameState('GAME_OVER');
-            if (currentScore > highScore) {
-              setHighScore(currentScore);
-              localStorage.setItem('dino_high_score', currentScore.toString());
-            }
-          }
-
-          // Remove off-screen obstacles
-          if (obs.x + obs.width < 0) {
-            obstacles.splice(i, 1);
-            currentScore += 10;
-            setScore(currentScore);
-            
-            if (currentScore % 100 === 0) {
-              speedMultiplier += 0.08;
-            }
-          }
-        }
-      } else {
-        // Draw static obstacles
-        obstacles.forEach(obs => {
-          drawCactus(ctx, obs.x, obs.width, obs.height);
-        });
-      }
-
-      // Draw Dino
-      drawDino(ctx, dinoY, dinoFrame);
-
-      // UI messages on canvas
-      if (gameState === 'GAME_OVER') {
-        ctx.fillStyle = colorTheme;
-        ctx.font = 'bold 13px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('G A M E   O V E R', 300, 50);
-        ctx.font = '10px monospace';
-        ctx.fillText('TOCÁ O ESPACIO PARA REINICIAR', 300, 75);
-      }
-
-      animationFrameId = requestAnimationFrame(update);
-    };
-
-    update();
-
-    return () => {
-      cancelAnimationFrame(animationFrameId);
-      window.removeEventListener('keydown', handleKeyDown);
-      canvas.removeEventListener('click', onCanvasClick);
-      canvas.removeEventListener('touchstart', onCanvasTouch);
-    };
-  }, [gameState, highScore]);
-
-  return (
-    <div className="flex flex-col items-center select-none w-full max-w-[600px] mx-auto">
-      <div className="flex justify-end w-full mb-1 font-mono text-xs tracking-wider font-bold opacity-60 text-right">
-        <span className="mr-4">HI {highScore.toString().padStart(5, '0')}</span>
-        <span>{score.toString().padStart(5, '0')}</span>
-      </div>
-      <canvas 
-        ref={canvasRef} 
-        className="w-full aspect-[4/1] bg-transparent cursor-pointer border-b border-slate-300 dark:border-slate-700"
-      />
-      {gameState === 'START' && (
-        <p className="mt-4 text-xs font-mono opacity-60 animate-pulse text-center">
-          [ Presioná ESPACIO o tocá el juego para saltar ]
-        </p>
-      )}
-    </div>
-  );
-};
-
 const App = () => {
-
   useEffect(() => {
     // Inicializar DB inmediatamente al cargar la app
     const initialize = async () => {
@@ -654,23 +431,8 @@ const App = () => {
       }
     };
 
-    if (!MAINTENANCE_MODE) {
-      initialize();
-    }
+    initialize();
   }, []);
-
-
-  /* Splash screen removed */
-
-  if (MAINTENANCE_MODE) {
-    return (
-      <iframe 
-        src="/camlboy/index.html" 
-        title="Mantenimiento - Farmaplus" 
-        className="fixed inset-0 w-full h-full border-none z-50 bg-[#0b0f19]"
-      />
-    );
-  }
 
   return (
     <MotionConfig reducedMotion="user">
@@ -680,8 +442,8 @@ const App = () => {
             <NotificationPreferencesProvider>
               <UserProvider>
                 <NotificationProvider>
+                  <GlobalContextMenu />
                   <SileoToaster position="bottom-right" options={{ roundness: 12 }} />
-                  <Sonner />
                   <OfflineIndicator />
                   <ErrorBoundary>
                     <HashRouter 
@@ -691,7 +453,9 @@ const App = () => {
                       }}
                     >
                       <WindowManagerProvider>
-                        <AppRoutes />
+                        <LayoutProvider>
+                          <AppRoutes />
+                        </LayoutProvider>
                       </WindowManagerProvider>
                     </HashRouter>
                   </ErrorBoundary>

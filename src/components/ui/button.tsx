@@ -31,7 +31,7 @@ const buttonVariants = cva(
         primary:
           "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90",
         secondary:
-          "bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80",
+          "bg-[rgb(var(--overlay)/0.06)] dark:bg-[rgb(var(--overlay)/0.12)] text-foreground hover:bg-[rgb(var(--overlay)/0.10)] dark:hover:bg-[rgb(var(--overlay)/0.18)]",
         tertiary:
           "border border-border bg-transparent text-muted-foreground hover:bg-hover hover:text-foreground",
         outline:
@@ -39,7 +39,7 @@ const buttonVariants = cva(
         ghost:
           "bg-transparent text-muted-foreground hover:bg-hover hover:text-foreground",
         destructive:
-          "bg-destructive text-white shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20",
+          "bg-red-500/15 text-red-700 hover:bg-red-500/25 dark:bg-red-500/20 dark:text-red-300 dark:hover:bg-red-500/30 focus-visible:ring-destructive/30",
         "destructive-outline":
           "border border-destructive/20 text-destructive-foreground bg-background shadow-xs hover:bg-destructive/[0.04]",
         link:

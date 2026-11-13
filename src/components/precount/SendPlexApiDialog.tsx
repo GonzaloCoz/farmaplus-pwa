@@ -26,8 +26,9 @@ import {
     Check,
     ShieldCheck
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/notifications';
 import { useUser } from '@/contexts/UserContext';
+import { useSystemModules } from '@/hooks/useSystemModules';
 import { db } from '@/services/db';
 import { OFFICIAL_71_BRANCHES } from '@/lib/branchNetworkMap';
 import { 
@@ -36,6 +37,7 @@ import {
     restorePlexTrazables,
     checkPlexBatchStatus,
     checkPlexInventoryAdjustment,
+    sanitizeMysqlError,
     type MysqlConfig,
     type PlexBatchItemInput 
 } from '@/services/mysqlTauriBridge';
@@ -74,6 +76,8 @@ export function SendPlexApiDialog({
     onExportSuccess,
 }: SendPlexApiDialogProps) {
     const { user } = useUser();
+    const { modules } = useSystemModules();
+    const isPlexAdjustmentsDisabled = !modules.plexDirectAdjustments;
     const [isSending, setIsSending] = useState(false);
     const [isCheckingConn, setIsCheckingConn] = useState(false);
     const [connStatus, setConnStatus] = useState<'idle' | 'connected' | 'error'>('idle');
@@ -169,10 +173,41 @@ export function SendPlexApiDialog({
             };
         }
 
-        // 2. Parámetros guardados en el inventario actual (localStorage de PreCountConfig)
+        // 2. Rama de la sesión activa en Dexie (evita usar IPs viejas cacheadas en localStorage de otra sesión)
+        if (activeSession?.branch_id) {
+            const foundBySession = OFFICIAL_71_BRANCHES.find(b => b.branchId === Number(activeSession.branch_id));
+            if (foundBySession) {
+                return {
+                    name: foundBySession.name,
+                    ip: foundBySession.primaryIp,
+                    port: 3306,
+                    branchId: foundBySession.branchId
+                };
+            }
+        }
+
+        // 3. Prop de nombre de sucursal explícito
+        if (propBranchName && propBranchName.trim()) {
+            const cleanName = propBranchName.replace(/\s*\([^)]*\)/, '').trim();
+            const foundByName = OFFICIAL_71_BRANCHES.find(b =>
+                b.name.toLowerCase() === cleanName.toLowerCase() ||
+                cleanName.toLowerCase().includes(b.name.toLowerCase()) ||
+                b.name.toLowerCase().includes(cleanName.toLowerCase())
+            );
+            if (foundByName) {
+                return {
+                    name: foundByName.name,
+                    ip: foundByName.primaryIp,
+                    port: 3306,
+                    branchId: foundByName.branchId
+                };
+            }
+        }
+
+        // 4. Parámetros guardados en localStorage (fallback solo si no hay sesión activa ni prop explícito)
         if (typeof window !== 'undefined') {
-            const savedIp = localStorage.getItem('plex_target_ip') || localStorage.getItem('precount_config_server_ip');
-            const savedBranch = localStorage.getItem('plex_target_branch') || localStorage.getItem('precount_config_selected_branch');
+            const savedIp = localStorage.getItem('precount_config_server_ip') || localStorage.getItem('plex_target_ip');
+            const savedBranch = localStorage.getItem('precount_config_selected_branch') || localStorage.getItem('plex_target_branch');
 
             if (savedIp && savedIp.trim()) {
                 const foundByIp = OFFICIAL_71_BRANCHES.find(b => b.primaryIp === savedIp.trim());
@@ -208,37 +243,6 @@ export function SendPlexApiDialog({
                         branchId: foundByName.branchId
                     };
                 }
-            }
-        }
-
-        // 3. Prop de nombre de sucursal explícito
-        if (propBranchName && propBranchName.trim()) {
-            const cleanName = propBranchName.replace(/\s*\([^)]*\)/, '').trim();
-            const foundByName = OFFICIAL_71_BRANCHES.find(b =>
-                b.name.toLowerCase() === cleanName.toLowerCase() ||
-                cleanName.toLowerCase().includes(b.name.toLowerCase()) ||
-                b.name.toLowerCase().includes(cleanName.toLowerCase())
-            );
-            if (foundByName) {
-                return {
-                    name: foundByName.name,
-                    ip: foundByName.primaryIp,
-                    port: 3306,
-                    branchId: foundByName.branchId
-                };
-            }
-        }
-
-        // 3. Rama de la sesión activa en Dexie
-        if (activeSession?.branch_id) {
-            const foundBySession = OFFICIAL_71_BRANCHES.find(b => b.branchId === Number(activeSession.branch_id));
-            if (foundBySession) {
-                return {
-                    name: foundBySession.name,
-                    ip: foundBySession.primaryIp,
-                    port: 3306,
-                    branchId: foundBySession.branchId
-                };
             }
         }
 
@@ -303,12 +307,12 @@ export function SendPlexApiDialog({
                     setConnError(null);
                 } else {
                     setConnStatus('error');
-                    setConnError(res.message || 'No se pudo conectar al host.');
+                    setConnError(sanitizeMysqlError(res.message) || 'No se pudo conectar al servidor local.');
                 }
             } catch (err: any) {
                 if (!isMounted) return;
                 setConnStatus('error');
-                setConnError(err?.message || String(err));
+                setConnError(sanitizeMysqlError(err?.message || String(err)) || 'No se pudo conectar al servidor local.');
             } finally {
                 if (isMounted) setIsCheckingConn(false);
             }
@@ -468,7 +472,7 @@ export function SendPlexApiDialog({
                 toast.success(
                     `Lote #${res.id_registro} enviado a Plex`,
                     {
-                        description: `Se transmitieron ${res.total_units} unidades (${res.total_items} SKUs) a ${res.host}. Listo para Carga desde API.`
+                        description: `Se transmitieron ${res.total_units} unidades (${res.total_items} SKUs) al servidor de Plex de ${targetBranch.name}. Listo para Carga desde API.`
                     }
                 );
             }
@@ -619,11 +623,11 @@ export function SendPlexApiDialog({
                                     </div>
                                 ) : connStatus === 'connected' ? (
                                     <Badge variant="dot" color="emerald" size="compact" className="text-[11px] font-semibold">
-                                        Conectado ({targetBranch.ip})
+                                        Conectado
                                     </Badge>
                                 ) : (
                                     <Badge variant="dot" color="red" size="compact" className="text-[11px] font-semibold">
-                                        Sin Conexión ({targetBranch.ip})
+                                        Sin Conexión
                                     </Badge>
                                 )}
                             </div>
@@ -675,8 +679,18 @@ export function SendPlexApiDialog({
                             </div>
                         )}
 
+                        {isPlexAdjustmentsDisabled && (
+                            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs flex items-start gap-2">
+                                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                                <div className="leading-snug">
+                                    <strong>Función no disponible:</strong>
+                                    <p className="mt-0.5 text-[11px] opacity-90">Esta función no se encuentra disponible.</p>
+                                </div>
+                            </div>
+                        )}
+
                         <p className="text-[11px] text-muted-foreground px-1 leading-relaxed">
-                            Al confirmar, se enviará el lote a la base de datos Plex de <strong className="text-foreground">{targetBranch.name}</strong> ({targetBranch.ip}).
+                            Al confirmar, se enviará el lote a la base de datos Plex de <strong className="text-foreground">{targetBranch.name}</strong>.
                         </p>
                     </div>
                 )}
@@ -706,8 +720,9 @@ export function SendPlexApiDialog({
                             <Button
                                 type="button"
                                 onClick={handleConfirmSendToPlex}
-                                disabled={isSending || activeItems.length === 0 || connStatus === 'error'}
-                                className="rounded-xl h-9 px-4 text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs flex items-center gap-1.5 cursor-pointer"
+                                disabled={isSending || activeItems.length === 0 || connStatus === 'error' || isPlexAdjustmentsDisabled}
+                                title={isPlexAdjustmentsDisabled ? "Impacto en Plex pausado por el administrador" : undefined}
+                                className="rounded-xl h-9 px-4 text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {isSending ? (
                                     <>

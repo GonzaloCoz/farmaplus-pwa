@@ -34,7 +34,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { BookOpen01 as BookOpen } from '@untitledui/icons';
-import { toast } from 'sonner';
+import { toast } from '@/lib/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAppVersion, CURRENT_APP_VERSION } from '@/hooks/useAppVersion';
 import { Textarea } from '@/components/ui/textarea';

@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { UploadCloud01 as CloudUploadIcon, CheckCircle as CloudCheckIcon, RefreshCcw01 as RotateCcw, AlertTriangle, ArrowRight, ArrowLeft } from '@untitledui/icons';
 import { cn } from "@/lib/utils";
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from "motion/react";
 
 interface LocationClosingDrawerProps {
     isOpen: boolean;

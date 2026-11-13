@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from "motion/react";
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useNavigate } from 'react-router-dom';
 import { useUser } from '@/contexts/UserContext';
@@ -78,6 +78,9 @@ import {
     QuantityDrawer 
 } from '@/components/precount/PreCountDialogs';
 import { SettingsMenu } from '@/components/precount/PreCountSettingsMenu';
+import { isPossibleDataMatrix, parseGS1DataMatrix } from '@/lib/gs1Parser';
+import { savePreCountSerial } from '@/services/preCountDB';
+import { DataMatrixTraceModal } from '@/components/precount/DataMatrixTraceModal';
 
 
 import { playSound } from '@/utils/soundUtils';
@@ -157,7 +160,7 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTab, TabsPanel } from "@/components/ui/tabs";
-import { toast } from "sonner";
+import { toast } from "@/lib/notifications";
 
 interface EditableCatalogPreviewProps {
     catalog: MasterCatalogItem[];
@@ -363,7 +366,7 @@ export function EditableCatalogPreview({ catalog, onChange, profile }: EditableC
     );
 }
 
-type Step = 'config' | 'admin_config' | 'admin_summary' | 'admin_sync' | 'qr_generator' | 'counting';
+type Step = 'config' | 'operator_name' | 'admin_config' | 'admin_summary' | 'admin_sync' | 'qr_generator' | 'counting';
 
 export default function PreCount() {
     const navigate = useNavigate();
@@ -391,6 +394,14 @@ export default function PreCount() {
     const [highSpeedMode, setHighSpeedMode] = useState(false);
     const [showQtyDrawer, setShowQtyDrawer] = useState(false);
     const [deviceName, setDeviceName] = useState(() => localStorage.getItem('precount_device_name') || '');
+    const [pendingJoinedSession, setPendingJoinedSession] = useState<PreCountSession | null>(null);
+    const [operatorNameInput, setOperatorNameInput] = useState<string>(() => {
+        const saved = typeof window !== 'undefined' ? (localStorage.getItem('precount_device_name') || '') : '';
+        const upper = saved.trim().toUpperCase();
+        if (!saved.trim() || upper === 'ZEBRA-01' || upper === 'GENERIC DEVICE') return '';
+        return saved.trim();
+    });
+    const [isConnectingOperator, setIsConnectingOperator] = useState(false);
     const isUserAdmin = Boolean(user?.role === 'admin' || user?.role === 'mod');
     const [accessMode, setAccessMode] = useState<'admin' | 'salon' | 'legacy'>(() => isUserAdmin ? 'admin' : 'salon');
 
@@ -523,6 +534,7 @@ export default function PreCount() {
 
     // Listener for incoming files from devices (Admin Side)
     const [elapsedTime, setElapsedTime] = useState('00:00');
+    const [traceableModalProduct, setTraceableModalProduct] = useState<{ product: any; ean: string } | null>(null);
 
     // Timer effect for real-time counter
     useEffect(() => {
@@ -597,30 +609,33 @@ export default function PreCount() {
         };
     }, [masterCatalog]);
 
-    // Auto-Resume Session only on initial load or step entry
+    // Auto-Resume Session only on initial load or step entry when a saved session ID exists for this device
     const hasAttemptedAutoResume = useRef(false);
     useEffect(() => {
+        const savedSessionId = typeof localStorage !== 'undefined' 
+            ? (localStorage.getItem('last_precount_session_id') || localStorage.getItem('precount_session_id')) 
+            : null;
+
         if (isAdmin) {
             setAccessMode('admin');
             setStep('counting');
-            if (!session && availableSessions.length > 0) {
-                const active = availableSessions.find(s => s.status === 'active') || availableSessions[0];
-                resumeSession(active, false);
+            if (!session && savedSessionId && availableSessions.length > 0) {
+                const active = availableSessions.find(s => s.id === savedSessionId && s.status === 'active');
+                if (active) {
+                    resumeSession(active, false);
+                }
             }
         } else {
             setAccessMode('salon');
             if (session && session.status === 'active') {
                 setStep('counting');
             } else {
-                const savedSessionId = typeof localStorage !== 'undefined' 
-                    ? (localStorage.getItem('last_precount_session_id') || localStorage.getItem('precount_session_id')) 
-                    : null;
                 if (savedSessionId) {
                     const toResume = availableSessions.find(s => s.id === savedSessionId && s.status === 'active');
                     if (toResume) {
                         resumeSession(toResume, false);
-                    } else if (!session) {
-                        // Rescatar de Dexie local si la red aún se está restableciendo al desbloquear la terminal
+                    } else if (!session && !navigator.onLine) {
+                        // Rescatar de Dexie local solo si estamos offline al desbloquear la terminal
                         db.sessions.get(savedSessionId).then(localSess => {
                             if (localSess && localSess.status === 'active') {
                                 resumeSession(localSess as any, false);
@@ -769,15 +784,15 @@ export default function PreCount() {
 
         console.log(`[Sync] Attempting to join session with PIN: ${normalizedPin}`);
 
-        // 1. Prioridad Absoluta: Buscar en Supabase por PIN
+        // 1. Prioridad Absoluta: Buscar en Supabase por PIN (sin registrar aún el dispositivo)
         // Ignoramos lo que haya localmente para evitar desfases
-        let remoteSession = await getSessionByPin(normalizedPin);
+        let remoteSession = await getSessionByPin(normalizedPin, { skipDeviceRegistration: true });
 
         // Reintento rápido por si la red es inestable
         if (!remoteSession) {
             console.log('[Sync] PIN not found, retrying in 1s...');
             await new Promise(r => setTimeout(r, 1000));
-            remoteSession = await getSessionByPin(normalizedPin);
+            remoteSession = await getSessionByPin(normalizedPin, { skipDeviceRegistration: true });
         }
 
         if (remoteSession) {
@@ -785,39 +800,58 @@ export default function PreCount() {
             localStorage.setItem('last_precount_session_id', remoteSession.id);
             localStorage.setItem('precount_session_id', remoteSession.id);
 
-            await resumeSession(remoteSession);
-            await announcePresence(remoteSession.id);
-            emitDeviceTelemetry({
-                sessionId: remoteSession.id,
-                currentLocation: null,
-                totalScanned: 0,
-                totalSkus: 0
-            }).catch(() => {});
-            setStep('counting');
-            notify.success("Conectado", `Unido a: ${remoteSession.sector}`);
-            return;
-        }
-
-        // 2. Fallback de emergencia solo para testing
-        if (normalizedPin === "123456" && availableSessions.length > 0) {
-            const fallbackSession = availableSessions[0];
-            localStorage.setItem('last_precount_session_id', fallbackSession.id);
-            localStorage.setItem('precount_session_id', fallbackSession.id);
-            await resumeSession(fallbackSession);
-            await announcePresence(fallbackSession.id);
-            emitDeviceTelemetry({
-                sessionId: fallbackSession.id,
-                currentLocation: null,
-                totalScanned: 0,
-                totalSkus: 0
-            }).catch(() => {});
-            setStep('counting');
-            notify.success("Modo Demo", `Unido a la primera sesión disponible.`);
+            await resumeSession(remoteSession, false);
+            setPendingJoinedSession(remoteSession);
+            setStep('operator_name');
+            notify.success("Stock importado", `Sesión "${remoteSession.sector}" lista. Ingresá tu nombre de operador para conectar.`);
             return;
         }
 
         notify.error("Error", "Código de sincronización inválido o sesión no encontrada.");
         setOtpValue('');
+    };
+
+    const handleConfirmOperatorAndConnect = async () => {
+        const trimmedName = operatorNameInput.trim();
+        if (!trimmedName) {
+            notify.error("Nombre requerido", "Ingresá el nombre del operador para identificar esta terminal.");
+            return;
+        }
+        const upperName = trimmedName.toUpperCase();
+        if (upperName === 'ZEBRA-01' || upperName === 'GENERIC DEVICE') {
+            notify.error("Nombre inválido", "Usá un nombre personal o único (ej: Juan, Zebra 2) para no superponerte con otras terminales.");
+            return;
+        }
+
+        const targetSession = pendingJoinedSession || session;
+        if (!targetSession?.id) {
+            notify.error("Sin sesión", "Volvé a ingresar el PIN de sincronización.");
+            setStep('config');
+            return;
+        }
+
+        setIsConnectingOperator(true);
+        try {
+            localStorage.setItem('precount_device_name', trimmedName);
+            localStorage.setItem('precount_user_name', trimmedName);
+            setDeviceName(trimmedName);
+
+            const { registerConnectedDevice } = await import('@/services/preCountDB');
+            await registerConnectedDevice(targetSession.id, trimmedName);
+            await announcePresence(targetSession.id);
+            emitDeviceTelemetry({
+                sessionId: targetSession.id,
+                currentLocation: null,
+                totalScanned: 0,
+                totalSkus: 0
+            }).catch(() => {});
+
+            setPendingJoinedSession(null);
+            setStep('counting');
+            notify.success("Conectado", `Unido a "${targetSession.sector}" como ${trimmedName}`);
+        } finally {
+            setIsConnectingOperator(false);
+        }
     };
 
     const handleElectronImport = (data: { filename: string, rows: any[][], size: number }) => {
@@ -997,6 +1031,88 @@ export default function PreCount() {
 
             lastScanTimeRef.current = Date.now();
 
+            // 0.A: Si hay un modal de producto trazable abierto esperando el DataMatrix
+            if (traceableModalProduct) {
+                const parsed = parseGS1DataMatrix(code);
+                if (parsed.isValid) {
+                    const matches = !parsed.ean || parsed.ean === traceableModalProduct.ean ||
+                                    (parsed.gtin && traceableModalProduct.product.gtin && parsed.gtin === traceableModalProduct.product.gtin);
+                    if (matches) {
+                        if (session?.id) {
+                            await savePreCountSerial({
+                                session_id: session.id,
+                                location_tag: activeLocation || 'GENERAL',
+                                id_producto: traceableModalProduct.product.id_producto || '',
+                                ean: traceableModalProduct.ean,
+                                gtin: parsed.gtin || '',
+                                serial: parsed.serial || '',
+                                lot: parsed.lot || '',
+                                expiry: parsed.expiry || '',
+                                no_serial: false,
+                                raw_datamatrix: code,
+                                device_name: 'PC Colector'
+                            });
+                        }
+                        await addItem(traceableModalProduct.ean, traceableModalProduct.product.name, 1, traceableModalProduct.product.id_producto, activeLocation || undefined);
+                        toast.success(`Serie ${parsed.serial || ''} registrada (+1)`, {
+                            description: `${traceableModalProduct.product.name} | Lote: ${parsed.lot || '-'} | Venc: ${parsed.expiry || '-'}`,
+                            duration: 2500,
+                            icon: <CheckCircle className="size-4 text-emerald-500" />
+                        });
+                        setTraceableModalProduct(null);
+                        trigger('success');
+                        playSound('success');
+                        return;
+                    } else {
+                        toast.error('El DataMatrix no coincide con este producto');
+                        trigger('warning');
+                        playSound('error');
+                        return;
+                    }
+                } else {
+                    toast.error('El código escaneado no es un DataMatrix válido');
+                    trigger('warning');
+                    playSound('error');
+                    return;
+                }
+            }
+
+            // 0.B: Si el código escaneado es directamente un DataMatrix GS1 (en escaneo rápido)
+            if (isPossibleDataMatrix(code)) {
+                const parsed = parseGS1DataMatrix(code);
+                if (parsed.isValid && (parsed.ean || parsed.gtin)) {
+                    const searchCode = parsed.ean || parsed.gtin || '';
+                    let localProd = null;
+                    try { localProd = await searchLocalBarcode(searchCode); } catch {}
+                    if (localProd && (localProd.is_traceable || localProd.gtin)) {
+                        if (session?.id) {
+                            await savePreCountSerial({
+                                session_id: session.id,
+                                location_tag: activeLocation || 'GENERAL',
+                                id_producto: localProd.id_producto,
+                                ean: parsed.ean || localProd.barcode,
+                                gtin: parsed.gtin || '',
+                                serial: parsed.serial || '',
+                                lot: parsed.lot || '',
+                                expiry: parsed.expiry || '',
+                                no_serial: false,
+                                raw_datamatrix: code,
+                                device_name: 'PC Colector'
+                            });
+                        }
+                        await addItem(parsed.ean || localProd.barcode, localProd.name, 1, localProd.id_producto, activeLocation || undefined);
+                        toast.success(`Serie ${parsed.serial || ''} registrada (+1)`, {
+                            description: `${localProd.name} | Lote: ${parsed.lot || '-'}`,
+                            duration: 2500,
+                            icon: <CheckCircle className="size-4 text-emerald-500" />
+                        });
+                        trigger('success');
+                        playSound('success');
+                        return;
+                    }
+                }
+            }
+
             let productToUse: any = null;
 
             // 1. Prioridad: Buscar en la base de datos local SQLite (.db) de Tauri (< 1ms sin red)
@@ -1010,6 +1126,8 @@ export default function PreCount() {
                         salePrice: localProd.sale_price || 0,
                         stock: localProd.stock || 0,
                         id_producto: localProd.id_producto,
+                        is_traceable: localProd.is_traceable || false,
+                        gtin: localProd.gtin || '',
                         isMaster: true
                     };
                 }
@@ -1050,6 +1168,8 @@ export default function PreCount() {
                         salePrice: dbProduct.salePrice || 0,
                         stock: dbProduct.stock || 0,
                         id_producto: dbProduct.id_producto,
+                        is_traceable: (dbProduct as any).is_traceable || false,
+                        gtin: (dbProduct as any).gtin || '',
                         isMaster: true
                     };
                 }
@@ -1079,6 +1199,13 @@ export default function PreCount() {
             if (productToUse) {
                 setSelectedProduct(productToUse);
                 setManualEAN(code);
+
+                // Si el producto es trazable ANMAT, abrir modal para captura de DataMatrix
+                if (productToUse.is_traceable) {
+                    setTraceableModalProduct({ product: productToUse, ean: code });
+                    trigger('warning');
+                    return;
+                }
 
                 if (highSpeedMode) {
                     // Fast flow: Add immediately with 1
@@ -1519,11 +1646,17 @@ export default function PreCount() {
     };
 
 
-    // Confirmar finalización con contraseña / PIN de supervisor
+    // Confirmar finalización con el PIN de sincronización de la sesión o PIN de entorno
     const handleConfirmFinish = async () => {
-        const expectedPin = import.meta.env.VITE_PRECOUNT_FINISH_PIN || 'farmaplus';
-        if (finishPassword !== expectedPin) {
-            setFinishPasswordError('Contraseña incorrecta');
+        const envPin = import.meta.env.VITE_PRECOUNT_FINISH_PIN;
+        const sessionPin = session?.sync_pin?.trim();
+        const inputClean = finishPassword.trim();
+        const isValid =
+            (sessionPin && inputClean === sessionPin) ||
+            (envPin && inputClean === envPin);
+
+        if (!isValid) {
+            setFinishPasswordError('PIN de sesión o contraseña de supervisor incorrecta');
             return;
         }
         setShowFinishDialog(false);
@@ -2308,6 +2441,80 @@ export default function PreCount() {
             if (step === 'qr_generator') return renderQRGenerator();
         }
         if (accessMode === 'salon') {
+            if (step === 'operator_name') {
+                const activeTarget = pendingJoinedSession || session;
+                return (
+                    <div className="flex flex-col h-full">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-border/10 bg-muted/5 shrink-0">
+                            <div className="flex items-center gap-2.5 font-bold text-sm tracking-tight text-foreground">
+                                <Monitor className="size-4 text-primary" />
+                                Identificación de Operador
+                            </div>
+                            <div className="flex items-center gap-2 px-2 py-0.5 bg-emerald-500/10 rounded-full border border-emerald-500/20">
+                                <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">
+                                    STOCK IMPORTADO
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="p-6 flex-1 flex flex-col items-center justify-center space-y-6 text-center overflow-y-auto custom-scrollbar">
+                            <div className="space-y-2 max-w-[320px]">
+                                <h3 className="text-2xl font-bold tracking-tight">¿Quién realiza el conteo?</h3>
+                                <p className="text-sm text-muted-foreground/70">
+                                    Sesión <span className="font-semibold text-foreground">{activeTarget?.sector || 'Activa'}</span> lista. Ingresá tu nombre antes de conectar con MiPlus.
+                                </p>
+                            </div>
+
+                            <div className="w-full max-w-[320px] space-y-2 text-left">
+                                <label htmlFor="operator-name-input" className="text-xs font-semibold text-muted-foreground">
+                                    Nombre del operador / terminal
+                                </label>
+                                <Input
+                                    id="operator-name-input"
+                                    value={operatorNameInput}
+                                    onChange={(e) => setOperatorNameInput(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && operatorNameInput.trim() && !isConnectingOperator) {
+                                            handleConfirmOperatorAndConnect();
+                                        }
+                                    }}
+                                    placeholder="Ej: Juan Pérez o Zebra 2"
+                                    autoFocus
+                                    className="h-12 text-base font-semibold rounded-xl"
+                                />
+                                <p className="text-[11px] text-muted-foreground/60">
+                                    Este nombre identificará tus lecturas y archivos en el Monitor de MiPlus.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="p-4 border-t border-border/10 bg-muted/5 flex items-center gap-2 shrink-0 mt-auto">
+                            <Button
+                                variant="outline"
+                                className="flex-1 font-bold h-10 rounded-xl shadow-none"
+                                onClick={() => {
+                                    setPendingJoinedSession(null);
+                                    setOtpValue('');
+                                    setStep('config');
+                                }}
+                                disabled={isConnectingOperator}
+                            >
+                                <ArrowLeft className="size-4 mr-2" />
+                                Cambiar PIN
+                            </Button>
+                            <Button
+                                className="flex-1 group font-bold h-10 rounded-xl shadow-none bg-primary hover:bg-primary/90 text-primary-foreground text-xs"
+                                onClick={handleConfirmOperatorAndConnect}
+                                disabled={!operatorNameInput.trim() || isConnectingOperator}
+                            >
+                                {isConnectingOperator ? 'Conectando...' : 'Conectar a MiPlus'}
+                                <ArrowRight className="size-3 ml-2 transition-transform group-hover:translate-x-1" />
+                            </Button>
+                        </div>
+                    </div>
+                );
+            }
+
             return (
                 <div className="flex flex-col h-full">
                     <div className="flex items-center justify-between px-6 py-4 border-b border-border/10 bg-muted/5 shrink-0">
@@ -2440,33 +2647,29 @@ export default function PreCount() {
             ) : (
                 <div
                     id="counting-main-container"
-                    className="flex-1 w-full h-full overflow-hidden flex flex-col bg-surface-2 dark:bg-surface-1"
+                    className="flex-1 w-full h-full overflow-hidden flex flex-col bg-transparent"
                 >
                             {/* VISTA COLECTOR DE DATOS: PERFIL ADMIN / PERFIL SUCURSAL */}
                             {accessMode === 'admin' ? (
-                                <SurfaceProvider value={2}>
-                                    <div className="flex-1 flex flex-col h-full min-h-0 w-full bg-transparent">
-                                        <PreCountAdminCyclicView 
-                                            defaultLabName={session?.sector || ""} 
-                                            sessionId={session?.id}
-                                            onResumeSession={resumeSession}
-                                            onDeleteSession={deleteSession}
-                                            currentProfile={accessMode}
-                                        />
-                                    </div>
-                                </SurfaceProvider>
+                                <div className="flex-1 flex flex-col h-full min-h-0 w-full bg-transparent">
+                                    <PreCountAdminCyclicView 
+                                        defaultLabName={session?.sector || ""} 
+                                        sessionId={session?.id}
+                                        onResumeSession={resumeSession}
+                                        onDeleteSession={deleteSession}
+                                        currentProfile={accessMode}
+                                    />
+                                </div>
                             ) : accessMode === 'salon' ? (
-                                <SurfaceProvider value={2}>
-                                    <div className="flex-1 flex flex-col h-full min-h-0 w-full bg-transparent">
-                                        <PreCountBranchCyclicView 
-                                            defaultLabName={session?.sector || ""} 
-                                            sessionId={session?.id}
-                                            onResumeSession={resumeSession}
-                                            onDeleteSession={deleteSession}
-                                            currentProfile={accessMode}
-                                        />
-                                    </div>
-                                </SurfaceProvider>
+                                <div className="flex-1 flex flex-col h-full min-h-0 w-full bg-transparent">
+                                    <PreCountBranchCyclicView 
+                                        defaultLabName={session?.sector || ""} 
+                                        sessionId={session?.id}
+                                        onResumeSession={resumeSession}
+                                        onDeleteSession={deleteSession}
+                                        currentProfile={accessMode}
+                                    />
+                                </div>
                             ) : (
                                 /* VISTA CARGA LEGACY (ZEBRA/SALON - 2 COLUMNAS) */
                                 <div className="flex flex-col h-full bg-background lg:bg-transparent rounded-t-2xl lg:rounded-none border-t lg:border-none border-white/20 relative isolate col-span-1 lg:col-span-12 row-span-2 lg:row-span-1 w-full">
@@ -2761,6 +2964,42 @@ export default function PreCount() {
                         await handleAddProduct();
                     }
                 }}
+            />
+            <DataMatrixTraceModal
+                open={!!traceableModalProduct}
+                onOpenChange={(open) => !open && setTraceableModalProduct(null)}
+                product={traceableModalProduct?.product || null}
+                onNoSerial={async () => {
+                    if (!traceableModalProduct) return;
+                    const { product, ean } = traceableModalProduct;
+                    setTraceableModalProduct(null);
+
+                    if (session?.id) {
+                        await savePreCountSerial({
+                            session_id: session.id,
+                            location_tag: activeLocation || 'GENERAL',
+                            id_producto: product.id_producto || '',
+                            ean,
+                            gtin: product.gtin || '',
+                            serial: '',
+                            lot: '',
+                            expiry: '',
+                            no_serial: true,
+                            raw_datamatrix: 'SIN_SERIE',
+                            device_name: 'PC Colector'
+                        });
+                    }
+
+                    await addItem(ean, product.name, 1, product.id_producto, activeLocation || undefined);
+                    toast.warning(`Unidad sumada sin serie (+1)`, {
+                        description: `${product.name} (DataMatrix no legible)`,
+                        duration: 2500,
+                        icon: <AlertTriangle className="size-4 text-amber-500" />
+                    });
+                    trigger('success');
+                    playSound('success');
+                }}
+                onCancel={() => setTraceableModalProduct(null)}
             />
         </div>
     );

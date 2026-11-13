@@ -1,4 +1,4 @@
-import { motion, HTMLMotionProps } from "framer-motion";
+import { motion, HTMLMotionProps } from "motion/react";
 import { useState, MouseEvent } from "react";
 
 interface RippleButtonProps extends HTMLMotionProps<"button"> {

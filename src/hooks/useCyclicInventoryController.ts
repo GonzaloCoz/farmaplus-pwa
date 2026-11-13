@@ -77,7 +77,13 @@ export function useCyclicInventoryController({ labName, round }: UseCyclicInvent
     const { 
         isUploading, 
         isSyncingMysql,
+        mysqlSyncStatus,
+        setMysqlSyncStatus,
+        hasNewSkuAlert,
+        setHasNewSkuAlert,
         handleMysqlSync,
+        isRefreshingStock,
+        handleRefreshStock,
         handleFileUpload, 
         handleElectronImport,
         showMismatchDialog,
@@ -108,14 +114,12 @@ export function useCyclicInventoryController({ labName, round }: UseCyclicInvent
         }
     });
 
-    // RULE: "Smart Hide" - If lab has adjusted items and NO Excel upload, hide pendings. (salvo en edición admin)
+    // ponytail: control de frescura de stock. Si hay ítems ajustados y pendientes sin sincronizar en la sesión, se requiere refresco
     const hasAdjustedItems = items.some(i => i.status === 'adjusted');
-    const shouldHidePendings = hasAdjustedItems && !isExcelUploaded && !isAdminEditActive;
-
-    // We only count "visible" or "active" items for the Global Header
-    const visibleItems = shouldHidePendings 
-        ? items.filter(i => i.status !== 'pending')
-        : items;
+    const hasPendingItems = items.some(i => i.status === 'pending');
+    const requiresStockRefresh = hasAdjustedItems && hasPendingItems && !isExcelUploaded && !isAdminEditActive;
+    const shouldHidePendings = false;
+    const visibleItems = items;
 
     // 3. Stats & Filter Logic
     const stats = useInventoryStats(visibleItems, CATEGORIES[0]);
@@ -342,32 +346,33 @@ const esCollator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' 
         .filter(i => i.countedQuantity > i.systemQuantity)
         .reduce((acc, i) => acc + ((i.countedQuantity - i.systemQuantity) * i.cost), 0) * 100) / 100;
 
-    const handleSaveInventory = async () => {
+    const handleSaveInventory = async (overrideShortageId?: string, overrideSurplusId?: string) => {
         if (isSaving) return;
         const controlledItems = items.filter(i => i.status === 'controlled');
         const shortages = controlledItems.filter(i => i.countedQuantity < i.systemQuantity);
         const surpluses = controlledItems.filter(i => i.countedQuantity > i.systemQuantity);
 
+        const effectiveShortageId = (overrideShortageId !== undefined ? overrideShortageId : shortageId).trim();
+        const effectiveSurplusId = (overrideSurplusId !== undefined ? overrideSurplusId : surplusId).trim();
+
         if (shortages.length > 0) {
-            const cleanId = shortageId.trim();
-            if (!cleanId) {
+            if (!effectiveShortageId) {
                 notify.error("Error", "Por favor ingresa el ID de ajuste para Faltantes");
                 return;
             }
-            if (!/^\d+$/.test(cleanId) || cleanId.length < 4 || cleanId.length > 12) {
-                notify.error("Error", "El ID de Faltantes debe ser numérico y tener entre 4 y 12 dígitos.");
+            if (!/^\d+$/.test(effectiveShortageId) || effectiveShortageId.length < 1 || effectiveShortageId.length > 15) {
+                notify.error("Error", "El ID de Faltantes debe ser numérico.");
                 return;
             }
         }
 
         if (surpluses.length > 0) {
-            const cleanId = surplusId.trim();
-            if (!cleanId) {
+            if (!effectiveSurplusId) {
                 notify.error("Error", "Por favor ingresa el ID de ajuste para Sobrantes");
                 return;
             }
-            if (!/^\d+$/.test(cleanId) || cleanId.length < 4 || cleanId.length > 12) {
-                notify.error("Error", "El ID de Sobrantes debe ser numérico y tener entre 4 y 12 dígitos.");
+            if (!/^\d+$/.test(effectiveSurplusId) || effectiveSurplusId.length < 1 || effectiveSurplusId.length > 15) {
+                notify.error("Error", "El ID de Sobrantes debe ser numérico.");
                 return;
             }
         }
@@ -387,15 +392,15 @@ const esCollator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' 
                     let newShortageId = item.shortageId;
                     if (diff < 0) {
                         newShortageId = item.shortageId 
-                            ? (item.shortageId.includes(shortageId) ? item.shortageId : `${item.shortageId}, ${shortageId}`)
-                            : shortageId;
+                            ? (item.shortageId.includes(effectiveShortageId) ? item.shortageId : `${item.shortageId}, ${effectiveShortageId}`)
+                            : effectiveShortageId;
                     }
 
                     let newSurplusId = item.surplusId;
                     if (diff > 0) {
                         newSurplusId = item.surplusId 
-                            ? (item.surplusId.includes(surplusId) ? item.surplusId : `${item.surplusId}, ${surplusId}`)
-                            : surplusId;
+                            ? (item.surplusId.includes(effectiveSurplusId) ? item.surplusId : `${item.surplusId}, ${effectiveSurplusId}`)
+                            : effectiveSurplusId;
                     }
 
                     return {
@@ -408,8 +413,6 @@ const esCollator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' 
                 return item;
             });
 
-            setItems(updatedItems);
-
             // 0. Sincronización obligatoria previa al SNAP
             // Antes de finalizar el laboratorio, debemos asegurarnos de que el estado actual (controlled)
             // esté en la nube. De lo contrario, finalize_cyclic_inventory no encontrará nada.
@@ -421,8 +424,8 @@ const esCollator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' 
                 labName,
                 updatedItems,
                 user?.id || '',
-                shortageId,
-                surplusId,
+                effectiveShortageId,
+                effectiveSurplusId,
                 user?.branchId
             );
 
@@ -455,8 +458,8 @@ const esCollator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' 
             // Guardar historial de auditoría de manera asíncrona enviando solo los ítems ajustados
             // para no congelar la UI ni saturar el ancho de banda con payloads gigantes
             cyclicInventoryService.saveAdjustmentHistory(branchName, labName, {
-                adjustment_id_shortage: shortageId,
-                adjustment_id_surplus: surplusId,
+                adjustment_id_shortage: effectiveShortageId,
+                adjustment_id_surplus: effectiveSurplusId,
                 shortage_value: shortageValue,
                 surplus_value: surplusValue,
                 total_units_adjusted: controlledItems.length,
@@ -723,6 +726,7 @@ const esCollator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' 
     return {
         // State
         items,
+        setItems,
         isLoading,
         isSaving,
         isUploading,
@@ -764,7 +768,13 @@ const esCollator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' 
 
         // Actions
         isSyncingMysql,
+        mysqlSyncStatus,
+        setMysqlSyncStatus,
+        hasNewSkuAlert,
+        setHasNewSkuAlert,
         handleMysqlSync,
+        isRefreshingStock,
+        handleRefreshStock,
         handleFileUpload,
         handleElectronImport,
         handleUpdateQuantity,
@@ -800,6 +810,7 @@ const esCollator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' 
 
         // Special State
         shouldHidePendings,
+        requiresStockRefresh,
         isAdminEditActive,
         setIsAdminEditActive,
         handleSaveAdminEdit,

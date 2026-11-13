@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, InfoCircle as Info, XClose as X } from '@untitledui/icons';
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { CounterAnimation } from "./CounterAnimation";
 
 export interface MetricItem {

@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, type CSSProperties } from "react";
 
 interface CounterAnimationProps {
     value: number;
@@ -7,6 +7,7 @@ interface CounterAnimationProps {
     prefix?: string;
     suffix?: string;
     decimals?: number;
+    style?: CSSProperties;
 }
 
 export const CounterAnimation = memo(function CounterAnimation({
@@ -15,6 +16,7 @@ export const CounterAnimation = memo(function CounterAnimation({
     prefix = "",
     suffix = "",
     decimals = 0,
+    style,
 }: CounterAnimationProps) {
     const formatNumber = (num: number) => {
         if (decimals === 0) {
@@ -29,18 +31,29 @@ export const CounterAnimation = memo(function CounterAnimation({
     const formattedValue = formatNumber(value);
     const fullString = `${prefix}${formattedValue}${suffix}`;
     const charArray = fullString.split("");
+    const prefixLength = prefix.length;
 
     return (
         <span
             key={fullString}
-            className={`t-digit-group is-animating font-bold tabular-nums ${className}`}
+            style={style}
+            className={`t-digit-group is-animating tabular-nums [font-optical-sizing:auto] ${className}`}
         >
             {charArray.map((char, index) => {
                 const stagger = index > 0 ? index : undefined;
+                const isLastPrefixChar = prefixLength > 0 && index === prefixLength - 1;
+                const isSeparator = char === "." || char === ",";
+
                 return (
                     <span
                         key={index}
-                        className="t-digit"
+                        className={[
+                            "t-digit",
+                            isLastPrefixChar ? "mr-[0.04em]" : "",
+                            isSeparator ? "[font-variant-numeric:normal] mx-[0.01em]" : "",
+                        ]
+                            .filter(Boolean)
+                            .join(" ")}
                         data-stagger={stagger}
                     >
                         {char}

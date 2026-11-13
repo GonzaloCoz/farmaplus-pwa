@@ -14,16 +14,21 @@ import {
   type ReactNode,
   type HTMLAttributes,
 } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Select as SelectPrimitive } from "@base-ui/react/select";
 import type { IconComponent } from "@/lib/icon-context";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { spring, exitFallbackMs } from "@/lib/springs";
-import { useFluidHover, useRegisterFluidHoverItem } from "@/hooks/use-fluid-hover";
-import { useShape } from "@/lib/shape-context";
-import { SizeProvider, useSize, type SizeVariant } from "@/lib/size-context";
+import {
+  useFluidHover,
+  useFluidHoverSelect,
+  useRegisterFluidHoverItem,
+  type FluidHoverActiveStore,
+} from "@/hooks/use-fluid-hover";
+import { useShape, shapeMap } from "@/lib/shape-context";
+import { SizeProvider, useSize, typeClass, type SizeVariant } from "@/lib/size-context";
 import { Elevated } from "@/lib/elevated";
 import {
   popupMotionClass,
@@ -43,8 +48,9 @@ import { FluidHoverHighlight } from "@/components/ui/fluid-hover-highlight";
 // flipping, anchor tracking), dismissal (outside press, focus-out, Escape
 // nesting inside dialogs), list keyboard navigation + typeahead, combobox
 // ARIA, and the hidden form input. This layer keeps the
-// fluid-hover overlays, the spring open/close animation (via actionsRef
-// deferred unmount), and the animated checkmark.
+// fluid-hover overlays, the spring open/close animation (every close calls
+// preventUnmountOnClose, and the content releases the unmount through
+// actionsRef once the exit spring ends), and the animated checkmark.
 // ---------------------------------------------------------------------------
 
 // How long a selection holds the popup open before closing, so the
@@ -56,7 +62,7 @@ const selectionAckMs = 300;
 interface SelectContextValue {
   value: string;
   open: boolean;
-  actionsRef: React.RefObject<{ unmount: () => void } | null>;
+  actionsRef: React.RefObject<{ unmount: () => void; close: () => void } | null>;
 }
 
 const SelectContext = createContext<SelectContextValue | null>(null);
@@ -70,7 +76,7 @@ function useSelectContext() {
 // Content context for fluid hover
 interface SelectContentContextValue {
   registerItem: (index: number, element: HTMLElement | null) => void;
-  activeIndex: number | null;
+  activeStore: FluidHoverActiveStore;
   checkedIndex?: number;
 }
 
@@ -80,6 +86,13 @@ const SelectContentContext =
 // ---------------------------------------------------------------------------
 // Select (root)
 // ---------------------------------------------------------------------------
+
+// The trigger follows the global pill/rounded shape; the popup does not.
+// Like Dropdown and Combobox, the list keeps the smaller "rounded" radii
+// whatever the rest of the UI is shaped: pill corners on a popover distort
+// its padding and break the concentric fit of the rows' hover and selection
+// backgrounds inside it.
+const popupShape = shapeMap.rounded;
 
 interface SelectProps {
   children: ReactNode;
@@ -134,7 +147,7 @@ function Select({
 }: SelectProps) {
   const [internalValue, setInternalValue] = useState(defaultValue ?? "");
   const [open, setOpen] = useState(false);
-  const actionsRef = useRef<{ unmount: () => void } | null>(null);
+  const actionsRef = useRef<{ unmount: () => void; close: () => void } | null>(null);
   const currentValue = value !== undefined ? value : internalValue;
 
   const items = useMemo(() => collectSelectItems(children), [children]);
@@ -162,8 +175,14 @@ function Select({
   // to the picked row are seen. Every other close reason (Escape, outside
   // press, trigger toggle, focus-out) closes immediately and cancels any
   // pending acknowledgment; re-picking within the window restarts it.
+  // Every close holds Base UI's unmount for the exit spring. The deferred one
+  // holds it now: the opt-out carries over to the close applied later.
   const handleOpenChange = useCallback(
-    (nextOpen: boolean, eventDetails: { reason: string }) => {
+    (
+      nextOpen: boolean,
+      eventDetails: { reason: string; preventUnmountOnClose?: () => void }
+    ) => {
+      if (!nextOpen) eventDetails.preventUnmountOnClose?.();
       if (!nextOpen && eventDetails.reason === "item-press") {
         cancelAckClose();
         ackTimeoutRef.current = window.setTimeout(() => {
@@ -219,7 +238,9 @@ Select.displayName = "Select";
 const triggerVariants = cva(
   [
     "group inline-flex items-center justify-between outline-none cursor-pointer",
-    "transition-all duration-80",
+    // Listed, never `all`: a size change snaps instead of easing the
+    // trigger's height and padding.
+    "transition-[color,background-color,border-radius,box-shadow,opacity] duration-80",
     "disabled:opacity-50 disabled:pointer-events-none",
     "focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]",
   ],
@@ -317,7 +338,7 @@ const SelectTrigger = forwardRef<HTMLButtonElement, SelectTriggerProps>(
           </svg>
         </SelectPrimitive.Trigger>
         {error && (
-          <span className="text-[12px] text-destructive pl-3">{error}</span>
+          <span className="text-[length:var(--fs-caption,12px)] leading-[var(--lh-caption,16px)] text-destructive pl-3">{error}</span>
         )}
       </div>
     );
@@ -338,12 +359,12 @@ interface SelectContentProps {
 const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
   ({ className, children }, ref) => {
     const { open, value, actionsRef } = useSelectContext();
-    const shape = useShape();
+    const shape = popupShape;
     const containerRef = useRef<HTMLDivElement>(null);
 
     const hover = useFluidHover(containerRef, { isItemDisabled: isDisabledRow });
     const {
-      activeIndex,
+      activeStore,
       setActiveIndex,
       itemRects,
       isMeasured,
@@ -421,12 +442,16 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
     // keeps the popup mounted through the exit tween, so on reopen the hover
     // pill would still be sitting on the previously active row and spring from
     // there to the row that auto-focus lands on.
-    useEffect(() => {
-      if (open) return;
-      setCheckedIndex(undefined);
-      setActiveIndex(null);
-      setFocusedIndex(null);
-    }, [open, setActiveIndex]);
+    // Done during the render that closes it.
+    const [overlaysOpen, setOverlaysOpen] = useState(open);
+    if (overlaysOpen !== open) {
+      setOverlaysOpen(open);
+      if (!open) {
+        setCheckedIndex(undefined);
+        setActiveIndex(null);
+        setFocusedIndex(null);
+      }
+    }
 
     // Overlays read rects only once the hook reports the item set fully
     // measured. Positioning one from an incomplete pass mounts it at the wrong
@@ -437,8 +462,8 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
       isMeasured && focusedIndex !== null ? itemRects[focusedIndex] : null;
 
     const contentCtx = useMemo(
-      () => ({ registerItem, activeIndex, checkedIndex }),
-      [registerItem, activeIndex, checkedIndex]
+      () => ({ registerItem, activeStore, checkedIndex }),
+      [registerItem, activeStore, checkedIndex]
     );
 
     return (
@@ -448,7 +473,7 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
           align="start"
           sideOffset={6}
           alignItemWithTrigger={false}
-          className="z-50 outline-none"
+          className="z-[var(--z-popover,60)] outline-none"
         >
           <motion.div
             className={popupMotionClass}
@@ -459,7 +484,7 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
                 : { opacity: 0, y: "var(--popup-enter-y)", scaleY: 0.96 }
             }
             transition={open ? spring.fast : spring.fast.exit}
-            // Base UI defers unmount while actionsRef is set; release it once
+            // The close held Base UI's unmount (preventUnmountOnClose); release it once
             // the exit spring has finished so the close animation fully plays.
             onAnimationComplete={() => {
               if (!open) actionsRef.current?.unmount();
@@ -519,7 +544,7 @@ const SelectContent = forwardRef<HTMLDivElement, SelectContentProps>(
                 <ScrollArea className={popupScrollAreaClass} viewportClassName={cn(popupViewportClass, "scroll-fade")}>
                   <div
                     ref={containerRef}
-                    className="relative flex flex-col gap-0.5 p-1"
+                    className="relative flex flex-col p-1"
                   >
                 {/* The three overlays are torn down as the close begins rather
                     than exit-animated, because an overlay still mounted when the
@@ -628,14 +653,9 @@ const SelectItem = forwardRef<HTMLDivElement, SelectItemProps>(
     const selectCtx = useSelectContext();
     const contentCtx = useContext(SelectContentContext);
     const internalRef = useRef<HTMLDivElement>(null);
-    const shape = useShape();
+    const shape = popupShape;
     const sizeClasses = useSize();
     const compact = sizeClasses.variant === "compact";
-    const hasMounted = useRef(false);
-
-    useEffect(() => {
-      hasMounted.current = true;
-    }, []);
 
     // Register with fluid hover. Depends on the (stable) registerItem
     // rather than the content context, which is rebuilt on every activeIndex
@@ -645,9 +665,8 @@ const SelectItem = forwardRef<HTMLDivElement, SelectItemProps>(
     const registerItem = contentCtx?.registerItem;
     useRegisterFluidHoverItem(registerItem, index, internalRef);
 
-    const isActive = contentCtx?.activeIndex === index;
+    const isActive = useFluidHoverSelect(contentCtx?.activeStore, (i) => i === index);
     const isChecked = selectCtx.value === value;
-    const skipAnimation = !hasMounted.current;
 
     return (
       <SelectPrimitive.Item
@@ -707,7 +726,10 @@ const SelectItem = forwardRef<HTMLDivElement, SelectItemProps>(
           aria-hidden
           className={cn("shrink-0", compact ? "w-3.5 h-3.5" : "w-4 h-4")}
         >
-          <AnimatePresence>
+          {/* initial={false}: a row checked at mount shows the finished
+              check instead of drawing it, so default selections don't
+              animate on page load. */}
+          <AnimatePresence initial={false}>
             {isChecked && (
               <motion.svg
                 key="check"
@@ -726,7 +748,7 @@ const SelectItem = forwardRef<HTMLDivElement, SelectItemProps>(
               >
                 <motion.path
                   d="M4 12L9 17L20 6"
-                  initial={{ pathLength: skipAnimation ? 1 : 0 }}
+                  initial={{ pathLength: 0 }}
                   animate={{
                     pathLength: 1,
                     transition: { duration: 0.08, ease: "easeOut" },
@@ -774,7 +796,7 @@ const SelectLabel = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
         ref={ref}
         className={cn(
           "px-2 py-1.5 shrink-0 text-muted-foreground",
-          compact ? "text-[11px]" : "text-[12px]",
+          typeClass("caption", compact ? "compact" : "default"),
           className
         )}
         {...props}
@@ -799,25 +821,25 @@ const SelectSeparator = forwardRef<
 
 SelectSeparator.displayName = "SelectSeparator";
 
-const SelectValue = SelectPrimitive.Value;
-const SelectButton = Button;
-const SelectPopup = SelectContent;
-
 // ---------------------------------------------------------------------------
 // Exports
 // ---------------------------------------------------------------------------
 
+const SelectValue = SelectPrimitive.Value;
+const SelectButton = Button;
+const SelectPopup = SelectContent;
+
 export {
   Select,
+  SelectValue,
+  SelectButton,
+  SelectPopup,
   SelectTrigger,
   SelectContent,
   SelectItem,
   SelectGroup,
   SelectLabel,
   SelectSeparator,
-  SelectValue,
-  SelectButton,
-  SelectPopup,
   triggerVariants,
 };
 

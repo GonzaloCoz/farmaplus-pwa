@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { XClose as X, CheckCircle, AlertCircle, InfoCircle as Info, AlertTriangle } from '@untitledui/icons';
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";

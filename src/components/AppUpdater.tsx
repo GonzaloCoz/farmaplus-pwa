@@ -51,9 +51,35 @@ export function AppUpdater() {
         setChangelogNotes(latestVersion.release_notes || 'Optimización del sistema y corrección de errores.');
 
         const updatePromise = (async () => {
+            // 1. Limpiar Service Workers y CacheStorage de activos estáticos
+            // (IMPORTANTE: Esto NO toca localStorage ni IndexedDB, preservando la sesión del usuario y el tema)
+            try {
+                if ('serviceWorker' in navigator) {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    for (let registration of registrations) {
+                        await registration.unregister();
+                    }
+                }
+                if ('caches' in window) {
+                    const keys = await caches.keys();
+                    await Promise.all(keys.map(key => caches.delete(key)));
+                }
+            } catch (cacheErr) {
+                console.warn('Error purgando cache de assets:', cacheErr);
+            }
+
             const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
             if (isTauri) {
                 try {
+                    const { invoke } = await import('@tauri-apps/api/core');
+                    const hasMiPlusUpdater = await invoke<boolean>('check_miplus_updater_status').catch(() => false);
+                    if (hasMiPlusUpdater) {
+                        const downloadUrl = (latestVersion as any).download_url || 
+                            'https://github.com/GonzaloCoz/farmaplus-pwa/releases/latest/download/MiPlus_Plex.zip';
+                        await invoke('apply_miplus_update', { downloadUrl });
+                        return;
+                    }
+
                     const { check } = await import('@tauri-apps/plugin-updater');
                     const { relaunch } = await import('@tauri-apps/plugin-process');
                     const update = await check();
@@ -80,22 +106,8 @@ export function AppUpdater() {
                 }
             }
 
-            // 1. Unregister all Service Workers
-            if ('serviceWorker' in navigator) {
-                const registrations = await navigator.serviceWorker.getRegistrations();
-                for (let registration of registrations) {
-                    await registration.unregister();
-                }
-            }
-
-            // 2. Clear all Caches
-            if ('caches' in window) {
-                const keys = await caches.keys();
-                await Promise.all(keys.map(key => caches.delete(key)));
-            }
-
-            // 3. Pause for progress animation visibility
-            await new Promise(resolve => setTimeout(resolve, 1800));
+            // Pausa breve para feedback visual en modo Web
+            await new Promise(resolve => setTimeout(resolve, 1500));
         })();
 
         sileo.promise(updatePromise, {

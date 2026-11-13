@@ -9,6 +9,7 @@ export const CyclicItemSchema = z.object({
     systemQuantity: z.number().default(0),
     countedQuantity: z.number().nullable().default(0),
     cost: z.number().default(0),
+    price: z.number().optional().nullable().default(0),
     status: z.enum(['pending', 'controlled', 'adjusted']),
     category: z.string().optional().nullable(),
     wasReadjusted: z.boolean().optional().nullable().default(false),
@@ -16,6 +17,7 @@ export const CyclicItemSchema = z.object({
     shortageId: z.string().optional().nullable(),
     surplusId: z.string().optional().nullable(),
     id_producto: z.string().optional().nullable(),
+    is_hidden: z.boolean().optional().nullable().default(false),
 });
 
 export const CyclicInventoryStatsSchema = z.object({

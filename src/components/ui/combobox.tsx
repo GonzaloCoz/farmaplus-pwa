@@ -13,7 +13,7 @@ import {
   type HTMLAttributes,
   type InputHTMLAttributes,
 } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox";
 import { useIcon, type IconComponent } from "@/lib/icon-context";
@@ -86,7 +86,7 @@ interface ComboboxContextValue {
   multiple: boolean;
   inputValue: string;
   open: boolean;
-  actionsRef: React.RefObject<{ unmount: () => void } | null>;
+  actionsRef: React.RefObject<ComboboxPrimitive.Root.Actions | null>;
   /** The field (input group or chips container) the popup anchors to. */
   anchorRef: React.RefObject<HTMLDivElement | null>;
   disabled: boolean;
@@ -203,7 +203,7 @@ function Combobox<
   const [inputValue, setInputValue] = useState("");
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState<Highlight | null>(null);
-  const actionsRef = useRef<{ unmount: () => void } | null>(null);
+  const actionsRef = useRef<ComboboxPrimitive.Root.Actions | null>(null);
   const anchorRef = useRef<HTMLDivElement | null>(null);
   // Memoized on the prop identity: a string value is stable by nature and a
   // consumer's array is state, so the derived array (and everything keyed on
@@ -544,7 +544,10 @@ ComboboxInput.displayName = "ComboboxInput";
 // the chips, where Backspace/Delete removes the focused one.
 // ---------------------------------------------------------------------------
 
-type ComboboxChipsProps = ComboboxFieldProps;
+type ComboboxChipsProps = ComboboxFieldProps & {
+  /** Maximum number of chips to display before summarizing the rest as "+N". */
+  max?: number;
+};
 
 const ComboboxChips = forwardRef<HTMLInputElement, ComboboxChipsProps>(
   (
@@ -556,6 +559,7 @@ const ComboboxChips = forwardRef<HTMLInputElement, ComboboxChipsProps>(
       error,
       clearable = false,
       size,
+      max,
       ...props
     },
     ref
@@ -580,10 +584,10 @@ const ComboboxChips = forwardRef<HTMLInputElement, ComboboxChipsProps>(
             // icon and controls hold the first line while chips wrap; the
             // vertical padding is exactly what centers one 24px (20px
             // compact) row inside the ladder height.
-            "!items-start",
-            compact ? "min-h-7 py-1" : "min-h-9 py-1.5",
+            "items-center",
+            max !== undefined ? (compact ? "h-7 min-h-7 py-0" : "h-9 min-h-9 py-0") : (compact ? "min-h-7 py-1" : "min-h-9 py-1.5"),
             sizeClasses.gap,
-            compact ? "px-2" : "px-2.5",
+            compact ? "px-2" : "px-3",
             compact ? "min-w-[128px]" : "min-w-[160px]",
             shape.input,
             error && "ring-destructive/50 hover:ring-destructive/50 focus-within:ring-destructive/50",
@@ -600,9 +604,13 @@ const ComboboxChips = forwardRef<HTMLInputElement, ComboboxChipsProps>(
               />
             </span>
           )}
-          <div className="relative flex min-w-0 flex-1 flex-wrap items-center gap-1">
+          <div className={cn("relative flex min-w-0 flex-1 items-center gap-1.5", max !== undefined ? "flex-nowrap overflow-hidden" : "flex-wrap")}>
             <ComboboxPrimitive.Value>
-              {(selected: ComboboxItemData[] | null) => (
+              {(selected: ComboboxItemData[] | null) => {
+                const list = selected ?? [];
+                const visible = max !== undefined ? list.slice(0, max) : list;
+                const remaining = max !== undefined ? list.length - max : 0;
+                return (
                 <>
                   {/* Chips pop in and out on the fast tier and slide into
                       their new slots; an exiting chip is inert while it
@@ -611,7 +619,7 @@ const ComboboxChips = forwardRef<HTMLInputElement, ComboboxChipsProps>(
                       once, so the field reflows immediately rather than
                       after the fade. */}
                   <AnimatePresence initial={false} mode="popLayout">
-                    {(selected ?? []).map((item) => {
+                    {visible.map((item) => {
                       const label = itemLabel(item);
                       return (
                         <motion.span
@@ -626,7 +634,7 @@ const ComboboxChips = forwardRef<HTMLInputElement, ComboboxChipsProps>(
                           <ComboboxPrimitive.Chip
                             aria-label={label}
                             className={cn(
-                              "inline-flex max-w-full shrink-0 items-center gap-0.5 bg-hover pl-2 pr-0.5 text-foreground outline-none",
+                              "inline-flex max-w-full shrink-0 items-center gap-1 bg-hover pl-2.5 pr-1 text-foreground outline-none",
                               shape.variant === "pill" ? "rounded-full" : "rounded-md",
                               "focus-visible:ring-1 focus-visible:ring-[color:var(--focus-ring,#6B97FF)]",
                               compact ? "h-5 text-[11px]" : "h-6 text-[12px]"
@@ -644,6 +652,18 @@ const ComboboxChips = forwardRef<HTMLInputElement, ComboboxChipsProps>(
                       );
                     })}
                   </AnimatePresence>
+                  {remaining > 0 && (
+                    <span
+                      title={list.slice(max).map(itemLabel).join(", ")}
+                      className={cn(
+                        "inline-flex shrink-0 items-center justify-center font-medium bg-hover px-2 text-muted-foreground select-none",
+                        shape.variant === "pill" ? "rounded-full" : "rounded-md",
+                        compact ? "h-5 text-[11px]" : "h-6 text-[12px]"
+                      )}
+                    >
+                      +{remaining}
+                    </span>
+                  )}
                   {/* The field sizes to what is typed (`size` is the
                       intrinsic width; flex-auto grows it across the rest
                       of its row) so it stays beside the chips while it
@@ -651,7 +671,7 @@ const ComboboxChips = forwardRef<HTMLInputElement, ComboboxChipsProps>(
                       It never animates: chips slide, the field snaps.
                       Animating it read as the placeholder sliding in from
                       the right when the last chip went. */}
-                  <span className="flex min-w-6 flex-auto">
+                  <span className={cn("flex", max !== undefined ? "min-w-0 flex-1" : "min-w-6 flex-auto")}>
                     <ComboboxPrimitive.Input
                       ref={ref}
                       size={Math.max(1, inputValue.length + 1)}
@@ -667,7 +687,8 @@ const ComboboxChips = forwardRef<HTMLInputElement, ComboboxChipsProps>(
                     />
                   </span>
                 </>
-              )}
+                );
+              }}
             </ComboboxPrimitive.Value>
           </div>
           <FieldControls clearable={clearable} compact={compact} iconSize={sizeClasses.icon} />

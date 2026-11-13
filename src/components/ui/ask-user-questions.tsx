@@ -11,7 +11,7 @@ import {
   type HTMLAttributes,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
 import { RadioGroup as RadioGroupPrimitive } from "@base-ui/react/radio-group";
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
 import { CheckboxGroup as CheckboxGroupPrimitive } from "@base-ui/react/checkbox-group";
@@ -21,10 +21,14 @@ import { cn } from "@/lib/utils";
 import { spring } from "@/lib/springs";
 import { fontWeights } from "@/lib/font-weight";
 import { useShape } from "@/lib/shape-context";
-import { SizeProvider, useSize, type SizeVariant } from "@/lib/size-context";
-import { useIcon } from "@/lib/icon-context";
+import { SizeProvider, useSize, typeClass, type SizeVariant } from "@/lib/size-context";
+import { useIcons } from "@/lib/icon-context";
 import { useFluidHover, useRegisterFluidHoverItem } from "@/hooks/use-fluid-hover";
-import { useMergeSplitBlocks, SelectionBackgrounds } from "@/hooks/use-merge-split";
+import {
+  useMergeSplitBlocks,
+  useSelectionRuns,
+  SelectionBackgrounds,
+} from "@/hooks/use-merge-split";
 import { Button } from "@/components/ui/button";
 import { FluidHoverHighlight } from "@/components/ui/fluid-hover-highlight";
 
@@ -105,6 +109,10 @@ export interface AskUserQuestionsProps
    *  SizeProvider. */
   size?: SizeVariant;
 }
+
+// One empty list for a question without options, so `options` keeps its
+// identity across renders and the memos and effects keyed on it hold.
+const NO_OPTIONS: AskUserOption[] = [];
 
 function questionKey(q: AskUserQuestion, i: number) {
   return q.id ?? `q-${i}`;
@@ -194,8 +202,9 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
     );
 
     const shape = useShape();
-    const ArrowLeft = useIcon("arrow-left");
-    const ArrowRight = useIcon("arrow-right");
+    const icons = useIcons();
+    const ArrowLeft = icons["arrow-left"];
+    const ArrowRight = icons["arrow-right"];
 
     // The footer ← / → icons hint at the ArrowLeft/ArrowRight keys, which
     // mobile has no equivalent for, so render them desktop-only. (The inline
@@ -261,7 +270,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
     );
     const otherText = currentAnswer?.otherText ?? "";
 
-    const options = question?.options ?? [];
+    const options = question?.options ?? NO_OPTIONS;
     const otherIndex = allowOther ? options.length : -1;
     const rowCount = options.length + (allowOther ? 1 : 0);
 
@@ -282,9 +291,6 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
     // The Other field is a multi-line textarea — it auto-resizes to fit
     // wrapped content and lets users press Enter for a newline.
     const otherInputRef = useRef<HTMLTextAreaElement>(null);
-    // Stable IDs for contiguous-selection runs (see selectedGroups below).
-    const groupIdCounterRef = useRef(0);
-    const prevGroupMapRef = useRef(new Map<number, number>());
     const hover = useFluidHover(rowsContainerRef);
     const {
       activeIndex,
@@ -313,9 +319,12 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
     // stale `true` from the previous question's multi-line draft (which
     // would briefly apply `items-start` + the -5px chip nudge on an
     // empty single-line row before the resize effect below corrects it).
-    useEffect(() => {
+    // Done during render, so the stale value never reaches a commit.
+    const [multilineQId, setMultilineQId] = useState(qId);
+    if (multilineQId !== qId) {
+      setMultilineQId(qId);
       setIsOtherMultiline(false);
-    }, [qId]);
+    }
     useEffect(() => {
       const el = otherInputRef.current;
       if (!el) return;
@@ -372,12 +381,15 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
     // Validation message for the current freeText question (null = valid).
     const [freeTextError, setFreeTextError] = useState<string | null>(null);
 
-    // Reset transient state when question changes
-    useEffect(() => {
+    // Reset transient state when question changes, during render so the
+    // new question never commits with the last one's highlight or error.
+    const [transientIndex, setTransientIndex] = useState(safeIndex);
+    if (transientIndex !== safeIndex) {
+      setTransientIndex(safeIndex);
       setActiveIndex(null);
       setFocusedIndex(null);
       setFreeTextError(null);
-    }, [safeIndex, setActiveIndex]);
+    }
 
     // ── Keyboard focus restoration across question changes ───────
     // The question content remounts on qId, which destroys the focused row and
@@ -728,6 +740,36 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
       if (hasAnswer) handleMultiNext();
     };
 
+    // ── Selected-row grouping (merges contiguous selections) ─────
+    // Above the early return below: hooks run in the same order whether or
+    // not there is a question (with none, nothing is selected).
+    // Mirrors the CheckboxGroup pattern: contiguous selected indices
+    // collapse into a single rounded background block; stable IDs let
+    // Motion morph block size/position when neighbours toggle.
+    // The Other row gets its own input-field-style indicator (see below) and
+    // is intentionally excluded here so it doesn't merge into a contiguous
+    // bg-accent block with adjacent selected options.
+    // Include the Other row in selectedIndices when it has text. This lets
+    // it merge into the same morphing bg block as adjacent selected options
+    // (instead of looking like a disconnected input field next to them).
+    const selectedIndices = useMemo(() => {
+      const set = new Set<number>();
+      options.forEach((opt, i) => {
+        if (selectedIds.includes(optionKey(opt, i))) set.add(i);
+      });
+      if (allowOther && otherText.length > 0) set.add(otherIndex);
+      return set;
+    }, [options, selectedIds, allowOther, otherText, otherIndex]);
+
+    // Stable run IDs so a growing/shrinking run animates instead of
+    // exit+re-enter when neighbours flip.
+    const selectedGroups = useSelectionRuns([...selectedIndices]);
+
+    // Selected backgrounds, with the merge/split boundary animation when one
+    // unselected row bridges or splits two selected runs. Selected backgrounds
+    // use shape.bg, so corners animate around its radius.
+    const blocks = useMergeSplitBlocks(selectedGroups, itemRects, shape.bgRadius);
+
     if (!question) {
       return (
         <div
@@ -739,7 +781,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
           )}
           {...rest}
         >
-          <p className="text-[13px] text-muted-foreground">No questions.</p>
+          <p className="text-[length:var(--fs-body,13px)] leading-[var(--lh-body,20px)] text-muted-foreground">No questions.</p>
         </div>
       );
     }
@@ -757,61 +799,6 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
       focusedIndex !== null && !(allowOther && focusedIndex === otherIndex)
         ? itemRects[focusedIndex]
         : null;
-
-    // ── Selected-row grouping (merges contiguous selections) ─────
-    // Mirrors the CheckboxGroup pattern: contiguous selected indices
-    // collapse into a single rounded background block; stable IDs let
-    // framer-motion morph block size/position when neighbours toggle.
-    // The Other row gets its own input-field-style indicator (see below) and
-    // is intentionally excluded here so it doesn't merge into a contiguous
-    // bg-accent block with adjacent selected options.
-    // Include the Other row in selectedIndices when it has text. This lets
-    // it merge into the same morphing bg block as adjacent selected options
-    // (instead of looking like a disconnected input field next to them).
-    const selectedIndices = useMemo(() => {
-      const set = new Set<number>();
-      options.forEach((opt, i) => {
-        if (selectedIds.includes(optionKey(opt, i))) set.add(i);
-      });
-      if (allowOther && otherText.length > 0) set.add(otherIndex);
-      return set;
-    }, [options, selectedIds, allowOther, otherText, otherIndex]);
-
-    const selectedGroups = useMemo(() => {
-      const runs: { start: number; end: number }[] = [];
-      const sorted = [...selectedIndices].sort((a, b) => a - b);
-      for (const idx of sorted) {
-        const last = runs[runs.length - 1];
-        if (last && idx === last.end + 1) last.end = idx;
-        else runs.push({ start: idx, end: idx });
-      }
-
-      // Stable run IDs so a growing/shrinking run animates instead of
-      // exit+re-enter when neighbours flip.
-      const usedIds = new Set<number>();
-      const nextGroupMap = new Map<number, number>();
-      const groups = runs.map((run) => {
-        let stableId: number | null = null;
-        for (let i = run.start; i <= run.end; i++) {
-          const prev = prevGroupMapRef.current.get(i);
-          if (prev !== undefined && !usedIds.has(prev)) {
-            stableId = prev;
-            break;
-          }
-        }
-        const id = stableId ?? ++groupIdCounterRef.current;
-        usedIds.add(id);
-        for (let i = run.start; i <= run.end; i++) nextGroupMap.set(i, id);
-        return { ...run, id };
-      });
-      prevGroupMapRef.current = nextGroupMap;
-      return groups;
-    }, [selectedIndices]);
-
-    // Selected backgrounds, with the merge/split boundary animation when one
-    // unselected row bridges or splits two selected runs. Selected backgrounds
-    // use shape.bg, so corners animate around its radius.
-    const blocks = useMergeSplitBlocks(selectedGroups, itemRects, shape.bgRadius);
 
     const showBack = total > 1 && safeIndex > 0;
     const showSkip = total > 1 && isSkippable;
@@ -880,7 +867,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
           setActiveIndex(null);
         }}
         onKeyDown={handleNavKey}
-        className="relative flex flex-col gap-0.5 -mx-3"
+        className="relative flex flex-col -mx-3"
       >
         {/* Other-row input hint — shown only when the Other input is
             focused and still empty, to signal "type here". As soon as
@@ -1068,7 +1055,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
                       style={{
                         fontVariationSettings: isSelected
                           ? fontWeights.semibold
-                          : fontWeights.medium,
+                          : fontWeights.normal,
                       }}
                     >
                       {opt.title}
@@ -1077,8 +1064,8 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
                   {opt.description && (
                     <span
                       className={cn(
-                        compact ? "text-[11px]" : "text-[12px]",
-                        "text-muted-foreground leading-snug"
+                        typeClass("caption", compact ? "compact" : "default"),
+                        "text-muted-foreground"
                       )}
                     >
                       {opt.description}
@@ -1100,7 +1087,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
                       style={{
                         fontVariationSettings: isSelected
                           ? fontWeights.semibold
-                          : fontWeights.medium,
+                          : fontWeights.normal,
                       }}
                     >
                       {opt.title}
@@ -1196,10 +1183,15 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
                   // input it replaces — no border, no padding, no
                   // resize handle, no scrollbars (height is JS-driven,
                   // see the auto-resize effect above).
-                  "col-start-1 row-start-1 block w-full bg-transparent border-0 p-0 m-0 outline-none resize-none overflow-hidden leading-snug text-foreground placeholder:text-muted-foreground",
-                  sizeClasses.text
+                  "col-start-1 row-start-1 block w-full bg-transparent border-0 p-0 m-0 outline-none resize-none overflow-hidden text-foreground placeholder:text-muted-foreground",
+                  sizeClasses.field,
+                  // Touch screens get 16px text, which overhangs the compact
+                  // 18px line by about 0.7px. 1px of padding holds it, so the
+                  // auto-resize's scrollHeight doesn't round up a pixel, and
+                  // the -1px margins keep the row's height.
+                  "pointer-coarse:py-px pointer-coarse:-my-px"
                 )}
-                style={{ fontVariationSettings: fontWeights.medium }}
+                style={{ fontVariationSettings: fontWeights.normal }}
               />
             </span>
           </Row>
@@ -1238,8 +1230,8 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
             // floor: the option rows bleed by -mx-3, so anything tighter puts
             // their hover background flush against the card edge.
             compact
-              ? "px-3.5 sm:px-4 pt-2.5 sm:pt-3 pb-1.5 text-[11px]"
-              : "px-4 sm:px-5 pt-3.5 sm:pt-4 pb-2 text-[12px]"
+              ? "px-3.5 sm:px-4 pt-2.5 sm:pt-3 pb-1.5 text-[length:var(--fs-caption-compact,11px)] leading-[var(--lh-caption-compact,14px)]"
+              : "px-4 sm:px-5 pt-3.5 sm:pt-4 pb-2 text-[length:var(--fs-caption,12px)] leading-[var(--lh-caption,16px)]"
           )}
         >
           <span>
@@ -1285,7 +1277,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
               {/* Question title */}
               <h3
                 id={`${reactId}-${qId}-title`}
-                className="text-[16px] text-foreground leading-snug"
+                className="text-[length:var(--fs-title,16px)] leading-[var(--lh-title,22px)] text-foreground"
                 style={{ fontVariationSettings: fontWeights.semibold }}
               >
                 {question.title}
@@ -1367,10 +1359,12 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
                           }
                         }}
                         className={cn(
-                          "block w-full bg-transparent border-0 p-0 m-0 outline-none resize-none overflow-hidden leading-snug text-foreground placeholder:text-muted-foreground",
-                          sizeClasses.text
+                          "block w-full bg-transparent border-0 p-0 m-0 outline-none resize-none overflow-hidden text-foreground placeholder:text-muted-foreground",
+                          sizeClasses.field,
+                          // Same touch padding as the Other row's textarea.
+                          "pointer-coarse:py-px pointer-coarse:-my-px"
                         )}
-                        style={{ fontVariationSettings: fontWeights.medium }}
+                        style={{ fontVariationSettings: fontWeights.normal }}
                       />
                     }
                   />
@@ -1450,7 +1444,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
                           onClick={handleBack}
                           // Arrow is desktop-only; restore symmetric padding on
                           // mobile where it's hidden, tighten for the icon on ≥sm.
-                          className="pl-3 sm:pl-[6px]"
+                          className="pl-3 sm:pl-2"
                         >
                           Back
                         </Button>
@@ -1479,7 +1473,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
                             ...spring.fast,
                             opacity: { duration: 0.12 },
                           }}
-                          className="min-w-0 px-2 sm:px-3 text-left text-[12px] leading-snug text-destructive"
+                          className="min-w-0 px-2 sm:px-3 text-left text-[length:var(--fs-caption,12px)] leading-[var(--lh-caption,16px)] text-destructive"
                         />
                       }
                     >
@@ -1509,7 +1503,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
                           onClick={handleSkip}
                           // Arrow is desktop-only; restore symmetric padding on
                           // mobile where it's hidden, tighten for the icon on ≥sm.
-                          className="pr-3 sm:pr-[6px]"
+                          className="pr-3 sm:pr-2"
                         >
                           {skipLabel}
                         </Button>
@@ -1543,7 +1537,7 @@ const AskUserQuestions = forwardRef<HTMLDivElement, AskUserQuestionsProps>(
                           // the right padding to match the Button's iconRight on
                           // desktop. The chip is hidden on mobile, so restore
                           // symmetric padding there.
-                          className="pr-3 sm:pr-[6px]"
+                          className="pr-3 sm:pr-2"
                         >
                           <span className="inline-flex items-center gap-1.5">
                             {question.nextLabel ??
@@ -1600,7 +1594,7 @@ function ShortcutChip({
       aria-hidden
       suppressHydrationWarning
       className={cn(
-        "inline-flex items-center justify-center gap-0.5 px-1 min-w-[18px] h-[18px] text-[11px] leading-none font-sans tracking-wide",
+        "inline-flex items-center justify-center gap-0.5 px-1 min-w-[18px] h-[18px] text-[length:var(--fs-micro,11px)] leading-none font-sans",
         tone === "inverted"
           ? "bg-background/15 text-background"
           : "bg-foreground/10 text-muted-foreground",
@@ -1723,7 +1717,7 @@ function Row({
 
   // The chip "slot" is a fixed 28×28 cell holding the chip number/circle.
   // When topAlign is on, the slot floats up so the chip's vertical centre
-  // lines up with the centre of a `text-[13px] leading-snug` first line
+  // lines up with the centre of a body-role (13px / 18px) first line
   // (line-height ≈ 18px → centre 9px; chip centre 14px → diff 5px).
   // Stacked rows pair a title with a description, so we add 4px of
   // breathing room back on top (effective shift -1px) — that lands the
@@ -1745,7 +1739,7 @@ function Row({
       <span
         aria-hidden
         className={cn(
-          "absolute inline-flex items-center justify-center text-[11px] transition-[opacity,font-variation-settings] duration-80",
+          "absolute inline-flex items-center justify-center text-[length:var(--fs-micro,11px)] leading-[var(--lh-micro,14px)] transition-[opacity,font-variation-settings] duration-80",
           compact ? "w-[18px] h-[18px]" : "w-5 h-5",
           isMulti && shape.bg,
           isMulti
@@ -1763,7 +1757,7 @@ function Row({
         style={{
           fontVariationSettings: chipFilled
             ? fontWeights.semibold
-            : fontWeights.medium,
+            : fontWeights.normal,
         }}
       >
         {chipContent}
@@ -1863,7 +1857,7 @@ function Row({
       {/* Body — fills row */}
       <span
         className={cn(
-          "min-w-0 flex-1 leading-snug",
+          "min-w-0 flex-1",
           sizeClasses.text,
           bodyLayout === "stacked"
             ? "flex flex-col gap-0.5"

@@ -29,11 +29,9 @@ interface WindowTabsProps {
 export function WindowTabs({ onSearchClick }: WindowTabsProps) {
     const navigate = useNavigate();
     const { windows, activeWindowId, openWindow, closeWindow, setActiveWindow, closeAllWindows } = useWindowManager();
-    const isElectron = typeof window !== "undefined" && !!(window as any).electronAPI;
-    const noDrag = isElectron ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined;
 
     return (
-        <div className="flex items-center w-full h-full gap-1.5 px-2">
+        <div className="flex items-center w-full h-full gap-1.5 px-2" data-tauri-drag-region>
 
             {/* Back / Forward Group */}
             <div className="flex items-center gap-1 shrink-0">
@@ -41,8 +39,7 @@ export function WindowTabs({ onSearchClick }: WindowTabsProps) {
                     variant="ghost"
                     size="icon-sm"
                     title="Atrás"
-                    style={noDrag}
-                    onClick={() => window.history.back()}
+                    onClick={() => navigate(-1)}
                     className={cn("h-[34px] w-[34px] rounded-lg shrink-0", surfaceClasses(3))}
                 >
                     <ArrowLeft className="w-4 h-4" />
@@ -51,8 +48,7 @@ export function WindowTabs({ onSearchClick }: WindowTabsProps) {
                     variant="ghost"
                     size="icon-sm"
                     title="Adelante"
-                    style={noDrag}
-                    onClick={() => window.history.forward()}
+                    onClick={() => navigate(1)}
                     className={cn("h-[34px] w-[34px] rounded-lg shrink-0", surfaceClasses(3))}
                 >
                     <ArrowRight className="w-4 h-4" />
@@ -65,7 +61,6 @@ export function WindowTabs({ onSearchClick }: WindowTabsProps) {
                     variant="ghost"
                     size="sm"
                     leadingIcon={Search}
-                    style={noDrag}
                     onClick={onSearchClick}
                     className={cn("h-[34px] ps-2.5 pe-3 rounded-lg text-xs font-medium gap-1.5 shrink-0", surfaceClasses(3))}
                 >
@@ -76,7 +71,6 @@ export function WindowTabs({ onSearchClick }: WindowTabsProps) {
                     variant="ghost"
                     size="sm"
                     leadingIcon={Plus}
-                    style={noDrag}
                     onClick={() => openWindow("/", undefined, undefined, true)}
                     className={cn("h-[34px] ps-2.5 pe-3 rounded-lg text-xs font-medium gap-1.5 shrink-0", surfaceClasses(3))}
                 >
@@ -88,19 +82,18 @@ export function WindowTabs({ onSearchClick }: WindowTabsProps) {
             <div className="w-px h-4.5 bg-border/40 shrink-0 mx-1" />
 
             {/* Window tabs */}
-            <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto no-scrollbar py-2 -my-2 px-1 -mx-1">
+            <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto no-scrollbar py-2 -my-2 px-1 -mx-1" data-tauri-drag-region>
                 {windows.map((win) => {
                     const isActive = win.id === activeWindowId;
                     const { icon: tabIcon } = getTabMetaForPath(win.path);
-                    const Icon = tabIcon ?? <FileText className="w-4 h-4" />;
+                    const Icon = win.icon ?? tabIcon ?? <FileText className="w-4 h-4" />;
 
                     return (
                         <Button
                             key={win.id}
                             variant="ghost"
                             size="sm"
-                            style={noDrag}
-                            onClick={() => { setActiveWindow(win.id); navigate(win.path); }}
+                            onClick={() => setActiveWindow(win.id)}
                             className={cn(
                                 "group cursor-pointer shrink-0 max-w-[210px] h-[34px] ps-2.5 pe-2 rounded-lg text-xs font-medium gap-1.5",
                                 isActive && surfaceClasses(3)
@@ -126,28 +119,29 @@ export function WindowTabs({ onSearchClick }: WindowTabsProps) {
                     );
                 })}
 
-                {/* More Options */}
-                <DropdownMenu>
-                    <DropdownTrigger render={
-                        <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            style={noDrag}
-                            className={cn("h-[34px] w-[34px] rounded-lg shrink-0 cursor-pointer", surfaceClasses(3))}
-                        >
-                            <DotsHorizontal className="w-4 h-4" />
-                        </Button>
-                    } />
-                    <DropdownContent align="end">
-                        <MenuItem
-                            index={0}
-                            icon={Trash}
-                            label="Cerrar todas las ventanas"
-                            onSelect={closeAllWindows}
-                            className="text-destructive focus:text-destructive"
-                        />
-                    </DropdownContent>
-                </DropdownMenu>
+                {/* More Options - only visible when multiple tabs are open */}
+                {windows.length > 1 && (
+                    <DropdownMenu>
+                        <DropdownTrigger render={
+                            <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className={cn("h-[34px] w-[34px] rounded-lg shrink-0 cursor-pointer", surfaceClasses(3))}
+                            >
+                                <DotsHorizontal className="w-4 h-4" />
+                            </Button>
+                        } />
+                        <DropdownContent align="end">
+                            <MenuItem
+                                index={0}
+                                icon={Trash}
+                                label="Cerrar todas las pestañas"
+                                onSelect={closeAllWindows}
+                                className="text-destructive focus:text-destructive"
+                            />
+                        </DropdownContent>
+                    </DropdownMenu>
+                )}
             </div>
         </div>
     );

@@ -4,15 +4,28 @@ import { Table, type TableColumn } from '@/components/motion/table';
 import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/ui/select';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import { Badge, type BadgeColor } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { SearchLg as Search } from '@untitledui/icons';
-import { X, ArrowUpRight } from 'lucide-react';
+import { X, ArrowUpRight, ChevronDown } from 'lucide-react';
+import { HugeiconsIcon } from '@hugeicons/react';
+import Xls01Icon from '@hugeicons/core-free-icons/Xls01Icon';
+import Layers01Icon from '@hugeicons/core-free-icons/Layers01Icon';
+import ArrowUpRight03Icon from '@hugeicons/core-free-icons/ArrowUpRight03Icon';
+import ArrowDownRight01Icon from '@hugeicons/core-free-icons/ArrowDownRight01Icon';
+import ArrowUp02Icon from '@hugeicons/core-free-icons/ArrowUp02Icon';
+import ArrowDown02Icon from '@hugeicons/core-free-icons/ArrowDown02Icon';
+import PieChart09Icon from '@hugeicons/core-free-icons/PieChart09Icon';
 import { cn, normalizeString } from '@/lib/utils';
 import { OFFICIAL_71_BRANCHES } from '@/lib/branchNetworkMap';
-import { cyclicInventoryService } from '@/services/cyclicInventoryService';
+import { cyclicInventoryService, type BranchCategoryStats } from '@/services/cyclicInventoryService';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { DatePicker, type DateRange } from '@/components/ui/fluid-date-picker';
 import { Gauge } from '@/components/charts/gauge';
 import { useUser } from '@/contexts/UserContext';
 import { useNavigate } from 'react-router-dom';
+import { BranchCategoriesAccordion } from './BranchCategoriesAccordion';
+import { ReportExporter } from '@/lib/reportExporter';
+import { notify as toast } from '@/lib/notifications';
 
 export interface DailyActivityPoint {
     date: string;
@@ -47,6 +60,7 @@ export interface BranchMonitorRow {
         laboratory?: string;
         units?: number;
     };
+    categories?: Record<string, BranchCategoryStats>;
 }
 
 interface BranchAward {
@@ -144,21 +158,6 @@ function getFinancialBadgeStyle(val: number) {
     };
 }
 
-function getDeviationBadgeStyle(val: number) {
-    if (val === 0) {
-        return {
-            backgroundColor: "color-mix(in oklab, var(--foreground) 5%, transparent)",
-            color: "var(--muted-foreground)",
-            borderColor: "color-mix(in oklab, var(--foreground) 10%, transparent)",
-        };
-    }
-    return {
-        backgroundColor: "color-mix(in oklch, oklch(0.769 0.165 70.080) 14%, var(--background))",
-        color: "color-mix(in oklch, oklch(0.769 0.165 70.080) 90%, var(--foreground))",
-        borderColor: "color-mix(in oklch, oklch(0.769 0.165 70.080) 30%, transparent)",
-    };
-}
-
 interface BranchMonitorWidgetProps {
     className?: string;
     assignedDays?: number;
@@ -173,117 +172,103 @@ export function BranchMonitorWidget({
     const [searchValue, setSearchValue] = useState("");
     const [selectedStatus, setSelectedStatus] = useState("all");
     const [selectedRound, setSelectedRound] = useState("all");
+    const [selectedZonal, setSelectedZonal] = useState("all");
+    const [stay, setStay] = useState<DateRange | undefined>(undefined);
+    const [expandedRowIds, setExpandedRowIds] = useState<string[]>([]);
+
+    const today = useMemo(() => new Date(), []);
+    const defaultCalendarMonth = useMemo(() => {
+        const d = new Date();
+        d.setMonth(d.getMonth() - 1);
+        return d;
+    }, []);
+
+    const { dateFrom, dateTo } = useMemo(() => {
+        if (!stay?.from) return { dateFrom: null, dateTo: null };
+        const dFrom = new Date(stay.from);
+        dFrom.setHours(0, 0, 0, 0);
+        const dTo = stay.to ? new Date(stay.to) : new Date(stay.from);
+        dTo.setHours(23, 59, 59, 999);
+        return {
+            dateFrom: dFrom.toISOString(),
+            dateTo: dTo.toISOString(),
+        };
+    }, [stay]);
+
+    const toggleRowExpand = (id: string) => {
+        setExpandedRowIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
+
+    // Consulta de zonales y sus sucursales asignadas
+    const { data: zonales = [] } = useQuery({
+        queryKey: ['zonales-list'],
+        queryFn: () => cyclicInventoryService.getZonales(),
+        staleTime: 1000 * 60 * 15,
+    });
 
     const { user, selectBranch, clearBranchSelection } = useUser();
     const navigate = useNavigate();
     const isAdminOrMod = user?.role === 'admin' || user?.role === 'mod';
 
-    // Consulta de configuraciones de todas las sucursales
-    const { data: configsMap = new Map() } = useQuery({
-        queryKey: ['all-branches-configs'],
+    // Consulta consolidada de todas las sucursales (1 sola petición a Supabase)
+    const { data: monitorMap = new Map(), isLoading: isMonitorLoading } = useQuery({
+        queryKey: ['all-branches-monitor-summary', selectedRound, dateFrom, dateTo],
         queryFn: async () => {
-            return await cyclicInventoryService.getAllBranchesConfigs();
-        },
-        staleTime: 1000 * 60 * 10,
-    });
-
-    // Consulta del avance exclusivo de la Ronda 2 de cada sucursal
-    const { data: progressMap = new Map() } = useQuery({
-        queryKey: ['all-branches-progress-round-2'],
-        queryFn: async () => {
-            return await cyclicInventoryService.getAllBranchesProgress();
+            const r = selectedRound === 'all' ? 2 : (Number(selectedRound) || 2);
+            return await cyclicInventoryService.getBranchMonitorSummary(r, 12, dateFrom, dateTo);
         },
         staleTime: 1000 * 60 * 5,
     });
 
-    // Consulta de actividad diaria de ajustes (últimos 12 días) para todas las sucursales
-    const { data: activityMap = new Map() } = useQuery({
-        queryKey: ['all-branches-daily-activity'],
-        queryFn: async () => {
-            return await cyclicInventoryService.getAllBranchesDailyActivity(12);
-        },
-        staleTime: 1000 * 60 * 5,
-    });
-
-    // Lista de todas las sucursales con días calculados y avance real (Ronda 2)
+    // Lista de todas las sucursales con métricas consolidadas
     const rawBranches: BranchMonitorRow[] = useMemo(() => {
         return OFFICIAL_71_BRANCHES
             .filter(b => !EXCLUDED_BRANCH_IDS.has(b.branchId))
             .map(b => {
-            const cleanName = b.name.replace(/\s*-\s*DANESA$/i, '');
-            const normName = normalizeString(cleanName);
-            const branchCfg = configsMap.get(normName);
-            const branchProgress = progressMap.get(normName);
-            const branchActivity = activityMap?.get(normName);
-            const activityPoints: DailyActivityPoint[] = Array.isArray(branchActivity)
-                ? branchActivity
-                : (branchActivity?.points || []);
-            const lastAdjustment = Array.isArray(branchActivity)
-                ? undefined
-                : branchActivity?.lastAdjustment;
+                const cleanName = b.name.replace(/\s*-\s*DANESA$/i, '');
+                const normName = normalizeString(cleanName);
+                const summary = monitorMap.get(normName);
 
-            let assigned = branchCfg?.assignedDays || fallbackAssignedDays || 150;
-            let start = branchCfg?.startDate || fallbackStartDate || '2026-07-21T03:00:00.000Z';
-            let remaining = assigned;
+                const assigned = summary?.assigned_days || fallbackAssignedDays || 150;
+                const remaining = summary?.days_remaining !== undefined ? summary.days_remaining : assigned;
+                const deploymentDate = summary?.deployment_date || (fallbackStartDate
+                    ? fallbackStartDate.split('T')[0].split('-').reverse().slice(0, 2).join('/')
+                    : '21/07');
 
-            if (start && assigned > 0) {
-                const startTime = new Date(start).getTime();
-                const daysElapsed = Math.max(0, Math.floor((new Date().getTime() - startTime) / (1000 * 60 * 60 * 24)));
-                remaining = Math.max(0, assigned - daysElapsed);
-            }
+                const isDateFiltered = Boolean(dateFrom && dateTo);
+                const unitsCount = summary
+                    ? (isDateFiltered
+                        ? (summary.controlled_items !== undefined ? summary.controlled_items : 0)
+                        : (summary.total_system_units > 0
+                            ? summary.total_system_units
+                            : (summary.controlled_items > 0 ? summary.controlled_items : summary.total_items)))
+                    : undefined;
 
-            const deploymentDate = start
-                ? start.split('T')[0].split('-').reverse().slice(0, 2).join('/')
-                : '21/07';
-
-            const progress = branchProgress?.progress;
-            let status: BranchMonitorRow['status'] = undefined;
-            if (progress !== undefined) {
-                if (progress >= 100) {
-                    status = 'completed';
-                } else if (remaining <= 0 && assigned > 0) {
-                    status = 'delayed';
-                } else if (progress > 0) {
-                    status = 'active';
-                } else {
-                    status = 'pending';
-                }
-            }
-
-            const unitsCount = branchProgress
-                ? (branchProgress.totalSystemUnits > 0
-                    ? branchProgress.totalSystemUnits
-                    : (branchProgress.controlledItems > 0 ? branchProgress.controlledItems : branchProgress.totalItems))
-                : undefined;
-
-            return {
-                id: `branch-${b.branchId}`,
-                branchId: b.branchId,
-                branchCode: b.code,
-                branchName: formatBranchName(b.name),
-                deploymentDate,
-                days: assigned > 0 ? assigned : undefined,
-                daysRemaining: assigned > 0 ? remaining : undefined,
-                assignedDays: assigned > 0 ? assigned : undefined,
-                round: 2, // Exclusivamente Ronda 2
-                progress: progress,
-                units: unitsCount,
-                surplus: branchProgress ? branchProgress.positiveUnits : undefined,
-                shortage: branchProgress ? branchProgress.negativeUnits : undefined,
-                unitDeviation: branchProgress 
-                    ? (branchProgress.totalDeviationUnits !== undefined 
-                        ? branchProgress.totalDeviationUnits 
-                        : (branchProgress.positiveUnits + Math.abs(branchProgress.negativeUnits))) 
-                    : undefined,
-                netDiff: branchProgress ? branchProgress.netUnits : undefined,
-                adjustments: branchProgress ? branchProgress.adjustmentsValue : undefined,
-                absDeviation: branchProgress ? branchProgress.netDeviationValue : undefined,
-                status: status,
-                activityData: activityPoints,
-                lastAdjustment: lastAdjustment,
-            };
-        });
-    }, [configsMap, progressMap, activityMap, fallbackAssignedDays, fallbackStartDate]);
+                return {
+                    id: `branch-${b.branchId}`,
+                    branchId: b.branchId,
+                    branchCode: b.code,
+                    branchName: formatBranchName(b.name),
+                    deploymentDate,
+                    days: assigned > 0 ? assigned : undefined,
+                    daysRemaining: assigned > 0 ? remaining : undefined,
+                    assignedDays: assigned > 0 ? assigned : undefined,
+                    round: summary?.round || 2,
+                    progress: summary?.progress,
+                    units: unitsCount,
+                    surplus: summary?.positive_units,
+                    shortage: summary?.negative_units,
+                    unitDeviation: summary?.total_deviation_units,
+                    netDiff: summary?.net_units,
+                    adjustments: summary?.adjustments_value,
+                    absDeviation: summary?.balance_value,
+                    status: summary?.status,
+                    activityData: summary?.activity_data || [],
+                    lastAdjustment: summary?.last_adjustment,
+                    categories: summary?.categories,
+                };
+            });
+    }, [monitorMap, fallbackAssignedDays, fallbackStartDate, dateFrom, dateTo]);
 
     // Filtrado por buscador y selectores, ordenado por % de avance descendente
     const filteredItems = useMemo(() => {
@@ -304,6 +289,19 @@ export function BranchMonitorWidget({
                     return false;
                 }
 
+                if (selectedZonal !== "all") {
+                    const currentZonal = zonales.find(z => z.id === selectedZonal || z.label === selectedZonal);
+                    if (currentZonal) {
+                        const normName = normalizeString(item.branchName);
+                        const normClean = normalizeString(item.branchName.replace(/\s*-\s*DANESA$/i, ''));
+                        const matches = currentZonal.branches.some(b => {
+                            const nb = normalizeString(b);
+                            return nb === normName || nb === normClean;
+                        });
+                        if (!matches) return false;
+                    }
+                }
+
                 return true;
             })
             .sort((a, b) => {
@@ -312,7 +310,7 @@ export function BranchMonitorWidget({
                 if (pB !== pA) return pB - pA;
                 return a.branchName.localeCompare(b.branchName, 'es');
             });
-    }, [rawBranches, searchValue, selectedStatus, selectedRound]);
+    }, [rawBranches, searchValue, selectedStatus, selectedRound, selectedZonal, zonales]);
 
     const handleRowClick = (row: BranchMonitorRow) => {
         if (!isAdminOrMod) return;
@@ -332,6 +330,22 @@ export function BranchMonitorWidget({
             await selectBranch(branchName);
         }
         navigate('/inventario-ciclico');
+    };
+
+    const handleExportExcel = () => {
+        try {
+            const count = filteredItems.length;
+            if (count === 0) {
+                toast.warning("Sin datos", "No hay sucursales para exportar con los filtros actuales.");
+                return;
+            }
+            toast.info("Generando Excel", `Exportando avance de ${count} sucursales...`);
+            ReportExporter.exportBranchMonitorToExcel(filteredItems);
+            toast.success("Excel generado", "El archivo de avance de stock se descargó correctamente.");
+        } catch (err) {
+            console.error("Error al exportar monitor a Excel:", err);
+            toast.error("Error al exportar", "No se pudo generar el archivo Excel.");
+        }
     };
 
     const selectedRowIds = useMemo(() => {
@@ -438,15 +452,29 @@ export function BranchMonitorWidget({
                 header: "% Avance",
                 sortable: true,
                 sortValue: (row) => (row.progress !== undefined ? row.progress : -1),
-                width: "150px",
+                width: "155px",
                 align: "left",
                 cell: (row) => {
                     if (row.progress === undefined) {
                         return <span className="text-muted-foreground/40 text-sm font-normal tabular-nums">–</span>;
                     }
                     const val = Math.min(100, Math.max(0, row.progress));
+                    const isRowExpanded = expandedRowIds.includes(row.id);
                     return (
-                        <div className="flex items-center gap-2.5">
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                toggleRowExpand(row.id);
+                            }}
+                            title="Clic para ver desglose por rubro (Medicamentos, Perfumería, Accesorios, Varios)"
+                            className={cn(
+                                "flex items-center gap-1.5 group/prog cursor-pointer py-1 px-1.5 -ml-1.5 rounded-lg transition-colors border border-transparent select-none",
+                                isRowExpanded
+                                    ? "bg-primary/10 border-primary/25"
+                                    : "hover:bg-hover hover:border-border/40"
+                            )}
+                        >
                             <Gauge
                                 orientation="linear"
                                 value={val}
@@ -458,13 +486,17 @@ export function BranchMonitorWidget({
                                 inactiveFillOpacity={0.12}
                                 activeGradient={["#ef4444", "#22c55e"]}
                                 useGradient
-                                width={75}
+                                width={72}
                                 linearHeight={14}
                             />
-                            <span className="font-normal text-foreground text-sm tabular-nums min-w-[42px] text-right">
+                            <span className="font-normal text-foreground text-sm tabular-nums min-w-[40px] text-right">
                                 {row.progress.toFixed(1)}%
                             </span>
-                        </div>
+                            <ChevronDown className={cn(
+                                "size-3 text-muted-foreground/60 transition-transform duration-200 group-hover/prog:text-foreground shrink-0",
+                                isRowExpanded && "rotate-180 text-primary"
+                            )} />
+                        </button>
                     );
                 },
             },
@@ -578,9 +610,10 @@ export function BranchMonitorWidget({
                 align: "left",
                 cell: (row) => (
                     row.units !== undefined ? (
-                        <span className="font-normal text-foreground text-sm tabular-nums">
-                            {row.units.toLocaleString('es-AR')}
-                        </span>
+                        <div className="flex items-center gap-1.5 font-normal text-foreground text-sm tabular-nums">
+                            <HugeiconsIcon icon={Layers01Icon} size={15} strokeWidth={1.8} className="text-muted-foreground/70 shrink-0" />
+                            <span>{row.units.toLocaleString('es-AR')}</span>
+                        </div>
                     ) : (
                         <span className="text-muted-foreground/40 text-sm font-normal tabular-nums">–</span>
                     )
@@ -598,14 +631,20 @@ export function BranchMonitorWidget({
                         return <span className="text-muted-foreground/40 text-sm font-normal tabular-nums">–</span>;
                     }
                     const val = row.surplus;
+                    const hasValue = val > 0;
                     return (
-                        <Badge
-                            size="compact"
-                            className="font-medium text-xs tabular-nums min-w-[52px] justify-center border rounded-full px-2.5 py-0.5"
-                            style={getFinancialBadgeStyle(val)}
-                        >
-                            {val > 0 ? `+${val.toLocaleString('es-AR')}` : val.toLocaleString('es-AR')}
-                        </Badge>
+                        <div className="flex items-center gap-1.5 font-normal text-foreground text-sm tabular-nums">
+                            <HugeiconsIcon
+                                icon={ArrowUp02Icon}
+                                size={15}
+                                strokeWidth={2}
+                                className={cn(
+                                    "shrink-0",
+                                    hasValue ? "text-financial-positive" : "text-muted-foreground/40"
+                                )}
+                            />
+                            <span>{val.toLocaleString('es-AR')}</span>
+                        </div>
                     );
                 },
             },
@@ -621,14 +660,20 @@ export function BranchMonitorWidget({
                         return <span className="text-muted-foreground/40 text-sm font-normal tabular-nums">–</span>;
                     }
                     const val = row.shortage;
+                    const hasValue = val !== 0;
                     return (
-                        <Badge
-                            size="compact"
-                            className="font-medium text-xs tabular-nums min-w-[52px] justify-center border rounded-full px-2.5 py-0.5"
-                            style={getFinancialBadgeStyle(val !== 0 ? -Math.abs(val) : 0)}
-                        >
-                            {val < 0 ? `-${Math.abs(val).toLocaleString('es-AR')}` : val.toLocaleString('es-AR')}
-                        </Badge>
+                        <div className="flex items-center gap-1.5 font-normal text-foreground text-sm tabular-nums">
+                            <HugeiconsIcon
+                                icon={ArrowDown02Icon}
+                                size={15}
+                                strokeWidth={2}
+                                className={cn(
+                                    "shrink-0",
+                                    hasValue ? "text-financial-negative" : "text-muted-foreground/40"
+                                )}
+                            />
+                            <span>{Math.abs(val).toLocaleString('es-AR')}</span>
+                        </div>
                     );
                 },
             },
@@ -645,13 +690,25 @@ export function BranchMonitorWidget({
                     }
                     const val = row.netDiff;
                     return (
-                        <Badge
-                            size="compact"
-                            className="font-medium text-xs tabular-nums min-w-[52px] justify-center border rounded-full px-2.5 py-0.5"
-                            style={getFinancialBadgeStyle(val)}
-                        >
-                            {val > 0 ? `+${val.toLocaleString('es-AR')}` : val.toLocaleString('es-AR')}
-                        </Badge>
+                        <div className="flex items-center gap-1.5 font-normal text-foreground text-sm tabular-nums">
+                            {val > 0 && (
+                                <HugeiconsIcon
+                                    icon={ArrowUpRight03Icon}
+                                    size={15}
+                                    strokeWidth={2}
+                                    className="shrink-0 text-financial-positive"
+                                />
+                            )}
+                            {val < 0 && (
+                                <HugeiconsIcon
+                                    icon={ArrowDownRight01Icon}
+                                    size={15}
+                                    strokeWidth={2}
+                                    className="shrink-0 text-financial-negative"
+                                />
+                            )}
+                            <span>{val > 0 ? `+${val.toLocaleString('es-AR')}` : (val < 0 ? `-${Math.abs(val).toLocaleString('es-AR')}` : '0')}</span>
+                        </div>
                     );
                 },
             },
@@ -668,13 +725,15 @@ export function BranchMonitorWidget({
                     }
                     const val = row.unitDeviation;
                     return (
-                        <Badge
-                            size="compact"
-                            className="font-medium text-xs tabular-nums min-w-[52px] justify-center border rounded-full px-2.5 py-0.5"
-                            style={getDeviationBadgeStyle(val)}
-                        >
-                            {val.toLocaleString('es-AR')}
-                        </Badge>
+                        <div className="flex items-center gap-1.5 font-normal text-foreground text-sm tabular-nums">
+                            <HugeiconsIcon
+                                icon={PieChart09Icon}
+                                size={15}
+                                strokeWidth={1.8}
+                                className={cn("shrink-0", val > 0 ? "text-muted-foreground/80" : "text-muted-foreground/40")}
+                            />
+                            <span>{val.toLocaleString('es-AR')}</span>
+                        </div>
                     );
                 },
             },
@@ -717,7 +776,7 @@ export function BranchMonitorWidget({
     );
 
     return (
-        <div className={cn("w-full flex-1 flex flex-col min-h-0", className)}>
+        <div className={cn("w-full flex-1 flex flex-col min-h-0 reveal-product-subtle", className)}>
             {/* Contenedor exterior estilo Fluid: 2px de padding, bordes redondeados y sombra sutil */}
             <div className="w-full flex-1 flex flex-col min-h-0 bg-surface-2/60 dark:bg-surface-2/40 border border-border/40 rounded-[24px] p-[2px] transition-all duration-200 shadow-xs">
                 {/* Recuadro interior blanco/más claro que alberga la tabla */}
@@ -747,9 +806,9 @@ export function BranchMonitorWidget({
                                 )}
                             </InputGroup>
 
-                            <div className="w-[140px]">
+                            <div className="w-[185px]">
                                 <Select value={selectedRound} onValueChange={setSelectedRound}>
-                                    <SelectTrigger placeholder="Vuelta" className="w-full min-w-0 h-8 text-xs font-sans rounded-lg" />
+                                    <SelectTrigger placeholder="Vuelta" className="w-full min-w-0 h-8 text-xs font-sans rounded-lg whitespace-nowrap" />
                                     <SelectContent className="max-h-[220px]">
                                         <SelectItem index={0} value="all" className="font-sans text-xs">Todas las vueltas</SelectItem>
                                         <SelectItem index={1} value="2" className="font-sans text-xs">Vuelta 2 (Activa)</SelectItem>
@@ -757,9 +816,9 @@ export function BranchMonitorWidget({
                                 </Select>
                             </div>
 
-                            <div className="w-[140px]">
+                            <div className="w-[185px]">
                                 <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                                    <SelectTrigger placeholder="Estado" className="w-full min-w-0 h-8 text-xs font-sans rounded-lg" />
+                                    <SelectTrigger placeholder="Estado" className="w-full min-w-0 h-8 text-xs font-sans rounded-lg whitespace-nowrap" />
                                     <SelectContent className="max-h-[220px]">
                                         <SelectItem index={0} value="all" className="font-sans text-xs">Todos los estados</SelectItem>
                                         <SelectItem index={1} value="active" className="font-sans text-xs">En Progreso</SelectItem>
@@ -769,6 +828,49 @@ export function BranchMonitorWidget({
                                     </SelectContent>
                                 </Select>
                             </div>
+
+                            <div className="w-[190px]">
+                                <Select value={selectedZonal} onValueChange={setSelectedZonal}>
+                                    <SelectTrigger placeholder="Zonal" className="w-full min-w-0 h-8 text-xs font-sans rounded-lg whitespace-nowrap" />
+                                    <SelectContent className="max-h-[220px]">
+                                        <SelectItem index={0} value="all" className="font-sans text-xs">Todos los zonales</SelectItem>
+                                        {zonales.map((z, idx) => (
+                                            <SelectItem key={z.id} index={idx + 1} value={z.id} className="font-sans text-xs">
+                                                {z.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        {/* Botón de acción del monitor */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                            <DatePicker
+                                mode="range"
+                                value={stay}
+                                onValueChange={setStay}
+                                placeholder="Desde → Hasta"
+                                calendarProps={{
+                                    disabled: { after: today },
+                                    endMonth: today,
+                                    defaultMonth: defaultCalendarMonth,
+                                }}
+                                size="compact"
+                                className="h-8 text-xs font-sans rounded-lg"
+                            />
+                            <Tooltip content="Exportar Excel" side="top" sideOffset={6}>
+                                <Button
+                                    variant="tertiary"
+                                    size="icon"
+                                    type="button"
+                                    onClick={handleExportExcel}
+                                    aria-label="Exportar Excel"
+                                    className="h-8 w-8 rounded-lg border border-border bg-transparent hover:bg-hover text-muted-foreground hover:text-foreground transition-all duration-80 cursor-pointer"
+                                >
+                                    <HugeiconsIcon icon={Xls01Icon} size={16} strokeWidth={1.8} />
+                                </Button>
+                            </Tooltip>
                         </div>
                     </div>
 
@@ -787,6 +889,14 @@ export function BranchMonitorWidget({
                             dense={false}
                             overscan={15}
                             headerClassName="bg-white dark:bg-[#252525] dark:bg-surface-3 shadow-2xs"
+                            renderExpandedRow={(row) => (
+                                <BranchCategoriesAccordion
+                                    branchName={row.branchName}
+                                    categories={row.categories}
+                                />
+                            )}
+                            expandedRowIds={expandedRowIds}
+                            expandedRowHeight={170}
                             emptyState={
                                 <div className="flex flex-col items-center justify-center p-12 text-muted-foreground text-xs gap-1.5 min-h-[280px]">
                                     <span className="font-semibold text-foreground text-sm">

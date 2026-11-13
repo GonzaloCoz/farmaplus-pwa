@@ -11,9 +11,10 @@ import {
   type HTMLAttributes,
 } from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { spring, exitFallbackMs } from "@/lib/springs";
+import { omit } from "@/lib/omit";
 import { useSurface, SurfaceProvider } from "@/lib/surface-context";
 import { surfaceClasses } from "@/lib/surface-classes";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -30,12 +31,12 @@ import {
 // Built on Base UI Dialog rather than Base UI Drawer: Drawer's
 // swipe-to-dismiss writes inline `transform` + `--drawer-swipe-movement-*`
 // CSS vars onto its Popup and expects CSS-transition choreography (plus a
-// mandatory <Drawer.Viewport>), which fights framer-motion's transform
+// mandatory <Drawer.Viewport>), which fights Motion's transform
 // management on the same element. Dialog provides everything we actually
 // need — scroll lock, focus trap, focus restore, Esc + outside-click
-// dismissal — while leaving the slide animation to framer-motion.
+// dismissal — while leaving the slide animation to Motion.
 
-// Props framer-motion redefines with incompatible signatures; they must not
+// Props Motion redefines with incompatible signatures; they must not
 // be forwarded from Base UI's render-prop payload onto a motion.div.
 type MotionSafeDivProps = Omit<
   React.HTMLAttributes<HTMLDivElement>,
@@ -109,12 +110,14 @@ function SidebarSheet({ side, open, onClose, children }: SidebarSheetProps) {
             boosted to /80 in explicit dark mode. */}
         <DialogPrimitive.Backdrop
           render={(backdropProps) => {
-            const { style: _style, ...rest } =
-              backdropProps as React.HTMLAttributes<HTMLDivElement>;
+            const rest = omit(
+              backdropProps as React.HTMLAttributes<HTMLDivElement>,
+              ["style"]
+            );
             return (
               <motion.div
                 {...(rest as MotionSafeDivProps)}
-                className="fixed inset-0 bg-black/40 dark:bg-black/80 z-40"
+                className="fixed inset-0 bg-black/40 dark:bg-black/80 z-[var(--z-overlay,40)]"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: visible ? 1 : 0 }}
                 transition={visible ? { duration: spring.moderate.duration } : spring.moderate.exit}
@@ -148,7 +151,7 @@ function SidebarSheet({ side, open, onClose, children }: SidebarSheetProps) {
                 data-mobile="true"
                 data-side={side}
                 className={cn(
-                  "fixed inset-y-0 z-50 flex flex-col overflow-hidden outline-none",
+                  "fixed inset-y-0 z-[var(--z-modal,50)] flex flex-col overflow-hidden outline-none",
                   !visible && "pointer-events-none",
                   side === "left" ? "left-0" : "right-0",
                   surfaceClasses(level, 3)

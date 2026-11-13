@@ -1,33 +1,38 @@
-"use client";
+﻿"use client";
 
 import {
   createContext,
+  useCallback,
   useContext,
   useRef,
-  useEffect,
+  useState,
   forwardRef,
   type HTMLAttributes,
   type ReactElement,
   type ReactNode,
 } from "react";
 import type { IconComponent } from "@/lib/icon-context";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/lib/utils";
 import { fontWeights } from "@/lib/font-weight";
 import { shapeMap } from "@/lib/shape-context";
 import { useSize } from "@/lib/size-context";
-import { useRegisterFluidHoverItem } from "@/hooks/use-fluid-hover";
+import {
+  useFluidHoverSelect,
+  useRegisterFluidHoverItem,
+  type FluidHoverActiveStore,
+} from "@/hooks/use-fluid-hover";
 
 // MenuItem is only used inside Dropdown, which opts out of the global pill
-// shape — see dropdown.tsx for the rationale.
+// shape â€” see dropdown.tsx for the rationale.
 const shape = shapeMap.rounded;
 
 // ---------------------------------------------------------------------------
-// Dropdown context — the single shared context for every Dropdown build.
+// Dropdown context â€” the single shared context for every Dropdown build.
 //
 // It lives here rather than in the dropdown module so that (a) MenuItem stays
 // primitive-free and self-contained, and (b) dropdowns built on different
-// primitives (Radix, Base UI) can render side by side — each provides this
+// primitives (Radix, Base UI) can render side by side â€” each provides this
 // same context object, so MenuItem resolves whichever provider actually
 // wraps it. The dropdown module re-exports useDropdown from here, keeping
 // its public API unchanged.
@@ -45,18 +50,25 @@ export interface MenuItemRenderOptions {
   checkbox: boolean;
   /** The item's checked state (radio and checkbox items). */
   checked?: boolean;
-  /** The item's index — doubles as the radio value. */
+  /** The item's index â€” doubles as the radio value. */
   value: number;
   disabled?: boolean;
   label: ReactNode;
   closeOnClick: boolean;
+  /** The row's activation (consumer onClick, then onSelect). The dropdown
+   *  hands it to its primitive item as `onClick`, never to `element`: Base
+   *  UI's Enter/Space runs the item's own onClick prop without dispatching a
+   *  DOM click, so a handler on the rendered div would only hear the mouse. */
+  onActivate?: (e: React.MouseEvent<HTMLDivElement>) => void;
   element: ReactElement;
   children: ReactNode;
 }
 
 export interface DropdownContextValue {
   registerItem: (index: number, element: HTMLElement | null) => void;
-  activeIndex: number | null;
+  /** The highlighted row, read per row with `useFluidHoverSelect` so a
+   *  highlight change re-renders two rows instead of the whole menu. */
+  activeStore: FluidHoverActiveStore;
   checkedIndex?: number;
   /** Multiple selection (`checkedIndices` on the dropdown): rows are
    *  checkbox items and activating one keeps the menu open by default. */
@@ -70,6 +82,10 @@ export interface DropdownContextValue {
    *  primitive. Absent in the inline Dropdown panel, where MenuItem renders
    *  its own ARIA menuitem div. */
   renderMenuItem?: (opts: MenuItemRenderOptions) => ReactElement;
+  /** Popup-only: a DropdownSubTrigger reports its submenu opening and
+   *  closing here, so the menu keeps that row lit while the pointer crosses
+   *  to the submenu and while it is inside it. */
+  onSubmenuOpenChange?: (index: number, open: boolean) => void;
 }
 
 export const DropdownContext = createContext<DropdownContextValue | null>(null);
@@ -85,10 +101,33 @@ export function useDropdownMaybe() {
   return useContext(DropdownContext);
 }
 
+/**
+ * Open state for DropdownMenu and DropdownSub: controlled by `open` when it
+ * is passed, else local state seeded by `defaultOpen`. Either way the
+ * primitive is always handed a controlled value, so the popup can play its
+ * exit tween before it unmounts.
+ */
+export function useControllableOpen(
+  openProp: boolean | undefined,
+  defaultOpen: boolean,
+  onOpenChange?: (open: boolean) => void
+) {
+  const [internalOpen, setInternalOpen] = useState(defaultOpen);
+  const open = openProp !== undefined ? openProp : internalOpen;
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (openProp === undefined) setInternalOpen(next);
+      onOpenChange?.(next);
+    },
+    [openProp, onOpenChange]
+  );
+  return [open, setOpen] as const;
+}
+
 export interface MenuItemProps extends HTMLAttributes<HTMLDivElement> {
   /** Optional leading icon. When omitted, the row renders text-only with no
    *  reserved icon column. */
-  icon?: IconComponent | React.ComponentType<any>;
+  icon?: IconComponent;
   label: ReactNode;
   index: number;
   /** When a boolean, the item is a radio-style option (role="menuitemradio"
@@ -119,10 +158,9 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
     ref
   ) => {
     const internalRef = useRef<HTMLDivElement>(null);
-    const hasMounted = useRef(false);
     const {
       registerItem,
-      activeIndex,
+      activeStore,
       checkedIndex,
       multiple,
       checkedIndices,
@@ -132,12 +170,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
 
     useRegisterFluidHoverItem(registerItem, index, internalRef);
 
-    useEffect(() => {
-      hasMounted.current = true;
-    }, []);
-
-    const isActive = activeIndex === index;
-    const skipAnimation = !hasMounted.current;
+    const isActive = useFluidHoverSelect(activeStore, (i) => i === index);
     const sizeClasses = useSize();
 
     const mergeRef = (node: HTMLDivElement | null) => {
@@ -154,9 +187,9 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
         };
 
     const itemClassName = cn(
-      // Fixed height (was py-2 around a 19.5px line box ≈ 35.5px) so the
+      // Fixed height (was py-2 around a 19.5px line box â‰ˆ 35.5px) so the
       // text-box trim on the label doesn't shrink the row. shrink-0 because
-      // menu popups are max-height flex columns — without it a long list
+      // menu popups are max-height flex columns â€” without it a long list
       // compresses rows to fit instead of scrolling.
       `relative z-10 flex ${sizeClasses.control} shrink-0 items-center ${sizeClasses.gap} ${shape.item} ${sizeClasses.itemPx} cursor-pointer outline-none`,
       disabled && "opacity-50 pointer-events-none",
@@ -166,7 +199,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
     const content = (
       <>
         {Icon && (
-          <span className="inline-grid">
+          <span className="inline-grid shrink-0">
             <span className="col-start-1 row-start-1 invisible">
               <Icon size={sizeClasses.icon} strokeWidth={2} />
             </span>
@@ -183,10 +216,14 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
           </span>
         )}
         {/* Both stacked spans carry the text-box trim so the invisible bold
-            sizer and the visible label keep identical boxes. */}
-        <span className={cn("inline-grid flex-1", sizeClasses.text)}>
+            sizer and the visible label keep identical boxes. Both truncate:
+            the popup has a fixed width and the row a fixed height, so a long
+            label clips with an ellipsis instead of wrapping into the next
+            row. The padding pair extends the clip box past the trim so
+            ascenders and descenders aren't shaved. */}
+        <span className={cn("inline-grid min-w-0 flex-1", sizeClasses.text)}>
           <span
-            className="col-start-1 row-start-1 invisible [text-box:trim-both_cap_alphabetic]"
+            className="col-start-1 row-start-1 invisible truncate pt-[0.25em] -mt-[0.25em] pb-[0.25em] -mb-[0.25em] [text-box:trim-both_cap_alphabetic]"
             style={{ fontVariationSettings: fontWeights.semibold }}
             aria-hidden="true"
           >
@@ -194,7 +231,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
           </span>
           <span
             className={cn(
-              "col-start-1 row-start-1 transition-[color,font-variation-settings] duration-80 [text-box:trim-both_cap_alphabetic]",
+              "col-start-1 row-start-1 truncate pt-[0.25em] -mt-[0.25em] pb-[0.25em] -mb-[0.25em] transition-[color,font-variation-settings] duration-80 [text-box:trim-both_cap_alphabetic]",
               isActive || checked
                 ? "text-foreground"
                 : "text-muted-foreground"
@@ -208,7 +245,10 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
             {label}
           </span>
         </span>
-        <AnimatePresence>
+        {/* initial={false}: a row checked at mount shows the finished
+            check instead of drawing it, so default selections don't
+            animate on page load. */}
+        <AnimatePresence initial={false}>
           {checked && (
             <motion.svg
               key="check"
@@ -227,7 +267,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
             >
               <motion.path
                 d="M4 12L9 17L20 6"
-                initial={{ pathLength: skipAnimation ? 1 : 0 }}
+                initial={{ pathLength: 0 }}
                 animate={{
                   pathLength: 1,
                   transition: { duration: 0.08, ease: "easeOut" },
@@ -247,10 +287,10 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
       // Inside DropdownContent, the menu-item primitive (supplied by the
       // surrounding DropdownContent through context) owns the role,
       // aria-checked, tabIndex, roving highlight, typeahead, and Enter/Space/
-      // click activation (activation synthesizes a click, so handleActivate
-      // also fires for keyboard). The styled div carries the Fluid
-      // Functionalism visuals and the fluid-hover registration; MenuItem
-      // itself imports no primitive.
+      // click activation. handleActivate rides on the primitive as onActivate,
+      // not on the div: that is the handler keyboard activation calls. The
+      // styled div carries the Fluid Functionalism visuals and the
+      // fluid-hover registration; MenuItem itself imports no primitive.
       return renderMenuItem({
         radio: !isCheckbox && typeof checked === "boolean",
         checkbox: isCheckbox,
@@ -260,12 +300,12 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
         label,
         // Toggling one of several stays open; picking one of one closes.
         closeOnClick: closeOnClick ?? !multiple,
+        onActivate: handleActivate,
         element: (
           <div
             ref={mergeRef}
             data-fluid-hover-index={index}
             aria-label={typeof label === "string" ? label : undefined}
-            onClick={handleActivate}
             className={itemClassName}
             {...props}
           />

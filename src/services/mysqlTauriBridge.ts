@@ -6,6 +6,8 @@ export interface MysqlConfig {
     user: string;
     password?: string;
     database: string;
+    include_catalog_eans?: boolean;
+    include_hidden_inactive?: boolean;
 }
 
 export interface MysqlTestResult {
@@ -35,6 +37,13 @@ export interface MysqlProductRecord {
     subrubro?: string;
     laboratory?: string;
     secondary_eans: string[];
+    is_hidden?: boolean;
+    is_traceable?: boolean;
+    gtin?: string;
+    id_producto_padre?: string;
+    unidades_padre?: number;
+    parent_ean?: string;
+    parent_name?: string;
 }
 
 export interface MysqlStockResult {
@@ -59,6 +68,26 @@ export function isTauriEnvironment(): boolean {
 }
 
 /**
+ * Checks whether Plex Sandbox (Dry-Run) mode is active.
+ * Disabled: operations execute directly against the Plex server in Tauri Desktop.
+ */
+export function isPlexSandboxMode(): boolean {
+    return false;
+}
+
+export async function ensureConfigPassword(config: MysqlConfig): Promise<MysqlConfig> {
+    if (config.password && config.password.trim().length > 0) {
+        return config;
+    }
+    const { getSessionToken } = await import('@/services/vault');
+    const token = await getSessionToken();
+    return {
+        ...config,
+        password: token,
+    };
+}
+
+/**
  * Test direct MySQL connection and retrieve metadata
  */
 export async function testMysqlConnection(config: MysqlConfig): Promise<MysqlTestResult> {
@@ -71,12 +100,17 @@ export async function testMysqlConnection(config: MysqlConfig): Promise<MysqlTes
     }
 
     try {
+        const readyConfig = await ensureConfigPassword(config);
         const { invoke } = await import('@tauri-apps/api/core');
-        return await invoke<MysqlTestResult>('test_mysql_connection', { config });
+        const res = await invoke<MysqlTestResult>('test_mysql_connection', { config: readyConfig });
+        return {
+            ...res,
+            message: res.message ? sanitizeMysqlError(res.message) : 'Conexión exitosa al servidor de Plex.',
+        };
     } catch (err: any) {
         return {
             success: false,
-            message: err?.toString() || 'Error al conectar con el servidor MySQL',
+            message: sanitizeMysqlError(err?.toString() || 'Error al conectar con el servidor MySQL'),
             tables_count: 0,
         };
     }
@@ -90,8 +124,9 @@ export async function listMysqlTables(config: MysqlConfig): Promise<string[]> {
         throw new Error('La conexión a MySQL requiere la app de escritorio Tauri.');
     }
 
+    const readyConfig = await ensureConfigPassword(config);
     const { invoke } = await import('@tauri-apps/api/core');
-    return await invoke<string[]>('list_mysql_tables', { config });
+    return await invoke<string[]>('list_mysql_tables', { config: readyConfig });
 }
 
 /**
@@ -102,8 +137,9 @@ export async function describeMysqlTable(config: MysqlConfig, tableName: string)
         throw new Error('La conexión a MySQL requiere la app de escritorio Tauri.');
     }
 
+    const readyConfig = await ensureConfigPassword(config);
     const { invoke } = await import('@tauri-apps/api/core');
-    return await invoke<MysqlColumnInfo[]>('describe_mysql_table', { config, tableName });
+    return await invoke<MysqlColumnInfo[]>('describe_mysql_table', { config: readyConfig, tableName });
 }
 
 /**
@@ -118,8 +154,9 @@ export async function executeMysqlRawQuery(
         throw new Error('La conexión a MySQL requiere la app de escritorio Tauri.');
     }
 
+    const readyConfig = await ensureConfigPassword(config);
     const { invoke } = await import('@tauri-apps/api/core');
-    return await invoke<MysqlQueryResult>('execute_mysql_raw_query', { config, query, limit });
+    return await invoke<MysqlQueryResult>('execute_mysql_raw_query', { config: readyConfig, query, limit });
 }
 
 /**
@@ -134,11 +171,12 @@ export async function fetchMysqlStockDirect(
         throw new Error('La importación directa por MySQL requiere la app de escritorio Tauri.');
     }
 
-    onLog?.(`[MySQL] Conectando a ${config.host}:${config.port}/${config.database}...`);
+    const readyConfig = await ensureConfigPassword(config);
+    onLog?.(`[MySQL] Conectando a ${readyConfig.host}:****/${readyConfig.database}...`);
     const { invoke } = await import('@tauri-apps/api/core');
 
     const result = await invoke<MysqlStockResult>('fetch_mysql_stock', {
-        config,
+        config: readyConfig,
         customQuery: customQuery?.trim() ? customQuery : null
     });
 
@@ -156,10 +194,26 @@ export const fetchMysqlStock = fetchMysqlStockDirect;
  */
 export function convertMysqlToMasterCatalog(products: MysqlProductRecord[]): MasterCatalogItem[] {
     const catalog: MasterCatalogItem[] = [];
+    const parentIds = new Set<string>();
+    const byId = new Map<string, MysqlProductRecord>();
+    for (const p of products) {
+        if (p.id) byId.set(p.id, p);
+        if (p.id_producto_padre && (p.unidades_padre || 0) > 1) {
+            parentIds.add(String(p.id_producto_padre));
+        }
+    }
 
     for (const p of products) {
         const primaryEan = p.ean || p.id;
         const allEans = [primaryEan, ...(p.secondary_eans || [])];
+        const parentRec = p.id_producto_padre ? byId.get(String(p.id_producto_padre)) : undefined;
+        const parentFields = {
+            id_producto_padre: p.id_producto_padre || undefined,
+            unidades_padre: p.unidades_padre && p.unidades_padre > 1 ? p.unidades_padre : undefined,
+            parent_ean: p.parent_ean || parentRec?.ean || undefined,
+            parent_name: p.parent_name || parentRec?.name || undefined,
+            is_parent: parentIds.has(String(p.id)),
+        };
 
         catalog.push({
             ean: primaryEan,
@@ -173,6 +227,10 @@ export function convertMysqlToMasterCatalog(products: MysqlProductRecord[]): Mas
             laboratory: p.laboratory || undefined,
             rubro: p.category || undefined,
             subrubro: p.subrubro || undefined,
+            is_hidden: p.is_hidden ?? false,
+            is_traceable: p.is_traceable ?? false,
+            gtin: p.gtin || undefined,
+            ...parentFields,
         });
 
         // Add secondary EAN entries if present
@@ -190,6 +248,10 @@ export function convertMysqlToMasterCatalog(products: MysqlProductRecord[]): Mas
                     laboratory: p.laboratory || undefined,
                     rubro: p.category || undefined,
                     subrubro: p.subrubro || undefined,
+                    is_hidden: p.is_hidden ?? false,
+                    is_traceable: p.is_traceable ?? false,
+                    gtin: p.gtin || undefined,
+                    ...parentFields,
                 });
             }
         }
@@ -199,40 +261,131 @@ export function convertMysqlToMasterCatalog(products: MysqlProductRecord[]): Mas
 }
 
 /**
+ * Formats low-level MySQL / driver errors into clear, friendly messages without exposing IPs or internal driver dumps.
+ */
+export function formatSyncErrorMessage(rawError?: string, defaultMsg: string = "No se pudo conectar con el servidor local de Plex."): string {
+    if (!rawError) return defaultMsg;
+
+    const err = String(rawError).toLowerCase();
+
+    if (
+        err.includes("connection timeout") ||
+        err.includes("could not connect") ||
+        err.includes("timed out") ||
+        err.includes("timeout") ||
+        err.includes("os error 10060") ||
+        err.includes("os error 10061") ||
+        err.includes("host unreachable") ||
+        err.includes("no route to host") ||
+        err.includes("drivererror") ||
+        err.includes("connection refused") ||
+        err.includes("connection reset")
+    ) {
+        return "No se pudo conectar con el servidor local de Plex. Verifique que la terminal esté conectada a la red de la sucursal y reintente.";
+    }
+
+    if (
+        err.includes("access denied") ||
+        err.includes("using password") ||
+        err.includes("authentication failed") ||
+        err.includes("auth")
+    ) {
+        return "Error de autenticación con el servidor de Plex. Verifique las credenciales de acceso.";
+    }
+
+    if (err.includes("unknown database") || err.includes("base de datos")) {
+        return "La base de datos de Plex no está disponible en el servidor de la sucursal.";
+    }
+
+    if (err.includes("no se encontraron productos")) {
+        return rawError
+            .replace(/\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/g, '')
+            .replace(/\(\s*\)/g, '')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+    }
+
+    // Quitar IPs, puertos y volcados de DriverError
+    const sanitized = rawError
+        .replace(/\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?\b/g, '')
+        .replace(/DriverError\s*\{[^}]*\}/gi, '')
+        .replace(/Error de configuración para\s*:?/gi, '')
+        .replace(/Error al conectar a\s*:?/gi, '')
+        .replace(/\(\s*\)/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
+    if (sanitized && sanitized.length > 5 && !sanitized.includes('{')) {
+        return sanitized;
+    }
+
+    return defaultMsg;
+}
+
+export function sanitizeMysqlError(rawError?: string | null): string {
+    return formatSyncErrorMessage(rawError || undefined);
+}
+
+/**
  * Direct MySQL synchronization for a Laboratory in Cyclic Inventory.
  * Zero-disk temporary overhead: processes in-memory, preserves existing user counts,
  * and formats directly into CyclicItem[] compatible with the cyclic inventory module.
  */
+export async function resolveBranchConfig(branchName: string): Promise<{ config: MysqlConfig; branchId: number }> {
+    const { getBranchMysqlHostConfig } = await import('@/lib/branchNetworkMap');
+    const { getSessionToken } = await import('@/services/vault');
+    const hostConfig = getBranchMysqlHostConfig(branchName);
+    const key = await getSessionToken();
+    return {
+        branchId: hostConfig.branchId || 0,
+        config: {
+            host: hostConfig.primaryIp,
+            port: hostConfig.port,
+            user: hostConfig.user,
+            password: hostConfig.password || key,
+            database: hostConfig.database,
+        }
+    };
+}
+
 export async function fetchCyclicLabStockFromMysql(
     branchName: string,
     labName: string,
-    currentItems: any[] = []
+    currentItems: any[] = [],
+    onlyRefreshExisting: boolean | 'refresh' | 'only_new' = false,
+    labId?: number
 ): Promise<{
     success: boolean;
     items: any[];
     addedCount: number;
     updatedCount: number;
+    changedCount?: number;
     message: string;
     totalUnits: number;
 }> {
-    const { getBranchMysqlHostConfig } = await import('@/lib/branchNetworkMap');
     const { normalizeString } = await import('@/lib/utils');
-
-    const hostConfig = getBranchMysqlHostConfig(branchName);
-    const config: MysqlConfig = {
-        host: hostConfig.primaryIp,
-        port: hostConfig.port,
-        user: hostConfig.user,
-        password: hostConfig.password || '',
-        database: hostConfig.database,
-    };
+    const { config } = await resolveBranchConfig(branchName);
 
     const cleanLab = labName.trim();
     const safeLabEscaped = cleanLab.replace(/'/g, "''");
+    const safeLabNoDot = safeLabEscaped.replace(/\.+$/, '');
+    const safeLabWithDot = safeLabNoDot + '.';
+    const normLab = normalizeString(cleanLab);
 
-    // Fast indexed SQL query with READ UNCOMMITTED (Zero table locks)
-    // 1. Exact match on laboratory name to prevent '%ALCON%' matching 'EL BALCON'
-    // 2. INNER JOIN stock to only bring products that exist in the branch inventory catalog (100% Plex export behavior)
+    const whereLabClause = labId && Number(labId) > 0
+        ? `l.IDLaboratorio = ${Number(labId)}`
+        : `(TRIM(l.Nombre) = '${safeLabEscaped}' 
+            OR TRIM(l.Nombre) = '${safeLabNoDot}' 
+            OR TRIM(l.Nombre) = '${safeLabWithDot}'
+            OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(TRIM(l.Nombre)), 'Á', 'A'), 'É', 'E'), 'Í', 'I'), 'Ó', 'O'), 'Ú', 'U') = '${normLab}'
+        )`;
+
+    // Fast indexed SQL query con estándar sucursal:
+    // 1. INNER JOIN stock: solo productos que existen en la tabla de stock de la sucursal (descarta los del catálogo que nunca tuvieron movimiento)
+    // 2. Trae tanto productos visibles como ocultos con ficha en sucursal (para que el usuario pueda auditar y ajustar stock físico de ítems ocultos en Plex)
+    // 3. Filtro de productos activos y no-servicios: (p.Activo = 'S' | '1') AND (p.servicio = 0 | NULL)
+    // 4. Códigos de barra alternativos vía productoscodebars para soporte total de escaneo
+    // 5. Soporte directo por IDLaboratorio numérico (cero fallas de tildes/espacios) con fallback a texto
     const customQuery = `
         SELECT 
             p.IDProducto AS id_producto,
@@ -241,15 +394,23 @@ export async function fetchCyclicLabStockFromMysql(
             CONCAT(p.Producto, ' ', IFNULL(p.Presentacion, '')) AS producto,
             r.Nombre AS rubro,
             l.Nombre AS laboratorio,
-            IFNULL(s.Cantidad, 0) AS stock,
+            s.Cantidad AS stock,
             p.UltimoPrecio AS precio,
-            p.Costo AS costo,
+            IFNULL(NULLIF(p.costoPPP, 0), p.Costo) AS costo,
+            IFNULL(p.visible, 1) AS visible,
+            IFNULL(p.trazable, 0) AS trazable,
+            IFNULL(p.gtin, '') AS gtin,
+            GROUP_CONCAT(DISTINCT pc.codebar SEPARATOR ', ') AS codigos_barra_alternativos,
             p.Activo AS activo
         FROM productos p
         JOIN laboratorios l ON l.IDLaboratorio = p.IDLaboratorio
+        JOIN stock s ON s.IDProducto = p.IDProducto
         LEFT JOIN rubros r ON r.IDRubro = p.IDRubro
-        INNER JOIN stock s ON s.IDProducto = p.IDProducto
-        WHERE TRIM(l.Nombre) = '${safeLabEscaped}'
+        LEFT JOIN productoscodebars pc ON pc.IDProducto = p.IDProducto
+        WHERE ${whereLabClause}
+          AND (p.Activo = 'S' OR p.Activo = '1' OR p.Activo = 1 OR p.Activo = 's')
+          AND (p.servicio = 0 OR p.servicio IS NULL OR p.servicio = '0')
+        GROUP BY p.IDProducto
         ORDER BY r.Nombre ASC, p.Producto ASC
     `.trim();
 
@@ -261,10 +422,22 @@ export async function fetchCyclicLabStockFromMysql(
             items: currentItems,
             addedCount: 0,
             updatedCount: 0,
-            message: result.message || `No se encontraron productos para "${labName}" en el servidor MySQL de ${branchName}.`,
+            message: result.message
+                ? formatSyncErrorMessage(result.message)
+                : `No se encontraron productos para "${labName}" en el servidor de ${branchName}.`,
             totalUnits: 0,
         };
     }
+
+    // Normalizador de categoría para asegurar coincidencia con pestañas del inventario cíclico
+    const mapCategory = (rawCat?: string): string => {
+        if (!rawCat) return 'Varios';
+        const norm = normalizeString(rawCat).toUpperCase();
+        if (norm.includes('MEDICAM')) return 'Medicamentos';
+        if (norm.includes('PERFUM')) return 'Perfumería';
+        if (norm.includes('ACCESOR')) return 'Accesorios';
+        return 'Varios';
+    };
 
     // Build lookup maps to preserve existing counts and status
     const existingByIdProd = new Map<string, any>();
@@ -281,6 +454,133 @@ export async function fetchCyclicLabStockFromMysql(
         if (itemName) existingByName.set(itemName, item);
     });
 
+    if (onlyRefreshExisting === 'only_new') {
+        const newItems: any[] = [];
+        let newUnits = 0;
+
+        for (const p of result.products) {
+            const id_producto = String(p.id || '').trim();
+            let ean = String(p.ean || '').trim();
+            if (!ean || ean === '0' || ean === '00') {
+                if (p.secondary_eans && p.secondary_eans.length > 0) {
+                    ean = p.secondary_eans[0].trim();
+                } else if (id_producto) {
+                    ean = id_producto;
+                }
+            }
+            const name = String(p.name || 'Sin Nombre').trim();
+
+            const existing = (id_producto && existingByIdProd.has(id_producto)) ||
+                             (ean && existingByEan.has(ean)) ||
+                             (name && existingByName.has(normalizeString(name).toUpperCase()));
+
+            if (!existing) {
+                const category = mapCategory(p.category);
+                const systemQty = Number(p.stock) || 0;
+                const pvp = Math.round((Number(p.sale_price) || 0) * 100) / 100;
+                const cost = Math.round((Number(p.cost) || 0) * 100) / 100;
+
+                newUnits += systemQty;
+                newItems.push({
+                    id: crypto.randomUUID ? crypto.randomUUID() : `item_${id_producto}_${Date.now()}_${Math.random()}`,
+                    id_producto,
+                    ean,
+                    name,
+                    category,
+                    systemQuantity: systemQty,
+                    countedQuantity: 0,
+                    price: pvp,
+                    cost: cost,
+                    status: 'pending',
+                    troquel: p.troquel,
+                    is_hidden: p.is_hidden ?? false,
+                    updatedAt: new Date().toISOString(),
+                });
+            }
+        }
+
+        const totalCurrentUnits = (currentItems || []).reduce((acc: number, it: any) => acc + (Number(it.systemQuantity) || 0), 0);
+
+        return {
+            success: true,
+            items: [...(currentItems || []), ...newItems],
+            addedCount: newItems.length,
+            updatedCount: 0,
+            changedCount: 0,
+            message: newItems.length > 0
+                ? `Se incorporaron ${newItems.length} nuevo(s) SKU(s) desde el servidor.`
+                : `No se encontraron SKUs nuevos para "${labName}" en el servidor.`,
+            totalUnits: totalCurrentUnits + newUnits,
+        };
+    }
+
+    if (onlyRefreshExisting === true || onlyRefreshExisting === 'refresh') {
+        // Fast in-memory map of Plex results for matching
+        const plexByProdId = new Map<string, any>();
+        const plexByEan = new Map<string, any>();
+        const plexByName = new Map<string, any>();
+
+        for (const p of result.products) {
+            const pId = String(p.id || '').trim();
+            const ean = String(p.ean || '').trim();
+            const name = normalizeString(p.name || '').toUpperCase();
+            if (pId) plexByProdId.set(pId, p);
+            if (ean && ean !== '0' && ean !== '00') plexByEan.set(ean, p);
+            for (const secEan of (p.secondary_eans || [])) {
+                if (secEan) plexByEan.set(String(secEan).trim(), p);
+            }
+            if (name) plexByName.set(name, p);
+        }
+
+        const finalItems: any[] = [];
+        let updatedCount = 0;
+        let changedCount = 0;
+        let refreshedTotalUnits = 0;
+
+        for (const item of (currentItems || [])) {
+            const pId = String(item.id_producto || '').trim();
+            const ean = String(item.ean || '').trim();
+            const name = normalizeString(item.name || '').toUpperCase();
+
+            const p = (pId && plexByProdId.get(pId)) ||
+                      (ean && plexByEan.get(ean)) ||
+                      (name && plexByName.get(name));
+
+            if (p) {
+                const systemQty = Number(p.stock) || 0;
+                if (systemQty !== item.systemQuantity) {
+                    changedCount++;
+                }
+                refreshedTotalUnits += systemQty;
+                updatedCount++;
+                const pvp = Math.round((Number(p.sale_price) || 0) * 100) / 100;
+                const cost = Math.round((Number(p.cost) || 0) * 100) / 100;
+
+                finalItems.push({
+                    ...item,
+                    systemQuantity: systemQty,
+                    price: pvp || item.price || 0,
+                    cost: cost || item.cost || 0,
+                    troquel: p.troquel || item.troquel,
+                    updatedAt: new Date().toISOString(),
+                });
+            } else {
+                refreshedTotalUnits += (item.systemQuantity || 0);
+                finalItems.push(item);
+            }
+        }
+
+        return {
+            success: true,
+            items: finalItems,
+            addedCount: 0,
+            updatedCount,
+            changedCount,
+            message: `Stock refrescado: ${updatedCount} productos actualizados (${changedCount} con variación).`,
+            totalUnits: refreshedTotalUnits,
+        };
+    }
+
     const finalItems: any[] = [];
     let addedCount = 0;
     let updatedCount = 0;
@@ -288,11 +588,19 @@ export async function fetchCyclicLabStockFromMysql(
 
     for (const p of result.products) {
         const id_producto = String(p.id || '').trim();
-        const ean = String(p.ean || id_producto).trim();
+        let ean = String(p.ean || '').trim();
+        if (!ean || ean === '0' || ean === '00') {
+            if (p.secondary_eans && p.secondary_eans.length > 0) {
+                ean = p.secondary_eans[0].trim();
+            } else if (id_producto) {
+                ean = id_producto;
+            }
+        }
         const name = String(p.name || 'Sin Nombre').trim();
-        const category = p.category || 'Varios';
+        const category = mapCategory(p.category);
         const systemQty = Number(p.stock) || 0;
-        const price = Math.round((Number(p.sale_price) || Number(p.cost) || 0) * 100) / 100;
+        const pvp = Math.round((Number(p.sale_price) || 0) * 100) / 100;
+        const cost = Math.round((Number(p.cost) || 0) * 100) / 100;
 
         totalUnits += systemQty;
 
@@ -315,11 +623,17 @@ export async function fetchCyclicLabStockFromMysql(
                 name,
                 category: category || existing.category || 'Varios',
                 systemQuantity: systemQty,
-                cost: price || existing.cost || 0,
+                price: pvp || existing.price || 0,
+                cost: cost || existing.cost || 0,
                 // Preserve user count and status if already controlled
                 countedQuantity: existing.countedQuantity ?? 0,
                 status: existing.status ?? 'pending',
                 troquel: p.troquel || existing.troquel,
+                shortageId: existing.shortageId,
+                surplusId: existing.surplusId,
+                wasReadjusted: existing.wasReadjusted,
+                readjustmentReason: existing.readjustmentReason,
+                is_hidden: p.is_hidden ?? existing.is_hidden ?? false,
                 updatedAt: new Date().toISOString(),
             });
         } else {
@@ -332,20 +646,37 @@ export async function fetchCyclicLabStockFromMysql(
                 category,
                 systemQuantity: systemQty,
                 countedQuantity: 0,
-                cost: price,
+                price: pvp,
+                cost: cost,
                 status: 'pending',
                 troquel: p.troquel,
+                is_hidden: p.is_hidden ?? false,
                 updatedAt: new Date().toISOString(),
             });
         }
     }
+
+    // Preservar ítems que ya fueron auditados si no vinieron en la consulta de Plex
+    (currentItems || []).forEach((item: any) => {
+        const alreadyIncluded = finalItems.some(f => 
+            (item.id_producto && f.id_producto === item.id_producto) ||
+            (item.ean && f.ean === item.ean)
+        );
+        if (!alreadyIncluded && (item.status === 'controlled' || item.status === 'adjusted' || (item.countedQuantity && item.countedQuantity > 0))) {
+            finalItems.push(item);
+        }
+    });
+
+    console.log(`[CyclicSync] Sincronización MySQL ${labName} (${branchName}): ${finalItems.length} items (${totalUnits} unidades de stock). Productos con stock > 0:`, 
+        finalItems.filter(i => i.systemQuantity > 0).map(i => `${i.name} (EAN: ${i.ean}, Stock: ${i.systemQuantity})`)
+    );
 
     return {
         success: true,
         items: finalItems,
         addedCount,
         updatedCount,
-        message: `Sincronización exitosa: ${result.products.length} productos importados desde el Servidor Plex (${totalUnits} unidades en stock).`,
+        message: `Sincronización exitosa: ${result.products.length} productos importados desde Plex (${totalUnits} unidades en stock).`,
         totalUnits,
     };
 }
@@ -375,9 +706,10 @@ export async function createPlexInventorySession(
     }
 
     try {
+        const readyConfig = await ensureConfigPassword(config);
         const { invoke } = await import('@tauri-apps/api/core');
         return await invoke<CreatePlexInventoryResult>('create_plex_inventory_session', {
-            config,
+            config: readyConfig,
             description,
             userId,
             terminalId,
@@ -435,9 +767,10 @@ export async function getPlexOpenInventorySessions(
     }
 
     try {
+        const readyConfig = await ensureConfigPassword(config);
         const { invoke } = await import('@tauri-apps/api/core');
         return await invoke<GetPlexOpenSessionsResult>('get_plex_open_inventory_sessions', {
-            config,
+            config: readyConfig,
         });
     } catch (err: any) {
         console.error('Error al obtener sesiones abiertas en Plex:', err);
@@ -497,9 +830,10 @@ export async function sendPlexInventoryApiBatch(
     }
 
     try {
+        const readyConfig = await ensureConfigPassword(config);
         const { invoke } = await import('@tauri-apps/api/core');
         return await invoke<SendPlexApiBatchResult>('send_plex_inventory_api_batch', {
-            config,
+            config: readyConfig,
             items,
             userId,
             tipoInventario,
@@ -530,9 +864,10 @@ export async function restorePlexTrazables(
     }
 
     try {
+        const readyConfig = await ensureConfigPassword(config);
         const { invoke } = await import('@tauri-apps/api/core');
         return await invoke<boolean>('restore_plex_trazables', {
-            config,
+            config: readyConfig,
             productIds,
         });
     } catch (err: any) {
@@ -553,9 +888,10 @@ export async function checkPlexBatchStatus(
     }
 
     try {
+        const readyConfig = await ensureConfigPassword(config);
         const { invoke } = await import('@tauri-apps/api/core');
         return await invoke<string>('check_plex_batch_status', {
-            config,
+            config: readyConfig,
             idRegistro,
         });
     } catch (err: any) {
@@ -592,9 +928,10 @@ export async function checkPlexInventoryAdjustment(
     }
 
     try {
+        const readyConfig = await ensureConfigPassword(config);
         const { invoke } = await import('@tauri-apps/api/core');
         return await invoke<PlexAdjustmentStatus>('check_plex_inventory_adjustment', {
-            config,
+            config: readyConfig,
             productIds,
             idInventario: idInventario || null,
         });
@@ -610,5 +947,225 @@ export async function checkPlexInventoryAdjustment(
     }
 }
 
+export interface PlexSessionStatus {
+    running: boolean;
+    logged_in: boolean;
+    user: string | null;
+    screen: string | null;
+    pid: number | null;
+    terminal: string | null;
+    config_path: string | null;
+}
 
+export interface PlexOperatorVerification {
+    is_authorized: boolean;
+    id_usuario: number | null;
+    user_name: string;
+    full_name: string;
+    profile: string;
+    is_admin: boolean;
+    message: string;
+}
 
+export interface PlexAdjustmentResult {
+    success: boolean;
+    alta_id: number | null;
+    baja_id: number | null;
+    total_altas: number;
+    total_bajas: number;
+    message: string;
+    logs: string[];
+}
+
+/**
+ * Checks in real time whether Plex 25 is running, unlocked, and which user is logged in
+ */
+export async function checkPlexSession(): Promise<PlexSessionStatus> {
+    if (!isTauriEnvironment()) {
+        return {
+            running: true,
+            logged_in: true,
+            user: 'COZGONZALOHER',
+            screen: 'TFormPrincipal (Web Simulator)',
+            pid: 1234,
+            terminal: '168',
+            config_path: 'C:\\Plex 25\\Gestion\\Config.ini',
+        };
+    }
+
+    try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        return await invoke<PlexSessionStatus>('check_plex_session');
+    } catch (err: any) {
+        console.error('Error checking Plex session:', err);
+        return {
+            running: false,
+            logged_in: false,
+            user: null,
+            screen: null,
+            pid: null,
+            terminal: null,
+            config_path: null,
+        };
+    }
+}
+
+/**
+ * Verifies whether the detected Plex user has the role of Encargado/Subencargado/Adm in this branch
+ */
+export async function verifyPlexOperator(
+    branchName: string,
+    userName: string
+): Promise<PlexOperatorVerification> {
+    if (!isTauriEnvironment()) {
+        return {
+            is_authorized: true,
+            id_usuario: 1590,
+            user_name: userName,
+            full_name: 'COZ GONZALO HERNAN',
+            profile: 'ADM INVENTARIOS',
+            is_admin: true,
+            message: `Operador autorizado: ${userName} (ADM INVENTARIOS)`,
+        };
+    }
+
+    try {
+        const { config } = await resolveBranchConfig(branchName);
+
+        const { invoke } = await import('@tauri-apps/api/core');
+        return await invoke<PlexOperatorVerification>('verify_plex_operator', {
+            config,
+            userName,
+        });
+    } catch (err: any) {
+        console.error('Error verifying Plex operator:', err);
+        return {
+            is_authorized: false,
+            id_usuario: null,
+            user_name: userName,
+            full_name: '',
+            profile: 'ERROR',
+            is_admin: false,
+            message: err?.message || 'Error al conectar con la base de datos de la sucursal',
+        };
+    }
+}
+
+export interface NextAdjustmentIdsResult {
+    next_shortage_id: number | null;
+    next_surplus_id: number | null;
+}
+
+/**
+ * Pre-fetches the predicted adjustment IDs that Plex will assign for bajas/altas
+ */
+export async function getNextPlexAdjustmentIds(
+    branchName: string,
+    hasShortage: boolean,
+    hasSurplus: boolean
+): Promise<NextAdjustmentIdsResult> {
+    if (!isTauriEnvironment()) {
+        const { getBranchMysqlHostConfig } = await import('@/lib/branchNetworkMap');
+        const hostConfig = getBranchMysqlHostConfig(branchName);
+        const bId = hostConfig.branchId || 70;
+        const base = bId * 10_000_000;
+        return {
+            next_shortage_id: hasShortage ? base + 38 : null,
+            next_surplus_id: hasSurplus ? (hasShortage ? base + 39 : base + 38) : null,
+        };
+    }
+
+    try {
+        const { config, branchId } = await resolveBranchConfig(branchName);
+
+        const { invoke } = await import('@tauri-apps/api/core');
+        return await invoke<NextAdjustmentIdsResult>('get_next_plex_adjustment_ids', {
+            config,
+            branchId,
+            hasShortage,
+            hasSurplus,
+        });
+    } catch (err) {
+        console.error('Error fetching next Plex adjustment IDs:', err);
+        return { next_shortage_id: null, next_surplus_id: null };
+    }
+}
+
+/**
+ * Executes cyclic inventory stock adjustments (Altas y Bajas) directly in branch Plex DB
+ */
+export async function executePlexCyclicAdjustments(
+    branchName: string,
+    operatorId: number,
+    operatorName: string,
+    labName: string,
+    shortages: { id_producto?: string; ean: string; quantity: number }[],
+    surpluses: { id_producto?: string; ean: string; quantity: number }[]
+): Promise<PlexAdjustmentResult> {
+    const { config, branchId } = await resolveBranchConfig(branchName);
+
+    if (!isTauriEnvironment()) {
+        return {
+            success: true,
+            alta_id: surpluses.length > 0 ? 9991 : null,
+            baja_id: shortages.length > 0 ? 9992 : null,
+            total_altas: surpluses.length,
+            total_bajas: shortages.length,
+            message: `[Simulación Web] Ajustes aplicados: ${surpluses.length} Altas, ${shortages.length} Bajas`,
+            logs: ['Ajuste simulado correctamente en entorno web.'],
+        };
+    }
+
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<PlexAdjustmentResult>('execute_plex_cyclic_adjustments', {
+        config,
+        operatorId,
+        operatorName,
+        branchId,
+        labName,
+        shortages,
+        surpluses,
+    });
+}
+
+/**
+ * Gets all authorized operators (Encargados, Subencargados, Admins) for the branch from MySQL
+ */
+export async function getPlexBranchOperators(
+    branchName: string
+): Promise<PlexOperatorVerification[]> {
+    if (!isTauriEnvironment()) {
+        return [
+            {
+                is_authorized: true,
+                id_usuario: 1590,
+                user_name: 'COZGONZALOHER',
+                full_name: 'COZ GONZALO HERNAN',
+                profile: 'ADM INVENTARIOS',
+                is_admin: true,
+                message: 'Operador autorizado',
+            },
+            {
+                is_authorized: true,
+                id_usuario: 1204,
+                user_name: 'EMANUEL',
+                full_name: 'DIAZ EMANUEL',
+                profile: 'ENCARGADO',
+                is_admin: false,
+                message: 'Operador autorizado',
+            }
+        ];
+    }
+
+    try {
+        const { config } = await resolveBranchConfig(branchName);
+
+        const { invoke } = await import('@tauri-apps/api/core');
+        return await invoke<PlexOperatorVerification[]>('get_plex_branch_operators', {
+            config,
+        });
+    } catch (err: any) {
+        console.error('Error fetching Plex branch operators:', err);
+        return [];
+    }
+}

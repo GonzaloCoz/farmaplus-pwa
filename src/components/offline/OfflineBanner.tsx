@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from "motion/react";
 import { Cloud01 as WifiOff, Wifi } from '@untitledui/icons';
 import { cn } from '@/lib/utils';
 

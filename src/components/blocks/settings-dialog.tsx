@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import {
   Dialog,
   DialogContent,
@@ -32,8 +32,11 @@ import { InputGroup, InputField } from "@/components/ui/input-group";
 import { useIcons, type IconName } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import { fontWeights } from "@/lib/font-weight";
+import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
+import { FluidCheckbox } from "@/components/ui/fluid-checkbox";
 import { useTheme, type ThemeMode } from "@/hooks/useTheme";
 import { useTint, type AppTint } from "@/hooks/useTint";
+import { useAvatarMode, getUserInitials } from "@/hooks/useAvatarMode";
 import { supabase } from "@/integrations/supabase/client";
 import { notify } from "@/lib/notifications";
 import { useUser } from "@/contexts/UserContext";
@@ -49,20 +52,32 @@ import { SIDEBAR_MENU_POPUP } from "@/lib/sidebar-menu-grid";
 import {
   ChevronsUpDown,
   LogOut as LogOutIcon,
+  Webhook as WebhookIcon,
 } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
+import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
+import {
+  useSystemModules,
+  CONSTRUCTION_PAGES_LIST,
+  DEFAULT_CONSTRUCTION_PAGES,
+  type ConstructionPageKey,
+} from "@/hooks/useSystemModules";
 
 interface SettingsSection {
   id: string;
   label: string;
-  icon: IconName;
+  icon?: IconName;
+  iconComponent?: React.ComponentType<{ className?: string }>;
   description: string;
 }
 
 const SECTIONS: SettingsSection[] = [
-  { id: "general", label: "General", icon: "settings", description: "Nombre del espacio de trabajo, idioma y región." },
+  { id: "general", label: "Cuenta", icon: "user", description: "Nombre de tu cuenta, idioma y región." },
   { id: "notifications", label: "Notificaciones", icon: "bell", description: "Qué notificaciones recibes y cuándo." },
-  { id: "appearance", label: "Apariencia", icon: "palette", description: "Tema y posición de notificaciones para este dispositivo." },
+  { id: "appearance", label: "Apariencia", icon: "palette", description: "Perfil, tinte de color y tema para este dispositivo." },
   { id: "security", label: "Seguridad", icon: "shield", description: "Protección de inicio de sesión y sesiones activas." },
+  { id: "modules", label: "Módulos", iconComponent: WebhookIcon, description: "Control en tiempo real de servicios e integraciones con servidores." },
   { id: "members", label: "Miembros", icon: "users", description: "Quiénes pueden acceder a este espacio de trabajo." },
 ];
 
@@ -80,16 +95,23 @@ export function SettingsDialog({
   onOpenChange,
   defaultSection = "general",
 }: SettingsDialogProps) {
+  const navigate = useNavigate();
   const icons = useIcons();
   const { user, logout } = useUser();
   const { theme, toggleTheme } = useTheme();
+  const { avatarMode, avatarImage } = useAvatarMode();
   const isBranchUser = user?.role === 'branch';
-  const visibleSections = SECTIONS.filter((s) => !(isBranchUser && (s.id === 'members' || s.id === 'security')));
-  const [section, setSection] = useState(() => (isBranchUser && (defaultSection === 'members' || defaultSection === 'security') ? 'general' : defaultSection));
+  const isAdmin = user?.role === 'admin' || user?.username?.toLowerCase() === 'gcoz';
+  const visibleSections = SECTIONS.filter((s) => {
+    if (s.id === 'modules' && !isAdmin) return false;
+    if (isBranchUser && (s.id === 'members' || s.id === 'security')) return false;
+    return true;
+  });
+  const [section, setSection] = useState(() => (isBranchUser && (defaultSection === 'members' || defaultSection === 'security' || defaultSection === 'modules') ? 'general' : defaultSection));
   const current = visibleSections.find((s) => s.id === section) ?? visibleSections[0];
 
   useEffect(() => {
-    if (isBranchUser && (section === 'members' || section === 'security')) {
+    if (isBranchUser && (section === 'members' || section === 'security' || section === 'modules')) {
       setSection('general');
     }
   }, [isBranchUser, section]);
@@ -100,18 +122,7 @@ export function SettingsDialog({
     navigate("/login");
   };
 
-  const getInitials = () => {
-    if (!user) return "??";
-    if (user.role === 'branch' && user.branchName) {
-      const branchName = user.branchName.replace(/^farmacia\s+/i, '');
-      return `F${branchName.charAt(0).toUpperCase()}`;
-    }
-    const names = (user.name || "").split(' ');
-    if (names.length >= 2) {
-      return (names[0].charAt(0) + names[names.length - 1].charAt(0)).toUpperCase();
-    }
-    return (user.name || "U").charAt(0).toUpperCase();
-  };
+  const initials = getUserInitials(user);
 
   return (
     <Dialog open={open} defaultOpen={defaultOpen} onOpenChange={onOpenChange}>
@@ -144,7 +155,7 @@ export function SettingsDialog({
                   {visibleSections.map((s) => (
                     <SidebarMenuItem key={s.id}>
                       <SidebarMenuButton
-                        icon={icons[s.icon]}
+                        icon={s.iconComponent ?? (s.icon ? icons[s.icon] : undefined)}
                         isActive={s.id === section}
                         onClick={() => setSection(s.id)}
                       >
@@ -162,8 +173,22 @@ export function SettingsDialog({
                   <DropdownMenu>
                     <DropdownTrigger render={
                       <SidebarMenuButton aria-label="Open user menu">
-                        <div className="-ml-0.5 -mr-0.5 size-5 shrink-0 rounded-full bg-primary/20 text-primary flex items-center justify-center text-[10px] font-bold select-none">
-                          {getInitials()}
+                        <div className="-ml-0.5 -mr-0.5 size-5 shrink-0 rounded-full overflow-hidden flex items-center justify-center">
+                          {avatarMode === "photo" && avatarImage ? (
+                            <img
+                              src={avatarImage}
+                              alt={user?.name || "Usuario"}
+                              className="size-full object-cover select-none"
+                            />
+                          ) : avatarMode === "photo" ? (
+                            <div className="size-full bg-primary/20 text-primary flex items-center justify-center select-none">
+                              <icons.user size={12} strokeWidth={2} />
+                            </div>
+                          ) : (
+                            <div className="size-full bg-primary/20 text-primary flex items-center justify-center text-[10px] font-bold select-none">
+                              {initials}
+                            </div>
+                          )}
                         </div>
                         <span className="min-w-0 truncate text-[13px] text-foreground">
                           {user?.name || "Usuario"}
@@ -264,6 +289,8 @@ function SectionPanel({ id, onLogout }: { id: string; onLogout?: () => void }) {
       return <AppearancePanel />;
     case "security":
       return <SecurityPanel onLogout={onLogout} />;
+    case "modules":
+      return <ModulesPanel />;
     case "members":
       return <MembersPanel />;
     default:
@@ -272,63 +299,217 @@ function SectionPanel({ id, onLogout }: { id: string; onLogout?: () => void }) {
 }
 
 function GeneralPanel() {
-  const [name, setName] = useState("Farmaplus");
+  const icons = useIcons();
+  const { user, updateUser } = useUser();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { avatarImage, uploadAvatar, removeAvatar, isUploading } = useAvatarMode();
+  const displayUserName = user?.name || user?.username || "Usuario";
+  const canEditName = user?.role === "admin" || user?.role === "mod";
+  const [name, setName] = useState(displayUserName);
+  const [isSavingName, setIsSavingName] = useState(false);
   const [language, setLanguage] = useState("es");
   const [timezone, setTimezone] = useState("utc-3");
-  return (
-    <>
-      <InputGroup className="w-full">
-        <InputField
-          index={0}
-          label="Nombre del espacio de trabajo"
-          value={name}
-          onChange={setName}
-          placeholder="Farmaplus"
-        />
-      </InputGroup>
-      <div className="flex flex-col">
-        <SettingRow label="Idioma" description="Utilizado para la interfaz y correos.">
-          <Select value={language} onValueChange={setLanguage}>
-            <SelectTrigger placeholder="Idioma" />
-            <SelectContent>
-              <SelectItem index={0} value="es">Español</SelectItem>
-              <SelectItem index={1} value="en">English</SelectItem>
-              <SelectItem index={2} value="pt">Português</SelectItem>
-              <SelectItem index={3} value="fr">Français</SelectItem>
-            </SelectContent>
-          </Select>
-        </SettingRow>
-        <SettingRow label="Zona horaria" description="Las fechas y recordatorios la siguen.">
-          <Select value={timezone} onValueChange={setTimezone}>
-            <SelectTrigger placeholder="Zona horaria" />
-            <SelectContent>
-              <SelectItem index={0} value="utc-3">(UTC−3) Buenos Aires</SelectItem>
-              <SelectItem index={1} value="utc-5">(UTC−5) Bogotá / Lima</SelectItem>
-              <SelectItem index={2} value="utc+0">(UTC+0) Londres</SelectItem>
-              <SelectItem index={3} value="utc+1">(UTC+1) Madrid / París</SelectItem>
-              <SelectItem index={4} value="utc+9">(UTC+9) Tokio</SelectItem>
-            </SelectContent>
-          </Select>
-        </SettingRow>
-      </div>
-    </>
-  );
-}
 
-function NotificationsPanel() {
-  const [digest, setDigest] = useState(true);
-  const [mentions, setMentions] = useState(true);
-  const [updates, setUpdates] = useState(false);
+  useEffect(() => {
+    setName(displayUserName);
+  }, [displayUserName]);
+
+  const trimmedName = name.trim();
+  const isNameModified = canEditName && name !== displayUserName;
+
+  const handleConfirmName = async () => {
+    if (!canEditName || !user?.id || !trimmedName || isSavingName) return;
+    if (trimmedName === displayUserName) {
+      setName(displayUserName);
+      return;
+    }
+
+    setIsSavingName(true);
+    try {
+      const { error } = await (supabase as any)
+        .from("profiles")
+        .update({ full_name: trimmedName })
+        .eq("id", user.id);
+
+      if (error) {
+        notify.error("Error", "No se pudo actualizar el nombre.");
+        return;
+      }
+
+      updateUser({ name: trimmedName });
+      setName(trimmedName);
+      notify.success("Nombre actualizado", "Tu nombre se ha guardado correctamente.");
+    } catch {
+      notify.error("Error", "Ocurrió un problema al guardar el nombre.");
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
+  const handleCancelName = () => {
+    setName(displayUserName);
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      notify.error("Formato no válido", "Por favor selecciona un archivo de imagen (PNG, JPG o WEBP).");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      notify.error("Archivo muy pesado", "La imagen no debe superar los 5 MB.");
+      return;
+    }
+
+    const { ok } = await uploadAvatar(file);
+    if (ok) {
+      notify.success("Foto de perfil actualizada", "Se ha guardado tu nueva foto de perfil.");
+    } else {
+      notify.error("Error", "No se pudo actualizar la foto de perfil.");
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    await removeAvatar();
+    notify.info("Foto de perfil eliminada", "Se ha restablecido la foto de perfil.");
+  };
+
+  const UserIcon = icons.user;
+
   return (
     <div className="flex flex-col">
-      <SettingRow label="Resumen diario" description="Un correo cada mañana con las novedades.">
-        <Switch className={SWITCH_LABEL_HIDDEN} label="Resumen diario" checked={digest} onToggle={() => setDigest((v) => !v)} />
+      <SettingRow
+        label="Foto de perfil"
+        description="Sube una foto cuadrada en formato PNG, JPG o WEBP (máx. 5 MB)."
+      >
+        <div className="flex items-center gap-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/jpg"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <div className="size-10 shrink-0 rounded-full overflow-hidden bg-surface-3 border border-border/80 flex items-center justify-center">
+            {avatarImage ? (
+              <img
+                src={avatarImage}
+                alt="Foto de perfil"
+                className="size-full object-cover"
+              />
+            ) : (
+              <div className="size-full bg-muted/60 flex items-center justify-center text-muted-foreground/70">
+                <UserIcon size={18} strokeWidth={1.75} />
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="tertiary"
+              size="compact"
+              disabled={isUploading}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {isUploading ? "Subiendo..." : "Cargar foto"}
+            </Button>
+            {avatarImage && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="compact"
+                disabled={isUploading}
+                onClick={handleRemovePhoto}
+                className="text-muted-foreground hover:text-destructive"
+              >
+                Quitar
+              </Button>
+            )}
+          </div>
+        </div>
       </SettingRow>
-      <SettingRow label="Menciones" description="Cuando alguien te menciona con @.">
-        <Switch className={SWITCH_LABEL_HIDDEN} label="Menciones" checked={mentions} onToggle={() => setMentions((v) => !v)} />
+
+      <div className="flex flex-col gap-2.5 border-b border-border/60 py-4">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[13px] text-foreground">Nombre</span>
+          <span className="text-[12px] text-muted-foreground">
+            Visible para vos y tu equipo.
+          </span>
+        </div>
+        <InputGroup className="w-full">
+          <InputField
+            index={0}
+            aria-label="Nombre"
+            value={name}
+            onChange={setName}
+            placeholder="Tu nombre"
+            disabled={!canEditName || isSavingName}
+            onKeyDown={(e) => {
+              if (!isNameModified) return;
+              if (e.key === "Enter" && trimmedName.length > 0) {
+                e.preventDefault();
+                handleConfirmName();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                handleCancelName();
+              }
+            }}
+            endAdornment={
+              isNameModified ? (
+                <div className="-mr-2 flex items-center">
+                  <button
+                    type="button"
+                    aria-label="Confirmar cambio de nombre"
+                    disabled={trimmedName.length === 0 || isSavingName}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={handleConfirmName}
+                    className="inline-flex size-7 items-center justify-center rounded-[5px] text-muted-foreground transition-colors duration-80 hover:bg-hover hover:text-foreground active:bg-active disabled:pointer-events-none disabled:opacity-40"
+                  >
+                    <HugeiconsIcon icon={CheckIcon} size={15} strokeWidth={1.8} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Cancelar cambio de nombre"
+                    disabled={isSavingName}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={handleCancelName}
+                    className="inline-flex size-7 items-center justify-center rounded-[5px] text-muted-foreground transition-colors duration-80 hover:bg-hover hover:text-foreground active:bg-active disabled:pointer-events-none disabled:opacity-40"
+                  >
+                    <HugeiconsIcon icon={Cancel01Icon} size={15} strokeWidth={1.8} />
+                  </button>
+                </div>
+              ) : undefined
+            }
+          />
+        </InputGroup>
+      </div>
+
+      <SettingRow label="Idioma" description="Utilizado para la interfaz y correos.">
+        <Select value={language} onValueChange={setLanguage} disabled>
+          <SelectTrigger placeholder="Idioma" />
+          <SelectContent>
+            <SelectItem index={0} value="es">Español</SelectItem>
+            <SelectItem index={1} value="en">English</SelectItem>
+            <SelectItem index={2} value="pt">Português</SelectItem>
+            <SelectItem index={3} value="fr">Français</SelectItem>
+          </SelectContent>
+        </Select>
       </SettingRow>
-      <SettingRow label="Novedades del producto" description="Nuevas funcionalidades, una vez al mes como máximo.">
-        <Switch className={SWITCH_LABEL_HIDDEN} label="Novedades del producto" checked={updates} onToggle={() => setUpdates((v) => !v)} />
+      <SettingRow label="Zona horaria" description="Las fechas y recordatorios la siguen.">
+        <Select value={timezone} onValueChange={setTimezone} disabled>
+          <SelectTrigger placeholder="Zona horaria" />
+          <SelectContent>
+            <SelectItem index={0} value="utc-3">(UTC−3) Buenos Aires</SelectItem>
+            <SelectItem index={1} value="utc-5">(UTC−5) Bogotá / Lima</SelectItem>
+            <SelectItem index={2} value="utc+0">(UTC+0) Londres</SelectItem>
+            <SelectItem index={3} value="utc+1">(UTC+1) Madrid / París</SelectItem>
+            <SelectItem index={4} value="utc+9">(UTC+9) Tokio</SelectItem>
+          </SelectContent>
+        </Select>
       </SettingRow>
     </div>
   );
@@ -343,11 +524,11 @@ const POSITION_LABELS: Record<NotificationPosition, string> = {
   "top-left": "Arriba izquierda",
 };
 
-function AppearancePanel() {
-  const icons = useIcons();
-  const { themeMode, setThemeMode } = useTheme();
+function NotificationsPanel() {
+  const [digest, setDigest] = useState(true);
+  const [mentions, setMentions] = useState(true);
+  const [updates, setUpdates] = useState(false);
   const { preferences, setPosition } = useNotificationPreferences();
-  const { tint, setTint, tints } = useTint();
 
   const handlePositionChange = (pos: NotificationPosition) => {
     setPosition(pos);
@@ -359,33 +540,14 @@ function AppearancePanel() {
 
   return (
     <div className="flex flex-col">
-      <SettingRow label="Tema" description="Sigue al sistema a menos que elijas uno.">
-        <Select value={themeMode} onValueChange={(v) => setThemeMode(v as ThemeMode)}>
-          <SelectTrigger placeholder="Tema" />
-          <SelectContent>
-            <SelectItem index={0} value="system" icon={icons.monitor}>Sistema</SelectItem>
-            <SelectItem index={1} value="light" icon={icons.sun}>Claro</SelectItem>
-            <SelectItem index={2} value="dark" icon={icons.moon}>Oscuro</SelectItem>
-          </SelectContent>
-        </Select>
+      <SettingRow label="Resumen diario" description="Un correo cada mañana con las novedades.">
+        <Switch className={SWITCH_LABEL_HIDDEN} label="Resumen diario" checked={digest} onToggle={() => setDigest((v) => !v)} />
       </SettingRow>
-      <SettingRow label="Tinte de color" description="Matiz de color sutil para toda la interfaz.">
-        <Select value={tint} onValueChange={(v) => setTint(v as AppTint)}>
-          <SelectTrigger placeholder="Tinte" />
-          <SelectContent>
-            {tints.map((t, idx) => (
-              <SelectItem key={t.id} index={idx} value={t.id}>
-                <div className="flex items-center gap-2">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full inline-block shrink-0 shadow-xs"
-                    style={{ backgroundColor: t.color }}
-                  />
-                  <span>{t.label}</span>
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <SettingRow label="Menciones" description="Cuando alguien te menciona con @.">
+        <Switch className={SWITCH_LABEL_HIDDEN} label="Menciones" checked={mentions} onToggle={() => setMentions((v) => !v)} />
+      </SettingRow>
+      <SettingRow label="Novedades del producto" description="Nuevas funcionalidades, una vez al mes como máximo.">
+        <Switch className={SWITCH_LABEL_HIDDEN} label="Novedades del producto" checked={updates} onToggle={() => setUpdates((v) => !v)} />
       </SettingRow>
       <SettingRow label="Posición de notificaciones" description="Ubicación de los avisos y alertas emergentes.">
         <Select value={preferences.position} onValueChange={(v) => handlePositionChange(v as NotificationPosition)}>
@@ -397,6 +559,179 @@ function AppearancePanel() {
             <SelectItem index={3} value="top-right">Arriba derecha</SelectItem>
             <SelectItem index={4} value="top-center">Arriba centro</SelectItem>
             <SelectItem index={5} value="top-left">Arriba izquierda</SelectItem>
+          </SelectContent>
+        </Select>
+      </SettingRow>
+    </div>
+  );
+}
+
+const TINT_SWATCH_STYLES: Record<
+  AppTint,
+  { fill: string; border: string; ring: string }
+> = {
+  neutral: {
+    fill: "oklch(0.845 0.014 257.4)",
+    border: "oklch(0.735 0.026 257.4)",
+    ring: "oklch(0.66 0.04 257.4)",
+  },
+  blue: {
+    fill: "oklch(0.805 0.08 250)",
+    border: "oklch(0.7 0.134 250)",
+    ring: "oklch(0.63 0.157 250)",
+  },
+  indigo: {
+    fill: "oklch(0.805 0.077 277.1)",
+    border: "oklch(0.7 0.13 277.1)",
+    ring: "oklch(0.63 0.177 277.1)",
+  },
+  emerald: {
+    fill: "oklch(0.805 0.137 162.5)",
+    border: "oklch(0.7 0.125 162.5)",
+    ring: "oklch(0.63 0.121 162.5)",
+  },
+  violet: {
+    fill: "oklch(0.805 0.086 295)",
+    border: "oklch(0.7 0.145 295)",
+    ring: "oklch(0.63 0.197 295)",
+  },
+  warm: {
+    fill: "oklch(0.805 0.123 70.1)",
+    border: "oklch(0.7 0.124 70.1)",
+    ring: "oklch(0.63 0.12 70.1)",
+  },
+  rose: {
+    fill: "oklch(0.805 0.087 16.4)",
+    border: "oklch(0.7 0.158 16.4)",
+    ring: "oklch(0.63 0.222 16.4)",
+  },
+};
+
+function AppearancePanel() {
+  const icons = useIcons();
+  const { user } = useUser();
+  const { themeMode, setThemeMode } = useTheme();
+  const { tint, setTint, tints } = useTint();
+  const { avatarMode, setAvatarMode, avatarImage } = useAvatarMode();
+  const initials = getUserInitials(user);
+
+  return (
+    <div className="flex flex-col">
+      <SettingRow
+        label="Mostrar perfil"
+        description="Elige si mostrarte con foto de perfil o con las iniciales de tu nombre."
+      >
+        <TooltipProvider>
+          <div
+            role="group"
+            aria-label="Mostrar perfil"
+            className="flex items-center gap-5"
+          >
+            <Tooltip content="Foto de perfil" contentClassName="z-[60]">
+              <div
+                onClick={() => setAvatarMode("photo")}
+                className="group inline-flex items-center gap-2.5 cursor-pointer select-none"
+              >
+                <FluidCheckbox
+                  checked={avatarMode === "photo"}
+                  onToggle={() => setAvatarMode("photo")}
+                  aria-label="Foto de perfil"
+                  className={cn(
+                    avatarMode !== "photo" &&
+                      "group-hover:border-foreground/40 dark:group-hover:border-white/40"
+                  )}
+                />
+                <div className="size-7 shrink-0 rounded-full overflow-hidden flex items-center justify-center">
+                  {avatarImage ? (
+                    <img
+                      src={avatarImage}
+                      alt="Foto de perfil"
+                      className="size-full object-cover"
+                    />
+                  ) : (
+                    <div className="size-full bg-primary/20 text-primary flex items-center justify-center select-none">
+                      <icons.user size={14} strokeWidth={2} />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Tooltip>
+
+            <Tooltip content="Iniciales" contentClassName="z-[60]">
+              <div
+                onClick={() => setAvatarMode("initials")}
+                className="group inline-flex items-center gap-2.5 cursor-pointer select-none"
+              >
+                <FluidCheckbox
+                  checked={avatarMode === "initials"}
+                  onToggle={() => setAvatarMode("initials")}
+                  aria-label="Iniciales del nombre"
+                  className={cn(
+                    avatarMode !== "initials" &&
+                      "group-hover:border-foreground/40 dark:group-hover:border-white/40"
+                  )}
+                />
+                <div className="size-7 shrink-0 rounded-full overflow-hidden flex items-center justify-center">
+                  <div className="size-full bg-primary/20 text-primary flex items-center justify-center text-[10px] font-bold select-none">
+                    {initials}
+                  </div>
+                </div>
+              </div>
+            </Tooltip>
+          </div>
+        </TooltipProvider>
+      </SettingRow>
+      <SettingRow label="Tinte de color" description="Matiz de color sutil para toda la interfaz.">
+        <TooltipProvider>
+          <div
+            role="radiogroup"
+            aria-label="Tinte de color"
+            className="flex flex-wrap items-center gap-2.5"
+          >
+            {tints.map((t) => {
+              const isSelected = tint === t.id;
+              const swatch = TINT_SWATCH_STYLES[t.id];
+              return (
+                <Tooltip
+                  key={t.id}
+                  content={t.label}
+                  contentClassName="z-[60]"
+                >
+                  <Button
+                    type="button"
+                    role="radio"
+                    aria-checked={isSelected}
+                    aria-label={t.label}
+                    variant="ghost"
+                    size="icon-compact"
+                    onClick={() => setTint(t.id)}
+                    className="border hover:brightness-[0.97] dark:hover:brightness-105"
+                    style={{
+                      backgroundColor: swatch.fill,
+                      borderColor: swatch.border,
+                    }}
+                  >
+                    {isSelected && (
+                      <span
+                        aria-hidden="true"
+                        className="pointer-events-none absolute -inset-[5px] rounded-[12px] border-2"
+                        style={{ borderColor: swatch.ring }}
+                      />
+                    )}
+                  </Button>
+                </Tooltip>
+              );
+            })}
+          </div>
+        </TooltipProvider>
+      </SettingRow>
+      <SettingRow label="Tema" description="Sigue al sistema a menos que elijas uno.">
+        <Select value={themeMode} onValueChange={(v) => setThemeMode(v as ThemeMode)}>
+          <SelectTrigger placeholder="Tema" />
+          <SelectContent>
+            <SelectItem index={0} value="system" icon={icons.monitor}>Sistema</SelectItem>
+            <SelectItem index={1} value="light" icon={icons.sun}>Claro</SelectItem>
+            <SelectItem index={2} value="dark" icon={icons.moon}>Oscuro</SelectItem>
           </SelectContent>
         </Select>
       </SettingRow>
@@ -423,6 +758,110 @@ function SecurityPanel({ onLogout }: { onLogout?: () => void }) {
           <Button variant="destructive" size="sm" onClick={onLogout}>Cerrar Sesión</Button>
         </SettingRow>
       )}
+    </div>
+  );
+}
+
+function ModulesPanel() {
+  const { modules, toggleModule, toggleConstructionPage } = useSystemModules();
+  const constructionPages = modules.constructionPages || DEFAULT_CONSTRUCTION_PAGES;
+
+  const handleToggleConstruction = (pageKey: ConstructionPageKey, label: string) => {
+    const nextState = !(constructionPages[pageKey] ?? DEFAULT_CONSTRUCTION_PAGES[pageKey]);
+    toggleConstructionPage(pageKey);
+    notify.info(
+      nextState ? `${label} en construcción` : `${label} habilitado`,
+      nextState
+        ? `La pantalla de construcción de ${label} se activó en tiempo real para todos los usuarios.`
+        : `La página de ${label} volvió a estar operativa en tiempo real.`
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-7">
+      <div className="flex flex-col">
+        <SettingRow
+          label="Sincronización de stock con servidor"
+          description="Permite a las sucursales consultar y actualizar existencias en vivo desde Plex (MySQL)."
+        >
+          <Switch
+            className={SWITCH_LABEL_HIDDEN}
+            label="Sincronización de stock con servidor"
+            checked={modules.stockSyncServer}
+            onToggle={() => toggleModule('stockSyncServer')}
+          />
+        </SettingRow>
+
+        <SettingRow
+          label="Impacto directo de ajustes en Plex"
+          description="Habilita la inserción de ajustes de stock directamente en la base de datos de Plex."
+        >
+          <Switch
+            className={SWITCH_LABEL_HIDDEN}
+            label="Impacto directo de ajustes en Plex"
+            checked={modules.plexDirectAdjustments}
+            onToggle={() => toggleModule('plexDirectAdjustments')}
+          />
+        </SettingRow>
+
+        <SettingRow
+          label="Detección de nuevos SKUs"
+          description="Alerta y permite descargar automáticamente productos nuevos detectados en el servidor."
+        >
+          <Switch
+            className={SWITCH_LABEL_HIDDEN}
+            label="Detección de nuevos SKUs"
+            checked={modules.autoDetectNewSkus}
+            onToggle={() => toggleModule('autoDetectNewSkus')}
+          />
+        </SettingRow>
+
+        <SettingRow
+          label="Exportación de lotes de recuento"
+          description="Permite generar y descargar archivos de diferencias y lotes a nivel local."
+        >
+          <Switch
+            className={SWITCH_LABEL_HIDDEN}
+            label="Exportación de lotes de recuento"
+            checked={modules.exportBatches}
+            onToggle={() => toggleModule('exportBatches')}
+          />
+        </SettingRow>
+      </div>
+
+      <div className="flex flex-col">
+        <div className="flex flex-col gap-1 pb-2">
+          <h4
+            className="text-[16px] leading-tight text-foreground"
+            style={{ fontVariationSettings: fontWeights.normal }}
+          >
+            Páginas en construcción
+          </h4>
+          <p className="text-[13px] text-muted-foreground">
+            Control en tiempo real de las secciones visibles como en construcción para todos los usuarios.
+          </p>
+        </div>
+
+        <div className="flex flex-col">
+          {CONSTRUCTION_PAGES_LIST.map((item) => {
+            const isChecked = constructionPages[item.key] ?? DEFAULT_CONSTRUCTION_PAGES[item.key];
+            return (
+              <SettingRow
+                key={item.key}
+                label={`${item.label} en construcción`}
+                description={item.description}
+              >
+                <Switch
+                  className={SWITCH_LABEL_HIDDEN}
+                  label={`${item.label} en construcción`}
+                  checked={isChecked}
+                  onToggle={() => handleToggleConstruction(item.key, item.label)}
+                />
+              </SettingRow>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

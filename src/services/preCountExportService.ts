@@ -2,8 +2,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { normalizeString } from '@/lib/utils';
 import { db, LocalItem } from '@/services/db';
 import { getDeviceId, getDeviceName } from '@/services/deviceTelemetry';
-import { v4 as uuidv4 } from 'uuid';
-import { toast } from 'sonner';
 
 export interface SendBatchPayload {
     branchName: string;
@@ -139,7 +137,7 @@ export const preCountExportService = {
         if (sessionId) {
             try {
                 const itemsToUpsert = items.map(item => ({
-                    id: item.id || uuidv4(),
+                    id: item.id || crypto.randomUUID(),
                     session_id: sessionId,
                     ean: item.ean,
                     id_producto: item.id_producto || null,

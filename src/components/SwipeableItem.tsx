@@ -1,4 +1,4 @@
-import { motion, PanInfo, useAnimation } from 'framer-motion';
+import { motion, PanInfo, useAnimation } from "motion/react";
 import { Trash01 as Trash2 } from '@untitledui/icons';
 import { ReactNode, useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';

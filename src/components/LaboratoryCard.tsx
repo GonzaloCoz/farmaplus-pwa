@@ -1,4 +1,4 @@
-import { Card } from "@/components/ui/card";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { CounterAnimation } from "./CounterAnimation";
 import { Badge } from "@/components/ui/badge";
@@ -12,8 +12,24 @@ import {
     MenuItem,
 } from "@/components/ui/dropdown";
 import { notify } from "@/lib/notifications";
+import { fontWeights } from "@/lib/font-weight";
+import { getLaboratoryLogoUrl } from "@/lib/laboratoryLogos";
 
 export type LaboratoryStatus = "controlado" | "por_controlar" | "pendiente";
+
+function getLaboratoryInitials(name: string): string {
+    const words = name
+        .trim()
+        .split(/\s+/)
+        .map((w) => w.replace(/^[^a-zA-Z0-9ÁÉÍÓÚÑáéíóúñ]+/, ""))
+        .filter(Boolean);
+
+    if (words.length === 0) return "";
+    if (words.length === 1) {
+        return words[0].slice(0, 2).toUpperCase();
+    }
+    return (words[0][0] + words[1][0]).toUpperCase();
+}
 
 interface LaboratoryCardProps {
     name: string;
@@ -67,56 +83,73 @@ export function LaboratoryCard({
     const greenBarPct = totalAdjusted > 0 ? sobrantePct : displayProgress;
     const orangeBarPct = totalAdjusted > 0 ? faltantePct : 0;
 
-    const getStatusConfig = (status: LaboratoryStatus) => {
-        switch (status) {
-            case "controlado":
-                return {
-                    color: "text-emerald-500",
-                    dotColor: "bg-emerald-500",
-                };
-            case "por_controlar":
-                return {
-                    color: "text-blue-500",
-                    dotColor: "bg-blue-500",
-                };
-            case "pendiente":
-            default:
-                return {
-                    color: "text-muted-foreground",
-                    dotColor: "bg-muted-foreground/60",
-                };
-        }
-    };
-
-    const statusConfig = getStatusConfig(status);
-
     const cleanName = name ? name.replace(/[\r\n]+/g, ' ').trim() : '';
+    const logoUrl = getLaboratoryLogoUrl(cleanName);
+    const initials = getLaboratoryInitials(cleanName);
+    const [imgError, setImgError] = useState(false);
+    const showLogo = Boolean(logoUrl && !imgError);
+    const hasActivity = totalAdjusted > 0 || displayProgress > 0;
 
     return (
-        <Card
+        <div
+            role="button"
+            tabIndex={isInactive ? -1 : 0}
+            aria-disabled={isInactive || undefined}
+            aria-label={`${cleanName}, avance ${displayProgress}%`}
             className={cn(
-                "group transition-all duration-200 flex flex-col gap-3 p-5",
+                "group bg-muted border border-border/40 rounded-2xl p-[2px] transition-[transform,box-shadow,border-color,background-color,opacity] duration-150 ease-out flex flex-col justify-between shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
                 isInactive 
                     ? "opacity-55 grayscale-[25%] bg-muted/15 border-dashed border-border/60 hover:border-border/60 hover:shadow-none cursor-not-allowed select-none" 
                     : hasPendingRemoval
-                    ? "cursor-pointer active:scale-[0.99] card-pending-removal"
-                    : "cursor-pointer active:scale-[0.99] hover:border-border hover:shadow-md",
+                    ? "cursor-pointer active:scale-[0.98] card-pending-removal"
+                    : "cursor-pointer active:scale-[0.98] hover:border-border/80 hover:shadow-md",
                 className
             )}
             onClick={isInactive ? (e) => { e.preventDefault(); e.stopPropagation(); } : onClick}
+            onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    if (!isInactive) onClick?.();
+                }
+            }}
             onMouseEnter={isInactive ? undefined : onMouseEnter}
         >
-            {/* Header: fixed baseline height so numbers across the grid align perfectly */}
-            <div className="flex items-center justify-between gap-2 h-7">
-                <h3
-                    className={cn(
-                        "font-semibold text-[13px] tracking-tight truncate flex-1 min-w-0 transition-colors whitespace-nowrap",
-                        isInactive ? "text-muted-foreground/70 line-through" : "text-muted-foreground group-hover:text-primary"
-                    )}
-                    title={cleanName}
-                >
-                    {cleanName}
-                </h3>
+            {/* Barra Superior (en el recuadro contenedor externo) */}
+            <div className="px-3 py-2 flex items-center justify-between gap-3 min-h-10">
+                <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                    <div
+                        className="h-7 w-7 rounded-lg border border-border/60 bg-surface-3 dark:bg-surface-3 text-muted-foreground flex items-center justify-center shrink-0 overflow-hidden"
+                        aria-hidden="true"
+                    >
+                        {showLogo ? (
+                            <img
+                                src={logoUrl!}
+                                alt=""
+                                loading="lazy"
+                                onError={() => setImgError(true)}
+                                className="size-full object-cover rounded-[7px] outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
+                            />
+                        ) : (
+                            <span
+                                className="text-[10px] leading-none font-semibold tracking-[0.02em] text-muted-foreground uppercase select-none"
+                                style={{ fontVariationSettings: fontWeights.semibold }}
+                            >
+                                {initials}
+                            </span>
+                        )}
+                    </div>
+                    <h3
+                        className={cn(
+                            "font-normal text-[13px] tracking-tight truncate flex-1 min-w-0 transition-colors whitespace-nowrap [text-wrap:nowrap]",
+                            isInactive ? "text-muted-foreground/70 line-through" : "text-foreground"
+                        )}
+                        style={{ fontVariationSettings: fontWeights.normal }}
+                        title={cleanName}
+                    >
+                        {cleanName}
+                    </h3>
+                </div>
                 <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                     {isInactive ? (
                         <Badge
@@ -155,14 +188,15 @@ export function LaboratoryCard({
                                 </Tooltip>
                             )}
 
-                            <Badge
-                                variant="dot"
-                                size="sm"
-                                color={status === "controlado" ? "green" : status === "por_controlar" ? "blue" : "gray"}
-                                className="shrink-0 font-semibold"
+                            <span
+                                className={cn(
+                                    "shrink-0 font-semibold text-[13px] tracking-tight tabular-nums whitespace-nowrap transition-colors",
+                                    hasActivity ? "text-foreground" : "text-muted-foreground"
+                                )}
+                                style={{ fontVariationSettings: fontWeights.semibold }}
                             >
                                 {displayProgress}%
-                            </Badge>
+                            </span>
                         </>
                     )}
 
@@ -175,6 +209,7 @@ export function LaboratoryCard({
                                     onClick={(e) => e.stopPropagation()}
                                     className="h-7 w-7 p-0 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors shrink-0"
                                     title="Opciones"
+                                    aria-label={`Opciones de ${cleanName}`}
                                 >
                                     <DotsHorizontal className="size-4" />
                                 </Button>
@@ -199,89 +234,101 @@ export function LaboratoryCard({
                 </div>
             </div>
 
-            {/* Diferencia neta con cifras tabulares */}
-            <CounterAnimation 
-                value={Math.abs(differenceValue)} 
-                decimals={0} 
-                prefix={differenceValue < 0 ? "-$" : differenceValue > 0 ? "+$" : "$"}
-                className={cn(
-                    "text-3xl font-bold tracking-tight tabular-nums",
-                    differenceValue < 0
-                        ? "text-financial-negative"
-                        : differenceValue > 0
-                        ? "text-financial-positive"
-                        : "text-foreground"
-                )}
-            />
+            {/* Recuadro interno inferior más claro (Estilo Fluid / Invertido de Inventario Nocturno) */}
+            <div className="bg-white dark:bg-surface-3 border border-border/40 rounded-[14px] px-4 py-3.5 shadow-xs flex flex-col gap-3.5 flex-1 justify-between">
+                {/* Diferencia neta con cifras tabulares y ajuste óptico de Inter */}
+                <CounterAnimation 
+                    value={Math.abs(differenceValue)} 
+                    decimals={0} 
+                    prefix={differenceValue < 0 ? "-$" : differenceValue > 0 ? "+$" : "$"}
+                    style={{ fontVariationSettings: "'wght' 550, 'opsz' 28" }}
+                    className={cn(
+                        "text-[26px] leading-[1.15] font-semibold tracking-[0.005em] tabular-nums",
+                        differenceValue < 0
+                            ? "text-financial-negative"
+                            : differenceValue > 0
+                            ? "text-financial-positive"
+                            : hasActivity
+                            ? "text-foreground"
+                            : "text-muted-foreground/60"
+                    )}
+                />
 
-            {/* Columnas sobrante / faltante + barra */}
-            <div className="flex flex-col gap-2.5">
-                <div className="grid grid-cols-2 gap-3">
-                    {/* Sobrante */}
-                    <div className={cn(
-                        "border-l-2 pl-2.5 transition-colors",
-                        positiveValue > 0 ? "border-financial-positive" : "border-border/40"
-                    )}>
-                        <div className="flex flex-col">
-                            <span className={cn(
-                                "text-base font-bold tracking-tight tabular-nums",
-                                positiveValue > 0 ? "text-card-foreground" : "text-muted-foreground/60"
-                            )}>
-                                <CounterAnimation value={positiveValue} prefix="+$" />
-                            </span>
-                            <span className="text-[10px] text-muted-foreground font-medium">sobrante</span>
-                        </div>
+                {/* Columnas sobrante / faltante + barra */}
+                <div className="flex flex-col gap-3">
+                    <div className="grid grid-cols-2 gap-4">
+                        {/* Sobrante */}
                         <div className={cn(
-                            "text-[11px] font-medium flex items-center gap-0.5 tabular-nums",
-                            positiveValue > 0 ? "text-financial-positive" : "text-muted-foreground/50"
+                            "border-l-2 pl-2.5 flex flex-col gap-1 transition-colors",
+                            positiveValue > 0 ? "border-financial-positive" : "border-border/40"
                         )}>
-                            <span>↑</span>
-                            <span>{sobrantePct}%</span>
-                            <span className="text-muted-foreground font-normal ml-0.5">del total</span>
+                            <div className="flex flex-col gap-0.5">
+                                <span
+                                    style={{ fontVariationSettings: "'wght' 500, 'opsz' 16" }}
+                                    className={cn(
+                                        "text-[15px] leading-[1.2] font-medium tracking-[0.01em] tabular-nums",
+                                        positiveValue > 0 ? "text-card-foreground" : "text-muted-foreground/60"
+                                    )}
+                                >
+                                    <CounterAnimation value={positiveValue} prefix="+$" />
+                                </span>
+                                <span className="text-[11px] leading-[1.2] text-muted-foreground font-normal">sobrante</span>
+                            </div>
+                            <div className={cn(
+                                "text-[11px] leading-[1.3] font-medium flex items-center gap-1 tabular-nums",
+                                positiveValue > 0 ? "text-financial-positive" : "text-muted-foreground/50"
+                            )}>
+                                <span>↑</span>
+                                <span>{sobrantePct}%</span>
+                                <span className="text-muted-foreground font-normal">del total</span>
+                            </div>
+                        </div>
+
+                        {/* Faltante */}
+                        <div className={cn(
+                            "border-l-2 pl-2.5 flex flex-col gap-1 transition-colors",
+                            Math.abs(negativeValue) > 0 ? "border-financial-negative" : "border-border/40"
+                        )}>
+                            <div className="flex flex-col gap-0.5">
+                                <span
+                                    style={{ fontVariationSettings: "'wght' 500, 'opsz' 16" }}
+                                    className={cn(
+                                        "text-[15px] leading-[1.2] font-medium tracking-[0.01em] tabular-nums",
+                                        Math.abs(negativeValue) > 0 ? "text-card-foreground" : "text-muted-foreground/60"
+                                    )}
+                                >
+                                    <CounterAnimation value={Math.abs(negativeValue)} prefix="-$" />
+                                </span>
+                                <span className="text-[11px] leading-[1.2] text-muted-foreground font-normal">faltante</span>
+                            </div>
+                            <div className={cn(
+                                "text-[11px] leading-[1.3] font-medium flex items-center gap-1 tabular-nums",
+                                Math.abs(negativeValue) > 0 ? "text-financial-negative" : "text-muted-foreground/50"
+                            )}>
+                                <span>↓</span>
+                                <span>{faltantePct}%</span>
+                                <span className="text-muted-foreground font-normal">del total</span>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Faltante */}
-                    <div className={cn(
-                        "border-l-2 pl-2.5 transition-colors",
-                        Math.abs(negativeValue) > 0 ? "border-financial-negative" : "border-border/40"
-                    )}>
-                        <div className="flex flex-col">
-                            <span className={cn(
-                                "text-base font-bold tracking-tight tabular-nums",
-                                Math.abs(negativeValue) > 0 ? "text-card-foreground" : "text-muted-foreground/60"
-                            )}>
-                                <CounterAnimation value={Math.abs(negativeValue)} prefix="-$" />
-                            </span>
-                            <span className="text-[10px] text-muted-foreground font-medium">faltante</span>
-                        </div>
-                        <div className={cn(
-                            "text-[11px] font-medium flex items-center gap-0.5 tabular-nums",
-                            Math.abs(negativeValue) > 0 ? "text-financial-negative" : "text-muted-foreground/50"
-                        )}>
-                            <span>↓</span>
-                            <span>{faltantePct}%</span>
-                            <span className="text-muted-foreground font-normal ml-0.5">del total</span>
-                        </div>
+                    {/* Barra de progreso */}
+                    <div className="w-full h-2 bg-muted/60 rounded-full overflow-hidden flex">
+                        <div
+                            className="h-full bg-financial-positive transition-[width] duration-500 ease-out"
+                            style={{ width: `${greenBarPct}%`, backgroundColor: 'var(--financial-positive)' }}
+                        />
+                        <div
+                            className="h-full transition-[width] duration-500 ease-out bg-financial-negative-subtle text-financial-negative"
+                            style={{
+                                width: `${orangeBarPct}%`,
+                                backgroundImage:
+                                    "repeating-linear-gradient(90deg, currentColor, currentColor 2px, transparent 2px, transparent 6px)",
+                            }}
+                        />
                     </div>
-                </div>
-
-                {/* Barra de progreso */}
-                <div className="w-full h-2 bg-muted/60 rounded-full overflow-hidden flex">
-                    <div
-                        className="h-full bg-financial-positive transition-all duration-500"
-                        style={{ width: `${greenBarPct}%`, backgroundColor: 'var(--financial-positive)' }}
-                    />
-                    <div
-                        className="h-full transition-all duration-500 bg-financial-negative-subtle text-financial-negative"
-                        style={{
-                            width: `${orangeBarPct}%`,
-                            backgroundImage:
-                                "repeating-linear-gradient(90deg, currentColor, currentColor 2px, transparent 2px, transparent 6px)",
-                        }}
-                    />
                 </div>
             </div>
-        </Card>
+        </div>
     );
 }

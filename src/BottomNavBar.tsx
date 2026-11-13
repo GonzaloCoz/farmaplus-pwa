@@ -1,6 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { useMemo, useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
 import { useUser } from "@/contexts/UserContext";
 import { ZebraIcon } from "@/components/icons/ZebraIcon";

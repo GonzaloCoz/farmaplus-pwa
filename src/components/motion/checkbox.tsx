@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useId } from "react";
 import { EASE_OUT, SPRING_PRESS } from "@/lib/ease";
 import { cn } from "@/lib/utils";

@@ -20,7 +20,6 @@ import { updateLocationStatus, claimOrValidateLocation, closeLocationWithSync } 
 import { emitDeviceTelemetry, getDeviceId } from '@/services/deviceTelemetry';
 import { db } from '@/services/db';
 import { supabase } from '@/integrations/supabase/client';
-import { v4 as uuidv4 } from 'uuid';
 import { notify as toast } from '@/lib/notifications';
 
 interface SectorSessionDialogProps {
@@ -227,7 +226,7 @@ export function SectorSessionDialog({
             if (sectorItems.length > 0) {
                 try {
                     const rows = sectorItems.map((item: any) => ({
-                        id: item.id || uuidv4(),
+                        id: item.id || crypto.randomUUID(),
                         session_id: sessionId,
                         ean: item.ean,
                         id_producto: item.id_producto || null,
@@ -238,7 +237,7 @@ export function SectorSessionDialog({
                         device_name: devName || opName || 'Operador',
                         location_tag: activeSector
                     }));
-                    await supabase.from('precount_items').upsert(rows, { onConflict: 'id' });
+                    await (supabase as any).from('precount_items').upsert(rows, { onConflict: 'id' });
                 } catch (pushErr) {
                     console.warn('[SectorSessionDialog] Error al sincronizar items del sector cerrado:', pushErr);
                 }

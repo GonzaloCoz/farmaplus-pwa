@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 
 export interface AuditLogEntry {
@@ -21,14 +20,31 @@ export interface AuditLogRow {
     details: any;
 }
 
+function getLocalAuditContext(): { userId?: string; branchId?: string } {
+    if (typeof window === 'undefined') return {};
+    try {
+        const raw = localStorage.getItem('farmaplus_user');
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            return {
+                userId: parsed?.id,
+                branchId: parsed?.branchId,
+            };
+        }
+    } catch {}
+    return {};
+}
+
 export const auditService = {
     /**
-     * Logs a critical action to the database.
+     * Logs a critical action or technical telemetry event to the database.
      */
     async logAction(entry: AuditLogEntry) {
         try {
-            // Get current user if not provided
-            let userId = entry.userId;
+            const localCtx = getLocalAuditContext();
+            let userId = entry.userId || localCtx.userId;
+            const branchId = entry.branchId || localCtx.branchId;
+
             if (!userId) {
                 const { data: { user } } = await supabase.auth.getUser();
                 userId = user?.id;
@@ -43,7 +59,7 @@ export const auditService = {
                 .from('audit_logs')
                 .insert({
                     user_id: userId,
-                    branch_id: entry.branchId,
+                    branch_id: branchId,
                     action: entry.action,
                     entity_type: entry.entityType,
                     entity_id: entry.entityId,
@@ -53,7 +69,6 @@ export const auditService = {
             if (error) throw error;
 
         } catch (error) {
-            // Fail silently in production but log in dev
             console.error("Failed to write audit log:", error);
         }
     },

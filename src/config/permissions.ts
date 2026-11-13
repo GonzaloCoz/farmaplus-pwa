@@ -6,7 +6,6 @@ export type Permission =
     | 'EDIT_SETTINGS'
     | 'IMPERSONATE_BRANCH'
     | 'EDIT_DASHBOARD_LAYOUT'
-    | 'MANAGE_CALENDAR_EVENTS'
     | 'MANAGE_USERS'  // Special for gcoz
     | 'USE_AI_CHAT';  // Only enabled for gcoz
 
@@ -16,13 +15,11 @@ export const ROLE_PERMISSIONS: Record<string, Permission[]> = {
         'MANAGE_INVENTORY_CONFIG',
         'EDIT_SETTINGS',
         'IMPERSONATE_BRANCH',
-        'EDIT_DASHBOARD_LAYOUT',
-        'MANAGE_CALENDAR_EVENTS'
+        'EDIT_DASHBOARD_LAYOUT'
     ],
     'mod': [
         'VIEW_ADMIN_DASHBOARD',
         'EDIT_DASHBOARD_LAYOUT',
-        'MANAGE_CALENDAR_EVENTS',
         'MANAGE_INVENTORY_CONFIG'
     ],
     'branch': []

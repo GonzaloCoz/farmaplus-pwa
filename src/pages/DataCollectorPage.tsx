@@ -24,7 +24,7 @@ import {
     PackageCheck,
     ArrowLeft
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/lib/notifications';
 
 export default function DataCollectorPage() {
     // Branch & Lab Selection

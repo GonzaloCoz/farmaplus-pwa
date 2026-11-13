@@ -22,7 +22,7 @@ interface AppSidebarMenuItemProps {
 
 function AppSidebarMenuItem({ item, end, userRole }: AppSidebarMenuItemProps) {
   const handleClick = (e: React.MouseEvent) => {
-    if (item.comingSoon && (userRole === 'branch' || userRole === 'mod')) {
+    if (item.comingSoon) {
       e.preventDefault();
       notify.info("Próximamente", "Esta herramienta estará disponible muy pronto.", { id: 'blocked-feature' });
     }

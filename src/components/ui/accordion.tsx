@@ -13,17 +13,23 @@ import {
   type ReactNode,
   type HTMLAttributes,
 } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { Accordion as AccordionPrimitive } from "@base-ui/react/accordion";
 
 // SSR-safe layout effect (client components still server-render in Next).
 const useIsoLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
 import { cn } from "@/lib/utils";
-import { useIcon } from "@/lib/icon-context";
+import { useIcons } from "@/lib/icon-context";
 import { spring } from "@/lib/springs";
+import { omit } from "@/lib/omit";
 import { fontWeights } from "@/lib/font-weight";
-import { useFluidHover, useRegisterFluidHoverItem } from "@/hooks/use-fluid-hover";
+import {
+  useFluidHover,
+  useFluidHoverSelect,
+  useRegisterFluidHoverItem,
+  type FluidHoverActiveStore,
+} from "@/hooks/use-fluid-hover";
 import { useShape } from "@/lib/shape-context";
 import { SizeProvider, useSize, type SizeVariant } from "@/lib/size-context";
 import { FluidHoverHighlight } from "@/components/ui/fluid-hover-highlight";
@@ -40,11 +46,11 @@ interface ItemRect {
 interface AccordionGroupContextValue {
   registerItem: (index: number, element: HTMLElement | null) => void;
   registerFullItem: (index: number, element: HTMLElement | null) => void;
-  activeIndex: number | null;
+  /** Read per trigger with `useFluidHoverSelect`. */
+  activeStore: FluidHoverActiveStore;
   grouped: true;
   remeasure: () => void;
   openValues: Set<string>;
-  openItemRects: Map<number, ItemRect>;
 }
 
 const AccordionGroupContext =
@@ -127,6 +133,7 @@ const AccordionGroup = forwardRef<HTMLDivElement, AccordionGroupProps>(
     const hover = useFluidHover(containerRef);
     const {
       activeIndex,
+      activeStore,
       setActiveIndex,
       itemRects,
       handlers,
@@ -158,8 +165,8 @@ const AccordionGroup = forwardRef<HTMLDivElement, AccordionGroupProps>(
       });
       // Skip the state update when nothing moved (mirrors the fluid hover
       // hook's measureItems guard) — this runs per animation frame via
-      // onUpdate, and an unconditional set would invalidate the group
-      // context and re-render every item even on no-op remeasures.
+      // onUpdate, and an unconditional set would re-render the group and
+      // its overlays even on no-op remeasures.
       const prev = openItemRectsRef.current;
       let changed = prev.size !== next.size;
       if (!changed) {
@@ -212,21 +219,19 @@ const AccordionGroup = forwardRef<HTMLDivElement, AccordionGroupProps>(
             return v ? [v] : [];
           })();
 
-    // Keyed on the joined values so the Set (and the group context value
-    // below) keeps a stable identity across re-renders where the open values
-    // haven't actually changed.
-    const openValuesKey = openValuesList.join(",");
+    // Keyed on the serialized values so the Set (and the group context
+    // value below) keeps a stable identity across re-renders where the open
+    // values haven't actually changed.
+    const openValuesKey = JSON.stringify(openValuesList);
 
     const openValues = useMemo(
-      () => new Set(openValuesList),
-      // Deliberately keyed on the joined string, not the (fresh) array.
+      () => new Set(JSON.parse(openValuesKey) as string[]),
       [openValuesKey]
     );
 
     const handleSingleValueChange = useCallback(
       (value: string) => {
-        const sp = props as AccordionGroupSingleProps;
-        if (sp.onValueChange) sp.onValueChange(value);
+        if (singleOnValueChange) singleOnValueChange(value);
         else setInternalSingleValue(value);
       },
       [singleOnValueChange]
@@ -234,8 +239,7 @@ const AccordionGroup = forwardRef<HTMLDivElement, AccordionGroupProps>(
 
     const handleMultipleValueChange = useCallback(
       (value: string[]) => {
-        const mp = props as AccordionGroupMultipleProps;
-        if (mp.onValueChange) mp.onValueChange(value);
+        if (multipleOnValueChange) multipleOnValueChange(value);
         else setInternalMultipleValue(value);
       },
       [multipleOnValueChange]
@@ -274,58 +278,54 @@ const AccordionGroup = forwardRef<HTMLDivElement, AccordionGroupProps>(
       activeIndex !== null && !openItemRects.has(activeIndex);
     const shape = useShape();
 
-    const {
-      value: _value,
-      defaultValue: _defaultValue,
-      onValueChange: _onValueChange,
-      collapsible: _collapsible,
-      type: _type,
-      ...htmlProps
-    } = rest as Record<string, unknown>;
+    const htmlProps = omit(rest as Record<string, unknown>, [
+      "value",
+      "defaultValue",
+      "onValueChange",
+      "collapsible",
+      "type",
+    ]);
 
     // Translate FF API → Base UI Accordion API.
     // Base UI always uses `value: string[]` and a `multiple: boolean`. In
-    // single mode we wrap the active value in a single-element array.
-    const baseValue: string[] =
-      type === "multiple"
-        ? (props as AccordionGroupMultipleProps).value ??
-          internalMultipleValue
-        : (() => {
-            const v =
-              (props as AccordionGroupSingleProps).value ?? internalSingleValue;
-            return v ? [v] : [];
-          })();
+    // single mode we wrap the active value in a single-element array. Both
+    // keep their identity until the open values change: the group re-renders
+    // per mousemove and per frame of a height spring, and a fresh array would
+    // hand Base UI a new root context each time, re-rendering every item.
+    const baseValue = useMemo(
+      () => JSON.parse(openValuesKey) as string[],
+      [openValuesKey]
+    );
 
-    const baseOnValueChange = (next: string[]) => {
-      if (type === "multiple") handleMultipleValueChange(next);
-      else handleSingleValueChange(next[0] ?? "");
-    };
+    const baseOnValueChange = useCallback(
+      (next: string[]) => {
+        if (type === "multiple") handleMultipleValueChange(next);
+        else handleSingleValueChange(next[0] ?? "");
+      },
+      [type, handleMultipleValueChange, handleSingleValueChange]
+    );
 
     const remeasure = useCallback(() => {
       measureItems();
       measureFullItems();
     }, [measureItems, measureFullItems]);
 
-    // Memoized: the group re-renders on every fluid-hover mousemove; a
-    // fresh context object each time would re-render every item with it.
+    // Holds nothing that changes per frame or per mousemove: the group
+    // re-renders on every fluid-hover move and, while a panel's height
+    // springs, on every frame (it re-measures the rows to move its
+    // overlays). The hover index reaches triggers through `activeStore`, and
+    // the open rects stay here, so items re-render only when what they show
+    // changes.
     const groupContextValue = useMemo<AccordionGroupContextValue>(
       () => ({
         registerItem,
         registerFullItem,
-        activeIndex,
+        activeStore,
         grouped: true,
         remeasure,
         openValues,
-        openItemRects,
       }),
-      [
-        registerItem,
-        registerFullItem,
-        activeIndex,
-        remeasure,
-        openValues,
-        openItemRects,
-      ]
+      [registerItem, registerFullItem, activeStore, remeasure, openValues]
     );
 
     const group = (
@@ -335,16 +335,18 @@ const AccordionGroup = forwardRef<HTMLDivElement, AccordionGroupProps>(
           onValueChange={baseOnValueChange}
           multiple={type === "multiple"}
           render={(rootProps) => {
-            const {
-              style: _baseStyle,
-              onDrag: _onDrag,
-              onDragStart: _onDragStart,
-              onDragEnd: _onDragEnd,
-              onAnimationStart: _onAnimationStart,
-              onAnimationEnd: _onAnimationEnd,
-              onAnimationIteration: _onAnimationIteration,
-              ...restRoot
-            } = rootProps as React.HTMLAttributes<HTMLDivElement>;
+            const restRoot = omit(
+              rootProps as React.HTMLAttributes<HTMLDivElement>,
+              [
+                "style",
+                "onDrag",
+                "onDragStart",
+                "onDragEnd",
+                "onAnimationStart",
+                "onAnimationEnd",
+                "onAnimationIteration",
+              ]
+            );
             return (
               <div
                 {...restRoot}
@@ -405,7 +407,7 @@ const AccordionGroup = forwardRef<HTMLDivElement, AccordionGroupProps>(
                   setActiveIndex(null);
                 }}
                 className={cn(
-                  "relative flex flex-col gap-0.5 w-72 max-w-full",
+                  "relative flex flex-col w-72 max-w-full",
                   className
                 )}
                 {...(htmlProps as HTMLAttributes<HTMLDivElement>)}
@@ -583,13 +585,16 @@ const Accordion = forwardRef<HTMLDivElement, AccordionProps>(
         onValueChange={baseOnValueChange}
         multiple={type === "multiple"}
         render={(rootProps) => {
-          const { style: _s, ...restRoot } = rootProps as React.HTMLAttributes<HTMLDivElement>;
+          const restRoot = omit(
+            rootProps as React.HTMLAttributes<HTMLDivElement>,
+            ["style"]
+          );
           return (
             <div
               {...restRoot}
               ref={ref}
               className={cn(
-                "w-72 max-w-full flex flex-col gap-0.5",
+                "w-72 max-w-full flex flex-col",
                 className
               )}
               {...props}
@@ -661,7 +666,10 @@ const AccordionItem = forwardRef<HTMLDivElement, AccordionItemProps>(
           value={value}
           disabled={disabled}
           render={(itemProps) => {
-            const { style: _s, ...restItem } = itemProps as React.HTMLAttributes<HTMLDivElement>;
+            const restItem = omit(
+              itemProps as React.HTMLAttributes<HTMLDivElement>,
+              ["style"]
+            );
             return (
               <div
                 {...restItem}
@@ -716,16 +724,19 @@ interface AccordionTriggerProps
 
 const AccordionTrigger = forwardRef<HTMLButtonElement, AccordionTriggerProps>(
   ({ children, className, ...props }, ref) => {
-    const ChevronRight = useIcon("chevron-right");
+    const icons = useIcons();
+    const ChevronRight = icons["chevron-right"];
     const groupCtx = useAccordionGroup();
     const { index, isOpen, triggerRef, highlight } = useAccordionItemContext();
     const shape = useShape();
     const sizeClasses = useSize();
     const [isHovered, setIsHovered] = useState(false);
 
-    const isActive = groupCtx?.grouped
-      ? groupCtx.activeIndex === index
-      : isHovered;
+    const groupHover = useFluidHoverSelect(
+      groupCtx?.activeStore,
+      (active) => active !== null && active === index
+    );
+    const isActive = groupCtx?.grouped ? groupHover : isHovered;
 
     const triggerContent = (
       // Render Header as a <div>. Base UI's Header defaults to <h3>, which
@@ -860,22 +871,21 @@ const AccordionContent = forwardRef<HTMLDivElement, AccordionContentProps>(
     const innerRef = useRef<HTMLDivElement | null>(null);
     const roRef = useRef<ResizeObserver | null>(null);
     const [contentHeight, setContentHeight] = useState<number | null>(null);
-    // Items open at mount render `initial: "auto"` and receive their first
-    // pixel target a commit later; that hand-off must SNAP (duration 0), not
-    // spring — framer would measure the spring's numeric start visually
-    // (scaled) and play a shrink. Items that open later spring normally.
-    const needsSnap = useRef(isOpen);
     // Height springs only when THIS panel toggles. When contentHeight
     // changes underneath it instead — anything collapsible nested inside
     // the panel, another accordion included — it must snap: a spring
     // re-targeted every frame chases the child's own animation, lands
     // after it, and drags everything below the item along late. Same rule
     // as SidebarGroup / SidebarMenuSub; see motion-guidelines.md.
-    const prevOpenRef = useRef(isOpen);
-    const togglingRef = useRef(false);
-    if (prevOpenRef.current !== isOpen) {
-      prevOpenRef.current = isOpen;
-      togglingRef.current = true;
+    // Items open at mount render `initial: "auto"` and receive their first
+    // pixel target a commit later. That hand-off is not a toggle, so it
+    // snaps too — it must: framer would measure a spring's numeric start
+    // visually (scaled) and play a shrink. Items that open later spring.
+    const [prevOpen, setPrevOpen] = useState(isOpen);
+    const [toggling, setToggling] = useState(false);
+    if (prevOpen !== isOpen) {
+      setPrevOpen(isOpen);
+      setToggling(true);
     }
 
     const measureRef = useCallback((el: HTMLDivElement | null) => {
@@ -900,11 +910,7 @@ const AccordionContent = forwardRef<HTMLDivElement, AccordionContentProps>(
       }
     }, [isOpen]);
 
-    useEffect(() => {
-      if (contentHeight !== null) needsSnap.current = false;
-    }, [contentHeight]);
-
-    // Whether the framer-motion height exit animation has fully finished.
+    // Whether the Motion height exit animation has fully finished.
     // Base UI's Panel would apply `hidden` the moment a controlled item
     // closes (useCollapsibleRoot sets `mounted = false` in a layout effect
     // when no CSS transition/animation is detected on the panel element, and
@@ -923,25 +929,26 @@ const AccordionContent = forwardRef<HTMLDivElement, AccordionContentProps>(
     // element persists through the exit animation and the trigger ↔ panel
     // ARIA contract stays intact: the panel carries `role="region"`,
     // `aria-labelledby` and the id that the Trigger's `aria-controls` points
-    // to. The framer-motion height animation lives one level down inside the
+    // to. The Motion height animation lives one level down inside the
     // persistent panel element and flips its target with `isOpen` (content
     // stays mounted so it can be measured).
     return (
       <AccordionPrimitive.Panel
         keepMounted
         render={(panelProps) => {
-          const {
-            // Applied too early for our exit animation (see above); we
-            // control the attribute ourselves.
-            hidden: _baseHidden,
-            // Only carries the --accordion-panel-height/width vars, which
-            // stay 'auto' since Base UI never measures JS-driven animations;
-            // dropped for parity with the Root/Item render props above.
-            style: _baseStyle,
-            ...restPanel
-          } = panelProps as React.HTMLAttributes<HTMLDivElement> & {
-            hidden?: boolean;
-          };
+          const restPanel = omit(
+            panelProps as React.HTMLAttributes<HTMLDivElement>,
+            [
+              // Applied too early for our exit animation (see above); we
+              // control the attribute ourselves.
+              "hidden",
+              // Only carries the --accordion-panel-height/width vars, which
+              // stay 'auto' since Base UI never measures JS-driven
+              // animations; dropped for parity with the Root/Item render
+              // props above.
+              "style",
+            ]
+          );
           return (
             <div {...restPanel} hidden={!isOpen && exitComplete}>
               <motion.div
@@ -957,7 +964,7 @@ const AccordionContent = forwardRef<HTMLDivElement, AccordionContentProps>(
                 // body dissolves rather than being sliced by the clip edge,
                 // which is what stops the rows below reading as shoved.
                 transition={
-                  needsSnap.current || reduceMotion || !togglingRef.current
+                  reduceMotion || !toggling
                     ? { duration: 0 }
                     : isOpen
                       ? { ...spring.fast, opacity: { duration: 0.06 } }
@@ -967,7 +974,7 @@ const AccordionContent = forwardRef<HTMLDivElement, AccordionContentProps>(
                   groupCtx?.remeasure();
                 }}
                 onAnimationComplete={() => {
-                  togglingRef.current = false;
+                  setToggling(false);
                   groupCtx?.remeasure();
                   if (!isOpen) setExitComplete(true);
                 }}

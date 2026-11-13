@@ -1,9 +1,7 @@
 import React, { type ComponentType } from "react";
 import {
-  HomeSmile as Home,
   File02 as FileText,
   TrendUp01 as TrendingUp,
-  FileSearch02,
   Settings01 as Settings,
   ShieldTick as ShieldCheck,
   User01 as Users,
@@ -13,9 +11,14 @@ import {
 } from "@untitledui/icons";
 import { Terminal } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
+import Home12Icon from "@hugeicons/core-free-icons/Home12Icon";
 import GitCompareArrowsIcon from "@hugeicons/core-free-icons/GitCompareArrowsIcon";
 import CatalogueIcon from "@hugeicons/core-free-icons/CatalogueIcon";
 import DateTimeIcon from "@hugeicons/core-free-icons/DateTimeIcon";
+import LicenseDraftIcon from "@hugeicons/core-free-icons/LicenseDraftIcon";
+import ShippingTruck01Icon from "@hugeicons/core-free-icons/ShippingTruck01Icon";
+import ShipmentTrackingIcon from "@hugeicons/core-free-icons/ShipmentTrackingIcon";
+import ChartAverageIcon from "@hugeicons/core-free-icons/ChartAverageIcon";
 import { ZebraIcon } from "@/components/icons/ZebraIcon";
 
 /**
@@ -35,9 +38,14 @@ export function createHugeIcon(iconDef: any, defaultStroke = 1.8) {
   };
 }
 
+export const Home = createHugeIcon(Home12Icon);
 export const GitCompareArrows = createHugeIcon(GitCompareArrowsIcon);
 export const Catalogue = createHugeIcon(CatalogueIcon);
 export const DateTime = createHugeIcon(DateTimeIcon);
+export const LicenseDraft = createHugeIcon(LicenseDraftIcon);
+export const ShippingTruck = createHugeIcon(ShippingTruck01Icon);
+export const ShipmentTracking = createHugeIcon(ShipmentTrackingIcon);
+export const ChartAverage = createHugeIcon(ChartAverageIcon);
 
 export interface NavItemConfig {
   title: string;
@@ -65,6 +73,14 @@ export const APP_NAVIGATION: NavItemConfig[] = [
     inBottomNav: true,
   },
   {
+    title: "Inventarios Cíclicos",
+    shortLabel: "Cíclico",
+    url: "/inventario-ciclico",
+    icon: GitCompareArrows,
+    inSidebar: true,
+    inBottomNav: true,
+  },
+  {
     title: "Stock",
     shortLabel: "Stock",
     url: "/stock/colector",
@@ -80,18 +96,31 @@ export const APP_NAVIGATION: NavItemConfig[] = [
     inSidebar: true,
   },
   {
-    title: "Inventarios Cíclicos",
-    shortLabel: "Cíclico",
-    url: "/inventario-ciclico",
-    icon: GitCompareArrows,
-    inSidebar: true,
-    inBottomNav: true,
-  },
-  {
     title: "Solicitudes",
     shortLabel: "Solicitudes",
     url: "/solicitudes",
-    icon: FileSearch02,
+    icon: LicenseDraft,
+    inSidebar: true,
+  },
+  {
+    title: "Interfarmacias",
+    shortLabel: "Interfarmacias",
+    url: "/interfarmacias",
+    icon: ShippingTruck,
+    inSidebar: true,
+  },
+  {
+    title: "Trazabilidad",
+    shortLabel: "Trazabilidad",
+    url: "/trazabilidad",
+    icon: ShipmentTracking,
+    inSidebar: true,
+  },
+  {
+    title: "Movimientos",
+    shortLabel: "Movimientos",
+    url: "/movimientos",
+    icon: ChartAverage,
     inSidebar: true,
   },
 
@@ -142,7 +171,9 @@ export const getTabMetaForPath = (path: string = "") => {
   if (TAB_CONFIG[path]) return TAB_CONFIG[path];
 
   if (path.startsWith("/inventario-ciclico/")) {
-    return { title: "Detalle de Inventario", icon: <GitCompareArrows size={16} className="w-4 h-4" /> };
+    const rawId = path.replace("/inventario-ciclico/", "").split("?")[0].split("#")[0];
+    const title = rawId ? decodeURIComponent(rawId) : "Detalle de Inventario";
+    return { title, icon: <GitCompareArrows size={16} className="w-4 h-4" /> };
   }
 
 

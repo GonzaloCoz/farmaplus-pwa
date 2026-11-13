@@ -10,118 +10,314 @@ import {
     Minus, 
     Plus
 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { notify } from '@/lib/notifications';
 import { getProductImageUrl } from '@/services/productImageService';
+import { getRecountDifferences, getDeviceId, getDeviceName, getRecountSessionState, RecountProductDiff, RecountResultSubmission } from '@/services/preCountDB';
+import { supabase } from '@/integrations/supabase/client';
+import { db } from '@/services/db';
 
 interface ProductItem {
     id: string;
     name: string;
     ean: string;
+    eans?: string[];
+    id_producto?: string;
     position: string;
     device: string;
     qty: number;
     initialQty: number;
     image: string;
     hasDifference?: boolean;
+    systemStock?: number;
+    totalCounted?: number;
 }
 
-const INITIAL_PRODUCTS: ProductItem[] = [
-    {
-        id: 'prod-tafirol',
-        name: 'Tafirol Forte x 70 comprimidos',
-        ean: '7798140257066',
-        position: 'ESP-08',
-        device: 'ZEBRA-01',
-        qty: 2,
-        initialQty: 2,
-        image: '',
-        hasDifference: false,
-    },
-    {
-        id: 'prod-1',
-        name: 'TREG 20 mg caps.x 15',
-        ean: '7790839980910',
-        position: 'ESP-01',
-        device: 'ZEBRA-01',
-        qty: 4,
-        initialQty: 3,
-        image: '/products/img_treg_20mg.png',
-        hasDifference: true,
-    },
-    {
-        id: 'prod-2',
-        name: 'TREG 20 mg caps.x 15',
-        ean: '7790839980910',
-        position: 'ESP-02',
-        device: 'ZEBRA-01',
-        qty: 7,
-        initialQty: 8,
-        image: '/products/img_treg_20mg.png',
-        hasDifference: true,
-    },
-    {
-        id: 'prod-3',
-        name: 'TREG 20 mg caps.x 15',
-        ean: '7790839980910',
-        position: 'ESP-03',
-        device: 'ZEBRA-01',
-        qty: 1,
-        initialQty: 1,
-        image: '/products/img_treg_20mg.png',
-        hasDifference: true,
-    },
-    {
-        id: 'prod-4',
-        name: 'TREG 20 mg caps.x 15',
-        ean: '7790839980910',
-        position: 'ESP-04',
-        device: 'ZEBRA-01',
-        qty: 5,
-        initialQty: 5,
-        image: '/products/img_treg_20mg.png',
-        hasDifference: false,
-    },
-    {
-        id: 'prod-5',
-        name: 'NUTRILON PROFUTURA 1 x 800 g',
-        ean: '7791234567890',
-        position: 'ESP-05',
-        device: 'ZEBRA-01',
-        qty: 4,
-        initialQty: 2,
-        image: '/products/img_nutrilon_1.png',
-        hasDifference: true,
-    },
-    {
-        id: 'prod-6',
-        name: 'IBUPIRAC 400 mg comp. x 20',
-        ean: '7791234567891',
-        position: 'ESP-06',
-        device: 'ZEBRA-01',
-        qty: 12,
-        initialQty: 12,
-        image: '/products/img_treg_20mg.png',
-        hasDifference: false,
-    },
-    {
-        id: 'prod-7',
-        name: 'PARACETAMOL 500 mg comp. x 24',
-        ean: '7791234567892',
-        position: 'ESP-07',
-        device: 'ZEBRA-01',
-        qty: 6,
-        initialQty: 6,
-        image: '/products/img_treg_20mg.png',
-        hasDifference: false,
-    }
-];
-
 export default function StockRecountMobile() {
+    const [searchParams] = useSearchParams();
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<'controlar' | 'diferencias' | 'todas'>('controlar');
-    const [products, setProducts] = useState<ProductItem[]>(INITIAL_PRODUCTS);
+    const [products, setProducts] = useState<ProductItem[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [secondsElapsed, setSecondsElapsed] = useState(15189); // ~ 04:13:09
     const [resolvedImages, setResolvedImages] = useState<Record<string, string>>({});
+    const [currentProductIndex, setCurrentProductIndex] = useState(0);
+    const [reloadTick, setReloadTick] = useState(0);
+    const [operatorName, setOperatorName] = useState<string>(() => {
+        if (typeof window !== 'undefined') {
+            return sessionStorage.getItem('recount_mobile_operator_name') || '';
+        }
+        return '';
+    });
+    const [nameInput, setNameInput] = useState<string>(operatorName);
+    const [hasJoined, setHasJoined] = useState<boolean>(() => Boolean(operatorName.trim()));
+    const [recountState, setRecountState] = useState<'idle' | 'waiting' | 'started'>('waiting');
+
+    // Resolver ID de la sesión activa
+    const effectiveSessionId = useMemo(() => {
+        const fromParam = searchParams.get('sessionId') || searchParams.get('session_id');
+        if (fromParam) return fromParam;
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('last_precount_session_id') || 
+                   localStorage.getItem('precount_session_id') || 
+                   sessionStorage.getItem('active_precount_session_id') || 
+                   '';
+        }
+        return '';
+    }, [searchParams]);
+
+    const deviceId = useMemo(() => {
+        try {
+            return getDeviceId();
+        } catch {
+            return 'web-mobile-01';
+        }
+    }, []);
+
+    const deviceDisplayName = useMemo(() => {
+        if (operatorName && operatorName.trim()) return operatorName.trim();
+        try {
+            return getDeviceName() || 'Móvil Web';
+        } catch {
+            return 'Móvil Web';
+        }
+    }, [operatorName]);
+
+    // Registrar presencia en DB + Realtime una vez que ingresó su nombre
+    useEffect(() => {
+        if (!effectiveSessionId || !hasJoined || !deviceDisplayName) return;
+
+        const registerPresenceInDb = async () => {
+            try {
+                await (supabase as any).from('precount_connected_devices').upsert({
+                    session_id: effectiveSessionId,
+                    device_id: deviceId,
+                    device_name: deviceDisplayName,
+                    device_type: 'web',
+                    device_model: 'Móvil Web',
+                    status: 'online',
+                    last_seen: new Date().toISOString()
+                });
+            } catch {}
+        };
+
+        const checkState = async () => {
+            const st = await getRecountSessionState(effectiveSessionId);
+            setRecountState(st);
+            if (st === 'started') {
+                setReloadTick(t => t + 1);
+            }
+        };
+
+        registerPresenceInDb();
+        checkState();
+
+        const channel = supabase.channel(`recount_control_${effectiveSessionId}`, {
+            config: { presence: { key: deviceId } }
+        });
+
+        channel
+            .on('broadcast', { event: 'recount_assigned' }, () => {
+                setRecountState('started');
+                notify.info('¡Recuento iniciado!', 'Se asignaron tus productos únicos para controlar.');
+                setReloadTick(t => t + 1);
+            })
+            .subscribe(async (status) => {
+                if (status === 'SUBSCRIBED') {
+                    await channel.track({
+                        device_id: deviceId,
+                        device_name: deviceDisplayName,
+                        platform: 'web',
+                        status: 'online',
+                        last_seen: new Date().toISOString()
+                    });
+                }
+            });
+
+        const heartbeat = setInterval(async () => {
+            registerPresenceInDb();
+            const st = await getRecountSessionState(effectiveSessionId);
+            setRecountState(prev => {
+                if (prev !== 'started' && st === 'started') {
+                    setReloadTick(t => t + 1);
+                }
+                return st;
+            });
+        }, 3000);
+
+        return () => {
+            clearInterval(heartbeat);
+            supabase.removeChannel(channel);
+        };
+    }, [effectiveSessionId, hasJoined, deviceId, deviceDisplayName]);
+
+    // Cargar datos reales de diferencias solo cuando el Admin haya iniciado el recuento
+    useEffect(() => {
+        let isMounted = true;
+        async function loadRealData() {
+            if (!hasJoined || recountState !== 'started') {
+                if (isMounted) setIsLoading(false);
+                return;
+            }
+            setIsLoading(true);
+            try {
+                let diffs: RecountProductDiff[] = [];
+
+                // 1. Priorizar asignación exclusiva por dispositivo (recount_differences_<deviceId>.json)
+                if (effectiveSessionId) {
+                    try {
+                        const { data: assignedData } = await (supabase as any)
+                            .from('precount_device_files')
+                            .select('content')
+                            .eq('session_id', effectiveSessionId)
+                            .eq('filename', `recount_differences_${deviceId}.json`)
+                            .order('created_at', { ascending: false })
+                            .limit(1);
+
+                        if (assignedData && assignedData.length > 0 && assignedData[0].content) {
+                            diffs = typeof assignedData[0].content === 'string'
+                                ? JSON.parse(assignedData[0].content)
+                                : assignedData[0].content;
+                        }
+                    } catch (e) {
+                        console.warn('[StockRecountMobile] Error consultando asignación personalizada:', e);
+                    }
+                }
+
+                // 2. Si no se encontró archivo individual, revisar recount_assignments.json por deviceId
+                let hasAssignmentsManifest = false;
+                if ((!diffs || diffs.length === 0) && effectiveSessionId) {
+                    try {
+                        const { data: manifestData } = await (supabase as any)
+                            .from('precount_device_files')
+                            .select('content')
+                            .eq('session_id', effectiveSessionId)
+                            .eq('filename', 'recount_assignments.json')
+                            .order('created_at', { ascending: false })
+                            .limit(1);
+
+                        if (manifestData && manifestData.length > 0 && manifestData[0].content) {
+                            hasAssignmentsManifest = true;
+                            const parsedManifest = typeof manifestData[0].content === 'string'
+                                ? JSON.parse(manifestData[0].content)
+                                : manifestData[0].content;
+                            const myAssignment = parsedManifest?.assignments?.[deviceId];
+                            if (myAssignment && Array.isArray(myAssignment.items)) {
+                                diffs = myAssignment.items;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[StockRecountMobile] Error consultando recount_assignments.json:', e);
+                    }
+                }
+
+                // 3. Fallback solo si NO existe un reparto personalizado activo
+                if (!hasAssignmentsManifest && (!diffs || diffs.length === 0) && effectiveSessionId) {
+                    try {
+                        const { data } = await (supabase as any)
+                            .from('precount_device_files')
+                            .select('content')
+                            .eq('session_id', effectiveSessionId)
+                            .eq('filename', 'recount_differences.json')
+                            .order('created_at', { ascending: false })
+                            .limit(1);
+
+                        if (data && data.length > 0 && data[0].content) {
+                            diffs = typeof data[0].content === 'string' ? JSON.parse(data[0].content) : data[0].content;
+                        }
+                    } catch (e) {
+                        console.warn('[StockRecountMobile] Error consultando recount_differences en Supabase:', e);
+                    }
+                }
+
+                // 4. Fallback local: cálculo reactivo de la sesión en Dexie o cache (solo sin reparto activo)
+                if (!hasAssignmentsManifest && (!diffs || diffs.length === 0) && effectiveSessionId) {
+                    diffs = await getRecountDifferences(effectiveSessionId);
+                }
+                if (!hasAssignmentsManifest && (!diffs || diffs.length === 0) && effectiveSessionId) {
+                    const cached = localStorage.getItem(`recount_differences_${effectiveSessionId}`);
+                    if (cached) {
+                        try {
+                            diffs = JSON.parse(cached);
+                        } catch {}
+                    }
+                }
+
+                // Si no hay diferencias pero hay items contados generales en la sesión, mostrarlos
+                if ((!diffs || diffs.length === 0) && effectiveSessionId) {
+                    const allItems = await db.items.where('session_id').equals(effectiveSessionId).toArray();
+                    if (allItems.length > 0) {
+                        const sessionProducts = await db.precount_products.where('session_id').equals(effectiveSessionId).toArray();
+                        const pMap = new Map(sessionProducts.map(p => [p.ean, p]));
+                        
+                        const converted: ProductItem[] = allItems.map((it, idx) => {
+                            const cat = pMap.get(it.ean);
+                            const sysStock = cat?.stock ?? (cat as any)?.systemStock ?? 0;
+                            return {
+                                id: it.id || `item-${it.ean}-${idx}`,
+                                name: it.product_name || cat?.name || `Producto ${it.ean}`,
+                                ean: it.ean,
+                                position: it.location_tag || 'ESP-01',
+                                device: it.device_name || 'ZEBRA-01',
+                                qty: Number(it.quantity) || 0,
+                                initialQty: Number(it.quantity) || 0,
+                                image: '',
+                                hasDifference: Number(it.quantity) !== sysStock,
+                                systemStock: sysStock,
+                                totalCounted: Number(it.quantity) || 0
+                            };
+                        });
+
+                        if (isMounted) {
+                            setProducts(converted);
+                            setIsLoading(false);
+                        }
+                        return;
+                    }
+                }
+
+                // Transformar RecountProductDiff[] a ProductItem[] (tarjetas por posición)
+                const flatItems: ProductItem[] = [];
+                (diffs || []).forEach(d => {
+                    const positions = (d.positions && d.positions.length > 0)
+                        ? d.positions
+                        : [{ posCode: 'ESP-01', deviceName: 'ZEBRA-01', quantity: d.countedStock }];
+
+                    positions.forEach((pos, idx) => {
+                        flatItems.push({
+                            id: `${d.ean}_${pos.posCode}_${pos.deviceName}_${idx}`,
+                            name: d.name,
+                            ean: d.ean,
+                            eans: d.eans && d.eans.length > 0 ? d.eans : [d.ean],
+                            id_producto: d.id_producto,
+                            position: pos.posCode,
+                            device: pos.deviceName || 'ZEBRA-01',
+                            qty: Number(pos.quantity) || 0,
+                            initialQty: Number(pos.quantity) || 0,
+                            image: '',
+                            hasDifference: d.difference !== 0,
+                            systemStock: d.systemStock,
+                            totalCounted: d.countedStock
+                        });
+                    });
+                });
+
+                if (isMounted) {
+                    setProducts(flatItems);
+                    setIsLoading(false);
+                }
+            } catch (err) {
+                console.error('[StockRecountMobile] Error cargando datos:', err);
+                if (isMounted) {
+                    setProducts([]);
+                    setIsLoading(false);
+                }
+            }
+        }
+
+        loadRealData();
+        return () => { isMounted = false; };
+    }, [effectiveSessionId, deviceId, reloadTick, hasJoined, recountState]);
 
     // Automatically resolve images via Farmaplus VTEX API or local cache
     useEffect(() => {
@@ -179,13 +375,40 @@ export default function StockRecountMobile() {
         }));
     };
 
+    // Lista única de productos agrupados para navegación Anterior / Siguiente
+    const uniqueEans = useMemo(() => {
+        const eans: string[] = [];
+        products.forEach(p => {
+            if (!eans.includes(p.ean)) eans.push(p.ean);
+        });
+        return eans;
+    }, [products]);
+
+    const handlePreviousProduct = () => {
+        if (currentProductIndex > 0) {
+            setCurrentProductIndex(prev => prev - 1);
+            notify.info('Producto anterior', `Mostrando ${currentProductIndex} de ${uniqueEans.length}`);
+        } else {
+            notify.info('Inicio de lista', 'Estás en el primer producto');
+        }
+    };
+
+    const handleNextProduct = () => {
+        if (currentProductIndex < uniqueEans.length - 1) {
+            setCurrentProductIndex(prev => prev + 1);
+            notify.info('Siguiente producto', `Mostrando ${currentProductIndex + 2} de ${uniqueEans.length}`);
+        } else {
+            notify.info('Fin de lista', 'Estás en el último producto');
+        }
+    };
+
     const filteredProducts = useMemo(() => {
         return products.filter(p => {
             // Search filter
             if (searchQuery.trim()) {
                 const q = searchQuery.toLowerCase().trim();
                 const matchName = p.name.toLowerCase().includes(q);
-                const matchEan = p.ean.includes(q);
+                const matchEan = p.ean.toLowerCase().includes(q) || (p.eans || []).some(e => e.toLowerCase().includes(q));
                 const matchPos = p.position.toLowerCase().includes(q);
                 if (!matchName && !matchEan && !matchPos) return false;
             }
@@ -195,15 +418,152 @@ export default function StockRecountMobile() {
                 return p.hasDifference || p.qty !== p.initialQty;
             }
             if (activeTab === 'controlar') {
+                // Si hay navegación entre productos, enfocarse en el producto actual si hay varios
+                if (uniqueEans.length > 0 && currentProductIndex < uniqueEans.length) {
+                    const currentEan = uniqueEans[currentProductIndex];
+                    return p.ean === currentEan;
+                }
                 return true;
             }
             return true;
         });
-    }, [products, searchQuery, activeTab]);
+    }, [products, searchQuery, activeTab, uniqueEans, currentProductIndex]);
 
-    const handleConfirm = () => {
+    const handleConfirm = async () => {
+        if (effectiveSessionId && products.length > 0) {
+            try {
+                // Agrupar total recontado por EAN y devolver resultado al diálogo Admin de MiPlus
+                const grouped = new Map<string, { ean: string; eans?: string[]; id_producto?: string; name: string; initialQty: number; recountedQty: number }>();
+                for (const p of products) {
+                    const prev = grouped.get(p.ean);
+                    if (prev) {
+                        prev.initialQty += Number(p.initialQty) || 0;
+                        prev.recountedQty += Number(p.qty) || 0;
+                    } else {
+                        grouped.set(p.ean, {
+                            ean: p.ean,
+                            eans: p.eans,
+                            id_producto: p.id_producto,
+                            name: p.name,
+                            initialQty: Number(p.initialQty) || 0,
+                            recountedQty: Number(p.qty) || 0,
+                        });
+                    }
+                }
+
+                const payload: RecountResultSubmission = {
+                    device_id: deviceId,
+                    device_name: deviceDisplayName,
+                    platform: 'web',
+                    submitted_at: new Date().toISOString(),
+                    items: Array.from(grouped.values()),
+                };
+
+                const resultFilename = `recount_result_${deviceId}.json`;
+                await (supabase as any)
+                    .from('precount_device_files')
+                    .delete()
+                    .eq('session_id', effectiveSessionId)
+                    .eq('filename', resultFilename);
+
+                const { error: insertErr } = await (supabase as any)
+                    .from('precount_device_files')
+                    .insert({
+                        session_id: effectiveSessionId,
+                        device_id: deviceId,
+                        device_name: deviceDisplayName,
+                        filename: resultFilename,
+                        content: JSON.stringify(payload),
+                    });
+                if (insertErr) throw insertErr;
+
+                const channel = supabase.channel(`recount_control_${effectiveSessionId}`);
+                await channel.send({
+                    type: 'broadcast',
+                    event: 'recount_result_submitted',
+                    payload: { device_id: deviceId, device_name: deviceDisplayName },
+                });
+
+                setProducts(prev => prev.map(p => ({ ...p, initialQty: p.qty, hasDifference: false })));
+                notify.success('Recuento Enviado', 'Tus diferencias recontadas fueron enviadas al panel Admin de MiPlus.');
+                return;
+            } catch (err) {
+                console.error('Error enviando recuento:', err);
+                notify.error('Error al enviar', 'No se pudo enviar el recuento al panel Admin.');
+                return;
+            }
+        }
         notify.success('Recuento Confirmado', 'Los datos fueron sincronizados correctamente.');
     };
+
+
+    if (!hasJoined) {
+        return (
+            <div className="h-dvh w-full bg-[#F4F4F5] text-zinc-900 flex items-center justify-center p-4 font-sans">
+                <div className="w-full max-w-sm bg-white rounded-3xl shadow-xl border border-zinc-200/80 p-6 space-y-5">
+                    <div className="space-y-1 text-center">
+                        <div className="w-12 h-12 rounded-2xl bg-[#0066FF]/10 text-[#0066FF] flex items-center justify-center mx-auto mb-3">
+                            <ClipboardCheck className="w-6 h-6" />
+                        </div>
+                        <h1 className="text-lg font-bold tracking-tight">Control de Diferencias</h1>
+                        <p className="text-xs text-zinc-500">
+                            Ingresá tu nombre para identificarte y recibir tus productos asignados.
+                        </p>
+                    </div>
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            const clean = nameInput.trim();
+                            if (!clean) return;
+                            sessionStorage.setItem('recount_mobile_operator_name', clean);
+                            setOperatorName(clean);
+                            setHasJoined(true);
+                        }}
+                        className="space-y-3"
+                    >
+                        <input
+                            type="text"
+                            autoFocus
+                            value={nameInput}
+                            onChange={(e) => setNameInput(e.target.value)}
+                            placeholder="Ej: Gonzalo, Sofía..."
+                            className="w-full h-11 px-4 rounded-xl border border-zinc-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#0066FF]"
+                        />
+                        <button
+                            type="submit"
+                            disabled={!nameInput.trim()}
+                            className="w-full h-11 rounded-xl bg-[#0066FF] text-white font-semibold text-sm disabled:opacity-40 active:scale-[0.99] transition"
+                        >
+                            Unirse al recuento
+                        </button>
+                    </form>
+                </div>
+            </div>
+        );
+    }
+
+    if (recountState !== 'started') {
+        return (
+            <div className="h-dvh w-full bg-[#F4F4F5] text-zinc-900 flex items-center justify-center p-4 font-sans">
+                <div className="w-full max-w-sm bg-white rounded-3xl shadow-xl border border-zinc-200/80 p-6 text-center space-y-4">
+                    <div className="w-12 h-12 rounded-full bg-amber-500/15 text-amber-600 flex items-center justify-center mx-auto animate-pulse">
+                        <ClipboardCheck className="w-6 h-6" />
+                    </div>
+                    <div className="space-y-1">
+                        <h2 className="text-base font-bold">Esperando inicio del recuento</h2>
+                        <p className="text-xs text-zinc-500 leading-relaxed">
+                            Estás conectado como <strong className="text-zinc-900">{deviceDisplayName}</strong>.
+                            Aguardá a que el administrador presione <strong>Comenzar recuento</strong> para recibir tus EANs exclusivos.
+                        </p>
+                    </div>
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                        En línea y listo
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="h-dvh max-h-dvh w-full bg-[#F4F4F5] text-zinc-900 flex justify-center font-sans antialiased overflow-hidden select-none touch-manipulation">
@@ -222,7 +582,7 @@ export default function StockRecountMobile() {
                     {/* Center: Device Name & Timer (Dead Center of the Screen) */}
                     <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center text-center pointer-events-none">
                         <span className="font-bold text-[12.5px] tracking-wider text-zinc-900 uppercase">
-                            ZEBRA-01
+                            {deviceDisplayName}
                         </span>
                         <span className="text-[11px] font-medium text-zinc-500 tabular-nums leading-tight mt-0.5">
                             {formatTimer(secondsElapsed)}
@@ -420,6 +780,7 @@ export default function StockRecountMobile() {
                         {/* Anterior */}
                         <button
                             type="button"
+                            onClick={handlePreviousProduct}
                             className="h-[38px] w-full rounded-full bg-[#EAEAEA] hover:bg-[#E0E0E0] active:scale-98 text-[#71717A] text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer select-none px-2"
                         >
                             <ChevronLeft className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
@@ -429,6 +790,7 @@ export default function StockRecountMobile() {
                         {/* Siguiente */}
                         <button
                             type="button"
+                            onClick={handleNextProduct}
                             className="h-[38px] w-full rounded-full bg-[#EAEAEA] hover:bg-[#E0E0E0] active:scale-98 text-[#71717A] text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer select-none px-2"
                         >
                             <span className="leading-none pt-[0.5px]">Siguiente</span>

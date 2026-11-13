@@ -81,6 +81,12 @@ export interface TableProps<T> {
   /** When true, reduces cell padding and gaps for a compact table presentation. */
   dense?: boolean;
   headerClassName?: string;
+  /** Render an accordion/detail view below the row when expanded. */
+  renderExpandedRow?: (row: T) => ReactNode;
+  /** Set of row IDs that are currently expanded. */
+  expandedRowIds?: string[];
+  /** Estimated extra height in px for an expanded row (default 260). */
+  expandedRowHeight?: number;
 }
 
 /** A data row paired with its stable id. */

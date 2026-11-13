@@ -1,29 +1,19 @@
 import { cn } from "@/lib/utils";
 import { surfaceClasses } from "@/lib/surface-classes";
 import { useUser } from "@/contexts/UserContext";
+import { useAvatarMode, getUserInitials } from "@/hooks/useAvatarMode";
+import { useIcons } from "@/lib/icon-context";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { SettingsDialog } from "@/components/dialog-sidebar/settings-dialog";
 
 export function ProfileDropdown() {
     const { user } = useUser();
+    const icons = useIcons();
+    const { avatarMode, avatarImage } = useAvatarMode();
     const [showSettingsDialog, setShowSettingsDialog] = useState(false);
-    const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI;
 
-    const getInitials = () => {
-        if (!user) return "??";
-        if (user.role === 'branch' && user.branchName) {
-            const branchName = user.branchName.replace(/^farmacia\s+/i, '');
-            return `F${branchName.charAt(0).toUpperCase()}`;
-        }
-        const names = user.name.split(' ');
-        if (names.length >= 2) {
-            return (names[0].charAt(0) + names[names.length - 1].charAt(0)).toUpperCase();
-        }
-        return user.name.charAt(0).toUpperCase();
-    };
-
-    const initials = getInitials();
+    const initials = getUserInitials(user);
 
     return (
         <>
@@ -32,14 +22,23 @@ export function ProfileDropdown() {
                 size="icon"
                 onClick={() => setShowSettingsDialog(true)}
                 className={cn(
-                    "h-[34px] w-[34px] rounded-lg group shrink-0 cursor-pointer overflow-hidden",
+                    "h-[34px] w-[34px] rounded-lg group shrink-0 cursor-pointer overflow-hidden p-0 [&>span]:size-full",
                     surfaceClasses(3)
                 )}
-                style={isElectron ? { WebkitAppRegion: 'no-drag' } as React.CSSProperties : undefined}
                 title="Configuración"
             >
-                <div className="h-full w-full flex items-center justify-center text-[11px] font-bold text-current">
-                    {initials}
+                <div className="size-full rounded-lg overflow-hidden bg-primary/20 text-primary flex items-center justify-center text-[11px] font-bold">
+                    {avatarMode === "photo" && avatarImage ? (
+                        <img
+                            src={avatarImage}
+                            alt={user?.name || "Usuario"}
+                            className="size-full object-cover select-none"
+                        />
+                    ) : avatarMode === "photo" ? (
+                        <icons.user size={16} strokeWidth={2} className="text-current" />
+                    ) : (
+                        initials
+                    )}
                 </div>
             </Button>
 

@@ -17,7 +17,7 @@ import {
   type ReactNode,
 } from "react";
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import type { IconComponent } from "@/lib/icon-context";
 import { cn } from "@/lib/utils";
 import { spring } from "@/lib/springs";
@@ -192,7 +192,7 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
       handlers,
       registerItem,
       measureItems,
-    } = useFluidHover(containerRef, { axis: "x" });
+    } = useFluidHover(containerRef, { axis: "x", nearest: true });
 
     const registerTab = useCallback(
       (index: number, _value: string, el: HTMLElement | null) => {

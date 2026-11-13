@@ -17,7 +17,6 @@ interface WidgetRendererProps {
     globalProgress: number;
     assignedDays: number;
     cycleStartDate: string | null;
-    onDateClick: (iso?: string) => void;
     onEditConfig: () => void;
     isLocked?: boolean;
     lockReason?: 'manual' | 'deadline' | null;
@@ -34,7 +33,6 @@ export const WidgetRenderer = memo(({
     globalProgress,
     assignedDays,
     cycleStartDate,
-    onDateClick,
     onEditConfig,
     isLocked,
     lockReason,
@@ -52,7 +50,7 @@ export const WidgetRenderer = memo(({
         case 'inventory-alerts':
             return <TeamsChatWidget />;
         case 'upcoming-inventories':
-            return <UpcomingInventoriesWidget onDateClick={onDateClick} />;
+            return <UpcomingInventoriesWidget />;
         case 'trends-chart':
             return <TrendsChartWidget type="negative" />;
         case 'countdown':

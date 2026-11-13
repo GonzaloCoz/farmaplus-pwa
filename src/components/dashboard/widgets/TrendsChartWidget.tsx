@@ -110,43 +110,51 @@ export function TrendsChartWidget({ type = "positive" }: TrendsChartWidgetProps)
     if (!user?.branchName) return;
     
     const cleanBranch = normalizeString(user.branchName);
+    const channelName = `dashboard-realtime-${cleanBranch}-${type}-${Math.random().toString(36).slice(2, 9)}`;
     
-    const channel = supabase
-      .channel(`dashboard-realtime-${cleanBranch}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "inventories",
-          filter: `branch_name=eq.${cleanBranch}`
-        },
-        () => {
-          queryClient.invalidateQueries({
-            queryKey: ["live-current-month-metrics", user.branchName]
-          });
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "inventory_adjustments",
-          filter: `branch_name=eq.${cleanBranch}`
-        },
-        () => {
-          queryClient.invalidateQueries({
-            queryKey: ["historical-adjustments", user.branchName]
-          });
-        }
-      )
-      .subscribe();
+    let channel: any = null;
+    try {
+      channel = supabase
+        .channel(channelName)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "inventories",
+            filter: `branch_name=eq.${cleanBranch}`
+          },
+          () => {
+            queryClient.invalidateQueries({
+              queryKey: ["live-current-month-metrics", user.branchName]
+            });
+          }
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "inventory_adjustments",
+            filter: `branch_name=eq.${cleanBranch}`
+          },
+          () => {
+            queryClient.invalidateQueries({
+              queryKey: ["historical-adjustments", user.branchName]
+            });
+          }
+        );
+      channel.subscribe();
+    } catch (err) {
+      console.warn("[TrendsChartWidget] Realtime subscription error:", err);
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
     };
-  }, [user?.branchName, queryClient]);
+  }, [user?.branchName, type, queryClient]);
 
   // ── Process data month-by-month ──
   const chartData = React.useMemo(() => {

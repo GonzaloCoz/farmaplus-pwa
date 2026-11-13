@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from "motion/react";
 import { Plus } from '@untitledui/icons';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';

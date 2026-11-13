@@ -18,6 +18,10 @@ pub struct LocalProductRecord {
     pub subrubro: Option<String>,
     pub laboratory: Option<String>,
     pub barcode: String,
+    pub is_hidden: bool,
+    #[serde(default)]
+    pub is_traceable: bool,
+    pub gtin: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -31,6 +35,11 @@ pub struct LocalProductInput {
     pub category: Option<String>,
     pub subrubro: Option<String>,
     pub laboratory: Option<String>,
+    #[serde(default)]
+    pub is_hidden: bool,
+    #[serde(default)]
+    pub is_traceable: bool,
+    pub gtin: Option<String>,
     pub eans: Vec<String>,
 }
 
@@ -146,7 +155,10 @@ pub async fn init_local_stock_db(app: tauri::AppHandle) -> Result<LocalDbStats, 
             costo REAL DEFAULT 0,
             rubro TEXT,
             subrubro TEXT,
-            laboratorio TEXT
+            laboratorio TEXT,
+            is_hidden INTEGER DEFAULT 0,
+            is_traceable INTEGER DEFAULT 0,
+            gtin TEXT
         );
 
         CREATE TABLE IF NOT EXISTS codigos_barra (
@@ -180,6 +192,9 @@ pub async fn init_local_stock_db(app: tauri::AppHandle) -> Result<LocalDbStats, 
 
     // Migración sin fallas para bases SQLite existentes
     let _ = conn.execute("ALTER TABLE productos ADD COLUMN subrubro TEXT", []);
+    let _ = conn.execute("ALTER TABLE productos ADD COLUMN is_hidden INTEGER DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE productos ADD COLUMN is_traceable INTEGER DEFAULT 0", []);
+    let _ = conn.execute("ALTER TABLE productos ADD COLUMN gtin TEXT", []);
 
     let total_products: usize = conn
         .query_row("SELECT COUNT(*) FROM productos", [], |row| row.get(0))
@@ -227,8 +242,8 @@ pub async fn sync_mysql_to_local_db(
             let mut stmt_prod = tx
                 .prepare(
                     "INSERT OR REPLACE INTO productos 
-                     (idproducto, troquel, descripcion, stock, precio, costo, rubro, subrubro, laboratorio) 
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                     (idproducto, troquel, descripcion, stock, precio, costo, rubro, subrubro, laboratorio, is_hidden, is_traceable, gtin) 
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 )
                 .map_err(|e| format!("Error preparando INSERT productos: {}", e))?;
 
@@ -247,7 +262,10 @@ pub async fn sync_mysql_to_local_db(
                         p.cost,
                         p.category,
                         p.subrubro,
-                        p.laboratory
+                        p.laboratory,
+                        if p.is_hidden { 1 } else { 0 },
+                        if p.is_traceable { 1 } else { 0 },
+                        p.gtin
                     ])
                     .map_err(|e| format!("Error insertando producto {}: {}", p.id, e))?;
 
@@ -306,8 +324,8 @@ pub async fn import_catalog_to_local_db(
             let mut stmt_prod = tx
                 .prepare(
                     "INSERT OR REPLACE INTO productos 
-                     (idproducto, troquel, descripcion, stock, precio, costo, rubro, subrubro, laboratorio) 
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                     (idproducto, troquel, descripcion, stock, precio, costo, rubro, subrubro, laboratorio, is_hidden, is_traceable, gtin) 
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 )
                 .map_err(|e| format!("Error preparando INSERT productos: {}", e))?;
 
@@ -326,7 +344,10 @@ pub async fn import_catalog_to_local_db(
                         p.cost,
                         p.category,
                         p.subrubro,
-                        p.laboratory
+                        p.laboratory,
+                        if p.is_hidden { 1 } else { 0 },
+                        if p.is_traceable { 1 } else { 0 },
+                        p.gtin
                     ])
                     .map_err(|e| format!("Error insertando producto {}: {}", p.id_producto, e))?;
 
@@ -375,7 +396,7 @@ pub async fn search_local_barcode(
 
     // 1. Buscar primero en la tabla indexada de códigos de barra
     let found_by_cb = conn.query_row(
-        "SELECT p.idproducto, p.troquel, p.descripcion, p.stock, p.precio, p.costo, p.rubro, p.subrubro, p.laboratorio, cb.codbarra
+        "SELECT p.idproducto, p.troquel, p.descripcion, p.stock, p.precio, p.costo, p.rubro, p.subrubro, p.laboratorio, cb.codbarra, IFNULL(p.is_hidden, 0), IFNULL(p.is_traceable, 0), p.gtin
          FROM codigos_barra cb
          JOIN productos p ON p.idproducto = cb.idproducto
          WHERE cb.codbarra = ?1
@@ -393,6 +414,9 @@ pub async fn search_local_barcode(
                 subrubro: row.get(7)?,
                 laboratory: row.get(8)?,
                 barcode: row.get(9)?,
+                is_hidden: row.get::<_, i32>(10).unwrap_or(0) != 0,
+                is_traceable: row.get::<_, i32>(11).unwrap_or(0) != 0,
+                gtin: row.get(12)?,
             })
         },
     );
@@ -401,11 +425,11 @@ pub async fn search_local_barcode(
         return Ok(Some(record));
     }
 
-    // 2. Si no coincide con código de barras, buscar por IDProducto o Troquel
+    // 2. Si no coincide con código de barras, buscar por IDProducto, Troquel o GTIN
     let found_by_id_or_troq = conn.query_row(
-        "SELECT p.idproducto, p.troquel, p.descripcion, p.stock, p.precio, p.costo, p.rubro, p.subrubro, p.laboratorio, ?1 as codbarra
+        "SELECT p.idproducto, p.troquel, p.descripcion, p.stock, p.precio, p.costo, p.rubro, p.subrubro, p.laboratorio, ?1 as codbarra, IFNULL(p.is_hidden, 0), IFNULL(p.is_traceable, 0), p.gtin
          FROM productos p
-         WHERE p.idproducto = ?1 OR p.troquel = ?1
+         WHERE p.idproducto = ?1 OR p.troquel = ?1 OR p.gtin = ?1
          LIMIT 1",
         params![clean_code],
         |row| {
@@ -420,6 +444,9 @@ pub async fn search_local_barcode(
                 subrubro: row.get(7)?,
                 laboratory: row.get(8)?,
                 barcode: row.get(9)?,
+                is_hidden: row.get::<_, i32>(10).unwrap_or(0) != 0,
+                is_traceable: row.get::<_, i32>(11).unwrap_or(0) != 0,
+                gtin: row.get(12)?,
             })
         },
     );
@@ -571,10 +598,28 @@ pub async fn export_local_session_to_file(
     let exports_dir = get_exports_dir(&app)?;
     let conn = open_sqlite_conn(&app)?;
 
-    let fname = filename.unwrap_or_else(|| {
-        let timestamp = chrono_now_compact();
-        format!("CONTEO_{}_{}.txt", sanitize_filename(&session_id), timestamp)
-    });
+    let fname = match filename {
+        Some(f) if !f.trim().is_empty() => {
+            let base = std::path::Path::new(&f)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("CONTEO_EXPORT.txt");
+            let clean: String = base
+                .chars()
+                .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
+                .collect();
+            if clean.is_empty() || clean == "." || clean == ".." {
+                let timestamp = chrono_now_compact();
+                format!("CONTEO_{}_{}.txt", sanitize_filename(&session_id), timestamp)
+            } else {
+                clean
+            }
+        }
+        _ => {
+            let timestamp = chrono_now_compact();
+            format!("CONTEO_{}_{}.txt", sanitize_filename(&session_id), timestamp)
+        }
+    };
 
     let target_path = exports_dir.join(&fname);
 

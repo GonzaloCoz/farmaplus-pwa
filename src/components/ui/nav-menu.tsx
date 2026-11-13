@@ -11,7 +11,7 @@ import {
   type ReactNode,
   type HTMLAttributes,
 } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/lib/utils";
 import { spring } from "@/lib/springs";
 import { useProximityHover } from "@/hooks/use-proximity-hover";
@@ -47,11 +47,11 @@ const NavMenu = forwardRef<HTMLElement, NavMenuProps>(
       activeIndex,
       setActiveIndex,
       itemRects,
-      sessionRef,
+      session,
       handlers,
       registerItem,
       measureItems,
-    } = useProximityHover(containerRef);
+    } = useProximityHover(containerRef, { nearest: true });
 
     useEffect(() => {
       measureItems();
@@ -178,7 +178,7 @@ const NavMenu = forwardRef<HTMLElement, NavMenuProps>(
           <AnimatePresence>
             {activeRect && (
               <motion.div
-                key={sessionRef.current}
+                key={session}
                 className={`absolute ${shape.bg} bg-hover pointer-events-none`}
                 initial={{
                   opacity: 0,

@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { BatchInfo } from "@/services/expirationDB";
 import { Plus } from '@untitledui/icons';
 import { Trash01 as Trash2, Calendar, Bell01 as BellBing, LayoutGrid01 as Package, XClose as X, Calculator as CalculatorIcon, Clock, Edit01 as Pencil, SearchLg as Search } from '@untitledui/icons';
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { notify } from "@/lib/notifications";
 import { Badge } from "@/components/ui/badge";
 import { Calculator } from "@/components/Calculator";

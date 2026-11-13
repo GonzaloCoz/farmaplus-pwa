@@ -1,9 +1,49 @@
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
+import type { Json } from "@/integrations/supabase/types";
 import { useUser } from './UserContext';
 import { Notification, notificationService } from '@/services/notifications.service';
+import { calendarEventsService } from '@/services/calendarEventsService';
 import { notify } from '@/lib/notifications';
+
+function getCalendarEventId(n: Notification): string | null {
+    if (n.category !== 'CALENDARIO' || !n.metadata || typeof n.metadata !== 'object') {
+        return null;
+    }
+    const eventId = (n.metadata as Record<string, unknown>).event_id;
+    return typeof eventId === 'string' && eventId.length > 0 ? eventId : null;
+}
+
+function isDeletedEventNotification(n: Notification): boolean {
+    if (!n.metadata || typeof n.metadata !== 'object') return false;
+    return Boolean((n.metadata as Record<string, unknown>).event_deleted);
+}
+
+async function purgeOrphanNotificationRows(orphans: Notification[]): Promise<void> {
+    if (orphans.length === 0) return;
+    const ids = orphans.map((n) => n.id);
+    try {
+        await supabase.from('notifications').delete().in('id', ids);
+        await Promise.all(
+            orphans.map((n) => {
+                const prevMeta =
+                    n.metadata && typeof n.metadata === 'object' && !Array.isArray(n.metadata)
+                        ? (n.metadata as Record<string, unknown>)
+                        : {};
+                return supabase
+                    .from('notifications')
+                    .update({
+                        is_read: true,
+                        metadata: { ...prevMeta, event_deleted: true } as Json,
+                    })
+                    .eq('id', n.id);
+            })
+        );
+    } catch {
+        // ignore cleanup warnings
+    }
+}
 
 interface NotificationContextType {
     notifications: Notification[];
@@ -21,6 +61,31 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [loading, setLoading] = useState(true);
 
+    const reconcileCalendarNotifications = useCallback(async (items: Notification[]) => {
+        const visible = items.filter((n) => !isDeletedEventNotification(n));
+        const hasCalendarItems = visible.some((n) => getCalendarEventId(n) !== null);
+        if (!hasCalendarItems) return visible;
+
+        try {
+            const activeEvents = await calendarEventsService.list();
+            const activeIds = new Set(activeEvents.map((ev) => ev.id));
+            const orphans: Notification[] = [];
+            const valid = visible.filter((n) => {
+                const eventId = getCalendarEventId(n);
+                if (!eventId) return true;
+                if (activeIds.has(eventId)) return true;
+                orphans.push(n);
+                return false;
+            });
+            if (orphans.length > 0) {
+                void purgeOrphanNotificationRows(orphans);
+            }
+            return valid;
+        } catch {
+            return visible;
+        }
+    }, []);
+
     // Load initial notifications
     useEffect(() => {
         if (!user?.id) {
@@ -28,6 +93,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             setLoading(false);
             return;
         }
+
+        let cancelled = false;
 
         const loadNotifications = async () => {
             setLoading(true);
@@ -41,12 +108,41 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             if (error) {
                 console.error("Error loading notifications:", error);
             } else {
-                setNotifications(data as unknown as Notification[]);
+                const raw = (data as unknown as Notification[]).filter(
+                    (n) => !isDeletedEventNotification(n)
+                );
+                if (!cancelled) setNotifications(raw);
+                const reconciled = await reconcileCalendarNotifications(raw);
+                if (!cancelled) setNotifications(reconciled);
             }
-            setLoading(false);
+            if (!cancelled) setLoading(false);
         };
 
-        loadNotifications();
+        void loadNotifications();
+
+        const unsubscribeCalendar = calendarEventsService.subscribe(async () => {
+            try {
+                const activeEvents = await calendarEventsService.list();
+                if (cancelled) return;
+                const activeIds = new Set(activeEvents.map((ev) => ev.id));
+                setNotifications((prev) => {
+                    const orphans: Notification[] = [];
+                    const next = prev.filter((n) => {
+                        if (isDeletedEventNotification(n)) return false;
+                        const eventId = getCalendarEventId(n);
+                        if (!eventId || activeIds.has(eventId)) return true;
+                        orphans.push(n);
+                        return false;
+                    });
+                    if (orphans.length > 0) {
+                        void purgeOrphanNotificationRows(orphans);
+                    }
+                    return next;
+                });
+            } catch {
+                // ignore transient network errors
+            }
+        });
 
         // Subscribe to realtime changes
         const channel = supabase
@@ -62,6 +158,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                 (payload) => {
                     if (payload.eventType === 'INSERT') {
                         const newNotif = payload.new as Notification;
+                        if (isDeletedEventNotification(newNotif)) return;
                         setNotifications(prev => [newNotif, ...prev]);
                         // Show custom notification toast
                         const notifType = newNotif.type || 'info';
@@ -72,6 +169,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                         notifyFn(newNotif.title, newNotif.message);
                     } else if (payload.eventType === 'UPDATE') {
                         const updated = payload.new as Notification;
+                        if (isDeletedEventNotification(updated)) {
+                            setNotifications(prev => prev.filter(n => n.id !== updated.id));
+                            return;
+                        }
                         setNotifications(prev => prev.map(n => n.id === updated.id ? updated : n));
                     } else if (payload.eventType === 'DELETE') {
                         const deleted = payload.old as Notification;
@@ -82,9 +183,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
             .subscribe();
 
         return () => {
+            cancelled = true;
+            unsubscribeCalendar();
             supabase.removeChannel(channel);
         };
-    }, [user]);
+    }, [user, reconcileCalendarNotifications]);
 
     const unreadCount = notifications.filter(n => !n.is_read).length;
 

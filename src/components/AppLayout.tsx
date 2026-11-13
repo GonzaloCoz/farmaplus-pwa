@@ -1,4 +1,4 @@
-import { AppSidebar } from "@/components/AppSidebar";
+﻿import { AppSidebar } from "@/components/AppSidebar";
 import { BottomNavBar } from "../BottomNavBar";
 import { TopAppBar } from "@/components/TopAppBar";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -19,7 +19,6 @@ import {
   Settings as SettingsIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { WindowRouter } from "@/components/WindowRouter";
 import { GitCompareArrows } from "@/config/navigation";
 import { getTabMetaForPath } from "@/config/tabConfig";
 import { ScrollArea, ScrollAreaViewport, ScrollAreaScrollbar } from "@/components/ui/scroll-area";
@@ -27,27 +26,17 @@ import { AppUpdater } from "@/components/AppUpdater";
 import { SurfaceProvider } from "@/lib/surface-context";
 import { Elevated } from "@/lib/elevated";
 import { notify } from "@/lib/notifications";
+import { useLayout } from "@/contexts/LayoutContext";
 
 export function AppLayout() {
   const { windows, activeWindowId } = useWindowManager();
+  const { isSidebarCollapsed } = useLayout();
   const isTauri = typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
   const navigate = useNavigate();
   const { user, logout } = useUser();
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [labs, setLabs] = useState<{ name: string, category: string, round: number }[]>([]);
   const [activeRounds, setActiveRounds] = useState<Record<string, number>>({});
-  const [visitedWindowIds, setVisitedWindowIds] = useState<Set<string>>(() => new Set(activeWindowId ? [activeWindowId] : []));
-
-  useEffect(() => {
-    if (activeWindowId) {
-      setVisitedWindowIds(prev => {
-        if (prev.has(activeWindowId)) return prev;
-        const next = new Set(prev);
-        next.add(activeWindowId);
-        return next;
-      });
-    }
-  }, [activeWindowId]);
 
   useEffect(() => {
     const handleOpen = () => setIsSearchOpen(true);
@@ -163,7 +152,7 @@ export function AppLayout() {
           isTauri ? "rounded-none border-0" : "rounded-none lg:rounded-[28px] border border-border/20"
         )}>
           {/* Header inside outer container */}
-          <div className={cn(isTauri ? "block" : "hidden lg:block", "px-3.5 pt-2.5 pb-1")}>
+          <div className={cn(isTauri ? "block" : "hidden lg:block", "px-3.5 pt-2.5 pb-1")} data-tauri-drag-region>
             <DesktopHeader />
           </div>
 
@@ -172,48 +161,35 @@ export function AppLayout() {
             offset={1}
             className="flex-1 lg:mx-3.5 lg:mb-3.5 lg:mt-0 lg:rounded-2xl border border-border/10 overflow-hidden flex p-0 gap-0 relative"
           >
-            <div className="hidden lg:block">
+            <div className={cn(
+              "hidden lg:block transition-all duration-300 ease-in-out overflow-hidden shrink-0",
+              isSidebarCollapsed ? "w-0 opacity-0 pointer-events-none" : "w-[64px] opacity-100"
+            )}>
               <AppSidebar />
             </div>
 
             {/* Main-content - Top-most Floating Dashboard Box (Framed on Desktop, Full on Mobile) */}
             <Elevated
               offset={1}
-              className="flex-1 lg:m-2.5 lg:rounded-xl border border-black/[0.03] dark:border-white/[0.03] overflow-hidden flex flex-col z-10 transition-all duration-300"
+              className={cn(
+                "flex-1 border border-black/[0.03] dark:border-white/[0.03] overflow-hidden flex flex-col z-10 transition-all duration-300",
+                isSidebarCollapsed ? "lg:m-1.5 lg:rounded-xl" : "lg:m-2.5 lg:rounded-xl"
+              )}
             >
                 <ScrollArea id="main-content" className="flex-1 w-full relative h-full">
                   <ScrollAreaViewport 
                     className="w-full relative lg:px-0 no-scrollbar" 
                   >
-                    {/* Render windows as isolated instances (lazy mounted on first visit) */}
-                    {windows.map((win) => {
-                      const isVisited = visitedWindowIds.has(win.id) || activeWindowId === win.id;
-                      if (!isVisited) return null;
-
-                      return (
-                        <div
-                          key={win.id}
-                          className={cn(
-                            "absolute inset-0 w-full h-full transition-opacity duration-300 overflow-y-auto custom-scrollbar md:no-scrollbar",
-                            activeWindowId === win.id ? "opacity-100 z-10" : "opacity-0 pointer-events-none z-0"
-                          )}
-                          style={{ 
-                            paddingTop: 'calc(var(--total-header-height) * var(--is-mobile, 1))',
-                            paddingLeft: 'var(--safe-left)',
-                            paddingRight: 'var(--safe-right)' 
-                          }}
-                        >
-                          <WindowRouter
-                            initialPath={win.path}
-                            currentPath={win.path}
-                            onPathChange={() => { }} // No-op, sync handled by useEffect
-                          />
-                        </div>
-                      );
-                    })}
-
-                    {/* Fallback for cases where no windows exist yet */}
-                    {windows.length === 0 && <div className="p-4"><Outlet /></div>}
+                    <div
+                      className="w-full h-full min-h-full flex flex-col overflow-y-auto custom-scrollbar md:no-scrollbar"
+                      style={{ 
+                        paddingTop: 'calc(var(--total-header-height) * var(--is-mobile, 1))',
+                        paddingLeft: 'var(--safe-left)',
+                        paddingRight: 'var(--safe-right)' 
+                      }}
+                    >
+                      <Outlet />
+                    </div>
                   </ScrollAreaViewport>
                   <ScrollAreaScrollbar className="hidden lg:flex" />
                 </ScrollArea>

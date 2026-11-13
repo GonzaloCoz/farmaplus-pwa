@@ -275,7 +275,7 @@ export const collectorOfflineService = {
                 created_at: item.updatedAt
             }));
 
-            const { error } = await supabase
+            const { error } = await (supabase as any)
                 .from('inventories')
                 .upsert(dbPayload, { onConflict: 'branch_name,laboratory,ean' });
 

@@ -27,6 +27,9 @@ interface ShapeClasses {
   // corners are animated (e.g. the selected-background merge/split animation),
   // which requires per-corner numeric border-radii rather than a class.
   bgRadius: number;
+  /** Numeric counterpart of `container`. Popup shells use a 4px inset, so
+   *  containerRadius = bgRadius + 4 keeps their curves concentric. */
+  containerRadius: number;
   mergedRadius: number;
 }
 
@@ -41,6 +44,7 @@ const shapeMap: Record<ShapeVariant, ShapeClasses> = {
     button: "rounded-lg",
     input: "rounded-lg",
     bgRadius: 8,
+    containerRadius: 12,
     mergedRadius: 8,
   },
   rounded: {
@@ -53,6 +57,7 @@ const shapeMap: Record<ShapeVariant, ShapeClasses> = {
     button: "rounded-lg",
     input: "rounded-lg",
     bgRadius: 8,
+    containerRadius: 12,
     mergedRadius: 8,
   },
 };
@@ -132,5 +137,13 @@ function ShapeProvider({
   );
 }
 
-export { ShapeProvider, useShape, useShapeContext, shapeMap };
+function nestedRadius(
+  outerRadius: number,
+  inset: number,
+  borderWidth = 0
+) {
+  return Math.max(0, outerRadius - inset - borderWidth);
+}
+
+export { ShapeProvider, useShape, useShapeContext, shapeMap, nestedRadius };
 export type { ShapeVariant, ShapeClasses };

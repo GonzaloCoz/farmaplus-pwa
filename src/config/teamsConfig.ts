@@ -69,6 +69,7 @@ const BRANCH_MAPPING: Record<string, string> = {
     "parque centenario": TEAMS_RECIPIENTS.EBUSTOS,
     "parque patricios": TEAMS_RECIPIENTS.EBUSTOS,
     "pilar": TEAMS_RECIPIENTS.EBUSTOS,
+    "pilar ii": TEAMS_RECIPIENTS.EBUSTOS,
     "pompeya": TEAMS_RECIPIENTS.EBUSTOS,
     "quilmes": TEAMS_RECIPIENTS.EBUSTOS,
     "retiro": TEAMS_RECIPIENTS.EBUSTOS,

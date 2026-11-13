@@ -7,10 +7,12 @@ import {
     Download,
     FileText,
     FolderDown,
-    Layers
+    Layers,
+    QrCode
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
+import { toast } from '@/lib/notifications';
 import { db, LocalItem } from '@/services/db';
 import { supabase } from '@/integrations/supabase/client';
 import { getDeviceId } from '@/services/deviceTelemetry';
@@ -18,12 +20,14 @@ import { getFullSectorName } from '@/constants/farmaplusSectors';
 import { normalizeDeviceModel } from './DeviceMonitorView';
 import { preCountExportService, SentBatchRecord } from '@/services/preCountExportService';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { decompressGzipBase64ToJson } from '@/lib/compression';
 
 export interface ExportFileItem {
     id: string;
     fileName: string;
     batchCode: string;
     format: 'txt' | 'csv' | 'xlsx';
+    fileType?: 'count' | 'serials';
     timestamp: string;      // e.g. "14:25 hs" o "Hoy 13:40"
     unitsCount: number;     // e.g. 310
     skusCount: number;      // e.g. 45
@@ -35,6 +39,21 @@ export interface ExportFileItem {
         ean: string;
         quantity: number;
         product_name?: string;
+    }>;
+    serialRecords?: Array<{
+        location_tag?: string;
+        id_producto?: string;
+        ean?: string;
+        gtin?: string;
+        serial?: string;
+        lot?: string;
+        expiry?: string;
+        no_serial?: boolean;
+        device_id?: string;
+        device_name?: string;
+        scanned_by?: string;
+        scanned_at?: string;
+        raw_datamatrix?: string;
     }>;
 }
 
@@ -55,6 +74,31 @@ export interface PreCountFilesViewProps {
 
 function downloadExportFile(file: ExportFileItem, terminalName: string) {
     try {
+        if (file.fileType === 'serials' && file.serialRecords && file.serialRecords.length > 0) {
+            const rows = file.serialRecords.map((s, idx) => ({
+                'N°': idx + 1,
+                'Ubicación / Posición': s.location_tag || 'GENERAL',
+                'ID Producto': s.id_producto || '',
+                'Código EAN': s.ean || '',
+                'GTIN (01)': s.gtin || '',
+                'Número de Serie (21)': s.serial || '',
+                'Lote (10)': s.lot || '',
+                'Vencimiento (17)': s.expiry || '',
+                'Sin DataMatrix / Ilegible': s.no_serial ? 'SÍ' : 'NO',
+                'Dispositivo': s.device_name || s.device_id || terminalName,
+                'Operario': s.scanned_by || terminalName,
+                'Fecha y Hora': s.scanned_at ? new Date(s.scanned_at).toLocaleString('es-AR') : '',
+                'Lectura Raw DataMatrix': s.raw_datamatrix || ''
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(rows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Series Trazables');
+            XLSX.writeFile(wb, file.fileName.endsWith('.xlsx') ? file.fileName : `${file.fileName}.xlsx`);
+            toast.success(`Archivo de series descargado: ${file.fileName} (${file.serialRecords.length} series)`);
+            return;
+        }
+
         let content = file.content;
         
         // Si hay items en el archivo, regenerar para garantizar que IDProducto esté siempre presente
@@ -195,14 +239,28 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
                     pendingActions.filter(a => a.type === 'delete').map(a => a.data?.id).filter(Boolean)
                 );
 
-                // Consultar ítems remotos de Supabase
+                // Consultar ítems remotos de Supabase con paginación para superar el límite de 1000 de PostgREST
                 let supaItems: any[] = [];
                 try {
-                    const { data } = await supabase
-                        .from('precount_items')
-                        .select('*')
-                        .eq('session_id', activeSessionId);
-                    if (data) supaItems = data;
+                    let from = 0;
+                    const PAGE_SIZE = 1000;
+                    while (true) {
+                        const { data, error } = await supabase
+                            .from('precount_items')
+                            .select('*')
+                            .eq('session_id', activeSessionId)
+                            .order('scanned_at', { ascending: false })
+                            .range(from, from + PAGE_SIZE - 1);
+
+                        if (error) {
+                            console.warn('[PreCountFilesView] Error consultando Supabase:', error);
+                            break;
+                        }
+                        if (!data || data.length === 0) break;
+                        supaItems.push(...data);
+                        if (data.length < PAGE_SIZE) break;
+                        from += PAGE_SIZE;
+                    }
                 } catch (e) {
                     console.warn('[PreCountFilesView] Error consultando Supabase:', e);
                 }
@@ -237,7 +295,39 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
                     }
                 });
 
-                if (items.length > 0) {
+                // Consultar series trazables (DataMatrix) de la sesión en Supabase + Dexie local
+                let allSerials: any[] = [];
+                try {
+                    const { data: supaSerials } = await (supabase as any)
+                        .from('precount_serials')
+                        .select('*')
+                        .eq('session_id', activeSessionId)
+                        .order('scanned_at', { ascending: true });
+                    if (supaSerials && supaSerials.length > 0) {
+                        allSerials.push(...supaSerials);
+                    }
+                } catch (e) {
+                    console.warn('[PreCountFilesView] Error consultando precount_serials:', e);
+                }
+
+                try {
+                    const { getPreCountSerials } = await import('@/services/preCountDB');
+                    const localSerials = await getPreCountSerials(activeSessionId);
+                    if (localSerials && localSerials.length > 0) {
+                        const existingKeys = new Set(
+                            allSerials.map(s => `${s.gtin || s.ean || ''}_${s.serial || ''}_${s.location_tag || ''}`)
+                        );
+                        for (const ls of localSerials) {
+                            const key = `${ls.gtin || ls.ean || ''}_${ls.serial || ''}_${ls.location_tag || ''}`;
+                            if (!existingKeys.has(key)) {
+                                allSerials.push(ls);
+                                existingKeys.add(key);
+                            }
+                        }
+                    }
+                } catch {}
+
+                if (items.length > 0 || allSerials.length > 0) {
                     // Cargar catálogo de la sesión para resolver IDProducto de cada EAN
                     const catalogIdByEan = new Map<string, string>();
                     const catalogKnownIds = new Set<string>();
@@ -270,7 +360,7 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
                                         .eq('filename', 'master_catalog.json')
                                         .maybeSingle();
                                     if (catFile?.content) {
-                                        masterCatalog = JSON.parse(catFile.content);
+                                        masterCatalog = await decompressGzipBase64ToJson(catFile.content);
                                     }
                                 } catch {}
                             }
@@ -422,16 +512,41 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
                         deviceGroups.get(dId)!.push(item);
                     });
 
+                    // Agrupar series trazables por dispositivo, vinculándolas con las terminales existentes
+                    const serialsByDevice = new Map<string, any[]>();
+                    const knownDevIds = Array.from(deviceGroups.keys());
+                    allSerials.forEach(s => {
+                        let rawDev = String(s.device_id || s.scanned_by || '').trim();
+                        if (!rawDev) {
+                            rawDev = knownDevIds[0] || 'TERMINAL-1';
+                        } else if (!deviceGroups.has(rawDev)) {
+                            const matchedKey = knownDevIds.find(k =>
+                                k.toLowerCase() === rawDev.toLowerCase() ||
+                                k.toLowerCase().includes(rawDev.toLowerCase()) ||
+                                rawDev.toLowerCase().includes(k.toLowerCase())
+                            );
+                            if (matchedKey) {
+                                rawDev = matchedKey;
+                            } else {
+                                deviceGroups.set(rawDev, []);
+                            }
+                        }
+                        if (!serialsByDevice.has(rawDev)) serialsByDevice.set(rawDev, []);
+                        serialsByDevice.get(rawDev)!.push(s);
+                    });
+
                     deviceGroups.forEach((devItems, devId) => {
+                        const devSerials = serialsByDevice.get(devId) || [];
                         const meta = deviceMetaMap.get(devId) || {};
                         const isZebra = meta.deviceType === 'zebra' || 
                             devId.toLowerCase().includes('zebra') ||
-                            (meta.userName || meta.deviceName || devItems[0]?.device_name || '').toLowerCase().includes('zebra');
+                            (meta.userName || meta.deviceName || devItems[0]?.device_name || devSerials[0]?.device_name || '').toLowerCase().includes('zebra');
 
                         const connId = meta.connectionId || devId.substring(0, 8).toUpperCase();
-                        const userName = meta.userName || meta.deviceName || devItems[0]?.device_name || (isZebra ? `Zebra ${connId}` : `Station ${connId}`);
+                        const userName = meta.userName || meta.deviceName || devItems[0]?.device_name || devSerials[0]?.device_name || (isZebra ? `Zebra ${connId}` : `Station ${connId}`);
                         const model = meta.deviceModel || (isZebra ? 'Type 2 · TC26 Android' : 'Type 1 · PC Salón');
-                        const subtitle = meta.locationSubtitle || (devItems[0]?.location_tag ? `${getFullSectorName(devItems[0].location_tag)} · En Vivo` : 'Sincronizado');
+                        const firstLoc = devItems[0]?.location_tag || devSerials[0]?.location_tag;
+                        const subtitle = meta.locationSubtitle || (firstLoc ? `${getFullSectorName(firstLoc)} · En Vivo` : 'Sincronizado');
 
                         const locationGroups = new Map<string, LocalItem[]>();
                         devItems.forEach(item => {
@@ -476,6 +591,7 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
                                 fileName,
                                 batchCode: locTag,
                                 format: 'txt',
+                                fileType: 'count',
                                 timestamp: timeFormatted,
                                 unitsCount: totalQty,
                                 skusCount,
@@ -490,6 +606,41 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
                                 }))
                             });
                         });
+
+                        // Si este dispositivo registró series trazables (DataMatrix), añadir su recuadro de archivo de series en la misma tarjeta
+                        if (devSerials.length > 0) {
+                            const cleanConn = connId.replace(/[^a-zA-Z0-9]/g, '');
+                            const uniqueSerialSkus = new Set(
+                                devSerials.map(s => s.gtin || s.ean || s.id_producto || s.serial)
+                            ).size;
+
+                            const lastSerial = [...devSerials].sort((a, b) =>
+                                new Date(b.scanned_at || 0).getTime() - new Date(a.scanned_at || 0).getTime()
+                            )[0];
+                            let serialTimeFormatted = 'Hoy';
+                            if (lastSerial?.scanned_at) {
+                                try {
+                                    const d = new Date(lastSerial.scanned_at);
+                                    serialTimeFormatted = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')} hs`;
+                                } catch {}
+                            }
+
+                            files.push({
+                                id: `serials-${devId}`,
+                                fileName: `SERIES_${cleanConn}.xlsx`,
+                                batchCode: 'SERIES',
+                                format: 'xlsx',
+                                fileType: 'serials',
+                                timestamp: serialTimeFormatted,
+                                unitsCount: devSerials.length,
+                                skusCount: uniqueSerialSkus,
+                                status: 'processed',
+                                serialRecords: devSerials.map(s => ({
+                                    ...s,
+                                    id_producto: s.id_producto || resolveItemProductId({ ean: s.ean || s.gtin, id_producto: s.id_producto })
+                                }))
+                            });
+                        }
 
                         if (files.length > 0) {
                             resultGroups.push({
@@ -548,6 +699,12 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
                     table: 'precount_device_files',
                     filter: `session_id=eq.${activeSessionId}`
                 }, () => loadRealFiles())
+                .on('postgres_changes', {
+                    event: '*',
+                    schema: 'public',
+                    table: 'precount_serials',
+                    filter: `session_id=eq.${activeSessionId}`
+                }, () => loadRealFiles())
                 .subscribe();
         }
 
@@ -596,15 +753,22 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
         return localPc.length > 0 ? [localPc[0]] : (terminals.length > 0 ? [terminals[0]] : []);
     }, [terminals, isBranchMode, myDeviceId, myDeviceName]);
 
-    const totalUnits = visibleTerminals.reduce((acc, t) => acc + t.files.reduce((fa, f) => fa + f.unitsCount, 0), 0);
-    const totalSkus = visibleTerminals.reduce((acc, t) => acc + t.files.reduce((fa, f) => fa + f.skusCount, 0), 0);
+    const totalUnits = visibleTerminals.reduce(
+        (acc, t) => acc + t.files.filter(f => f.fileType !== 'serials').reduce((fa, f) => fa + f.unitsCount, 0),
+        0
+    );
+    const totalSkus = visibleTerminals.reduce(
+        (acc, t) => acc + t.files.filter(f => f.fileType !== 'serials').reduce((fa, f) => fa + f.skusCount, 0),
+        0
+    );
     const totalFiles = visibleTerminals.reduce((acc, t) => acc + t.files.length, 0);
 
     // Compilar todas las exportaciones generadas por los usuarios de sucursal en un único archivo Plex
-    const handleDownloadConsolidatedPlex = () => {
+    const handleDownloadConsolidatedPlex = async () => {
         const allItems: Array<{ id_producto?: string; ean: string; quantity: number }> = [];
         terminals.forEach(t => {
             t.files.forEach(f => {
+                if (f.fileType === 'serials') return;
                 if (f.items && f.items.length > 0) {
                     allItems.push(...f.items);
                 } else if (f.content) {
@@ -642,6 +806,24 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
             }
         }
 
+        // Aplicar conversión automática Padre-Hijo sobre el total consolidado entre todas las terminales
+        if (sessionId) {
+            try {
+                const { applyParentChildConversionToMap } = await import('@/services/preCountDB');
+                const sess = await db.sessions.get(sessionId);
+                let catalog = sess?.master_catalog || [];
+                if (catalog.length === 0) {
+                    const prods = await db.precount_products.where('session_id').equals(sessionId).toArray();
+                    catalog = prods as any[];
+                }
+                if (catalog.length > 0) {
+                    applyParentChildConversionToMap(compiledMap, catalog as any);
+                }
+            } catch (convErr) {
+                console.warn('[PreCountFilesView] Error aplicando conversión Padre-Hijo en consolidado:', convErr);
+            }
+        }
+
         const lines = Array.from(compiledMap.values()).map(it => `${it.id_producto};${it.ean};${it.quantity};0`);
         const content = lines.join('\n');
         const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
@@ -655,6 +837,76 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         toast.success(`Consolidado descargado: ${compiledMap.size} SKUs compilados para Plex`);
+    };
+
+    const [isExportingSerials, setIsExportingSerials] = useState(false);
+
+    const handleDownloadTraceableSerials = async () => {
+        setIsExportingSerials(true);
+        try {
+            let serials: any[] = [];
+            if (activeSessionId) {
+                // 1. Supabase
+                const { data, error } = await (supabase as any)
+                    .from('precount_serials')
+                    .select('*')
+                    .eq('session_id', activeSessionId)
+                    .order('scanned_at', { ascending: true });
+                
+                if (data && data.length > 0) {
+                    serials.push(...data);
+                }
+
+                // 2. Fallback / local items from Dexie
+                try {
+                    const { getPreCountSerials } = await import('@/services/preCountDB');
+                    const localSerials = await getPreCountSerials(activeSessionId);
+                    const existingKeys = new Set(serials.map(s => `${s.gtin || s.ean}_${s.serial || ''}_${s.location_tag}`));
+                    for (const ls of localSerials) {
+                        const key = `${ls.gtin || ls.ean}_${ls.serial || ''}_${ls.location_tag}`;
+                        if (!existingKeys.has(key)) {
+                            serials.push(ls);
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Error leyendo series locales:', err);
+                }
+            }
+
+            if (serials.length === 0) {
+                toast.info('No hay series trazables registradas para esta sesión.');
+                return;
+            }
+
+            const rows = serials.map((s, idx) => ({
+                'N°': idx + 1,
+                'Ubicación / Posición': s.location_tag || 'GENERAL',
+                'ID Producto': s.id_producto || '',
+                'Código EAN': s.ean || '',
+                'GTIN (01)': s.gtin || '',
+                'Número de Serie (21)': s.serial || '',
+                'Lote (10)': s.lot || '',
+                'Vencimiento (17)': s.expiry || '',
+                'Sin DataMatrix / Ilegible': s.no_serial ? 'SÍ' : 'NO',
+                'Dispositivo': s.device_name || s.device_id || '',
+                'Operario': s.scanned_by || '',
+                'Fecha y Hora': s.scanned_at ? new Date(s.scanned_at).toLocaleString('es-AR') : '',
+                'Lectura Raw DataMatrix': s.raw_datamatrix || ''
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(rows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Series Trazables");
+
+            const dateStr = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(wb, `Series_Trazables_${dateStr}.xlsx`);
+            toast.success(`Excel de series descargado (${serials.length} lecturas de DataMatrix)`);
+        } catch (err) {
+            console.error('Error exportando series trazables:', err);
+            toast.error('Error al generar el archivo de series trazables');
+        } finally {
+            setIsExportingSerials(false);
+        }
     };
 
     return (
@@ -681,9 +933,23 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
                     <div>
                         Variedad: <strong className="text-foreground">{totalSkus} {totalSkus === 1 ? 'SKU' : 'SKUs'}</strong>
                     </div>
-                    {!isBranchMode && totalFiles > 0 && (
+                    {totalFiles > 0 && (
                         <>
                             <div className="hidden sm:block h-3.5 w-px bg-border/40" />
+                            <button
+                                type="button"
+                                disabled={isExportingSerials}
+                                onClick={handleDownloadTraceableSerials}
+                                className="h-7 px-2.5 rounded-lg border border-border/80 bg-background hover:bg-muted text-foreground flex items-center gap-1.5 font-bold text-xs shadow-xs cursor-pointer transition-colors"
+                                title="Descargar informe de series y lotes DataMatrix escaneados"
+                            >
+                                <QrCode className="w-3.5 h-3.5 text-blue-500" />
+                                <span>{isExportingSerials ? 'Generando...' : 'Series Trazables (.XLSX)'}</span>
+                            </button>
+                        </>
+                    )}
+                    {!isBranchMode && totalFiles > 0 && (
+                        <>
                             <button
                                 type="button"
                                 onClick={handleDownloadConsolidatedPlex}
@@ -721,8 +987,10 @@ export function PreCountFilesView({ sessionId, isBranchMode = false }: PreCountF
 }
 
 function TerminalFilesCard({ terminal }: { terminal: TerminalFilesGroup }) {
-    const totalUnits = terminal.files.reduce((acc, f) => acc + f.unitsCount, 0);
-    const totalSkus = terminal.files.reduce((acc, f) => acc + f.skusCount, 0);
+    const countFiles = terminal.files.filter(f => f.fileType !== 'serials');
+    const serialFile = terminal.files.find(f => f.fileType === 'serials');
+    const totalUnits = countFiles.reduce((acc, f) => acc + f.unitsCount, 0);
+    const totalSkus = countFiles.reduce((acc, f) => acc + f.skusCount, 0);
 
     return (
         <div className="bg-surface-2/60 dark:bg-surface-2/40 border border-border/40 rounded-[24px] p-[2px] transition-all duration-200 flex flex-col justify-between shadow-xs hover:shadow-md">
@@ -763,6 +1031,7 @@ function TerminalFilesCard({ terminal }: { terminal: TerminalFilesGroup }) {
                 {/* Fila de Recuadros Compactos: altura h-[142px], rounded-[24px], gap-3 exacto */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {terminal.files.map((file) => {
+                        const isSerials = file.fileType === 'serials';
                         return (
                             <div
                                 key={file.id}
@@ -771,15 +1040,19 @@ function TerminalFilesCard({ terminal }: { terminal: TerminalFilesGroup }) {
                                     "bg-[#F4F4F6] dark:bg-surface-2"
                                 )}
                             >
-                                {/* Cabecera del sub-recuadro: Nombre archivo/lote + Halo Dot */}
+                                {/* Cabecera del sub-recuadro: Nombre archivo/lote + Halo Dot / Badge DataMatrix */}
                                 <div className="flex items-center justify-between gap-1">
                                     <span 
                                         className="font-bold text-sm text-zinc-900 dark:text-zinc-100 tracking-tight leading-none truncate" 
-                                        title={file.fileName}
+                                        title={isSerials ? `${file.fileName} · Series Trazables (Serie, Lote, Vto, GTIN)` : file.fileName}
                                     >
                                         {file.fileName}
                                     </span>
-                                    {file.status === 'exported' ? (
+                                    {isSerials ? (
+                                        <span className="w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-950/80 flex items-center justify-center shrink-0" title="Archivo de Series Trazables (DataMatrix)">
+                                            <QrCode className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                                        </span>
+                                    ) : file.status === 'exported' ? (
                                         <span className="w-5 h-5 rounded-full bg-[#D1FADF] dark:bg-emerald-950/80 flex items-center justify-center shrink-0" title="Exportado">
                                             <span className="w-2.5 h-2.5 rounded-full bg-[#12B76A]" />
                                         </span>
@@ -792,14 +1065,25 @@ function TerminalFilesCard({ terminal }: { terminal: TerminalFilesGroup }) {
                                     )}
                                 </div>
 
-                                {/* Centro: Unidades y SKUs alineados */}
-                                <div className="flex flex-col items-center justify-center py-0.5">
+                                {/* Centro: Unidades/Series y Detalle de datos */}
+                                <div className="flex flex-col items-center justify-center py-0.5 text-center">
                                     <div className="flex items-center gap-1.5 text-zinc-800 dark:text-zinc-200 font-bold text-sm">
-                                        <Package className="w-4 h-4 stroke-[1.8] text-zinc-400 dark:text-zinc-500" />
-                                        <span>{file.unitsCount} <span className="text-xs font-normal text-muted-foreground">un.</span></span>
+                                        {isSerials ? (
+                                            <>
+                                                <QrCode className="w-4 h-4 stroke-[1.8] text-blue-500 shrink-0" />
+                                                <span>{file.unitsCount} <span className="text-xs font-normal text-muted-foreground">{file.unitsCount === 1 ? 'serie' : 'series'}</span></span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Package className="w-4 h-4 stroke-[1.8] text-zinc-400 dark:text-zinc-500 shrink-0" />
+                                                <span>{file.unitsCount} <span className="text-xs font-normal text-muted-foreground">un.</span></span>
+                                            </>
+                                        )}
                                     </div>
-                                    <span className="text-[11px] text-muted-foreground font-medium mt-0.5">
-                                        {file.skusCount} {file.skusCount === 1 ? 'SKU' : 'SKUs'} · {file.timestamp}
+                                    <span className="text-[11px] text-muted-foreground font-medium mt-0.5 truncate max-w-full" title={isSerials ? 'Contiene Serie, Lote, Vencimiento, GTIN, EAN y Posición' : undefined}>
+                                        {isSerials
+                                            ? `Serie · Lote · Vto · ${file.timestamp}`
+                                            : `${file.skusCount} ${file.skusCount === 1 ? 'SKU' : 'SKUs'} · ${file.timestamp}`}
                                     </span>
                                 </div>
 
@@ -834,6 +1118,15 @@ function TerminalFilesCard({ terminal }: { terminal: TerminalFilesGroup }) {
                     <span>
                         <strong className="text-foreground">{totalSkus}</strong> {totalSkus === 1 ? 'SKU' : 'SKUs'}
                     </span>
+                    {serialFile && (
+                        <>
+                            <span>·</span>
+                            <span className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400">
+                                <QrCode className="w-3 h-3" />
+                                <strong>{serialFile.unitsCount}</strong> {serialFile.unitsCount === 1 ? 'serie trazable' : 'series trazables'}
+                            </span>
+                        </>
+                    )}
                 </div>
 
                 {/* Right: Descargar Lote de la Terminal */}

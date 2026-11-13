@@ -7,7 +7,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem } from '@/components/u
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import { Switch } from '@/components/ui/switch';
 import { FluidCheckbox } from '@/components/ui/fluid-checkbox';
-import { AlertCircle, AlertTriangle, Check, CheckCircle, Search, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Check, CheckCircle, Link2, Search, X } from 'lucide-react';
 import { notify as toast } from '@/lib/notifications';
 import { cn } from '@/lib/utils';
 import { Elevated } from '@/lib/elevated';
@@ -16,6 +16,8 @@ import { upsertPreCountItem, updatePreCountItem, deletePreCountItems, getDeviceI
 import { supabase } from '@/integrations/supabase/client';
 import { DragStepper } from '@/components/ui/drag-stepper';
 import { useUser } from '@/contexts/UserContext';
+import { isTauriEnvironment, searchLocalBarcode } from '@/services/tauriLocalDb';
+import { decompressGzipBase64ToJson } from '@/lib/compression';
 
 const COLOR_PALETTE: BadgeColor[] = [
     "blue",
@@ -53,6 +55,13 @@ export interface ProductExpirationItem {
     position?: string;
     sector?: string;
     isAdding?: boolean;
+    is_hidden?: boolean;
+    is_traceable?: boolean;
+    gtin?: string;
+    is_parent?: boolean;
+    id_producto_padre?: string;
+    unidades_padre?: number;
+    parent_name?: string;
     lotesData?: {
         lote: string;
         vencimiento: string;
@@ -71,6 +80,13 @@ export interface CandidateProduct {
     systemStock?: number;
     exactMatch?: boolean;
     isNewOption?: boolean;
+    is_hidden?: boolean;
+    is_traceable?: boolean;
+    gtin?: string;
+    is_parent?: boolean;
+    id_producto_padre?: string;
+    unidades_padre?: number;
+    parent_name?: string;
 }
 
 function normalizeText(str: string): string {
@@ -123,7 +139,7 @@ export function PreCountProductsView({
     const adminName = user?.name || user?.username;
     const defaultOperator = (user?.role === 'admin' && adminName) 
         ? adminName 
-        : (adminName || (typeof window !== 'undefined' ? localStorage.getItem('precount_device_name') : null) || 'Admin');
+        : ((typeof window !== 'undefined' ? (localStorage.getItem('precount_device_name') || localStorage.getItem('precount_user_name')) : null) || adminName || 'Operador');
 
     const [internalEditing, setInternalEditing] = useState(false);
     const isEditing = propIsEditing !== undefined ? propIsEditing : internalEditing;
@@ -157,47 +173,59 @@ export function PreCountProductsView({
     }, [activeSector, effectiveSessionId]);
 
     // Consulta reactiva en vivo desde Dexie db.items para la sesión activa
+    // Consulta reactiva en vivo desde Dexie db.items para la sesión activa
     const dbItems = useLiveQuery(
         async () => {
             if (!effectiveSessionId) return [];
             try {
-                let records = await db.items.where('session_id').equals(effectiveSessionId).reverse().sortBy('scanned_at');
+                let records = await db.items.where('session_id').equals(effectiveSessionId).toArray();
                 
-                // En modo sucursal, mostrar única y exclusivamente los conteos cargados por esta terminal local
+                // Ordenar de forma estable y descendente por fecha de escaneo (los más recientes primero)
+                records.sort((a, b) => {
+                    const timeA = a.scanned_at ? new Date(a.scanned_at).getTime() : 0;
+                    const timeB = b.scanned_at ? new Date(b.scanned_at).getTime() : 0;
+                    if (timeB !== timeA) return timeB - timeA;
+                    return (b.id || '').localeCompare(a.id || '');
+                });
+                
+                // En modo sucursal, cada terminal/operador ve únicamente sus propios productos cargados
                 if (isBranchMode) {
                     const myDeviceId = (getDeviceId() || '').toLowerCase();
-                    const myDeviceName = (typeof window !== 'undefined' ? (localStorage.getItem('precount_device_name') || localStorage.getItem('precount_user_name') || '') : '').toLowerCase().trim();
+                    const myOperator = (typeof window !== 'undefined' ? (localStorage.getItem('precount_device_name') || localStorage.getItem('precount_user_name') || '') : '').toLowerCase().trim();
 
                     records = records.filter(rec => {
+                        if (user?.role === 'admin') return true;
                         const recDevId = (rec.device_id || '').toLowerCase();
                         const recDevName = (rec.device_name || '').toLowerCase();
                         const recScannedBy = (rec.scanned_by || '').toLowerCase();
 
-                        // Coincidencia con el device_id actual
-                        if (recDevId && (recDevId === myDeviceId || myDeviceId.includes(recDevId) || recDevId.includes(myDeviceId))) {
-                            return true;
-                        }
-                        // Coincidencia con el nombre de terminal configurado localmente
-                        if (myDeviceName && recDevName && (recDevName === myDeviceName || recDevName.includes(myDeviceName) || myDeviceName.includes(recDevName))) {
-                            return true;
-                        }
-                        // Si no tiene device_id remoto explícito y no es de una Zebra u otra terminal remota
-                        if (!recDevId && !recDevName.includes('zebra') && !recScannedBy.includes('zebra')) {
-                            return true;
-                        }
+                        // 1. Coincidencia por ID de terminal única
+                        if (myDeviceId && recDevId && (recDevId === myDeviceId || myDeviceId.includes(recDevId) || recDevId.includes(myDeviceId))) return true;
+                        // 2. Coincidencia por nombre de operador de esta terminal
+                        if (myOperator && (recDevName === myOperator || recScannedBy === myOperator)) return true;
+                        // 3. Si no tiene metadatos remotos explícitos pero se cargó en esta sesión local
+                        if (!recDevId && !recDevName && !recScannedBy) return true;
+
                         return false;
                     });
                 }
                 
                 // Mapear metadatos desde precount_products si no vinieron en el item
-                const productsMap = new Map<string, { lab?: string; rubro?: string; name?: string; systemStock?: number }>();
+                const productsMap = new Map<string, { lab?: string; rubro?: string; name?: string; systemStock?: number; is_hidden?: boolean; is_traceable?: boolean; gtin?: string; is_parent?: boolean; id_producto_padre?: string; unidades_padre?: number; parent_name?: string }>();
                 const sessionProducts = await db.precount_products.where('session_id').equals(effectiveSessionId).toArray();
                 sessionProducts.forEach(p => {
                     productsMap.set(p.ean, { 
                         lab: p.laboratory, 
                         rubro: p.rubro, 
                         name: p.name,
-                        systemStock: p.stock ?? (p as any).systemStock
+                        systemStock: p.stock ?? (p as any).systemStock,
+                        is_hidden: Boolean((p as any).is_hidden),
+                        is_traceable: Boolean((p as any).is_traceable || (p as any).trazable),
+                        gtin: (p as any).gtin || '',
+                        is_parent: Boolean((p as any).is_parent),
+                        id_producto_padre: (p as any).id_producto_padre || undefined,
+                        unidades_padre: Number((p as any).unidades_padre) || undefined,
+                        parent_name: (p as any).parent_name || undefined,
                     });
                 });
 
@@ -211,27 +239,79 @@ export function PreCountProductsView({
                                     lab: p.laboratory, 
                                     rubro: p.rubro || p.category, 
                                     name: p.name,
-                                    systemStock: p.systemStock ?? p.stock
+                                    systemStock: p.systemStock ?? p.stock,
+                                    is_hidden: Boolean(p.is_hidden),
+                                    is_traceable: Boolean(p.is_traceable || p.trazable),
+                                    gtin: p.gtin || '',
+                                    is_parent: Boolean(p.is_parent),
+                                    id_producto_padre: p.id_producto_padre || undefined,
+                                    unidades_padre: Number(p.unidades_padre) || undefined,
+                                    parent_name: p.parent_name || undefined,
                                 });
                             });
                         });
                     }
                 }
 
+                // Fallback a SQLite local (stock_local.db en Tauri de escritorio) para items escaneados
+                if (isTauriEnvironment()) {
+                    const missingEans = Array.from(new Set(records.map(r => r.ean).filter(ean => ean && !productsMap.has(ean))));
+                    if (missingEans.length > 0) {
+                        await Promise.all(missingEans.map(async (ean) => {
+                            try {
+                                const localProd = await searchLocalBarcode(ean);
+                                if (localProd) {
+                                    productsMap.set(ean, {
+                                        lab: localProd.laboratory,
+                                        rubro: localProd.category,
+                                        name: localProd.name,
+                                        systemStock: localProd.stock,
+                                        is_hidden: localProd.is_hidden,
+                                        is_traceable: localProd.is_traceable,
+                                        gtin: localProd.gtin || ''
+                                    });
+                                    const eanLow = ean.toLowerCase();
+                                    if (localProd.stock !== undefined && localProd.stock !== null) {
+                                        catalogStockMapRef.current.set(eanLow, localProd.stock);
+                                    }
+                                }
+                            } catch (e) {
+                                console.warn('[PreCountProductsView] Error buscando en SQLite local:', e);
+                            }
+                        }));
+                    }
+                }
+
                 return records.map((rec): ProductExpirationItem => {
                     const catInfo = productsMap.get(rec.ean);
+                    const fallbackStock = catalogStockMapRef.current.get((rec.ean || '').toLowerCase());
+                    const finalStock = catInfo?.systemStock ?? fallbackStock;
+                    const finalLab = (rec.laboratory && rec.laboratory !== 'Laboratorio') 
+                        ? rec.laboratory 
+                        : (catInfo?.lab || 'Laboratorio');
+                    const finalRubro = (rec.rubro && rec.rubro !== 'Medicamentos') 
+                        ? rec.rubro 
+                        : (catInfo?.rubro || 'Medicamentos');
+
                     return {
                         id: rec.id,
                         controlDate: rec.scanned_at ? new Date(rec.scanned_at).getTime() : Date.now(),
                         ean: rec.ean,
                         productName: rec.product_name || catInfo?.name || `Producto ${rec.ean}`,
-                        laboratory: rec.laboratory || catInfo?.lab || 'Laboratorio',
-                        rubro: rec.rubro || catInfo?.rubro || 'Medicamentos',
+                        laboratory: finalLab,
+                        rubro: finalRubro,
                         quantity: rec.quantity,
-                        systemStock: catInfo?.systemStock,
+                        systemStock: finalStock,
                         user: rec.device_name || defaultOperator,
                         sector: rec.location_tag || '–',
                         position: rec.location_tag || '–',
+                        is_hidden: catInfo?.is_hidden,
+                        is_traceable: catInfo?.is_traceable,
+                        gtin: catInfo?.gtin,
+                        is_parent: catInfo?.is_parent,
+                        id_producto_padre: catInfo?.id_producto_padre,
+                        unidades_padre: catInfo?.unidades_padre,
+                        parent_name: catInfo?.parent_name,
                     };
                 });
             } catch (err) {
@@ -239,7 +319,7 @@ export function PreCountProductsView({
                 return [];
             }
         },
-        [effectiveSessionId, isBranchMode]
+        [effectiveSessionId, isBranchMode, user?.id, user?.name, user?.username]
     );
 
     // Sincronizar ítems de todos los usuarios y dispositivos desde Supabase para la sesión activa
@@ -250,53 +330,64 @@ export function PreCountProductsView({
 
         const syncRemoteItems = async () => {
             try {
-                const { data, error } = await supabase
-                    .from('precount_items')
-                    .select('*')
-                    .eq('session_id', effectiveSessionId);
+                // Paginar para no quedar truncado al límite de 1000 registros de PostgREST
+                const allRemote: any[] = [];
+                let from = 0;
+                const PAGE_SIZE = 1000;
+                while (true) {
+                    const { data, error } = await supabase
+                        .from('precount_items')
+                        .select('*')
+                        .eq('session_id', effectiveSessionId)
+                        .order('scanned_at', { ascending: false })
+                        .range(from, from + PAGE_SIZE - 1);
 
-                if (error) {
-                    console.error('[PreCountProductsView] Error al sincronizar items remotos:', error);
-                    return;
-                }
-
-                if (data && isMounted) {
-                    const remoteIds = new Set(data.map((item: any) => item.id));
-
-                    // Obtener acciones pendientes de creación/actualización para no borrar ítems pendientes offline
-                    const pendingActions = await db.pendingActions.where('entity').equals('item').toArray();
-                    const pendingIds = new Set(pendingActions.map(a => a.data?.id).filter(Boolean));
-
-                    // Limpiar ítems de Dexie que ya no existen en Supabase y no están pendientes de subida
-                    const localSessionItems = await db.items.where('session_id').equals(effectiveSessionId).toArray();
-                    const unsyncedLocalIds = new Set(localSessionItems.filter(i => i.synced === 0).map(i => i.id));
-                    const nowMs = Date.now();
-                    const staleLocalIds = localSessionItems
-                        .filter(item => {
-                            if (remoteIds.has(item.id)) return false;
-                            if (pendingIds.has(item.id)) return false;
-                            if (unsyncedLocalIds.has(item.id)) return false;
-                            // Dar margen de 30 segundos a ítems recién agregados/modificados para que la sincronización termine de subir
-                            const scannedTime = item.scanned_at ? new Date(item.scanned_at).getTime() : 0;
-                            if (nowMs - scannedTime < 30000) return false;
-                            return true;
-                        })
-                        .map(item => item.id);
-
-                    if (staleLocalIds.length > 0) {
-                        await db.items.bulkDelete(staleLocalIds);
+                    if (error) {
+                        console.error('[PreCountProductsView] Error al sincronizar items remotos:', error);
+                        return;
                     }
 
-                    if (data.length > 0) {
-                        const safeRemoteItems = data.filter((item: any) => !pendingIds.has(item.id) && !unsyncedLocalIds.has(item.id));
-                        if (safeRemoteItems.length > 0) {
-                            const localRows = safeRemoteItems.map((item: any) => ({
+                    if (!data || data.length === 0) break;
+                    allRemote.push(...data);
+                    if (data.length < PAGE_SIZE) break;
+                    from += PAGE_SIZE;
+                }
+
+                if (isMounted) {
+                    // Obtener acciones pendientes de creación/actualización para no pisar cambios locales en vuelo
+                    const pendingActions = await db.pendingActions.where('entity').equals('item').toArray();
+                    const pendingIds = new Set(pendingActions.map(a => a.data?.id).filter(Boolean));
+                    const localSessionItems = await db.items.where('session_id').equals(effectiveSessionId).toArray();
+                    const unsyncedLocalIds = new Set(localSessionItems.filter(i => i.synced === 0).map(i => i.id));
+                    const remoteIds = new Set(allRemote.map((item: any) => item.id));
+
+                    // Limpiar ítems de Dexie que ya habían sido sincronizados al servidor (synced === 1) pero que fueron eliminados en Supabase
+                    const orphanedLocalItems = localSessionItems.filter(
+                        (loc) => loc.synced === 1 && !remoteIds.has(loc.id) && !pendingIds.has(loc.id) && !unsyncedLocalIds.has(loc.id)
+                    );
+                    if (orphanedLocalItems.length > 0) {
+                        await db.items.bulkDelete(orphanedLocalItems.map((i) => i.id));
+                    }
+
+                    const safeRemoteItems = allRemote.filter((item: any) => !pendingIds.has(item.id) && !unsyncedLocalIds.has(item.id));
+                    if (safeRemoteItems.length > 0) {
+                        const localRows: any[] = [];
+                        for (const item of safeRemoteItems) {
+                            // Buscar ítem local existente por ID o por combinación (EAN + sector)
+                            const existingLocal = localSessionItems.find(l => l.id === item.id || (l.ean === item.ean && l.location_tag === item.location_tag));
+                            
+                            // Si el ítem local tenía un ID temporal diferente antes de sincronizar, limpiar el temporal
+                            if (existingLocal && existingLocal.id !== item.id) {
+                                await db.items.delete(existingLocal.id);
+                            }
+
+                            localRows.push({
                                 id: item.id,
                                 session_id: item.session_id,
                                 ean: item.ean,
                                 product_name: item.product_name || `Producto ${item.ean}`,
                                 quantity: item.quantity || 0,
-                                scanned_at: item.scanned_at || new Date().toISOString(),
+                                scanned_at: existingLocal?.scanned_at || item.scanned_at || item.created_at || new Date().toISOString(),
                                 scanned_by: item.scanned_by || undefined,
                                 synced: 1,
                                 id_producto: item.id_producto || undefined,
@@ -305,9 +396,9 @@ export function PreCountProductsView({
                                 location_tag: item.location_tag || undefined,
                                 laboratory: item.laboratory || undefined,
                                 rubro: item.rubro || undefined,
-                            }));
-                            await db.items.bulkPut(localRows);
+                            });
                         }
+                        await db.items.bulkPut(localRows);
                     }
                 }
             } catch (err) {
@@ -349,7 +440,7 @@ export function PreCountProductsView({
                                 ean: item.ean,
                                 product_name: item.product_name || `Producto ${item.ean}`,
                                 quantity: item.quantity || 0,
-                                scanned_at: item.scanned_at || new Date().toISOString(),
+                                scanned_at: item.scanned_at || item.created_at || localItem?.scanned_at || new Date().toISOString(),
                                 scanned_by: item.scanned_by || undefined,
                                 synced: 1,
                                 id_producto: item.id_producto || undefined,
@@ -381,18 +472,29 @@ export function PreCountProductsView({
         };
     }, [effectiveSessionId]);
 
+    const pendingQtyEditsRef = useRef<Map<string, number>>(new Map());
     const [tableData, setTableData] = useState<ProductExpirationItem[]>(propItems || []);
 
     useEffect(() => {
+        const applyPendingQty = (rows: ProductExpirationItem[]) => {
+            if (pendingQtyEditsRef.current.size === 0) return rows;
+            return rows.map(r => {
+                const pendingQty = pendingQtyEditsRef.current.get(r.id);
+                return pendingQty !== undefined ? { ...r, quantity: pendingQty } : r;
+            });
+        };
+
         if (propItems !== undefined) {
             setTableData(prev => {
                 const addingRow = prev.find(r => r.isAdding);
-                return addingRow ? [addingRow, ...propItems] : propItems;
+                const merged = applyPendingQty(propItems);
+                return addingRow ? [addingRow, ...merged] : merged;
             });
         } else if (dbItems !== undefined) {
             setTableData(prev => {
                 const addingRow = prev.find(r => r.isAdding);
-                return addingRow ? [addingRow, ...dbItems] : dbItems;
+                const merged = applyPendingQty(dbItems);
+                return addingRow ? [addingRow, ...merged] : merged;
             });
         }
     }, [propItems, dbItems]);
@@ -449,6 +551,7 @@ export function PreCountProductsView({
 
     const selectedCandidateIndexRef = useRef<number>(0);
     selectedCandidateIndexRef.current = selectedCandidateIndex;
+    const selectedCandidateRef = useRef<CandidateProduct | null>(null);
 
     const candidateListRef = useRef<HTMLDivElement>(null);
     const candidateDropdownRef = useRef<HTMLDivElement>(null);
@@ -500,6 +603,13 @@ export function PreCountProductsView({
         rubro: string;
         id_producto?: string;
         systemStock?: number;
+        is_hidden?: boolean;
+        is_traceable?: boolean;
+        gtin?: string;
+        is_parent?: boolean;
+        id_producto_padre?: string;
+        unidades_padre?: number;
+        parent_name?: string;
     }[]>([]);
     const catalogStockMapRef = useRef<Map<string, number>>(new Map());
     const catalogMapRef = useRef<Map<string, {
@@ -511,6 +621,13 @@ export function PreCountProductsView({
         rubro: string;
         id_producto?: string;
         systemStock?: number;
+        is_hidden?: boolean;
+        is_traceable?: boolean;
+        gtin?: string;
+        is_parent?: boolean;
+        id_producto_padre?: string;
+        unidades_padre?: number;
+        parent_name?: string;
     }>>(new Map());
 
     // 1. Precargar catálogo de la sesión en memoria para búsquedas instantáneas a cualquier velocidad
@@ -525,9 +642,34 @@ export function PreCountProductsView({
                     .toArray();
 
                 if (prods.length === 0) {
-                    const session = await db.sessions.get(effectiveSessionId);
-                    if (session?.master_catalog && Array.isArray(session.master_catalog)) {
-                        prods = session.master_catalog.flatMap((p: any) => {
+                    let session = await db.sessions.get(effectiveSessionId);
+                    let catalogList = session?.master_catalog;
+
+                    // Si no está en Dexie, intentar recuperar master_catalog.json desde Supabase
+                    if ((!catalogList || catalogList.length === 0) && navigator.onLine) {
+                        try {
+                            const { data: fileData } = await (supabase as any)
+                                .from('precount_device_files')
+                                .select('content')
+                                .eq('session_id', effectiveSessionId)
+                                .eq('device_id', 'system')
+                                .eq('filename', 'master_catalog.json')
+                                .maybeSingle();
+
+                            if (fileData?.content) {
+                                const downloaded = await decompressGzipBase64ToJson(fileData.content);
+                                if (downloaded && Array.isArray(downloaded) && downloaded.length > 0) {
+                                    catalogList = downloaded;
+                                    await db.sessions.update(effectiveSessionId, { master_catalog: downloaded });
+                                }
+                            }
+                        } catch (supaErr) {
+                            console.warn('[PreCountProductsView] Error recuperando master_catalog de Supabase:', supaErr);
+                        }
+                    }
+
+                    if (catalogList && Array.isArray(catalogList)) {
+                        prods = catalogList.flatMap((p: any) => {
                             const eans: string[] = (p.eans && p.eans.length > 0) ? p.eans : [p.ean];
                             return eans.filter(Boolean).map(ean => ({
                                 ean,
@@ -556,6 +698,13 @@ export function PreCountProductsView({
                     rubro: string;
                     id_producto?: string;
                     systemStock?: number;
+                    is_hidden?: boolean;
+                    is_traceable?: boolean;
+                    gtin?: string;
+                    is_parent?: boolean;
+                    id_producto_padre?: string;
+                    unidades_padre?: number;
+                    parent_name?: string;
                 }>();
 
                 const indexed = prods.map(p => {
@@ -570,7 +719,14 @@ export function PreCountProductsView({
                         lab: p.laboratory || '',
                         rubro: p.rubro || (p as any).category || '',
                         id_producto: p.id_producto,
-                        systemStock: stockVal
+                        systemStock: stockVal,
+                        is_hidden: Boolean((p as any).is_hidden),
+                        is_traceable: Boolean((p as any).is_traceable || (p as any).trazable),
+                        gtin: (p as any).gtin || '',
+                        is_parent: Boolean((p as any).is_parent),
+                        id_producto_padre: (p as any).id_producto_padre || undefined,
+                        unidades_padre: Number((p as any).unidades_padre) || undefined,
+                        parent_name: (p as any).parent_name || undefined,
                     };
                     if (eanLow) {
                         if (stockVal !== undefined && stockVal !== null) {
@@ -676,7 +832,14 @@ export function PreCountProductsView({
                             rubro: item.rubro,
                             id_producto: item.id_producto,
                             systemStock: item.systemStock,
-                            exactMatch: exact
+                            exactMatch: exact,
+                            is_hidden: item.is_hidden,
+                            is_traceable: item.is_traceable,
+                            gtin: item.gtin,
+                            is_parent: item.is_parent,
+                            id_producto_padre: item.id_producto_padre,
+                            unidades_padre: item.unidades_padre,
+                            parent_name: item.parent_name,
                         }
                     });
                 }
@@ -727,7 +890,10 @@ export function PreCountProductsView({
                             rubro: td.rubro || 'Medicamentos',
                             id_producto: undefined,
                             systemStock: td.systemStock,
-                            exactMatch: exact
+                            exactMatch: exact,
+                            is_hidden: td.is_hidden,
+                            is_traceable: td.is_traceable,
+                            gtin: td.gtin
                         }
                     });
                 }
@@ -773,7 +939,7 @@ export function PreCountProductsView({
         const initialSector = currentActiveSector || (selectedPosition && selectedPosition !== "all" ? selectedPosition : "");
         const currentOperator = (user?.role === 'admin' && adminName) 
             ? adminName 
-            : (adminName || (typeof window !== 'undefined' ? localStorage.getItem('precount_device_name') : null) || 'Admin');
+            : ((typeof window !== 'undefined' ? (localStorage.getItem('precount_device_name') || localStorage.getItem('precount_user_name')) : null) || adminName || 'Operador');
 
         const tempRow: ProductExpirationItem = {
             id: tempId,
@@ -823,6 +989,7 @@ export function PreCountProductsView({
     };
 
     const handleSelectCandidate = useCallback((item: CandidateProduct) => {
+        selectedCandidateRef.current = item;
         setNewEan(item.ean);
         const initialSector = currentActiveSector || (selectedPosition && selectedPosition !== "all" ? selectedPosition : "");
         setNewSector(initialSector || "");
@@ -980,7 +1147,7 @@ export function PreCountProductsView({
         }
 
         const finalEan = newEan.trim() || `779${Math.floor(1000000000 + Math.random() * 9000000000)}`;
-        const candidate = candidateProducts.find(c => c.ean === finalEan || c.id_producto === finalEan) || candidateProducts[0];
+        const candidate = selectedCandidateRef.current || candidateProducts.find(c => c.ean === finalEan || c.id_producto === finalEan) || candidateProducts[0];
         const activeRow = tableData.find(r => r.id === addingRowId);
         const resolvedEan = candidate?.ean || activeRow?.ean || finalEan;
         const finalName = candidate?.name || activeRow?.productName || `Producto SKU-${finalEan}`;
@@ -989,7 +1156,7 @@ export function PreCountProductsView({
         const finalSector = newSector.trim() || currentActiveSector || (selectedPosition && selectedPosition !== "all" ? selectedPosition : (activeRow?.sector && activeRow.sector !== "–" ? activeRow.sector : "General"));
         const currentOperator = (user?.role === 'admin' && adminName)
             ? adminName
-            : (adminName || (typeof window !== 'undefined' ? localStorage.getItem('precount_device_name') : null) || activeRow?.user || 'Admin');
+            : ((typeof window !== 'undefined' ? (localStorage.getItem('precount_device_name') || localStorage.getItem('precount_user_name')) : null) || activeRow?.user || adminName || 'Operador');
         const finalSysStock = candidate?.systemStock ?? activeRow?.systemStock ?? (resolvedEan ? catalogStockMapRef.current.get(resolvedEan.toLowerCase()) : undefined);
 
         const committedRow: ProductExpirationItem = {
@@ -1006,6 +1173,8 @@ export function PreCountProductsView({
             user: currentOperator,
             isAdding: false,
         };
+
+        selectedCandidateRef.current = null;
 
         if (isBranchMode) {
             const nextTempId = `temp-new-${Date.now() + 1}`;
@@ -1119,6 +1288,7 @@ export function PreCountProductsView({
     };
 
     const handleCancelAddProduct = () => {
+        selectedCandidateRef.current = null;
         if (isBranchMode) {
             setNewEan("");
             setNewSector("");
@@ -1247,16 +1417,34 @@ export function PreCountProductsView({
 
     const [deletedHistory, setDeletedHistory] = useState<ProductExpirationItem[][]>([]);
 
-    const handleInlineQuantityChange = useCallback(async (rowId: string, newQty: number) => {
-        const validatedQty = Math.max(1, newQty);
+    const qtyDebounceTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+    const handleInlineQuantityChange = useCallback((rowId: string, newQty: number) => {
+        const parsed = Number(newQty);
+        if (isNaN(parsed) || !isFinite(parsed) || parsed < 1) return;
+        const validatedQty = Math.floor(parsed);
+        pendingQtyEditsRef.current.set(rowId, validatedQty);
         setTableData(prev => prev.map(r => r.id === rowId ? { ...r, quantity: validatedQty } : r));
-        if (effectiveSessionId) {
+
+        if (!effectiveSessionId) return;
+        const prevTimer = qtyDebounceTimersRef.current.get(rowId);
+        if (prevTimer) clearTimeout(prevTimer);
+
+        const timer = setTimeout(async () => {
+            qtyDebounceTimersRef.current.delete(rowId);
             try {
                 await updatePreCountItem(rowId, { quantity: validatedQty });
             } catch (err) {
                 console.warn("Error actualizando cantidad:", err);
+            } finally {
+                // Solo limpiar si no hubo un click más reciente mientras guardaba
+                if (pendingQtyEditsRef.current.get(rowId) === validatedQty) {
+                    pendingQtyEditsRef.current.delete(rowId);
+                }
+                window.dispatchEvent(new CustomEvent('precount:item_added'));
             }
-        }
+        }, 300);
+        qtyDebounceTimersRef.current.set(rowId, timer);
     }, [effectiveSessionId]);
 
     const handleInlineSectorChange = useCallback(async (rowId: string, newSector: string) => {
@@ -1540,12 +1728,30 @@ export function PreCountProductsView({
                                                             >
                                                                 {/* Columna Izquierda: Información de producto (Inter) */}
                                                                 <div className="flex flex-col min-w-0 flex-1 gap-0.5">
-                                                                    <span 
-                                                                        className="font-sans text-xs font-semibold text-foreground truncate leading-tight tracking-tight"
-                                                                        title={cand.name}
-                                                                    >
-                                                                        {cand.name}
-                                                                    </span>
+                                                                    <div className="flex items-center gap-1.5 min-w-0">
+                                                                        <span 
+                                                                            className="font-sans text-xs font-semibold text-foreground truncate leading-tight tracking-tight"
+                                                                            title={cand.name}
+                                                                        >
+                                                                            {cand.name}
+                                                                        </span>
+                                                                        {cand.is_hidden && (
+                                                                            <span className="shrink-0 px-1 py-0.2 text-[10px] font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 rounded">
+                                                                                Oculto
+                                                                            </span>
+                                                                        )}
+                                                                        {cand.is_traceable && (
+                                                                            <span className="shrink-0 px-1 py-0.2 text-[10px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded">
+                                                                                Trazable
+                                                                            </span>
+                                                                        )}
+                                                                        {(cand.is_parent || (cand.id_producto_padre && (cand.unidades_padre || 0) > 0)) && (
+                                                                            <span className="shrink-0 inline-flex items-center gap-0.5 px-1 py-0.2 text-[10px] font-medium bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/30 rounded">
+                                                                                <Link2 className="size-2.5" />
+                                                                                {cand.id_producto_padre ? `Pareja x${cand.unidades_padre}` : 'Pareja · Padre'}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
                                                                     {cand.isNewOption ? (
                                                                         <div className="flex items-center gap-1.5 min-w-0 text-[11px] text-primary font-sans font-medium">
                                                                             <span>Nuevo producto a registrar</span>
@@ -1597,15 +1803,48 @@ export function PreCountProductsView({
                         }
 
                         return (
-                            <span className="font-semibold text-foreground text-xs truncate">
-                                {row.productName || "Producto nuevo"}
-                            </span>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="font-semibold text-foreground text-xs truncate">
+                                    {row.productName || "Producto nuevo"}
+                                </span>
+                                {row.is_hidden && (
+                                    <span className="shrink-0 px-1.5 py-0.5 text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 rounded">
+                                        Oculto
+                                    </span>
+                                )}
+                                {row.is_traceable && (
+                                    <span className="shrink-0 px-1.5 py-0.5 text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded">
+                                        Trazable
+                                    </span>
+                                )}
+                                {(row.is_parent || (row.id_producto_padre && (row.unidades_padre || 0) > 0)) && (
+                                    <span
+                                        className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-semibold bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/30 rounded"
+                                        title={row.parent_name ? `Convierte x${row.unidades_padre} en ${row.parent_name}` : 'Producto con relación Padre-Hijo'}
+                                    >
+                                        <Link2 className="size-2.5" />
+                                        {row.id_producto_padre ? `Pareja x${row.unidades_padre}` : 'Pareja · Padre'}
+                                    </span>
+                                )}
+                            </div>
                         );
                     }
                     return (
-                        <span className="font-semibold text-foreground text-xs truncate">
-                            {row.productName}
-                        </span>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="font-semibold text-foreground text-xs truncate">
+                                {row.productName}
+                            </span>
+                            {row.is_hidden && (
+                                <span className="shrink-0 px-1.5 py-0.5 text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 rounded">
+                                    Oculto
+                                </span>
+                            )}
+                            {row.is_traceable && (
+                                <span className="shrink-0 px-1.5 py-0.5 text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30 rounded">
+                                    Trazable
+                                </span>
+                            )}
+                        </div>
                     );
                 },
             },

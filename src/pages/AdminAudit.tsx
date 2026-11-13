@@ -34,6 +34,9 @@ const ACTION_TRANSLATIONS: Record<string, string> = {
     'CONFIG_UPDATE_BULK': 'Actualización Masiva de Configuración',
     'INVENTORY_LOCKED': 'Bloqueo de Inventario',
     'INVENTORY_UNLOCKED': 'Desbloqueo de Inventario',
+    'PLEX_SANDBOX_SIMULATION': 'Simulación Sandbox (Plex)',
+    'SYNC_BATCH_SLOW': 'Alerta Latencia Sincronización',
+    'SYNC_QUEUE_ERROR': 'Error de Sincronización en Cola',
 };
 
 // Entity translations (Context of where it happened)
@@ -157,6 +160,22 @@ export default function AdminAudit() {
                 const unitsStr = details.unitsAdjusted !== undefined ? `Unidades: ${details.unitsAdjusted}` : '';
                 const valueStr = details.netValue !== undefined ? `Impacto: $${details.netValue.toLocaleString('es-AR')}` : '';
                 return [labStr, unitsStr, valueStr].filter(Boolean).join(' | ');
+            }
+
+            if (action === 'PLEX_SANDBOX_SIMULATION') {
+                const op = details.operation || 'Exportación';
+                const skus = details.totalSkus !== undefined ? `SKUs: ${details.totalSkus}` : '';
+                const units = details.totalUnits !== undefined ? `Unidades: ${details.totalUnits}` : '';
+                const desc = details.description || details.lab || '';
+                return `[SANDBOX] ${op} ${desc ? `(${desc})` : ''} ${[skus, units].filter(Boolean).join(' | ')}`.trim();
+            }
+
+            if (action === 'SYNC_BATCH_SLOW' || action === 'SYNC_QUEUE_ERROR') {
+                const dev = details.deviceName ? `Terminal: ${details.deviceName}` : '';
+                const batch = details.batchSize ? `Lote: ${details.batchSize} ítems` : '';
+                const lat = details.latencyMs !== undefined ? `Latencia: ${details.latencyMs}ms` : '';
+                const err = details.error ? `Error: ${details.error}` : '';
+                return [dev, batch, lat, err].filter(Boolean).join(' | ');
             }
 
             if (details.product_name) {

@@ -23,6 +23,10 @@ function formatActionLabel(item: PendingAction): string {
     return item.entity;
 }
 
+function isPermanentErrorAction(item: PendingAction): boolean {
+    return Boolean((item as PendingAction & { permanentError?: boolean }).permanentError);
+}
+
 export function SyncQueuePanel() {
     const [isOpen, setIsOpen] = useState(false);
     const [isForcing, setIsForcing] = useState(false);
@@ -33,7 +37,12 @@ export function SyncQueuePanel() {
         []
     );
 
-    const pendingCount = queueItems?.filter((item) => item.status === 'pending' || item.status === 'failed').length || 0;
+    const pendingCount =
+        queueItems?.filter(
+            (item) =>
+                (item.status === 'pending' || item.status === 'syncing' || item.status === 'failed') &&
+                !isPermanentErrorAction(item)
+        ).length || 0;
     const isSyncing = isForcing || Boolean(queueItems?.some(item => item.status === 'syncing'));
 
     const getStatusIcon = (status: PendingAction['status']) => {
@@ -76,25 +85,30 @@ export function SyncQueuePanel() {
     const handleRetry = async () => {
         setIsForcing(true);
         try {
-            // Reset failed / dead-lettered items (retries >= 5) so syncManager picks them up immediately
-            const failedItems = await db.pendingActions
-                .where('status')
-                .equals('failed')
-                .toArray();
-            if (failedItems.length > 0) {
-                await Promise.all(
-                    failedItems
-                        .filter((it) => it.id !== undefined)
-                        .map((it) =>
-                            db.pendingActions.update(it.id!, {
-                                status: 'pending',
-                                retries: 0,
-                                error: undefined,
-                            })
-                        )
-                );
+            const mgr = syncManager as unknown as { retryAllFailed?: () => Promise<void> };
+            if (typeof mgr.retryAllFailed === 'function') {
+                await mgr.retryAllFailed();
+            } else {
+                const failedItems = await db.pendingActions
+                    .where('status')
+                    .equals('failed')
+                    .toArray();
+                if (failedItems.length > 0) {
+                    await Promise.all(
+                        failedItems
+                            .filter((it) => it.id !== undefined && !isPermanentErrorAction(it))
+                            .map((it) =>
+                                db.pendingActions.update(it.id!, {
+                                    status: 'pending',
+                                    retries: 0,
+                                    error: undefined,
+                                    nextRetryAt: 0,
+                                } as any)
+                            )
+                    );
+                }
+                await syncManager.flushNow();
             }
-            await syncManager.processQueue();
         } finally {
             setIsForcing(false);
         }
@@ -165,6 +179,11 @@ export function SyncQueuePanel() {
                                                     {item.retries > 0 && item.status !== 'success' && (
                                                         <Badge variant="destructive" className="text-xs">
                                                             {item.retries} reintentos
+                                                        </Badge>
+                                                    )}
+                                                    {isPermanentErrorAction(item) && (
+                                                        <Badge variant="outline" className="text-xs border-destructive/50 text-destructive">
+                                                            Error permanente
                                                         </Badge>
                                                     )}
                                                 </div>

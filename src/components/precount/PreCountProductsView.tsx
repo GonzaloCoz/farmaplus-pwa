@@ -364,7 +364,9 @@ export function PreCountProductsView({
                     // Obtener acciones pendientes de creación/actualización para no pisar cambios locales en vuelo
                     const pendingActions = await db.pendingActions.where('entity').equals('item').toArray();
                     const activePending = pendingActions.filter(
-                        (a) => a.status === 'pending' || a.status === 'syncing' || a.status === 'failed'
+                        (a) =>
+                            (a.status === 'pending' || a.status === 'syncing' || a.status === 'failed') &&
+                            !Boolean((a as { permanentError?: boolean }).permanentError)
                     );
                     const pendingIds = new Set(
                         activePending.flatMap((a) => [a.data?.id, ...(Array.isArray(a.data?.ids) ? a.data.ids : [])]).filter(Boolean)
@@ -498,6 +500,7 @@ export function PreCountProductsView({
                                 const isQueued = pendingItemActions.some(
                                     (a) =>
                                         (a.status === 'pending' || a.status === 'syncing' || a.status === 'failed') &&
+                                        !Boolean((a as { permanentError?: boolean }).permanentError) &&
                                         (a.data?.id === item.id || (Array.isArray(a.data?.ids) && a.data.ids.includes(item.id)))
                                 );
                                 if (isQueued) return;
@@ -550,7 +553,12 @@ export function PreCountProductsView({
             if (!isMounted) return;
             if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
             if (typeof navigator !== 'undefined' && !navigator.onLine) return;
-            void syncManager.processQueue().then(() => {
+            const mgr = syncManager as unknown as { onConnectivityRestored?: () => Promise<void> };
+            const flushPromise =
+                typeof mgr.onConnectivityRestored === 'function'
+                    ? mgr.onConnectivityRestored()
+                    : syncManager.flushNow();
+            void flushPromise.then(() => {
                 if (isMounted) void syncRemoteItems();
             });
             if (!activeChannel || activeChannel.state !== 'joined') {

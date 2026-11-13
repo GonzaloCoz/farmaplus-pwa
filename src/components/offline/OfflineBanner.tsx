@@ -3,8 +3,21 @@ import { motion, AnimatePresence } from "motion/react";
 import { Cloud01 as WifiOff, Wifi } from '@untitledui/icons';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { cn } from '@/lib/utils';
-import { db } from '@/services/db';
+import { db, PendingAction } from '@/services/db';
 import { syncManager } from '@/services/syncManager';
+
+function isPermanentErrorAction(item: PendingAction): boolean {
+    return Boolean((item as PendingAction & { permanentError?: boolean }).permanentError);
+}
+
+function triggerReconnectSync(): void {
+    const mgr = syncManager as unknown as { onConnectivityRestored?: () => Promise<void> };
+    if (typeof mgr.onConnectivityRestored === 'function') {
+        void mgr.onConnectivityRestored();
+    } else {
+        void syncManager.flushNow();
+    }
+}
 
 export function OfflineBanner() {
     const [isOnline, setIsOnline] = useState(
@@ -18,7 +31,9 @@ export function OfflineBanner() {
             try {
                 const items = await db.pendingActions.toArray();
                 return items.filter(
-                    (i) => i.status === 'pending' || i.status === 'syncing' || i.status === 'failed'
+                    (i) =>
+                        (i.status === 'pending' || i.status === 'syncing' || i.status === 'failed') &&
+                        !isPermanentErrorAction(i)
                 ).length;
             } catch {
                 return 0;
@@ -45,7 +60,7 @@ export function OfflineBanner() {
                 setShowRestored(true);
                 scheduleHideRestored();
             }
-            void syncManager.processQueue();
+            triggerReconnectSync();
         };
 
         const handleOffline = () => {
@@ -60,7 +75,7 @@ export function OfflineBanner() {
             const onlineNow = typeof navigator !== 'undefined' ? navigator.onLine : true;
             setIsOnline(onlineNow);
             if (onlineNow) {
-                void syncManager.processQueue();
+                triggerReconnectSync();
             }
         };
 

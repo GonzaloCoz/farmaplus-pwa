@@ -286,6 +286,7 @@ export function usePreCount(): UsePreCountReturn {
             const isQueued = pendingActions.some(
                 (a) =>
                     (a.status === 'pending' || a.status === 'syncing' || a.status === 'failed') &&
+                    !Boolean((a as { permanentError?: boolean }).permanentError) &&
                     (a.data?.id === itemId || (Array.isArray(a.data?.ids) && a.data.ids.includes(itemId)))
             );
             return { protected: isQueued, scannedAt: localItem?.scanned_at };
@@ -349,7 +350,9 @@ export function usePreCount(): UsePreCountReturn {
 
                 const pendingActions = await db.pendingActions.where('entity').equals('item').toArray();
                 const activePending = pendingActions.filter(
-                    (a) => a.status === 'pending' || a.status === 'syncing' || a.status === 'failed'
+                    (a) =>
+                        (a.status === 'pending' || a.status === 'syncing' || a.status === 'failed') &&
+                        !Boolean((a as { permanentError?: boolean }).permanentError)
                 );
                 const pendingIds = new Set(
                     activePending.flatMap((a) => [a.data?.id, ...(Array.isArray(a.data?.ids) ? a.data.ids : [])]).filter(Boolean)
@@ -689,7 +692,12 @@ export function usePreCount(): UsePreCountReturn {
             if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
             if (typeof navigator !== 'undefined' && !navigator.onLine) return;
 
-            void syncManager.processQueue().then(() => {
+            const mgr = syncManager as unknown as { onConnectivityRestored?: () => Promise<void> };
+            const flushPromise =
+                typeof mgr.onConnectivityRestored === 'function'
+                    ? mgr.onConnectivityRestored()
+                    : syncManager.flushNow();
+            void flushPromise.then(() => {
                 if (disposed) return;
                 void refreshSessionsList();
                 if (sid) {

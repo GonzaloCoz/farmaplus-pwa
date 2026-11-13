@@ -65,6 +65,9 @@ export function RecountControlDialog({
 
     const assignmentsRef = useRef<Record<string, RecountDeviceAssignment>>({});
     const submissionsRef = useRef<RecountResultSubmission[]>([]);
+    const controlChannelRef = useRef<any>(null);
+    const latestPresenceRef = useRef<OnlineRecountDevice[]>([]);
+    const notifiedSubmissionsRef = useRef<Record<string, string>>({});
     assignmentsRef.current = assignments;
     submissionsRef.current = submissions;
 
@@ -106,29 +109,39 @@ export function RecountControlDialog({
                 getRecountSessionState(sessionId),
             ]);
             setDiffs(computedDiffs);
+            submissionsRef.current = existingSubs;
             setSubmissions(existingSubs);
+            for (const sub of existingSubs) {
+                notifiedSubmissionsRef.current[sub.device_id] = sub.submitted_at || 'existing';
+            }
 
             if (currentState !== 'started') {
                 await setRecountSessionState(sessionId, 'waiting');
             }
 
-            // Cargar asignaciones previas si existen
-            const { data: assignRow } = await (supabase as any)
+            // Cargar asignaciones previas si existen (limit(1) ordenado evita PGRST116 si hay duplicados)
+            const { data: assignRows } = await (supabase as any)
                 .from('precount_device_files')
                 .select('content')
                 .eq('session_id', sessionId)
                 .eq('filename', 'recount_assignments.json')
-                .maybeSingle();
+                .order('created_at', { ascending: false })
+                .limit(1);
 
+            const assignRow = Array.isArray(assignRows) && assignRows.length > 0 ? assignRows[0] : null;
             if (assignRow?.content) {
                 try {
-                    const parsed = JSON.parse(assignRow.content);
+                    const parsed = typeof assignRow.content === 'string'
+                        ? JSON.parse(assignRow.content)
+                        : assignRow.content;
                     if (parsed?.assignments) {
+                        assignmentsRef.current = parsed.assignments;
                         setAssignments(parsed.assignments);
                         setHasSentBatch(true);
                     }
                 } catch {}
             } else {
+                assignmentsRef.current = {};
                 setAssignments({});
                 setHasSentBatch(false);
             }
@@ -188,57 +201,191 @@ export function RecountControlDialog({
         setOnlineDevices(merged);
     }, [sessionId]);
 
-    // Suscripción a Realtime Presence + Broadcast de resultados
+    // Suscripción a Realtime Presence + Broadcast + Postgres Changes con auto-reconciliación
     useEffect(() => {
         if (!open || !sessionId) return;
-        loadInitialState();
+        let disposed = false;
+        let reconnectAttempts = 0;
+        let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+        let activeControlChannel: any = null;
+        let activeDbChannel: any = null;
 
-        let latestPresence: OnlineRecountDevice[] = [];
-        const channel = supabase.channel(`recount_control_${sessionId}`, {
-            config: { presence: { key: 'admin-pc' } },
-        });
+        const syncSubmissionsAndDevices = async (toastIfNew = false) => {
+            if (disposed) return;
+            try {
+                const updated = await fetchRecountResultSubmissions(sessionId);
+                if (disposed) return;
+                if (toastIfNew) {
+                    const hasNew = updated.some(
+                        (s) => notifiedSubmissionsRef.current[s.device_id] !== (s.submitted_at || 'submitted')
+                    );
+                    if (hasNew) {
+                        toast.success('Recuento recibido', 'Una terminal finalizó y envió sus diferencias.');
+                    }
+                }
+                for (const s of updated) {
+                    notifiedSubmissionsRef.current[s.device_id] = s.submitted_at || 'submitted';
+                }
+                submissionsRef.current = updated;
+                setSubmissions(updated);
+                await refreshConnectedDevices(latestPresenceRef.current);
+            } catch (err) {
+                console.warn('[RecountControlDialog] Error sincronizando envíos:', err);
+            }
+        };
 
-        channel
-            .on('presence', { event: 'sync' }, () => {
-                const state = channel.presenceState();
-                const list: OnlineRecountDevice[] = [];
-                Object.values(state).forEach((entries: any) => {
-                    if (!Array.isArray(entries)) return;
-                    for (const entry of entries) {
-                        if (!entry?.device_id || entry.role === 'admin') continue;
-                        list.push({
-                            device_id: String(entry.device_id),
-                            device_name: String(entry.device_name || entry.device_id),
-                            platform: entry.platform === 'zebra' ? 'zebra' : 'web',
-                            status: entry.status || 'online',
-                            last_seen: entry.last_seen,
-                        });
+        const cleanupChannels = () => {
+            if (activeControlChannel) {
+                const ch = activeControlChannel;
+                activeControlChannel = null;
+                if (controlChannelRef.current === ch) controlChannelRef.current = null;
+                void supabase.removeChannel(ch);
+            }
+            if (activeDbChannel) {
+                const dbCh = activeDbChannel;
+                activeDbChannel = null;
+                void supabase.removeChannel(dbCh);
+            }
+        };
+
+        const scheduleReconnect = () => {
+            if (disposed || reconnectTimer) return;
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+            const delay = Math.min(15000, 1000 * Math.pow(2, reconnectAttempts));
+            reconnectAttempts += 1;
+            reconnectTimer = setTimeout(() => {
+                reconnectTimer = null;
+                if (!disposed) subscribeChannels();
+            }, delay);
+        };
+
+        const subscribeChannels = () => {
+            if (disposed) return;
+            cleanupChannels();
+
+            const controlChannelName = `recount_control_${sessionId}`;
+            const stale = supabase.getChannels().filter((c: any) => c.topic === `realtime:${controlChannelName}`);
+            stale.forEach((c: any) => { void supabase.removeChannel(c); });
+
+            const channel = supabase.channel(controlChannelName, {
+                config: { presence: { key: 'admin-pc' } },
+            });
+            activeControlChannel = channel;
+            controlChannelRef.current = channel;
+
+            channel
+                .on('presence', { event: 'sync' }, () => {
+                    const state = channel.presenceState();
+                    const list: OnlineRecountDevice[] = [];
+                    Object.values(state).forEach((entries: any) => {
+                        if (!Array.isArray(entries)) return;
+                        for (const entry of entries) {
+                            if (!entry?.device_id || entry.role === 'admin') continue;
+                            list.push({
+                                device_id: String(entry.device_id),
+                                device_name: String(entry.device_name || entry.device_id),
+                                platform: entry.platform === 'zebra' ? 'zebra' : 'web',
+                                status: entry.status || 'online',
+                                last_seen: entry.last_seen,
+                            });
+                        }
+                    });
+                    latestPresenceRef.current = list;
+                    void refreshConnectedDevices(list);
+                })
+                .on('broadcast', { event: 'recount_result_submitted' }, () => {
+                    void syncSubmissionsAndDevices(true);
+                })
+                .subscribe(async (status) => {
+                    if (disposed) return;
+                    if (status === 'SUBSCRIBED') {
+                        reconnectAttempts = 0;
+                        await channel.track({ role: 'admin', online_at: new Date().toISOString() });
+                        await refreshConnectedDevices(latestPresenceRef.current);
+                        void syncSubmissionsAndDevices(false);
+                    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                        scheduleReconnect();
                     }
                 });
-                latestPresence = list;
-                refreshConnectedDevices(latestPresence);
-            })
-            .on('broadcast', { event: 'recount_result_submitted' }, async () => {
-                const updated = await fetchRecountResultSubmissions(sessionId);
-                setSubmissions(updated);
-                toast.success('Recuento recibido', 'Una terminal finalizó y envió sus diferencias.');
-            })
-            .subscribe(async (status) => {
-                if (status === 'SUBSCRIBED') {
-                    await channel.track({ role: 'admin', online_at: new Date().toISOString() });
-                    refreshConnectedDevices(latestPresence);
-                }
-            });
 
-        const pollTimer = setInterval(async () => {
-            refreshConnectedDevices(latestPresence);
-            const updatedSubs = await fetchRecountResultSubmissions(sessionId);
-            setSubmissions(updatedSubs);
+            // Postgres changes para captar dispositivos Zebra REST y resultados sin depender solo de broadcast WebSocket
+            const dbChannel = supabase
+                .channel(`recount_control_db_${sessionId}`)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: '*',
+                        schema: 'public',
+                        table: 'precount_connected_devices',
+                        filter: `session_id=eq.${sessionId}`,
+                    },
+                    () => {
+                        void refreshConnectedDevices(latestPresenceRef.current);
+                    }
+                )
+                .on(
+                    'postgres_changes',
+                    {
+                        event: '*',
+                        schema: 'public',
+                        table: 'precount_device_files',
+                        filter: `session_id=eq.${sessionId}`,
+                    },
+                    (payload: any) => {
+                        const fname = payload?.new?.filename || payload?.old?.filename || '';
+                        if (String(fname).startsWith('recount_result_')) {
+                            void syncSubmissionsAndDevices(true);
+                        }
+                    }
+                )
+                .subscribe((status) => {
+                    if (disposed) return;
+                    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                        scheduleReconnect();
+                    }
+                });
+            activeDbChannel = dbChannel;
+        };
+
+        void loadInitialState().then(() => {
+            if (!disposed) {
+                void refreshConnectedDevices(latestPresenceRef.current);
+            }
+        });
+        subscribeChannels();
+
+        const handleWakeUp = () => {
+            if (disposed) return;
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+            void refreshConnectedDevices(latestPresenceRef.current);
+            void syncSubmissionsAndDevices(true);
+            if (!activeControlChannel || activeControlChannel.state !== 'joined') {
+                reconnectAttempts = 0;
+                subscribeChannels();
+            }
+        };
+
+        window.addEventListener('online', handleWakeUp);
+        window.addEventListener('focus', handleWakeUp);
+        document.addEventListener('visibilitychange', handleWakeUp);
+
+        const pollTimer = setInterval(() => {
+            if (disposed) return;
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+            void refreshConnectedDevices(latestPresenceRef.current);
+            void syncSubmissionsAndDevices(false);
         }, 3000);
 
         return () => {
+            disposed = true;
+            if (reconnectTimer) clearTimeout(reconnectTimer);
             clearInterval(pollTimer);
-            supabase.removeChannel(channel);
+            window.removeEventListener('online', handleWakeUp);
+            window.removeEventListener('focus', handleWakeUp);
+            document.removeEventListener('visibilitychange', handleWakeUp);
+            cleanupChannels();
         };
     }, [open, sessionId, loadInitialState, refreshConnectedDevices]);
 
@@ -265,21 +412,42 @@ export function RecountControlDialog({
 
         setIsSending(true);
         try {
+            const nowIso = new Date().toISOString();
             const { totalDiffs, assignments: created } = await distributeRecountDifferencesToDevices(
                 sessionId,
                 onlineDevices
             );
+            assignmentsRef.current = created;
+            submissionsRef.current = [];
+            notifiedSubmissionsRef.current = {};
             setAssignments(created);
             setSubmissions([]);
             setHasSentBatch(true);
+            void refreshConnectedDevices(latestPresenceRef.current);
 
-            // Notificar en tiempo real a todas las terminales conectadas
-            const channel = supabase.channel(`recount_control_${sessionId}`);
-            await channel.send({
-                type: 'broadcast',
-                event: 'recount_assigned',
-                payload: { session_id: sessionId, total_diffs: totalDiffs, generated_at: new Date().toISOString() },
-            });
+            // Notificar en tiempo real reutilizando el canal suscripto (con fallback limpio)
+            const broadcastPayload = {
+                session_id: sessionId,
+                total_diffs: totalDiffs,
+                generated_at: nowIso,
+                started_at: nowIso,
+            };
+            const ch = controlChannelRef.current;
+            if (ch && ch.state === 'joined') {
+                await ch.send({
+                    type: 'broadcast',
+                    event: 'recount_assigned',
+                    payload: broadcastPayload,
+                });
+            } else {
+                const tempCh = supabase.channel(`recount_control_${sessionId}`);
+                await tempCh.send({
+                    type: 'broadcast',
+                    event: 'recount_assigned',
+                    payload: broadcastPayload,
+                });
+                void supabase.removeChannel(tempCh);
+            }
 
             toast.success(
                 'Listados enviados',

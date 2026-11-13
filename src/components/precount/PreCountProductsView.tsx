@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { Elevated } from '@/lib/elevated';
 import { db } from '@/services/db';
 import { upsertPreCountItem, updatePreCountItem, deletePreCountItems, getDeviceId } from '@/services/preCountDB';
+import { syncManager } from '@/services/syncManager';
 import { supabase } from '@/integrations/supabase/client';
 import { DragStepper } from '@/components/ui/drag-stepper';
 import { useUser } from '@/contexts/UserContext';
@@ -328,7 +329,13 @@ export function PreCountProductsView({
 
         let isMounted = true;
 
+        let reconnectAttempts = 0;
+        let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+        let activeChannel: any = null;
+
         const syncRemoteItems = async () => {
+            if (!isMounted) return;
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return;
             try {
                 // Paginar para no quedar truncado al límite de 1000 registros de PostgREST
                 const allRemote: any[] = [];
@@ -356,7 +363,12 @@ export function PreCountProductsView({
                 if (isMounted) {
                     // Obtener acciones pendientes de creación/actualización para no pisar cambios locales en vuelo
                     const pendingActions = await db.pendingActions.where('entity').equals('item').toArray();
-                    const pendingIds = new Set(pendingActions.map(a => a.data?.id).filter(Boolean));
+                    const activePending = pendingActions.filter(
+                        (a) => a.status === 'pending' || a.status === 'syncing' || a.status === 'failed'
+                    );
+                    const pendingIds = new Set(
+                        activePending.flatMap((a) => [a.data?.id, ...(Array.isArray(a.data?.ids) ? a.data.ids : [])]).filter(Boolean)
+                    );
                     const localSessionItems = await db.items.where('session_id').equals(effectiveSessionId).toArray();
                     const unsyncedLocalIds = new Set(localSessionItems.filter(i => i.synced === 0).map(i => i.id));
                     const remoteIds = new Set(allRemote.map((item: any) => item.id));
@@ -373,11 +385,24 @@ export function PreCountProductsView({
                     if (safeRemoteItems.length > 0) {
                         const localRows: any[] = [];
                         for (const item of safeRemoteItems) {
-                            // Buscar ítem local existente por ID o por combinación (EAN + sector)
-                            const existingLocal = localSessionItems.find(l => l.id === item.id || (l.ean === item.ean && l.location_tag === item.location_tag));
-                            
-                            // Si el ítem local tenía un ID temporal diferente antes de sincronizar, limpiar el temporal
-                            if (existingLocal && existingLocal.id !== item.id) {
+                            // Emparejar por ID exacto, o por (device_id + ean + sector) del mismo dispositivo sin tocar otros equipos ni ítems pendientes
+                            const existingLocal = localSessionItems.find(
+                                (l) =>
+                                    l.id === item.id ||
+                                    (l.device_id &&
+                                        item.device_id &&
+                                        l.device_id === item.device_id &&
+                                        l.ean === item.ean &&
+                                        (l.location_tag || '') === (item.location_tag || ''))
+                            );
+
+                            // Nunca eliminar un ítem local no sincronizado o con acción pendiente
+                            if (
+                                existingLocal &&
+                                existingLocal.id !== item.id &&
+                                existingLocal.synced !== 0 &&
+                                !pendingIds.has(existingLocal.id)
+                            ) {
                                 await db.items.delete(existingLocal.id);
                             }
 
@@ -406,73 +431,154 @@ export function PreCountProductsView({
             }
         };
 
-        syncRemoteItems();
-        const pollInterval = setInterval(syncRemoteItems, 4000);
+        void syncRemoteItems();
+        const pollInterval = setInterval(() => {
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+            void syncRemoteItems();
+        }, 4000);
 
-        const handleForceRefresh = () => syncRemoteItems();
+        const handleForceRefresh = () => {
+            void syncRemoteItems();
+        };
         window.addEventListener('precount:item_scanned' as any, handleForceRefresh);
         window.addEventListener('precount:item_added' as any, handleForceRefresh);
 
+        const cleanupRealtime = () => {
+            if (activeChannel) {
+                const ch = activeChannel;
+                activeChannel = null;
+                void supabase.removeChannel(ch);
+            }
+        };
+
+        const scheduleReconnect = () => {
+            if (!isMounted || reconnectTimer) return;
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+            const delay = Math.min(15000, 1000 * Math.pow(2, reconnectAttempts));
+            reconnectAttempts += 1;
+            reconnectTimer = setTimeout(() => {
+                reconnectTimer = null;
+                if (isMounted) subscribeItemsChannel();
+            }, delay);
+        };
+
         // Suscripción Realtime para recibir conteos en vivo de todos los operadores/dispositivos
-        const channel = supabase
-            .channel(`precount_items_products_view_${effectiveSessionId}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'precount_items',
-                    filter: `session_id=eq.${effectiveSessionId}`,
-                },
-                async (payload) => {
-                    if (!isMounted) return;
-                    try {
-                        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-                            const item = payload.new as any;
-                            // Si el ítem local está pendiente de sincronización, no sobreescribir con datos viejos
-                            const localItem = await db.items.get(item.id);
-                            if (localItem && localItem.synced === 0) {
-                                return;
+        const subscribeItemsChannel = () => {
+            if (!isMounted) return;
+            cleanupRealtime();
+
+            const topic = `precount_items_products_view_${effectiveSessionId}`;
+            const stale = supabase.getChannels().filter(
+                (c: any) => c.topic === `realtime:${topic}` || c.subTopic === topic
+            );
+            stale.forEach((c: any) => { void supabase.removeChannel(c); });
+
+            const ch = supabase
+                .channel(topic)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: '*',
+                        schema: 'public',
+                        table: 'precount_items',
+                        filter: `session_id=eq.${effectiveSessionId}`,
+                    },
+                    async (payload) => {
+                        if (!isMounted) return;
+                        try {
+                            if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                                const item = payload.new as any;
+                                // Si el ítem local está pendiente de sincronización o tiene edición en cola, no sobreescribir
+                                const localItem = await db.items.get(item.id);
+                                if (localItem && localItem.synced === 0) {
+                                    return;
+                                }
+                                const pendingItemActions = await db.pendingActions.where('entity').equals('item').toArray();
+                                const isQueued = pendingItemActions.some(
+                                    (a) =>
+                                        (a.status === 'pending' || a.status === 'syncing' || a.status === 'failed') &&
+                                        (a.data?.id === item.id || (Array.isArray(a.data?.ids) && a.data.ids.includes(item.id)))
+                                );
+                                if (isQueued) return;
+
+                                await db.items.put({
+                                    id: item.id,
+                                    session_id: item.session_id,
+                                    ean: item.ean,
+                                    product_name: item.product_name || `Producto ${item.ean}`,
+                                    quantity: item.quantity || 0,
+                                    scanned_at: item.scanned_at || item.created_at || localItem?.scanned_at || new Date().toISOString(),
+                                    scanned_by: item.scanned_by || undefined,
+                                    synced: 1,
+                                    id_producto: item.id_producto || undefined,
+                                    device_id: item.device_id || undefined,
+                                    device_name: item.device_name || undefined,
+                                    location_tag: item.location_tag || undefined,
+                                    laboratory: item.laboratory || undefined,
+                                    rubro: item.rubro || undefined,
+                                });
+                            } else if (payload.eventType === 'DELETE') {
+                                const old = payload.old as any;
+                                if (old?.id) {
+                                    const localItem = await db.items.get(old.id);
+                                    if (!localItem || localItem.synced !== 0) {
+                                        await db.items.delete(old.id);
+                                    }
+                                }
                             }
-                            await db.items.put({
-                                id: item.id,
-                                session_id: item.session_id,
-                                ean: item.ean,
-                                product_name: item.product_name || `Producto ${item.ean}`,
-                                quantity: item.quantity || 0,
-                                scanned_at: item.scanned_at || item.created_at || localItem?.scanned_at || new Date().toISOString(),
-                                scanned_by: item.scanned_by || undefined,
-                                synced: 1,
-                                id_producto: item.id_producto || undefined,
-                                device_id: item.device_id || undefined,
-                                device_name: item.device_name || undefined,
-                                location_tag: item.location_tag || undefined,
-                                laboratory: item.laboratory || undefined,
-                                rubro: item.rubro || undefined,
-                            });
-                        } else if (payload.eventType === 'DELETE') {
-                            const old = payload.old as any;
-                            if (old?.id) {
-                                await db.items.delete(old.id);
-                            }
+                        } catch (err) {
+                            console.error('[PreCountProductsView] Error procesando cambio Realtime:', err);
                         }
-                    } catch (err) {
-                        console.error('[PreCountProductsView] Error procesando cambio Realtime:', err);
                     }
-                }
-            )
-            .subscribe();
+                )
+                .subscribe((status) => {
+                    if (!isMounted) return;
+                    if (status === 'SUBSCRIBED') {
+                        reconnectAttempts = 0;
+                        void syncRemoteItems();
+                    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                        scheduleReconnect();
+                    }
+                });
+            activeChannel = ch;
+        };
+
+        subscribeItemsChannel();
+
+        const handleWakeUp = () => {
+            if (!isMounted) return;
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+            void syncManager.processQueue().then(() => {
+                if (isMounted) void syncRemoteItems();
+            });
+            if (!activeChannel || activeChannel.state !== 'joined') {
+                reconnectAttempts = 0;
+                subscribeItemsChannel();
+            }
+        };
+
+        window.addEventListener('online', handleWakeUp);
+        window.addEventListener('focus', handleWakeUp);
+        document.addEventListener('visibilitychange', handleWakeUp);
 
         return () => {
             isMounted = false;
+            if (reconnectTimer) clearTimeout(reconnectTimer);
             clearInterval(pollInterval);
             window.removeEventListener('precount:item_scanned' as any, handleForceRefresh);
             window.removeEventListener('precount:item_added' as any, handleForceRefresh);
-            supabase.removeChannel(channel);
+            window.removeEventListener('online', handleWakeUp);
+            window.removeEventListener('focus', handleWakeUp);
+            document.removeEventListener('visibilitychange', handleWakeUp);
+            cleanupRealtime();
         };
     }, [effectiveSessionId]);
 
     const pendingQtyEditsRef = useRef<Map<string, number>>(new Map());
+    const tempToRealIdRef = useRef<Map<string, string>>(new Map());
+    const deletedTempIdsRef = useRef<Set<string>>(new Set());
     const [tableData, setTableData] = useState<ProductExpirationItem[]>(propItems || []);
 
     useEffect(() => {
@@ -758,10 +864,15 @@ export function PreCountProductsView({
             }
         };
 
-        loadCatalog();
+        void loadCatalog();
+        const handleCatalogLoaded = () => {
+            void loadCatalog();
+        };
+        window.addEventListener('precount:catalog_loaded', handleCatalogLoaded);
 
         return () => {
             isMounted = false;
+            window.removeEventListener('precount:catalog_loaded', handleCatalogLoaded);
         };
     }, [effectiveSessionId]);
 
@@ -1229,14 +1340,38 @@ export function PreCountProductsView({
                     device_name: currentOperator,
                 });
                 if (saved?.id) {
+                    tempToRealIdRef.current.set(committedRow.id, saved.id);
+                    const pendingTempQty = pendingQtyEditsRef.current.get(committedRow.id);
+                    if (pendingTempQty !== undefined) {
+                        pendingQtyEditsRef.current.delete(committedRow.id);
+                        pendingQtyEditsRef.current.set(saved.id, pendingTempQty);
+                    }
+
+                    if (deletedTempIdsRef.current.has(committedRow.id)) {
+                        deletedTempIdsRef.current.delete(committedRow.id);
+                        pendingQtyEditsRef.current.delete(saved.id);
+                        await deletePreCountItems([saved.id]);
+                        return;
+                    }
+
+                    const effectiveQty = pendingTempQty !== undefined ? pendingTempQty : saved.quantity;
+                    if (pendingTempQty !== undefined && pendingTempQty !== saved.quantity) {
+                        void updatePreCountItem(saved.id, { quantity: pendingTempQty }).finally(() => {
+                            if (pendingQtyEditsRef.current.get(saved.id) === pendingTempQty) {
+                                pendingQtyEditsRef.current.delete(saved.id);
+                            }
+                            window.dispatchEvent(new CustomEvent('precount:item_added'));
+                        });
+                    }
+
                     setTableData(prev => {
                         const alreadyInTable = prev.some(r => r.id === saved.id && r.id !== committedRow.id);
                         if (alreadyInTable) {
                             return prev
                                 .filter(r => r.id !== committedRow.id)
-                                .map(r => r.id === saved.id ? { ...r, quantity: saved.quantity } : r);
+                                .map(r => r.id === saved.id ? { ...r, quantity: effectiveQty } : r);
                         }
-                        return prev.map(r => r.id === committedRow.id ? { ...r, id: saved.id, quantity: saved.quantity } : r);
+                        return prev.map(r => r.id === committedRow.id ? { ...r, id: saved.id, quantity: effectiveQty } : r);
                     });
                 }
             } catch (dbErr) {
@@ -1418,40 +1553,101 @@ export function PreCountProductsView({
     const [deletedHistory, setDeletedHistory] = useState<ProductExpirationItem[][]>([]);
 
     const qtyDebounceTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+    const pendingDebounceQtyRef = useRef<Map<string, number>>(new Map());
+
+    const flushPendingQtyEdits = useCallback(async () => {
+        const entries = Array.from(pendingDebounceQtyRef.current.entries());
+        if (entries.length === 0) return;
+
+        for (const [id, qty] of entries) {
+            const timer = qtyDebounceTimersRef.current.get(id);
+            if (timer) {
+                clearTimeout(timer);
+                qtyDebounceTimersRef.current.delete(id);
+            }
+            const realId = tempToRealIdRef.current.get(id) || id;
+            // Los ítems aún en temp-new-... se sincronizarán al resolverse upsertPreCountItem
+            if (realId.startsWith('temp-new-')) continue;
+
+            pendingDebounceQtyRef.current.delete(id);
+            try {
+                await updatePreCountItem(realId, { quantity: qty });
+            } catch (err) {
+                console.warn("Error sincronizando edición de cantidad pendiente:", err);
+            } finally {
+                if (pendingQtyEditsRef.current.get(realId) === qty) {
+                    pendingQtyEditsRef.current.delete(realId);
+                }
+                if (pendingQtyEditsRef.current.get(id) === qty) {
+                    pendingQtyEditsRef.current.delete(id);
+                }
+            }
+        }
+        window.dispatchEvent(new CustomEvent('precount:item_added'));
+    }, []);
+
+    useEffect(() => {
+        const handleVisibilityHide = () => {
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+                void flushPendingQtyEdits();
+            }
+        };
+        const handleBeforeUnload = () => {
+            void flushPendingQtyEdits();
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityHide);
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityHide);
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            void flushPendingQtyEdits();
+        };
+    }, [flushPendingQtyEdits]);
 
     const handleInlineQuantityChange = useCallback((rowId: string, newQty: number) => {
         const parsed = Number(newQty);
         if (isNaN(parsed) || !isFinite(parsed) || parsed < 1) return;
         const validatedQty = Math.floor(parsed);
-        pendingQtyEditsRef.current.set(rowId, validatedQty);
-        setTableData(prev => prev.map(r => r.id === rowId ? { ...r, quantity: validatedQty } : r));
+        const resolvedId = tempToRealIdRef.current.get(rowId) || rowId;
+
+        pendingQtyEditsRef.current.set(resolvedId, validatedQty);
+        setTableData(prev => prev.map(r => (r.id === rowId || r.id === resolvedId) ? { ...r, quantity: validatedQty } : r));
 
         if (!effectiveSessionId) return;
-        const prevTimer = qtyDebounceTimersRef.current.get(rowId);
+        if (resolvedId.startsWith('temp-new-')) {
+            // Se aplicará automáticamente cuando upsertPreCountItem devuelva el ID real
+            return;
+        }
+
+        const prevTimer = qtyDebounceTimersRef.current.get(resolvedId);
         if (prevTimer) clearTimeout(prevTimer);
+        pendingDebounceQtyRef.current.set(resolvedId, validatedQty);
 
         const timer = setTimeout(async () => {
-            qtyDebounceTimersRef.current.delete(rowId);
+            qtyDebounceTimersRef.current.delete(resolvedId);
+            pendingDebounceQtyRef.current.delete(resolvedId);
             try {
-                await updatePreCountItem(rowId, { quantity: validatedQty });
+                await updatePreCountItem(resolvedId, { quantity: validatedQty });
             } catch (err) {
                 console.warn("Error actualizando cantidad:", err);
             } finally {
                 // Solo limpiar si no hubo un click más reciente mientras guardaba
-                if (pendingQtyEditsRef.current.get(rowId) === validatedQty) {
-                    pendingQtyEditsRef.current.delete(rowId);
+                if (pendingQtyEditsRef.current.get(resolvedId) === validatedQty) {
+                    pendingQtyEditsRef.current.delete(resolvedId);
                 }
                 window.dispatchEvent(new CustomEvent('precount:item_added'));
             }
         }, 300);
-        qtyDebounceTimersRef.current.set(rowId, timer);
+        qtyDebounceTimersRef.current.set(resolvedId, timer);
     }, [effectiveSessionId]);
 
     const handleInlineSectorChange = useCallback(async (rowId: string, newSector: string) => {
-        setTableData(prev => prev.map(r => r.id === rowId ? { ...r, position: newSector, sector: newSector } : r));
-        if (effectiveSessionId) {
+        const resolvedId = tempToRealIdRef.current.get(rowId) || rowId;
+        setTableData(prev => prev.map(r => (r.id === rowId || r.id === resolvedId) ? { ...r, position: newSector, sector: newSector } : r));
+        if (effectiveSessionId && !resolvedId.startsWith('temp-new-')) {
             try {
-                await updatePreCountItem(rowId, { location_tag: newSector });
+                await updatePreCountItem(resolvedId, { location_tag: newSector });
             } catch (err) {
                 console.warn("Error actualizando sector:", err);
             }
@@ -1463,13 +1659,21 @@ export function PreCountProductsView({
 
         const count = selectedIds.size;
         const toDelete = tableData.filter(item => selectedIds.has(item.id));
-        const idsToDelete = toDelete.map(t => t.id);
+        const idsToDelete: string[] = [];
+        toDelete.forEach((t) => {
+            const realId = tempToRealIdRef.current.get(t.id) || t.id;
+            if (realId.startsWith('temp-new-')) {
+                deletedTempIdsRef.current.add(realId);
+            } else {
+                idsToDelete.push(realId);
+            }
+        });
 
         setDeletedHistory(prev => [...prev, toDelete]);
         setTableData(prev => prev.filter(item => !selectedIds.has(item.id)));
         setSelectedIds(new Set());
 
-        if (effectiveSessionId) {
+        if (effectiveSessionId && idsToDelete.length > 0) {
             try {
                 await deletePreCountItems(idsToDelete);
 
@@ -1495,7 +1699,7 @@ export function PreCountProductsView({
                 ? `${toDelete[0]?.productName || "El producto"} ha sido quitado de la tabla`
                 : `Se han quitado ${count} productos seleccionados de la tabla`
         );
-    }, [selectedIds, tableData, effectiveSessionId]);
+    }, [selectedIds, tableData, effectiveSessionId, isBranchMode, activeSector]);
 
     const handleRestoreDeleted = useCallback(async () => {
         if (deletedHistory.length === 0) {

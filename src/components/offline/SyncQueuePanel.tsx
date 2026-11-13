@@ -4,14 +4,28 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Clock, RefreshCw01 as RefreshCw, AlertCircle, CheckCircle, XClose as XCircle } from '@untitledui/icons';
+import { Clock, RefreshCw01 as RefreshCw, CheckCircle, XClose as XCircle } from '@untitledui/icons';
 import { cn } from '@/lib/utils';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, PendingAction } from '@/services/db';
 import { syncManager } from '@/services/syncManager';
 
+function formatActionLabel(item: PendingAction): string {
+    const data = item.data || {};
+    if (data.product_name) return String(data.product_name);
+    if (data.filename) return String(data.filename);
+    if (data.ean) return `EAN ${data.ean}`;
+    if (data.sector) return String(data.sector);
+    if (Array.isArray(data.ids) && data.ids.length > 0) {
+        return `${data.ids.length} ítem${data.ids.length === 1 ? '' : 's'}`;
+    }
+    if (data.id) return `#${String(data.id).substring(0, 8)}`;
+    return item.entity;
+}
+
 export function SyncQueuePanel() {
     const [isOpen, setIsOpen] = useState(false);
+    const [isForcing, setIsForcing] = useState(false);
 
     // Live query to local DB
     const queueItems = useLiveQuery(
@@ -20,7 +34,7 @@ export function SyncQueuePanel() {
     );
 
     const pendingCount = queueItems?.filter((item) => item.status === 'pending' || item.status === 'failed').length || 0;
-    const isSyncing = queueItems?.some(item => item.status === 'syncing');
+    const isSyncing = isForcing || Boolean(queueItems?.some(item => item.status === 'syncing'));
 
     const getStatusIcon = (status: PendingAction['status']) => {
         switch (status) {
@@ -59,8 +73,31 @@ export function SyncQueuePanel() {
         return `Hace ${hours} horas`;
     };
 
-    const handleRetry = () => {
-        syncManager.processQueue();
+    const handleRetry = async () => {
+        setIsForcing(true);
+        try {
+            // Reset failed / dead-lettered items (retries >= 5) so syncManager picks them up immediately
+            const failedItems = await db.pendingActions
+                .where('status')
+                .equals('failed')
+                .toArray();
+            if (failedItems.length > 0) {
+                await Promise.all(
+                    failedItems
+                        .filter((it) => it.id !== undefined)
+                        .map((it) =>
+                            db.pendingActions.update(it.id!, {
+                                status: 'pending',
+                                retries: 0,
+                                error: undefined,
+                            })
+                        )
+                );
+            }
+            await syncManager.processQueue();
+        } finally {
+            setIsForcing(false);
+        }
     };
 
     return (
@@ -133,7 +170,7 @@ export function SyncQueuePanel() {
                                                 </div>
                                                 <p className="text-sm font-medium truncate">
                                                     {/* Intentamos mostrar algo descriptivo del payload */}
-                                                    {item.data.product_name || item.data.ean || item.data.sector || `#${item.data.id?.substring(0, 8)}`}
+                                                    {formatActionLabel(item)}
                                                 </p>
                                                 <p className="text-xs text-muted-foreground mt-1">
                                                     {formatTimestamp(item.timestamp)}

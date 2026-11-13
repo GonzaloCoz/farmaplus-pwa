@@ -20,6 +20,7 @@ import { useUser } from '@/contexts/UserContext';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { isTauriEnvironment } from '@/services/mysqlTauriBridge';
 import { compressJsonToGzipBase64, decompressGzipBase64ToJson } from '@/lib/compression';
+import { syncManager } from '@/services/syncManager';
 
 /**
  * Expande el master_catalog a filas de db.precount_products: UNA fila por EAN.
@@ -217,94 +218,248 @@ export function usePreCount(): UsePreCountReturn {
     const currentSession = liveSession || session;
 
     useEffect(() => {
+        let disposed = false;
         let debounceTimer: NodeJS.Timeout | null = null;
         const DEBOUNCE_MS = 300;
+        const sid = activeSessionId;
 
-        const sessionsChannel = supabase
-            .channel(`public:precount_sessions_ui_${activeSessionId || 'global'}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'precount_sessions' }, async (payload: any) => {
-                if (debounceTimer) clearTimeout(debounceTimer);
-                debounceTimer = setTimeout(async () => {
-                    const sessions = await getActiveSessions({ branchId: user?.branchId, role: user?.role });
-                    setAvailableSessions(sessions);
+        const reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
+        const reconnectAttempts = new Map<string, number>();
 
-                    const currentActiveId = sessionRef.current?.id;
-                    if (currentActiveId) {
-                        if (payload.eventType === 'DELETE' && payload.old?.id === currentActiveId) {
-                            sessionRef.current = null;
-                            setSession(null);
-                            if (typeof localStorage !== 'undefined') {
-                                localStorage.removeItem('last_precount_session_id');
-                                localStorage.removeItem('precount_session_id');
-                                sessionStorage.removeItem('active_precount_session_id');
-                            }
-                            notify.info("Sesión eliminada", "La sesión actual fue eliminada desde otro dispositivo");
-                        } else if (payload.eventType === 'UPDATE' && payload.new?.id === currentActiveId && payload.new?.status === 'completed') {
-                            sessionRef.current = null;
-                            setSession(null);
-                            if (typeof localStorage !== 'undefined') {
-                                localStorage.removeItem('last_precount_session_id');
-                                localStorage.removeItem('precount_session_id');
-                                sessionStorage.removeItem('active_precount_session_id');
-                            }
-                            notify.info("Sesión finalizada", "El inventario ha sido finalizado por el Administrador");
-                        }
-                    }
-                }, DEBOUNCE_MS);
-            })
-            .subscribe();
-
-        let itemsChannel: any = null;
-        let presenceChannel: any = null;
+        let sessionsChannel: any = null;
+        let syncChannel: any = null;
         let filesChannel: any = null;
+        let itemsChannel: any = null;
 
-        const fetchExistingFiles = async (sid: string) => {
+        const clearReconnectTimer = (key: string) => {
+            const t = reconnectTimers.get(key);
+            if (t) {
+                clearTimeout(t);
+                reconnectTimers.delete(key);
+            }
+        };
+
+        const removeChannelSafely = (ch: any, topic?: string) => {
+            if (topic) {
+                const stale = supabase.getChannels().filter(
+                    (c: any) => c.topic === `realtime:${topic}` || c.subTopic === topic
+                );
+                stale.forEach((c: any) => {
+                    try { void supabase.removeChannel(c); } catch {}
+                });
+            }
+            if (ch) {
+                try { void supabase.removeChannel(ch); } catch {}
+            }
+        };
+
+        const scheduleChannelReconnect = (key: string, subscribeFn: () => void) => {
+            if (disposed || reconnectTimers.has(key)) return;
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+            const attempt = reconnectAttempts.get(key) || 0;
+            const delay = Math.min(15000, 1000 * Math.pow(2, attempt));
+            reconnectAttempts.set(key, attempt + 1);
+            const timer = setTimeout(() => {
+                reconnectTimers.delete(key);
+                if (!disposed) subscribeFn();
+            }, delay);
+            reconnectTimers.set(key, timer);
+        };
+
+        const mapFileRow = (f: any): ReceivedFile => ({
+            id: f.id,
+            filename: f.filename,
+            content: f.content,
+            deviceName: f.device_name || 'Terminal',
+            deviceId: f.device_id,
+            timestamp: new Date(f.created_at).getTime(),
+            size: f.content?.length || 0
+        });
+
+        const isItemProtectedLocally = async (itemId: string): Promise<{ protected: boolean; scannedAt?: string }> => {
+            if (!itemId) return { protected: false };
+            const localItem = await db.items.get(itemId);
+            if (localItem && localItem.synced === 0) {
+                return { protected: true, scannedAt: localItem.scanned_at };
+            }
+            const pendingActions = await db.pendingActions.where('entity').equals('item').toArray();
+            const isQueued = pendingActions.some(
+                (a) =>
+                    (a.status === 'pending' || a.status === 'syncing' || a.status === 'failed') &&
+                    (a.data?.id === itemId || (Array.isArray(a.data?.ids) && a.data.ids.includes(itemId)))
+            );
+            return { protected: isQueued, scannedAt: localItem?.scanned_at };
+        };
+
+        const fetchExistingFiles = async (targetSid: string) => {
+            if (disposed || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
             try {
-                console.log(`[Sync] Fetching existing files for session ${sid}...`);
-                const { data, error } = await (supabase as any)
-                    .from('precount_device_files')
-                    .select('*')
-                    .eq('session_id', sid)
-                    .order('created_at', { ascending: false });
+                console.log(`[Sync] Fetching existing files for session ${targetSid}...`);
+                const allFiles: any[] = [];
+                let from = 0;
+                const PAGE_SIZE = 1000;
+                while (true) {
+                    const { data, error } = await (supabase as any)
+                        .from('precount_device_files')
+                        .select('*')
+                        .eq('session_id', targetSid)
+                        .order('created_at', { ascending: false })
+                        .range(from, from + PAGE_SIZE - 1);
 
-                if (error) throw error;
-                if (data) {
-                    const mapped = data.map((f: any) => ({
-                        id: f.id,
-                        filename: f.filename,
-                        content: f.content,
-                        deviceName: f.device_name || 'Terminal',
-                        deviceId: f.device_id,
-                        timestamp: new Date(f.created_at).getTime(),
-                        size: f.content?.length || 0
-                    }));
+                    if (error) throw error;
+                    if (!data || data.length === 0) break;
+                    allFiles.push(...data);
+                    if (data.length < PAGE_SIZE) break;
+                    from += PAGE_SIZE;
+                }
+                if (!disposed) {
+                    const mapped = allFiles.map(mapFileRow);
                     setReceivedFiles(mapped);
-                    console.log(`[Sync] Loaded ${mapped.length} existing files for session ${sid}`);
+                    console.log(`[Sync] Loaded ${mapped.length} existing files for session ${targetSid}`);
                 }
             } catch (err) {
                 console.error('[Sync] Error fetching existing files:', err);
             }
         };
 
-        const handleLocalDeviceJoined = (e: any) => {
-            const payload = e.detail;
-            if (!payload?.deviceId) return;
-            setConnectedDevices(prev => {
-                const exists = prev.find(d => d.deviceId === payload.deviceId);
-                if (exists) {
-                    return prev.map(d => d.deviceId === payload.deviceId ? payload : d);
+        const syncSessionItems = async (targetSid: string) => {
+            if (disposed || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
+            try {
+                const allRemote: any[] = [];
+                let from = 0;
+                const PAGE_SIZE = 1000;
+                while (true) {
+                    const { data, error } = await supabase
+                        .from('precount_items')
+                        .select('*')
+                        .eq('session_id', targetSid)
+                        .order('scanned_at', { ascending: false })
+                        .range(from, from + PAGE_SIZE - 1);
+
+                    if (error) {
+                        console.warn('[Sync] Error syncing precount_items:', error);
+                        return;
+                    }
+                    if (!data || data.length === 0) break;
+                    allRemote.push(...data);
+                    if (data.length < PAGE_SIZE) break;
+                    from += PAGE_SIZE;
                 }
-                return [...prev, payload];
-            });
+                if (disposed) return;
+
+                const pendingActions = await db.pendingActions.where('entity').equals('item').toArray();
+                const activePending = pendingActions.filter(
+                    (a) => a.status === 'pending' || a.status === 'syncing' || a.status === 'failed'
+                );
+                const pendingIds = new Set(
+                    activePending.flatMap((a) => [a.data?.id, ...(Array.isArray(a.data?.ids) ? a.data.ids : [])]).filter(Boolean)
+                );
+                const localItems = await db.items.where('session_id').equals(targetSid).toArray();
+                const unsyncedIds = new Set(localItems.filter((i) => i.synced === 0).map((i) => i.id));
+                const localMap = new Map(localItems.map((i) => [i.id, i]));
+                const remoteIds = new Set(allRemote.map((i: any) => i.id));
+
+                const orphaned = localItems.filter(
+                    (l) => l.synced === 1 && !remoteIds.has(l.id) && !pendingIds.has(l.id) && !unsyncedIds.has(l.id)
+                );
+                if (orphaned.length > 0) {
+                    await db.items.bulkDelete(orphaned.map((i) => i.id));
+                }
+
+                const safeRows = allRemote
+                    .filter((item: any) => item?.id && !pendingIds.has(item.id) && !unsyncedIds.has(item.id))
+                    .map((item: any) => ({
+                        id: item.id,
+                        session_id: item.session_id,
+                        ean: item.ean,
+                        product_name: item.product_name || `Producto ${item.ean}`,
+                        quantity: item.quantity || 0,
+                        scanned_at: localMap.get(item.id)?.scanned_at || item.scanned_at || item.created_at || new Date().toISOString(),
+                        scanned_by: item.scanned_by || undefined,
+                        synced: 1,
+                        id_producto: item.id_producto || undefined,
+                        device_id: item.device_id || undefined,
+                        device_name: item.device_name || undefined,
+                        location_tag: item.location_tag || undefined,
+                        laboratory: item.laboratory || undefined,
+                        rubro: item.rubro || undefined,
+                    }));
+
+                if (safeRows.length > 0) {
+                    await db.items.bulkPut(safeRows);
+                }
+            } catch (err) {
+                console.warn('[Sync] Exception syncing session items:', err);
+            }
         };
-        window.addEventListener('precount:device_joined' as any, handleLocalDeviceJoined);
 
-        if (session) {
-            fetchExistingFiles(session.id);
+        const refreshSessionsList = async () => {
+            if (disposed || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
+            try {
+                const sessions = await getActiveSessions({ branchId: user?.branchId, role: user?.role });
+                if (!disposed) setAvailableSessions(sessions);
+            } catch {}
+        };
 
-            // File Transfer Channel & Device Joined Broadcast
-            channelRef.current = supabase
-                .channel(`precount_sync:${session.id}`)
+        const subscribeSessionsChannel = () => {
+            if (disposed) return;
+            clearReconnectTimer('sessions');
+            const topic = `public:precount_sessions_ui_${sid || 'global'}`;
+            removeChannelSafely(sessionsChannel, topic);
+
+            sessionsChannel = supabase
+                .channel(topic)
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'precount_sessions' }, async (payload: any) => {
+                    if (debounceTimer) clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(async () => {
+                        const sessions = await getActiveSessions({ branchId: user?.branchId, role: user?.role });
+                        if (disposed) return;
+                        setAvailableSessions(sessions);
+
+                        const currentActiveId = sessionRef.current?.id;
+                        if (currentActiveId) {
+                            if (payload.eventType === 'DELETE' && payload.old?.id === currentActiveId) {
+                                sessionRef.current = null;
+                                setSession(null);
+                                if (typeof localStorage !== 'undefined') {
+                                    localStorage.removeItem('last_precount_session_id');
+                                    localStorage.removeItem('precount_session_id');
+                                    sessionStorage.removeItem('active_precount_session_id');
+                                }
+                                notify.info("Sesión eliminada", "La sesión actual fue eliminada desde otro dispositivo");
+                            } else if (payload.eventType === 'UPDATE' && payload.new?.id === currentActiveId && payload.new?.status === 'completed') {
+                                sessionRef.current = null;
+                                setSession(null);
+                                if (typeof localStorage !== 'undefined') {
+                                    localStorage.removeItem('last_precount_session_id');
+                                    localStorage.removeItem('precount_session_id');
+                                    sessionStorage.removeItem('active_precount_session_id');
+                                }
+                                notify.info("Sesión finalizada", "El inventario ha sido finalizado por el Administrador");
+                            }
+                        }
+                    }, DEBOUNCE_MS);
+                })
+                .subscribe((status) => {
+                    if (disposed) return;
+                    if (status === 'SUBSCRIBED') {
+                        reconnectAttempts.set('sessions', 0);
+                        void refreshSessionsList();
+                    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                        scheduleChannelReconnect('sessions', subscribeSessionsChannel);
+                    }
+                });
+        };
+
+        const subscribeSyncChannel = (targetSid: string) => {
+            if (disposed) return;
+            clearReconnectTimer('sync');
+            const topic = `precount_sync:${targetSid}`;
+            removeChannelSafely(syncChannel, topic);
+            if (channelRef.current === syncChannel) channelRef.current = null;
+
+            syncChannel = supabase
+                .channel(topic)
                 .on('broadcast', { event: 'device_joined' }, ({ payload }: any) => {
                     console.log(`[Sync] Device joined:`, payload);
                     setConnectedDevices(prev => {
@@ -318,42 +473,49 @@ export function usePreCount(): UsePreCountReturn {
                 .on('broadcast', { event: 'device_finalized' }, (message: any) => {
                     const payload = message.payload || message;
                     console.log(`[Sync] Broadcast ping received:`, payload);
-                    
+
                     const devName = payload.deviceName || 'Terminal';
                     const fName = payload.filename || 'conteo.txt';
 
-                    // If the file was persisted to DB, the postgres_changes listener
-                    // will handle delivering the actual content. This is just a toast.
                     if (payload.persistedToDb) {
                         notify.info("Archivo entrante", `${devName} envió ${fName}. Cargando...`, { duration: 3000 });
                     }
                 })
                 .subscribe((status) => {
-                    console.log(`[Sync] Broadcast channel status for ${session.id}: ${status}`);
+                    if (disposed) return;
+                    console.log(`[Sync] Broadcast channel status for ${targetSid}: ${status}`);
+                    if (status === 'SUBSCRIBED') {
+                        reconnectAttempts.set('sync', 0);
+                    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                        scheduleChannelReconnect('sync', () => subscribeSyncChannel(targetSid));
+                    }
                 });
+            channelRef.current = syncChannel;
+        };
 
-            // DATABASE LISTENER for device files (RELIABLE delivery)
+        const subscribeFilesChannel = (targetSid: string) => {
+            if (disposed) return;
+            clearReconnectTimer('files');
+            const topic = `public:precount_device_files:${targetSid}`;
+            removeChannelSafely(filesChannel, topic);
+
             filesChannel = supabase
-                .channel(`public:precount_device_files:${session.id}`)
+                .channel(topic)
                 .on('postgres_changes',
                     { event: 'INSERT', schema: 'public', table: 'precount_device_files' },
                     (payload) => {
                         const newFile = payload.new as any;
-                        
-                        // Client-side session filtering (safer than DB-side filter for Realtime)
-                        if (newFile.session_id !== session.id) {
-                            console.log(`[Sync] Ignoring file for different session: ${newFile.session_id} (Current: ${session.id})`);
+                        if (newFile.session_id !== targetSid) {
                             return;
                         }
 
-                        console.log(`[Sync] DB file received for session ${session.id}:`, { 
-                            id: newFile.id, 
-                            filename: newFile.filename, 
+                        console.log(`[Sync] DB file received for session ${targetSid}:`, {
+                            id: newFile.id,
+                            filename: newFile.filename,
                             device: newFile.device_name,
-                            contentSize: newFile.content?.length 
+                            contentSize: newFile.content?.length
                         });
 
-                        // Dispatch event for PreCount.tsx UI to pick up
                         const event = new CustomEvent('precount:device_finalized', {
                             detail: {
                                 dbFileId: newFile.id,
@@ -373,20 +535,23 @@ export function usePreCount(): UsePreCountReturn {
                             { duration: 8000 }
                         );
 
-                        // Update local state
-                        const mappedFile: ReceivedFile = {
-                            id: newFile.id,
-                            filename: newFile.filename,
-                            content: newFile.content,
-                            deviceName: newFile.device_name || 'Terminal',
-                            deviceId: newFile.device_id,
-                            timestamp: new Date(newFile.created_at).getTime(),
-                            size: newFile.content?.length || 0
-                        };
-
+                        const mappedFile = mapFileRow(newFile);
                         setReceivedFiles(prev => {
                             if (prev.find(f => f.id === mappedFile.id)) return prev;
                             return [mappedFile, ...prev];
+                        });
+                    })
+                .on('postgres_changes',
+                    { event: 'UPDATE', schema: 'public', table: 'precount_device_files' },
+                    (payload) => {
+                        const updatedFile = payload.new as any;
+                        if (updatedFile?.session_id !== targetSid) return;
+                        const mappedFile = mapFileRow(updatedFile);
+                        setReceivedFiles(prev => {
+                            const exists = prev.some(f => f.id === mappedFile.id);
+                            return exists
+                                ? prev.map(f => f.id === mappedFile.id ? mappedFile : f)
+                                : [mappedFile, ...prev];
                         });
                     })
                 .on('postgres_changes',
@@ -398,78 +563,179 @@ export function usePreCount(): UsePreCountReturn {
                         }
                     })
                 .subscribe((status) => {
+                    if (disposed) return;
                     console.log(`[Sync] Device files channel status: ${status}`);
-                    if (status === 'CHANNEL_ERROR') {
-                        console.error('[Sync] Realtime channel error for precount_device_files. Check RLS or Publication.');
+                    if (status === 'SUBSCRIBED') {
+                        reconnectAttempts.set('files', 0);
+                        void fetchExistingFiles(targetSid);
+                    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                        console.error('[Sync] Realtime channel error for precount_device_files. Reconnecting...');
+                        scheduleChannelReconnect('files', () => subscribeFilesChannel(targetSid));
                     }
                 });
+        };
+
+        const subscribeItemsChannel = (targetSid: string) => {
+            if (disposed) return;
+            clearReconnectTimer('items');
+            const topic = `public:precount_items:${targetSid}`;
+            removeChannelSafely(itemsChannel, topic);
 
             itemsChannel = supabase
-                .channel(`public:precount_items:${session.id}`)
+                .channel(topic)
                 .on('postgres_changes',
-                    { event: 'INSERT', schema: 'public', table: 'precount_items', filter: `session_id=eq.${session.id}` },
+                    { event: 'INSERT', schema: 'public', table: 'precount_items', filter: `session_id=eq.${targetSid}` },
                     async (payload) => {
                         const newItem = payload.new as any;
+                        const guard = await isItemProtectedLocally(newItem.id);
+                        if (guard.protected) return;
+
                         await db.items.put({
                             id: newItem.id,
                             session_id: newItem.session_id,
                             ean: newItem.ean,
                             product_name: newItem.product_name,
                             quantity: newItem.quantity,
-                            scanned_at: newItem.scanned_at,
+                            scanned_at: newItem.scanned_at || guard.scannedAt || new Date().toISOString(),
                             scanned_by: newItem.scanned_by,
-                            synced: 1, 
+                            synced: 1,
                             id_producto: newItem.id_producto,
                             device_id: newItem.device_id,
                             device_name: newItem.device_name,
                             location_tag: newItem.location_tag
                         });
-                        
-                        // Auto-add device to presence if it scans something
+
                         if (newItem.device_id) {
                             setConnectedDevices(prev => {
                                 if (prev.find(d => d.deviceId === newItem.device_id)) return prev;
-                                return [...prev, { 
-                                    deviceId: newItem.device_id, 
-                                    deviceName: newItem.device_name || 'Zebra', 
-                                    joinedAt: Date.now() 
+                                return [...prev, {
+                                    deviceId: newItem.device_id,
+                                    deviceName: newItem.device_name || 'Zebra',
+                                    joinedAt: Date.now()
                                 }];
                             });
                         }
                     })
                 .on('postgres_changes',
-                    { event: 'UPDATE', schema: 'public', table: 'precount_items', filter: `session_id=eq.${session.id}` },
+                    { event: 'UPDATE', schema: 'public', table: 'precount_items', filter: `session_id=eq.${targetSid}` },
                     async (payload) => {
                         const updatedItem = payload.new as any;
-                        await db.items.update(updatedItem.id, {
+                        const guard = await isItemProtectedLocally(updatedItem.id);
+                        if (guard.protected) return;
+
+                        await db.items.put({
+                            id: updatedItem.id,
+                            session_id: updatedItem.session_id,
+                            ean: updatedItem.ean,
+                            product_name: updatedItem.product_name,
                             quantity: updatedItem.quantity,
-                            scanned_at: updatedItem.scanned_at,
-                            synced: 1
+                            scanned_at: updatedItem.scanned_at || guard.scannedAt || new Date().toISOString(),
+                            scanned_by: updatedItem.scanned_by,
+                            synced: 1,
+                            id_producto: updatedItem.id_producto,
+                            device_id: updatedItem.device_id,
+                            device_name: updatedItem.device_name,
+                            location_tag: updatedItem.location_tag
                         });
                     })
                 .on('postgres_changes',
-                    { event: 'DELETE', schema: 'public', table: 'precount_items', filter: `session_id=eq.${session.id}` },
+                    { event: 'DELETE', schema: 'public', table: 'precount_items', filter: `session_id=eq.${targetSid}` },
                     async (payload) => {
-                        await db.items.delete(payload.old.id);
+                        const oldId = payload.old?.id;
+                        if (!oldId) return;
+                        const guard = await isItemProtectedLocally(oldId);
+                        if (guard.protected) return;
+                        await db.items.delete(oldId);
                     })
-                .subscribe();
+                .subscribe((status) => {
+                    if (disposed) return;
+                    if (status === 'SUBSCRIBED') {
+                        reconnectAttempts.set('items', 0);
+                        void syncSessionItems(targetSid);
+                    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                        scheduleChannelReconnect('items', () => subscribeItemsChannel(targetSid));
+                    }
+                });
+        };
+
+        subscribeSessionsChannel();
+
+        const handleLocalDeviceJoined = (e: any) => {
+            const payload = e.detail;
+            if (!payload?.deviceId) return;
+            setConnectedDevices(prev => {
+                const exists = prev.find(d => d.deviceId === payload.deviceId);
+                if (exists) {
+                    return prev.map(d => d.deviceId === payload.deviceId ? payload : d);
+                }
+                return [...prev, payload];
+            });
+        };
+        window.addEventListener('precount:device_joined' as any, handleLocalDeviceJoined);
+
+        if (sid) {
+            void fetchExistingFiles(sid);
+            void syncSessionItems(sid);
+            subscribeSyncChannel(sid);
+            subscribeFilesChannel(sid);
+            subscribeItemsChannel(sid);
         } else {
             setReceivedFiles([]);
             setConnectedDevices([]);
         }
 
+        const handleWakeUp = () => {
+            if (disposed) return;
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+            void syncManager.processQueue().then(() => {
+                if (disposed) return;
+                void refreshSessionsList();
+                if (sid) {
+                    void fetchExistingFiles(sid);
+                    void syncSessionItems(sid);
+                }
+            });
+
+            if (!sessionsChannel || sessionsChannel.state !== 'joined') {
+                reconnectAttempts.set('sessions', 0);
+                subscribeSessionsChannel();
+            }
+            if (sid) {
+                if (!syncChannel || syncChannel.state !== 'joined') {
+                    reconnectAttempts.set('sync', 0);
+                    subscribeSyncChannel(sid);
+                }
+                if (!filesChannel || filesChannel.state !== 'joined') {
+                    reconnectAttempts.set('files', 0);
+                    subscribeFilesChannel(sid);
+                }
+                if (!itemsChannel || itemsChannel.state !== 'joined') {
+                    reconnectAttempts.set('items', 0);
+                    subscribeItemsChannel(sid);
+                }
+            }
+        };
+
+        window.addEventListener('online', handleWakeUp);
+        window.addEventListener('focus', handleWakeUp);
+        document.addEventListener('visibilitychange', handleWakeUp);
+
         return () => {
+            disposed = true;
             window.removeEventListener('precount:device_joined' as any, handleLocalDeviceJoined);
+            window.removeEventListener('online', handleWakeUp);
+            window.removeEventListener('focus', handleWakeUp);
+            document.removeEventListener('visibilitychange', handleWakeUp);
             if (debounceTimer) clearTimeout(debounceTimer);
-            supabase.removeChannel(sessionsChannel);
-            if (itemsChannel) supabase.removeChannel(itemsChannel);
-            if (channelRef.current) {
-                supabase.removeChannel(channelRef.current);
-                channelRef.current = null;
-            }
-            if (filesChannel) {
-                supabase.removeChannel(filesChannel);
-            }
+            reconnectTimers.forEach((t) => clearTimeout(t));
+            reconnectTimers.clear();
+            removeChannelSafely(sessionsChannel);
+            removeChannelSafely(itemsChannel);
+            removeChannelSafely(syncChannel);
+            removeChannelSafely(filesChannel);
+            channelRef.current = null;
         };
     }, [activeSessionId, user?.branchId, user?.role]);
 
@@ -494,15 +760,17 @@ export function usePreCount(): UsePreCountReturn {
                 setIsDownloadingCatalog(true);
                 console.log('[Sync] Iniciando descarga en segundo plano del catálogo de stock para la sesión:', session.id);
                 
-                const { data, error } = await (supabase as any)
+                const { data: catalogRows, error } = await (supabase as any)
                     .from('precount_device_files')
                     .select('content')
                     .eq('session_id', session.id)
                     .eq('device_id', 'system')
                     .eq('filename', 'master_catalog.json')
-                    .maybeSingle();
+                    .order('created_at', { ascending: false })
+                    .limit(1);
 
                 if (error) throw error;
+                const data = Array.isArray(catalogRows) && catalogRows.length > 0 ? catalogRows[0] : null;
 
                 if (data && data.content) {
                     const parsedCatalog = await decompressGzipBase64ToJson(data.content);
@@ -551,6 +819,7 @@ export function usePreCount(): UsePreCountReturn {
                         ...prev,
                         master_catalog: parsedCatalog
                     } : prev);
+                    window.dispatchEvent(new CustomEvent('precount:catalog_loaded', { detail: { sessionId: session.id } }));
 
                     const primaryCount = Array.isArray(parsedCatalog)
                         ? parsedCatalog.filter((p: any) => p.isPrimaryEan ?? true).length
@@ -601,6 +870,7 @@ export function usePreCount(): UsePreCountReturn {
                         await db.precount_products.bulkPut(dbProducts.slice(i, i + CHUNK_SIZE));
                     }
                     console.log(`[Sync] Restauradas ${dbProducts.length} filas EAN para la sesión ${sessionId} en db.precount_products (${session.master_catalog.length} productos)`);
+                    window.dispatchEvent(new CustomEvent('precount:catalog_loaded', { detail: { sessionId } }));
                 }
             } catch (err) {
                 console.error('[Sync] Error al restaurar productos locales:', err);
@@ -887,7 +1157,7 @@ export function usePreCount(): UsePreCountReturn {
     }, []);
 
     // Send final count to Admin (awaitable)
-    // Strategy: Persist to DB first (guaranteed), then broadcast a notification ping
+    // Strategy: Persist to DB first (with offline queue fallback), then broadcast a notification ping
     const sendFinalCount = async (filename: string, content: string): Promise<boolean> => {
         if (!session) return false;
         const deviceName = localStorage.getItem('precount_device_name') || 'Zebra';
@@ -895,33 +1165,50 @@ export function usePreCount(): UsePreCountReturn {
 
         console.log(`[Sync] Sending final count for session ${session.id}: ${filename} (${content.length} chars)...`);
 
-        // 1. PERSIST to Supabase DB (this is the reliable delivery mechanism)
-        let dbInsertOk = false;
-        try {
-            const { error } = await (supabase as any)
-                .from('precount_device_files')
-                .insert({
-                    session_id: session.id,
-                    device_id: deviceId,
-                    device_name: deviceName,
-                    filename: filename,
-                    content: content
-                });
+        const fileRecord = {
+            session_id: session.id,
+            device_id: deviceId,
+            device_name: deviceName,
+            filename,
+            content
+        };
 
-            if (error) {
-                console.error(`[Sync] DB insert failed for session ${session.id}:`, error);
-            } else {
-                dbInsertOk = true;
-                console.log(`[Sync] File persisted to DB successfully for session ${session.id}`);
+        // 1. PERSIST to Supabase DB (or enqueue offline in Dexie pendingActions)
+        let dbInsertOk = false;
+        if (typeof navigator === 'undefined' || navigator.onLine) {
+            try {
+                const { error } = await (supabase as any)
+                    .from('precount_device_files')
+                    .insert(fileRecord);
+
+                if (error) {
+                    console.error(`[Sync] DB insert failed for session ${session.id}:`, error);
+                } else {
+                    dbInsertOk = true;
+                    console.log(`[Sync] File persisted to DB successfully for session ${session.id}`);
+                }
+            } catch (err) {
+                console.error(`[Sync] DB insert exception for session ${session.id}:`, err);
             }
-        } catch (err) {
-            console.error(`[Sync] DB insert exception for session ${session.id}:`, err);
+        }
+
+        if (!dbInsertOk) {
+            try {
+                await syncManager.addToQueue({
+                    type: 'create',
+                    entity: 'device_file',
+                    data: fileRecord
+                });
+                console.log(`[Sync] Queued final count file in offline sync queue: ${filename}`);
+            } catch (queueErr) {
+                console.error(`[Sync] Error queueing offline device_file:`, queueErr);
+            }
         }
 
         // 2. BROADCAST a lightweight notification (just a ping, no file content)
         try {
             const channel = channelRef.current;
-            if (channel) {
+            if (channel && channel.state === 'joined') {
                 await channel.send({
                     type: 'broadcast',
                     event: 'device_finalized',
@@ -931,12 +1218,12 @@ export function usePreCount(): UsePreCountReturn {
                         filename, 
                         timestamp: Date.now(),
                         // Signal that the file is in the DB, not in this payload
-                        persistedToDb: true
+                        persistedToDb: dbInsertOk
                     }
                 });
                 console.log('[Sync] Broadcast notification sent');
             } else {
-                console.warn('[Sync] No active channel for broadcast notification');
+                console.warn('[Sync] No active joined channel for broadcast notification');
             }
         } catch (e) { 
             console.warn('[Sync] Broadcast notification failed (non-critical):', e); 

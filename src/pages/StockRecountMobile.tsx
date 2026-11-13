@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
     SlidersHorizontal, 
     Settings, 
@@ -8,12 +8,16 @@ import {
     Check, 
     MapPin, 
     Minus, 
-    Plus
+    Plus,
+    Wifi,
+    WifiOff,
+    RefreshCw,
+    Loader2,
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { notify } from '@/lib/notifications';
 import { getProductImageUrl } from '@/services/productImageService';
-import { getRecountDifferences, getDeviceId, getDeviceName, getRecountSessionState, RecountProductDiff, RecountResultSubmission } from '@/services/preCountDB';
+import { getRecountDifferences, getDeviceId, getDeviceName, RecountProductDiff, RecountResultSubmission } from '@/services/preCountDB';
 import { supabase } from '@/integrations/supabase/client';
 import { db } from '@/services/db';
 
@@ -33,6 +37,111 @@ interface ProductItem {
     totalCounted?: number;
 }
 
+interface RecountDraft {
+    epoch: string | null;
+    updatedAt: number;
+    products: ProductItem[];
+}
+
+interface RecountOutboxEntry {
+    sessionId: string;
+    deviceId: string;
+    deviceName: string;
+    resultFilename: string;
+    payload: RecountResultSubmission;
+    queuedAt: number;
+    attempts: number;
+    lastError?: string;
+}
+
+const getDraftStorageKey = (sessionId: string, devId: string) =>
+    `recount_mobile_draft_v1_${sessionId}_${devId}`;
+
+const getOutboxStorageKey = (sessionId: string, devId: string) =>
+    `recount_mobile_outbox_v1_${sessionId}_${devId}`;
+
+const getEpochStorageKey = (sessionId: string, devId: string) =>
+    `recount_mobile_epoch_v1_${sessionId}_${devId}`;
+
+function readSavedDraft(sessionId: string, devId: string): RecountDraft | null {
+    if (typeof window === 'undefined' || !sessionId || !devId) return null;
+    try {
+        const raw = localStorage.getItem(getDraftStorageKey(sessionId, devId));
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.products)) {
+            return parsed as RecountDraft;
+        }
+    } catch {}
+    return null;
+}
+
+function writeSavedDraft(sessionId: string, devId: string, epoch: string | null, items: ProductItem[]) {
+    if (typeof window === 'undefined' || !sessionId || !devId) return;
+    try {
+        const draft: RecountDraft = { epoch, updatedAt: Date.now(), products: items };
+        localStorage.setItem(getDraftStorageKey(sessionId, devId), JSON.stringify(draft));
+        if (epoch) {
+            localStorage.setItem(getEpochStorageKey(sessionId, devId), epoch);
+        }
+    } catch {}
+}
+
+function readOutboxEntry(sessionId: string, devId: string): RecountOutboxEntry | null {
+    if (typeof window === 'undefined' || !sessionId || !devId) return null;
+    try {
+        const raw = localStorage.getItem(getOutboxStorageKey(sessionId, devId));
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.payload && parsed.resultFilename) {
+            return parsed as RecountOutboxEntry;
+        }
+    } catch {}
+    return null;
+}
+
+function writeOutboxEntry(sessionId: string, devId: string, entry: RecountOutboxEntry | null) {
+    if (typeof window === 'undefined' || !sessionId || !devId) return;
+    try {
+        const key = getOutboxStorageKey(sessionId, devId);
+        if (!entry) {
+            localStorage.removeItem(key);
+        } else {
+            localStorage.setItem(key, JSON.stringify(entry));
+        }
+    } catch {}
+}
+
+function mergeDraftQuantities(serverItems: ProductItem[], draftItems: ProductItem[]): ProductItem[] {
+    if (!draftItems || draftItems.length === 0) return serverItems;
+    const byId = new Map<string, ProductItem>();
+    const byEanPos = new Map<string, ProductItem>();
+    for (const d of draftItems) {
+        byId.set(d.id, d);
+        byEanPos.set(`${d.ean}__${d.position}`, d);
+    }
+    return serverItems.map((item) => {
+        const match = byId.get(item.id) || byEanPos.get(`${item.ean}__${item.position}`);
+        if (!match) return item;
+        const nextQty = Number(match.qty);
+        if (!Number.isFinite(nextQty)) return item;
+        return {
+            ...item,
+            qty: nextQty,
+            hasDifference: nextQty !== item.initialQty,
+        };
+    });
+}
+
+function readSavedOperatorName(): string {
+    if (typeof window === 'undefined') return '';
+    return (
+        sessionStorage.getItem('recount_mobile_operator_name') ||
+        localStorage.getItem('recount_mobile_operator_name') ||
+        ''
+    );
+}
+
 export default function StockRecountMobile() {
     const [searchParams] = useSearchParams();
     const [searchQuery, setSearchQuery] = useState('');
@@ -43,15 +152,14 @@ export default function StockRecountMobile() {
     const [resolvedImages, setResolvedImages] = useState<Record<string, string>>({});
     const [currentProductIndex, setCurrentProductIndex] = useState(0);
     const [reloadTick, setReloadTick] = useState(0);
-    const [operatorName, setOperatorName] = useState<string>(() => {
-        if (typeof window !== 'undefined') {
-            return sessionStorage.getItem('recount_mobile_operator_name') || '';
-        }
-        return '';
-    });
-    const [nameInput, setNameInput] = useState<string>(operatorName);
-    const [hasJoined, setHasJoined] = useState<boolean>(() => Boolean(operatorName.trim()));
-    const [recountState, setRecountState] = useState<'idle' | 'waiting' | 'started'>('waiting');
+    const [operatorName, setOperatorName] = useState<string>(() => readSavedOperatorName());
+    const [nameInput, setNameInput] = useState<string>(() => readSavedOperatorName());
+    const [hasJoined, setHasJoined] = useState<boolean>(() => Boolean(readSavedOperatorName().trim()));
+    const [isOnline, setIsOnline] = useState<boolean>(() =>
+        typeof navigator !== 'undefined' ? navigator.onLine : true
+    );
+    const [isRealtimeConnected, setIsRealtimeConnected] = useState<boolean>(false);
+    const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
     // Resolver ID de la sesión activa (soporta HashRouter, query string directa o localStorage)
     const effectiveSessionId = useMemo(() => {
@@ -85,6 +193,37 @@ export default function StockRecountMobile() {
         }
     }, []);
 
+    const [recountState, setRecountState] = useState<'idle' | 'waiting' | 'started'>(() => {
+        if (typeof window !== 'undefined' && effectiveSessionId) {
+            const cachedDraft = readSavedDraft(effectiveSessionId, deviceId);
+            if (cachedDraft && cachedDraft.products.length > 0) return 'started';
+        }
+        return 'waiting';
+    });
+    const [batchEpoch, setBatchEpoch] = useState<string | null>(() => {
+        if (typeof window !== 'undefined' && effectiveSessionId) {
+            return localStorage.getItem(getEpochStorageKey(effectiveSessionId, deviceId));
+        }
+        return null;
+    });
+    const [pendingOutbox, setPendingOutbox] = useState<RecountOutboxEntry | null>(() =>
+        readOutboxEntry(effectiveSessionId, deviceId)
+    );
+
+    const batchEpochRef = useRef<string | null>(batchEpoch);
+    batchEpochRef.current = batchEpoch;
+    const recountStateRef = useRef<'idle' | 'waiting' | 'started'>(recountState);
+    recountStateRef.current = recountState;
+    const controlChannelRef = useRef<any>(null);
+    const isFlushingOutboxRef = useRef(false);
+
+    useEffect(() => {
+        if (effectiveSessionId && typeof window !== 'undefined') {
+            localStorage.setItem('last_precount_session_id', effectiveSessionId);
+        }
+        setPendingOutbox(readOutboxEntry(effectiveSessionId, deviceId));
+    }, [effectiveSessionId, deviceId]);
+
     const deviceDisplayName = useMemo(() => {
         if (operatorName && operatorName.trim()) return operatorName.trim();
         try {
@@ -94,11 +233,140 @@ export default function StockRecountMobile() {
         }
     }, [operatorName]);
 
-    // Registrar presencia en DB + Realtime una vez que ingresó su nombre
+    const productsRef = useRef<ProductItem[]>([]);
+    productsRef.current = products;
+
+    const submitRecountPayload = useCallback(async (entry: RecountOutboxEntry) => {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            throw new Error('Sin conexión a internet');
+        }
+
+        const { error: delErr } = await (supabase as any)
+            .from('precount_device_files')
+            .delete()
+            .eq('session_id', entry.sessionId)
+            .eq('filename', entry.resultFilename);
+        if (delErr) throw delErr;
+
+        const { error: insertErr } = await (supabase as any)
+            .from('precount_device_files')
+            .insert({
+                session_id: entry.sessionId,
+                device_id: entry.deviceId,
+                device_name: entry.deviceName,
+                filename: entry.resultFilename,
+                content: JSON.stringify(entry.payload),
+            });
+        if (insertErr) throw insertErr;
+
+        // Broadcast reutilizando canal suscripto (el DB change ya notifica aunque el socket esté desconectado)
+        try {
+            const payload = { device_id: entry.deviceId, device_name: entry.deviceName };
+            const ch = controlChannelRef.current;
+            if (ch && ch.state === 'joined') {
+                await ch.send({
+                    type: 'broadcast',
+                    event: 'recount_result_submitted',
+                    payload,
+                });
+            } else {
+                const tempCh = supabase.channel(`recount_control_${entry.sessionId}`);
+                await tempCh.send({
+                    type: 'broadcast',
+                    event: 'recount_result_submitted',
+                    payload,
+                });
+                void supabase.removeChannel(tempCh);
+            }
+        } catch {}
+    }, []);
+
+    const flushOutbox = useCallback(async (manual = false): Promise<boolean> => {
+        if (!effectiveSessionId || isFlushingOutboxRef.current) return false;
+        const entry = readOutboxEntry(effectiveSessionId, deviceId);
+        if (!entry) {
+            setPendingOutbox(null);
+            return true;
+        }
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            if (manual) {
+                notify.warning('Sin conexión', 'El recuento sigue guardado localmente y se enviará al volver internet.');
+            }
+            return false;
+        }
+
+        isFlushingOutboxRef.current = true;
+        try {
+            await submitRecountPayload(entry);
+            writeOutboxEntry(effectiveSessionId, deviceId, null);
+            setPendingOutbox(null);
+
+            const normalized = productsRef.current.map((p) => ({
+                ...p,
+                initialQty: p.qty,
+                hasDifference: false,
+            }));
+            productsRef.current = normalized;
+            setProducts(normalized);
+            writeSavedDraft(effectiveSessionId, deviceId, batchEpochRef.current, normalized);
+
+            notify.success('Recuento sincronizado', 'Tus diferencias pendientes se enviaron al panel Admin.');
+            return true;
+        } catch (err: any) {
+            const updatedEntry: RecountOutboxEntry = {
+                ...entry,
+                attempts: (entry.attempts || 0) + 1,
+                lastError: err?.message || String(err),
+            };
+            writeOutboxEntry(effectiveSessionId, deviceId, updatedEntry);
+            setPendingOutbox(updatedEntry);
+            if (manual) {
+                notify.error('No se pudo sincronizar aún', 'Se mantendrá en cola hasta recuperar conexión.');
+            }
+            return false;
+        } finally {
+            isFlushingOutboxRef.current = false;
+        }
+    }, [effectiveSessionId, deviceId, submitRecountPayload]);
+
+    // Track online/offline y reintento automático de envíos pendientes
+    useEffect(() => {
+        const handleOnline = () => {
+            setIsOnline(true);
+            void flushOutbox(false);
+        };
+        const handleOffline = () => setIsOnline(false);
+
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, [flushOutbox]);
+
+    useEffect(() => {
+        if (!pendingOutbox || !isOnline) return;
+        const timer = setInterval(() => {
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+            void flushOutbox(false);
+        }, 4000);
+        return () => clearInterval(timer);
+    }, [pendingOutbox, isOnline, flushOutbox]);
+
+    // Registrar presencia en DB + Realtime (broadcast + postgres_changes) con auto-reconciliación
     useEffect(() => {
         if (!effectiveSessionId || !hasJoined || !deviceDisplayName) return;
 
+        let disposed = false;
+        let reconnectAttempts = 0;
+        let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+        let activeControlChannel: any = null;
+        let activeDbChannel: any = null;
+        let lastHandledBroadcastKey = '';
+
         const registerPresenceInDb = async () => {
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return;
             try {
                 const { error } = await (supabase as any).from('precount_connected_devices').upsert({
                     session_id: effectiveSessionId,
@@ -117,72 +385,247 @@ export default function StockRecountMobile() {
             }
         };
 
-        const checkState = async () => {
-            const st = await getRecountSessionState(effectiveSessionId);
-            setRecountState(st);
-            if (st === 'started') {
-                setReloadTick(t => t + 1);
+        const fetchSessionStateSnapshot = async (): Promise<{ status: 'idle' | 'waiting' | 'started'; epoch: string | null } | null> => {
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return null;
+            try {
+                const { data, error } = await (supabase as any)
+                    .from('precount_device_files')
+                    .select('content, created_at')
+                    .eq('session_id', effectiveSessionId)
+                    .eq('filename', 'recount_session_state.json')
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+
+                if (error) return null;
+                if (!data || data.length === 0 || !data[0]?.content) {
+                    return { status: 'idle', epoch: null };
+                }
+
+                const parsed = typeof data[0].content === 'string'
+                    ? JSON.parse(data[0].content)
+                    : data[0].content;
+                const rawStatus = parsed?.status;
+                const status: 'idle' | 'waiting' | 'started' =
+                    rawStatus === 'started' || rawStatus === 'waiting' ? rawStatus : 'idle';
+                const epoch = String(
+                    parsed?.batch_id || parsed?.started_at || parsed?.updated_at || parsed?.generated_at || data[0].created_at || ''
+                ).trim() || null;
+
+                return { status, epoch };
+            } catch {
+                return null;
             }
         };
 
-        registerPresenceInDb();
-        checkState();
+        const syncSessionState = async (notifyIfRedistributed = false) => {
+            const snapshot = await fetchSessionStateSnapshot();
+            if (disposed || !snapshot) return;
 
-        const channel = supabase.channel(`recount_control_${effectiveSessionId}`, {
-            config: { presence: { key: deviceId } }
-        });
+            if (snapshot.status === 'started') {
+                const wasStarted = recountStateRef.current === 'started';
+                const prevEpoch = batchEpochRef.current;
+                const isNewBatch = Boolean(snapshot.epoch && snapshot.epoch !== prevEpoch);
 
-        channel
-            .on('broadcast', { event: 'recount_assigned' }, () => {
-                setRecountState('started');
-                notify.info('¡Recuento iniciado!', 'Se asignaron tus productos únicos para controlar.');
-                setReloadTick(t => t + 1);
-            })
-            .subscribe(async (status) => {
-                if (status === 'SUBSCRIBED') {
-                    await channel.track({
-                        device_id: deviceId,
-                        device_name: deviceDisplayName,
-                        platform: 'web',
-                        status: 'online',
-                        last_seen: new Date().toISOString()
-                    });
+                if (!wasStarted || isNewBatch) {
+                    if (snapshot.epoch) {
+                        batchEpochRef.current = snapshot.epoch;
+                        setBatchEpoch(snapshot.epoch);
+                    }
+                    recountStateRef.current = 'started';
+                    setRecountState('started');
+                    setReloadTick((t) => t + 1);
+                    if (notifyIfRedistributed && wasStarted && isNewBatch) {
+                        notify.info('Listado actualizado', 'El administrador re-distribuyó los productos para controlar.');
+                    }
                 }
-            });
+            } else if (!readOutboxEntry(effectiveSessionId, deviceId) && productsRef.current.length === 0) {
+                recountStateRef.current = snapshot.status;
+                setRecountState(snapshot.status);
+            }
+        };
 
-        const heartbeat = setInterval(async () => {
-            registerPresenceInDb();
-            const st = await getRecountSessionState(effectiveSessionId);
-            setRecountState(prev => {
-                if (prev !== 'started' && st === 'started') {
-                    setReloadTick(t => t + 1);
-                }
-                return st;
+        const cleanupChannels = () => {
+            if (activeControlChannel) {
+                const ch = activeControlChannel;
+                activeControlChannel = null;
+                if (controlChannelRef.current === ch) controlChannelRef.current = null;
+                void supabase.removeChannel(ch);
+            }
+            if (activeDbChannel) {
+                const dbCh = activeDbChannel;
+                activeDbChannel = null;
+                void supabase.removeChannel(dbCh);
+            }
+            if (!disposed) setIsRealtimeConnected(false);
+        };
+
+        const scheduleReconnect = () => {
+            if (disposed || reconnectTimer) return;
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+            const delay = Math.min(15000, 1000 * Math.pow(2, reconnectAttempts));
+            reconnectAttempts += 1;
+            reconnectTimer = setTimeout(() => {
+                reconnectTimer = null;
+                if (!disposed) subscribeChannels();
+            }, delay);
+        };
+
+        const subscribeChannels = () => {
+            if (disposed) return;
+            cleanupChannels();
+
+            const channelName = `recount_control_${effectiveSessionId}`;
+            const stale = supabase.getChannels().filter((c: any) => c.topic === `realtime:${channelName}`);
+            stale.forEach((c: any) => { void supabase.removeChannel(c); });
+
+            const channel = supabase.channel(channelName, {
+                config: { presence: { key: deviceId } }
             });
+            activeControlChannel = channel;
+            controlChannelRef.current = channel;
+
+            channel
+                .on('broadcast', { event: 'recount_assigned' }, async ({ payload }: any) => {
+                    const bKey = String(payload?.started_at || payload?.generated_at || '');
+                    if (bKey && bKey === lastHandledBroadcastKey) return;
+                    if (bKey) lastHandledBroadcastKey = bKey;
+
+                    const snapshot = await fetchSessionStateSnapshot();
+                    if (disposed) return;
+                    const nextEpoch = snapshot?.epoch || bKey || String(Date.now());
+                    if (nextEpoch !== batchEpochRef.current) {
+                        batchEpochRef.current = nextEpoch;
+                        setBatchEpoch(nextEpoch);
+                    }
+                    recountStateRef.current = 'started';
+                    setRecountState('started');
+                    notify.info('¡Recuento iniciado!', 'Se asignaron tus productos únicos para controlar.');
+                    setReloadTick((t) => t + 1);
+                })
+                .subscribe(async (status) => {
+                    if (disposed) return;
+                    if (status === 'SUBSCRIBED') {
+                        reconnectAttempts = 0;
+                        setIsRealtimeConnected(true);
+                        await channel.track({
+                            device_id: deviceId,
+                            device_name: deviceDisplayName,
+                            platform: 'web',
+                            status: 'online',
+                            last_seen: new Date().toISOString()
+                        });
+                        void syncSessionState(true);
+                        void flushOutbox(false);
+                    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                        setIsRealtimeConnected(false);
+                        scheduleReconnect();
+                    }
+                });
+
+            // Postgres changes como respaldo inmediato por si se pierde el broadcast WebSocket
+            const dbChannel = supabase
+                .channel(`recount_mobile_db_${effectiveSessionId}_${deviceId}`)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: '*',
+                        schema: 'public',
+                        table: 'precount_device_files',
+                        filter: `session_id=eq.${effectiveSessionId}`,
+                    },
+                    (payload: any) => {
+                        const fname = payload?.new?.filename || payload?.old?.filename || '';
+                        if (fname === 'recount_session_state.json') {
+                            void syncSessionState(true);
+                        } else if (fname === `recount_differences_${deviceId}.json` && payload?.eventType !== 'DELETE') {
+                            void syncSessionState(false).then(() => {
+                                if (!disposed && recountStateRef.current === 'started') {
+                                    setReloadTick((t) => t + 1);
+                                }
+                            });
+                        }
+                    }
+                )
+                .subscribe((status) => {
+                    if (disposed) return;
+                    if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                        scheduleReconnect();
+                    }
+                });
+            activeDbChannel = dbChannel;
+        };
+
+        void registerPresenceInDb();
+        void syncSessionState(false);
+        subscribeChannels();
+
+        const handleWakeUp = () => {
+            if (disposed) return;
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+            void registerPresenceInDb();
+            void syncSessionState(true);
+            void flushOutbox(false);
+            if (!activeControlChannel || activeControlChannel.state !== 'joined') {
+                reconnectAttempts = 0;
+                subscribeChannels();
+            }
+        };
+
+        window.addEventListener('online', handleWakeUp);
+        window.addEventListener('focus', handleWakeUp);
+        document.addEventListener('visibilitychange', handleWakeUp);
+
+        const heartbeat = setInterval(() => {
+            if (disposed) return;
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+            void registerPresenceInDb();
+            void syncSessionState(true);
         }, 3000);
 
         return () => {
+            disposed = true;
+            if (reconnectTimer) clearTimeout(reconnectTimer);
             clearInterval(heartbeat);
-            supabase.removeChannel(channel);
+            window.removeEventListener('online', handleWakeUp);
+            window.removeEventListener('focus', handleWakeUp);
+            document.removeEventListener('visibilitychange', handleWakeUp);
+            cleanupChannels();
         };
-    }, [effectiveSessionId, hasJoined, deviceId, deviceDisplayName]);
+    }, [effectiveSessionId, hasJoined, deviceId, deviceDisplayName, flushOutbox]);
 
     // Cargar datos reales de diferencias solo cuando el Admin haya iniciado el recuento
     useEffect(() => {
         let isMounted = true;
+        const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
         async function loadRealData() {
             if (!hasJoined || recountState !== 'started') {
                 if (isMounted) setIsLoading(false);
                 return;
             }
             setIsLoading(true);
+            const savedDraft = readSavedDraft(effectiveSessionId, deviceId);
+            const currentEpoch = batchEpochRef.current;
+
             try {
                 let diffs: RecountProductDiff[] = [];
+                let hadExclusiveFile = false;
+                let hasAssignmentsManifest = false;
+                let hadNetworkError = typeof navigator !== 'undefined' && !navigator.onLine;
 
-                // 1. Priorizar asignación exclusiva por dispositivo (recount_differences_<deviceId>.json)
-                if (effectiveSessionId) {
+                // Retry con backoff exponencial si el broadcast llegó antes de que se vea el archivo en DB
+                const retryDelays = [0, 350, 800, 1500];
+                for (let attempt = 0; attempt < retryDelays.length && effectiveSessionId && !hadNetworkError; attempt += 1) {
+                    if (retryDelays[attempt] > 0) {
+                        await sleep(retryDelays[attempt]);
+                        if (!isMounted) return;
+                    }
+
+                    // 1. Priorizar asignación exclusiva por dispositivo (recount_differences_<deviceId>.json)
                     try {
-                        const { data: assignedData } = await (supabase as any)
+                        const { data: assignedData, error: assignedErr } = await (supabase as any)
                             .from('precount_device_files')
                             .select('content')
                             .eq('session_id', effectiveSessionId)
@@ -190,47 +633,68 @@ export default function StockRecountMobile() {
                             .order('created_at', { ascending: false })
                             .limit(1);
 
-                        if (assignedData && assignedData.length > 0 && assignedData[0].content) {
+                        if (assignedErr) {
+                            hadNetworkError = true;
+                        } else if (assignedData && assignedData.length > 0 && assignedData[0].content) {
+                            hadExclusiveFile = true;
                             diffs = typeof assignedData[0].content === 'string'
                                 ? JSON.parse(assignedData[0].content)
                                 : assignedData[0].content;
+                            break;
                         }
                     } catch (e) {
+                        hadNetworkError = true;
                         console.warn('[StockRecountMobile] Error consultando asignación personalizada:', e);
                     }
-                }
 
-                // 2. Si no se encontró archivo individual, revisar recount_assignments.json por deviceId
-                let hasAssignmentsManifest = false;
-                if ((!diffs || diffs.length === 0) && effectiveSessionId) {
-                    try {
-                        const { data: manifestData } = await (supabase as any)
-                            .from('precount_device_files')
-                            .select('content')
-                            .eq('session_id', effectiveSessionId)
-                            .eq('filename', 'recount_assignments.json')
-                            .order('created_at', { ascending: false })
-                            .limit(1);
+                    // 2. Si no se encontró archivo individual, revisar recount_assignments.json por deviceId
+                    if (!hadNetworkError) {
+                        try {
+                            const { data: manifestData, error: manifestErr } = await (supabase as any)
+                                .from('precount_device_files')
+                                .select('content')
+                                .eq('session_id', effectiveSessionId)
+                                .eq('filename', 'recount_assignments.json')
+                                .order('created_at', { ascending: false })
+                                .limit(1);
 
-                        if (manifestData && manifestData.length > 0 && manifestData[0].content) {
-                            hasAssignmentsManifest = true;
-                            const parsedManifest = typeof manifestData[0].content === 'string'
-                                ? JSON.parse(manifestData[0].content)
-                                : manifestData[0].content;
-                            const myAssignment = parsedManifest?.assignments?.[deviceId];
-                            if (myAssignment && Array.isArray(myAssignment.items)) {
-                                diffs = myAssignment.items;
+                            if (manifestErr) {
+                                hadNetworkError = true;
+                            } else if (manifestData && manifestData.length > 0 && manifestData[0].content) {
+                                hasAssignmentsManifest = true;
+                                const parsedManifest = typeof manifestData[0].content === 'string'
+                                    ? JSON.parse(manifestData[0].content)
+                                    : manifestData[0].content;
+                                const myAssignment = parsedManifest?.assignments?.[deviceId];
+                                if (myAssignment && Array.isArray(myAssignment.items)) {
+                                    diffs = myAssignment.items;
+                                    break;
+                                }
+                                if (parsedManifest?.assignments && Object.keys(parsedManifest.assignments).length > 0) {
+                                    // El reparto activo asignó a otras terminales; no mezclar fallbacks globales
+                                    break;
+                                }
                             }
+                        } catch (e) {
+                            hadNetworkError = true;
+                            console.warn('[StockRecountMobile] Error consultando recount_assignments.json:', e);
                         }
-                    } catch (e) {
-                        console.warn('[StockRecountMobile] Error consultando recount_assignments.json:', e);
                     }
                 }
 
-                // 3. Fallback solo si NO existe un reparto personalizado activo
-                if (!hasAssignmentsManifest && (!diffs || diffs.length === 0) && effectiveSessionId) {
+                // Si estamos offline o falló la red, restaurar borrador local sin perder conteos
+                if (hadNetworkError && savedDraft && savedDraft.products.length > 0) {
+                    if (isMounted) {
+                        setProducts(savedDraft.products);
+                        setIsLoading(false);
+                    }
+                    return;
+                }
+
+                // 3. Fallback solo si NO existe un reparto personalizado activo ni archivo exclusivo
+                if (!hadExclusiveFile && !hasAssignmentsManifest && (!diffs || diffs.length === 0) && effectiveSessionId && !hadNetworkError) {
                     try {
-                        const { data } = await (supabase as any)
+                        const { data, error: diffErr } = await (supabase as any)
                             .from('precount_device_files')
                             .select('content')
                             .eq('session_id', effectiveSessionId)
@@ -238,7 +702,7 @@ export default function StockRecountMobile() {
                             .order('created_at', { ascending: false })
                             .limit(1);
 
-                        if (data && data.length > 0 && data[0].content) {
+                        if (!diffErr && data && data.length > 0 && data[0].content) {
                             diffs = typeof data[0].content === 'string' ? JSON.parse(data[0].content) : data[0].content;
                         }
                     } catch (e) {
@@ -246,11 +710,11 @@ export default function StockRecountMobile() {
                     }
                 }
 
-                // 4. Fallback local: cálculo reactivo de la sesión en Dexie o cache (solo sin reparto activo)
-                if (!hasAssignmentsManifest && (!diffs || diffs.length === 0) && effectiveSessionId) {
+                // 4. Fallback local: cálculo reactivo en Dexie o cache (solo si NO hay reparto activo)
+                if (!hadExclusiveFile && !hasAssignmentsManifest && (!diffs || diffs.length === 0) && effectiveSessionId) {
                     diffs = await getRecountDifferences(effectiveSessionId);
                 }
-                if (!hasAssignmentsManifest && (!diffs || diffs.length === 0) && effectiveSessionId) {
+                if (!hadExclusiveFile && !hasAssignmentsManifest && (!diffs || diffs.length === 0) && effectiveSessionId) {
                     const cached = localStorage.getItem(`recount_differences_${effectiveSessionId}`);
                     if (cached) {
                         try {
@@ -259,13 +723,13 @@ export default function StockRecountMobile() {
                     }
                 }
 
-                // Si no hay diferencias pero hay items contados generales en la sesión, mostrarlos
-                if ((!diffs || diffs.length === 0) && effectiveSessionId) {
+                // Si no hay diferencias ni reparto personalizado activo, mostrar ítems contados de la sesión
+                if (!hadExclusiveFile && !hasAssignmentsManifest && (!diffs || diffs.length === 0) && effectiveSessionId) {
                     const allItems = await db.items.where('session_id').equals(effectiveSessionId).toArray();
                     if (allItems.length > 0) {
                         const sessionProducts = await db.precount_products.where('session_id').equals(effectiveSessionId).toArray();
                         const pMap = new Map(sessionProducts.map(p => [p.ean, p]));
-                        
+
                         const converted: ProductItem[] = allItems.map((it, idx) => {
                             const cat = pMap.get(it.ean);
                             const sysStock = cat?.stock ?? (cat as any)?.systemStock ?? 0;
@@ -284,8 +748,15 @@ export default function StockRecountMobile() {
                             };
                         });
 
+                        const sameBatch = !currentEpoch || !savedDraft?.epoch || savedDraft.epoch === currentEpoch;
+                        const finalConverted = sameBatch && savedDraft?.products?.length
+                            ? mergeDraftQuantities(converted, savedDraft.products)
+                            : converted;
+
+                        writeSavedDraft(effectiveSessionId, deviceId, currentEpoch, finalConverted);
+                        if (!sameBatch) setCurrentProductIndex(0);
                         if (isMounted) {
-                            setProducts(converted);
+                            setProducts(finalConverted);
                             setIsLoading(false);
                         }
                         return;
@@ -318,14 +789,28 @@ export default function StockRecountMobile() {
                     });
                 });
 
+                const sameBatch = !currentEpoch || !savedDraft?.epoch || savedDraft.epoch === currentEpoch;
+                const finalItems = sameBatch && savedDraft?.products?.length
+                    ? mergeDraftQuantities(flatItems, savedDraft.products)
+                    : flatItems;
+
+                if (effectiveSessionId) {
+                    writeSavedDraft(effectiveSessionId, deviceId, currentEpoch, finalItems);
+                }
+                if (!sameBatch) setCurrentProductIndex(0);
+
                 if (isMounted) {
-                    setProducts(flatItems);
+                    setProducts(finalItems);
                     setIsLoading(false);
                 }
             } catch (err) {
                 console.error('[StockRecountMobile] Error cargando datos:', err);
                 if (isMounted) {
-                    setProducts([]);
+                    if (savedDraft && savedDraft.products.length > 0) {
+                        setProducts(savedDraft.products);
+                    } else if (productsRef.current.length === 0) {
+                        setProducts([]);
+                    }
                     setIsLoading(false);
                 }
             }
@@ -363,33 +848,23 @@ export default function StockRecountMobile() {
         return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     };
 
-    const handleIncrement = (id: string) => {
-        setProducts(prev => prev.map(p => {
-            if (p.id === id) {
-                const nextQty = p.qty + 1;
-                return {
-                    ...p,
-                    qty: nextQty,
-                    hasDifference: nextQty !== p.initialQty
-                };
-            }
-            return p;
-        }));
+    const updateQuantityByDelta = (id: string, delta: number) => {
+        const nextProducts = productsRef.current.map((p) => {
+            if (p.id !== id) return p;
+            const nextQty = Math.max(0, p.qty + delta);
+            return {
+                ...p,
+                qty: nextQty,
+                hasDifference: nextQty !== p.initialQty,
+            };
+        });
+        productsRef.current = nextProducts;
+        setProducts(nextProducts);
+        writeSavedDraft(effectiveSessionId, deviceId, batchEpochRef.current, nextProducts);
     };
 
-    const handleDecrement = (id: string) => {
-        setProducts(prev => prev.map(p => {
-            if (p.id === id) {
-                const nextQty = Math.max(0, p.qty - 1);
-                return {
-                    ...p,
-                    qty: nextQty,
-                    hasDifference: nextQty !== p.initialQty
-                };
-            }
-            return p;
-        }));
-    };
+    const handleIncrement = (id: string) => updateQuantityByDelta(id, 1);
+    const handleDecrement = (id: string) => updateQuantityByDelta(id, -1);
 
     // Lista única de productos agrupados para navegación Anterior / Siguiente
     const uniqueEans = useMemo(() => {
@@ -399,6 +874,14 @@ export default function StockRecountMobile() {
         });
         return eans;
     }, [products]);
+
+    useEffect(() => {
+        if (uniqueEans.length === 0 && currentProductIndex !== 0) {
+            setCurrentProductIndex(0);
+        } else if (uniqueEans.length > 0 && currentProductIndex >= uniqueEans.length) {
+            setCurrentProductIndex(uniqueEans.length - 1);
+        }
+    }, [uniqueEans.length, currentProductIndex]);
 
     const handlePreviousProduct = () => {
         if (currentProductIndex > 0) {
@@ -446,68 +929,83 @@ export default function StockRecountMobile() {
     }, [products, searchQuery, activeTab, uniqueEans, currentProductIndex]);
 
     const handleConfirm = async () => {
-        if (effectiveSessionId && products.length > 0) {
-            try {
-                // Agrupar total recontado por EAN y devolver resultado al diálogo Admin de MiPlus
-                const grouped = new Map<string, { ean: string; eans?: string[]; id_producto?: string; name: string; initialQty: number; recountedQty: number }>();
-                for (const p of products) {
-                    const prev = grouped.get(p.ean);
-                    if (prev) {
-                        prev.initialQty += Number(p.initialQty) || 0;
-                        prev.recountedQty += Number(p.qty) || 0;
-                    } else {
-                        grouped.set(p.ean, {
-                            ean: p.ean,
-                            eans: p.eans,
-                            id_producto: p.id_producto,
-                            name: p.name,
-                            initialQty: Number(p.initialQty) || 0,
-                            recountedQty: Number(p.qty) || 0,
-                        });
-                    }
-                }
-
-                const payload: RecountResultSubmission = {
-                    device_id: deviceId,
-                    device_name: deviceDisplayName,
-                    platform: 'web',
-                    submitted_at: new Date().toISOString(),
-                    items: Array.from(grouped.values()),
-                };
-
-                const resultFilename = `recount_result_${deviceId}.json`;
-                await (supabase as any)
-                    .from('precount_device_files')
-                    .delete()
-                    .eq('session_id', effectiveSessionId)
-                    .eq('filename', resultFilename);
-
-                const { error: insertErr } = await (supabase as any)
-                    .from('precount_device_files')
-                    .insert({
-                        session_id: effectiveSessionId,
-                        device_id: deviceId,
-                        device_name: deviceDisplayName,
-                        filename: resultFilename,
-                        content: JSON.stringify(payload),
+        if (isSubmitting) return;
+        const currentProducts = productsRef.current;
+        if (effectiveSessionId && currentProducts.length > 0) {
+            setIsSubmitting(true);
+            // Agrupar total recontado por EAN y devolver resultado al diálogo Admin de MiPlus
+            const grouped = new Map<string, { ean: string; eans?: string[]; id_producto?: string; name: string; initialQty: number; recountedQty: number }>();
+            for (const p of currentProducts) {
+                const prev = grouped.get(p.ean);
+                if (prev) {
+                    prev.initialQty += Number(p.initialQty) || 0;
+                    prev.recountedQty += Number(p.qty) || 0;
+                } else {
+                    grouped.set(p.ean, {
+                        ean: p.ean,
+                        eans: p.eans,
+                        id_producto: p.id_producto,
+                        name: p.name,
+                        initialQty: Number(p.initialQty) || 0,
+                        recountedQty: Number(p.qty) || 0,
                     });
-                if (insertErr) throw insertErr;
-
-                const channel = supabase.channel(`recount_control_${effectiveSessionId}`);
-                await channel.send({
-                    type: 'broadcast',
-                    event: 'recount_result_submitted',
-                    payload: { device_id: deviceId, device_name: deviceDisplayName },
-                });
-
-                setProducts(prev => prev.map(p => ({ ...p, initialQty: p.qty, hasDifference: false })));
-                notify.success('Recuento Enviado', 'Tus diferencias recontadas fueron enviadas al panel Admin de MiPlus.');
-                return;
-            } catch (err) {
-                console.error('Error enviando recuento:', err);
-                notify.error('Error al enviar', 'No se pudo enviar el recuento al panel Admin.');
-                return;
+                }
             }
+
+            const payload: RecountResultSubmission = {
+                device_id: deviceId,
+                device_name: deviceDisplayName,
+                platform: 'web',
+                submitted_at: new Date().toISOString(),
+                items: Array.from(grouped.values()),
+            };
+
+            const outboxEntry: RecountOutboxEntry = {
+                sessionId: effectiveSessionId,
+                deviceId,
+                deviceName: deviceDisplayName,
+                resultFilename: `recount_result_${deviceId}.json`,
+                payload,
+                queuedAt: Date.now(),
+                attempts: 0,
+            };
+
+            try {
+                if (typeof navigator !== 'undefined' && !navigator.onLine) {
+                    throw new Error('offline');
+                }
+                await submitRecountPayload(outboxEntry);
+                writeOutboxEntry(effectiveSessionId, deviceId, null);
+                setPendingOutbox(null);
+
+                const confirmed = currentProducts.map((p) => ({
+                    ...p,
+                    initialQty: p.qty,
+                    hasDifference: false,
+                }));
+                productsRef.current = confirmed;
+                setProducts(confirmed);
+                writeSavedDraft(effectiveSessionId, deviceId, batchEpochRef.current, confirmed);
+
+                notify.success('Recuento Enviado', 'Tus diferencias recontadas fueron enviadas al panel Admin de MiPlus.');
+            } catch (err: any) {
+                const queuedEntry: RecountOutboxEntry = {
+                    ...outboxEntry,
+                    attempts: 1,
+                    lastError: err?.message === 'offline' ? 'Sin conexión a internet' : (err?.message || String(err)),
+                };
+                writeOutboxEntry(effectiveSessionId, deviceId, queuedEntry);
+                setPendingOutbox(queuedEntry);
+                writeSavedDraft(effectiveSessionId, deviceId, batchEpochRef.current, currentProducts);
+
+                notify.warning(
+                    'Guardado en cola local',
+                    'Sin conexión o red inestable: tus diferencias quedaron guardadas y se enviarán automáticamente al reconectar.'
+                );
+            } finally {
+                setIsSubmitting(false);
+            }
+            return;
         }
         notify.success('Recuento Confirmado', 'Los datos fueron sincronizados correctamente.');
     };
@@ -532,6 +1030,7 @@ export default function StockRecountMobile() {
                             const clean = nameInput.trim();
                             if (!clean) return;
                             sessionStorage.setItem('recount_mobile_operator_name', clean);
+                            localStorage.setItem('recount_mobile_operator_name', clean);
                             setOperatorName(clean);
                             setHasJoined(true);
                         }}
@@ -572,14 +1071,24 @@ export default function StockRecountMobile() {
                             Aguardá a que el administrador presione <strong>Comenzar recuento</strong> para recibir tus EANs exclusivos.
                         </p>
                     </div>
-                    {effectiveSessionId ? (
+                    {!effectiveSessionId ? (
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-50 text-red-700 text-xs font-medium border border-red-200">
+                            Falta sessionId en el enlace — volvé a escanear el QR
+                        </div>
+                    ) : !isOnline ? (
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-50 text-red-700 text-xs font-medium border border-red-200">
+                            <WifiOff className="w-3.5 h-3.5" />
+                            Sin conexión — reintentando al volver red
+                        </div>
+                    ) : isRealtimeConnected ? (
                         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
                             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
                             En línea y listo
                         </div>
                     ) : (
-                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-50 text-red-700 text-xs font-medium border border-red-200">
-                            Falta sessionId en el enlace — volvé a escanear el QR
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
+                            <Wifi className="w-3.5 h-3.5 animate-pulse" />
+                            Conectando canal en tiempo real...
                         </div>
                     )}
                 </div>
@@ -641,6 +1150,43 @@ export default function StockRecountMobile() {
                         </button>
                     </div>
                 </header>
+
+                {/* Status / Offline Outbox Badge */}
+                {(pendingOutbox || !isOnline || !isRealtimeConnected) && (
+                    <div className="px-4 pt-1.5 shrink-0 bg-[#F4F4F5] z-10">
+                        {pendingOutbox ? (
+                            <div className="w-full px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 flex items-center justify-between gap-2 text-[11px] font-medium">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                    <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isOnline ? 'animate-spin' : ''}`} />
+                                    <span className="truncate">
+                                        {isOnline
+                                            ? 'Sincronizando envío pendiente...'
+                                            : 'Envío guardado offline — se subirá al reconectar'}
+                                    </span>
+                                </div>
+                                {isOnline && (
+                                    <button
+                                        type="button"
+                                        onClick={() => void flushOutbox(true)}
+                                        className="px-2 py-0.5 rounded-lg bg-amber-200/80 hover:bg-amber-300/80 text-amber-900 font-semibold shrink-0 cursor-pointer"
+                                    >
+                                        Reintentar
+                                    </button>
+                                )}
+                            </div>
+                        ) : !isOnline ? (
+                            <div className="w-full px-3 py-1.5 rounded-xl bg-red-50 border border-red-200 text-red-700 flex items-center justify-center gap-1.5 text-[11px] font-medium">
+                                <WifiOff className="w-3.5 h-3.5 shrink-0" />
+                                <span>Sin conexión — los cambios se guardan localmente</span>
+                            </div>
+                        ) : (
+                            <div className="w-full px-3 py-1 rounded-xl bg-zinc-200/70 text-zinc-600 flex items-center justify-center gap-1.5 text-[11px] font-medium">
+                                <Wifi className="w-3 h-3 animate-pulse shrink-0" />
+                                <span>Reconectando sincronización en vivo...</span>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* 2. Search Bar (Pinned) */}
                 <div className="px-4 py-1.5 shrink-0 bg-[#F4F4F5] z-10">
@@ -791,7 +1337,9 @@ export default function StockRecountMobile() {
 
                     {filteredProducts.length === 0 && (
                         <div className="py-16 text-center text-zinc-400 text-xs">
-                            No se encontraron productos para los criterios seleccionados.
+                            {isLoading
+                                ? 'Descargando productos asignados...'
+                                : 'No se encontraron productos para los criterios seleccionados.'}
                         </div>
                     )}
                 </main>
@@ -823,10 +1371,17 @@ export default function StockRecountMobile() {
                         <button
                             type="button"
                             onClick={handleConfirm}
-                            className="h-[38px] w-full rounded-full bg-[#0066FF] hover:bg-[#005BEA] active:scale-98 text-white text-[12px] font-semibold flex items-center justify-center gap-1.5 shadow-xs shadow-blue-500/25 transition-all cursor-pointer select-none px-2"
+                            disabled={isSubmitting}
+                            className="h-[38px] w-full rounded-full bg-[#0066FF] hover:bg-[#005BEA] active:scale-98 disabled:opacity-60 text-white text-[12px] font-semibold flex items-center justify-center gap-1.5 shadow-xs shadow-blue-500/25 transition-all cursor-pointer select-none px-2"
                         >
-                            <Check className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
-                            <span className="leading-none pt-[0.5px]">Confirmar</span>
+                            {isSubmitting ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                            ) : (
+                                <Check className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
+                            )}
+                            <span className="leading-none pt-[0.5px]">
+                                {isSubmitting ? 'Enviando...' : 'Confirmar'}
+                            </span>
                         </button>
                     </div>
                 </footer>

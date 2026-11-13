@@ -501,9 +501,18 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
             } catch {}
         }
 
+        let disposed = false;
+        let reconnectAttempts = 0;
+        let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+        let activeChannel: any = null;
+        let fetchRemoteDevices: () => Promise<void> = async () => {};
+        let fetchRemoteCounts: () => Promise<void> = async () => {};
+        let fetchRemoteClosedLocations: () => Promise<void> = async () => {};
+
         // 2. Sincronizar estado de sectores cerrados desde Dexie y Supabase
         if (activeSessionId) {
             db.locations.where('session_id').equals(activeSessionId).toArray().then(locs => {
+                if (disposed) return;
                 locs.forEach(l => {
                     if (l.status === 'closed') {
                         closedLocationsRef.current.add(l.location_tag.toUpperCase());
@@ -513,34 +522,44 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
                 syncDevicePositionsAndStats();
             }).catch(() => {});
 
-            (supabase as any)
-                .from('precount_location_status')
-                .select('location_tag, status, closed_by_device_id, opened_by_device_id')
-                .eq('session_id', activeSessionId)
-                .then((locsRes: any) => {
-                    if (locsRes?.data) {
-                        locsRes.data.forEach((l: any) => {
-                            if (l.status === 'closed' && l.location_tag) {
-                                closedLocationsRef.current.add(l.location_tag.toUpperCase());
-                                closedLocationsRef.current.add(getFullSectorName(l.location_tag).toUpperCase());
-                                if (l.closed_by_device_id) {
-                                    closedDeviceMapRef.current.set(l.location_tag.toUpperCase(), l.closed_by_device_id);
-                                    closedDeviceMapRef.current.set(getFullSectorName(l.location_tag).toUpperCase(), l.closed_by_device_id);
-                                }
+            fetchRemoteClosedLocations = async () => {
+                if (disposed || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
+                try {
+                    const locsRes: any = await (supabase as any)
+                        .from('precount_location_status')
+                        .select('location_tag, status, closed_by_device_id, opened_by_device_id')
+                        .eq('session_id', activeSessionId);
+
+                    if (disposed || locsRes?.error || !Array.isArray(locsRes?.data)) return;
+                    closedLocationsRef.current.clear();
+                    closedDeviceMapRef.current.clear();
+                    locsRes.data.forEach((l: any) => {
+                        if (l.status === 'closed' && l.location_tag) {
+                            const fSec = getFullSectorName(l.location_tag);
+                            closedLocationsRef.current.add(l.location_tag.toUpperCase());
+                            closedLocationsRef.current.add(fSec.toUpperCase());
+                            if (l.closed_by_device_id) {
+                                closedDeviceMapRef.current.set(l.location_tag.toUpperCase(), l.closed_by_device_id);
+                                closedDeviceMapRef.current.set(fSec.toUpperCase(), l.closed_by_device_id);
                             }
-                        });
-                        syncDevicePositionsAndStats();
-                    }
-                }).catch(() => {});
+                        }
+                    });
+                    syncDevicePositionsAndStats();
+                } catch {}
+            };
+            void fetchRemoteClosedLocations();
 
             // 3. Consultar terminales conectadas en Supabase (precount_connected_devices)
-            const fetchRemoteDevices = async () => {
+            fetchRemoteDevices = async () => {
+                if (disposed) return;
+                if (typeof navigator !== 'undefined' && !navigator.onLine) return;
                 try {
                     const res = await (supabase as any)
                         .from('precount_connected_devices')
                         .select('*')
                         .eq('session_id', activeSessionId);
 
+                    if (disposed || res?.error) return;
                     if (res?.data && Array.isArray(res.data)) {
                         res.data.forEach((row: any) => {
                             const isRecentlyActive = row.last_seen 
@@ -577,19 +596,22 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
                 }
             };
 
-            fetchRemoteDevices();
+            void fetchRemoteDevices();
             devicePollInterval = setInterval(() => {
                 if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-                fetchRemoteDevices();
+                void fetchRemoteDevices();
             }, 30000);
 
             // 4. Cargar conteos reales exactos escaneados en esta sesión por cada dispositivo
-            const fetchRemoteCounts = async () => {
+            fetchRemoteCounts = async () => {
+                if (disposed) return;
                 if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+                if (typeof navigator !== 'undefined' && !navigator.onLine) return;
                 try {
                     const allData: any[] = [];
                     let from = 0;
                     const PAGE_SIZE = 1000;
+                    let fetchFailed = false;
                     while (true) {
                         const res = await (supabase as any)
                             .from('precount_items')
@@ -597,11 +619,18 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
                             .eq('session_id', activeSessionId)
                             .range(from, from + PAGE_SIZE - 1);
 
+                        if (res?.error) {
+                            fetchFailed = true;
+                            break;
+                        }
                         if (!res?.data || res.data.length === 0) break;
                         allData.push(...res.data);
                         if (res.data.length < PAGE_SIZE) break;
                         from += PAGE_SIZE;
                     }
+
+                    // No limpiar métricas cacheadas si falló la consulta remota
+                    if (fetchFailed || disposed) return;
 
                     itemsByIdRef.current.clear();
                     allData.forEach((it: any) => {
@@ -621,8 +650,11 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
                 }
             };
 
-            fetchRemoteCounts();
-            countsPollInterval = setInterval(fetchRemoteCounts, 30000);
+            void fetchRemoteCounts();
+            countsPollInterval = setInterval(() => {
+                if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+                void fetchRemoteCounts();
+            }, 30000);
         }
 
         // 5. Listeners locales
@@ -648,9 +680,32 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
         window.addEventListener('precount:device_heartbeat' as any, handleDeviceHeartbeat);
         window.addEventListener('storage', handleStorageChange);
 
-        // 6. Suscripción Realtime por WebSockets (Presence + Broadcast + Postgres CDC)
-        let channel: any = null;
-        if (activeSessionId) {
+        // 6. Suscripción Realtime por WebSockets (Presence + Broadcast + Postgres CDC) con reconexión
+        const cleanupChannel = () => {
+            if (activeChannel) {
+                const ch = activeChannel;
+                activeChannel = null;
+                try {
+                    void supabase.removeChannel(ch);
+                } catch {}
+            }
+        };
+
+        const scheduleReconnect = () => {
+            if (disposed || reconnectTimer || !activeSessionId) return;
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+            const delay = Math.min(15000, 1000 * Math.pow(2, reconnectAttempts));
+            reconnectAttempts += 1;
+            reconnectTimer = setTimeout(() => {
+                reconnectTimer = null;
+                if (!disposed) subscribeChannel();
+            }, delay);
+        };
+
+        const subscribeChannel = () => {
+            if (disposed || !activeSessionId) return;
+            cleanupChannel();
+
             const topic = `precount_presence:${activeSessionId}`;
             const existingChannels = supabase.getChannels();
             const existing = existingChannels.find(
@@ -659,21 +714,22 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
 
             if (existing) {
                 try {
-                    supabase.removeChannel(existing);
+                    void supabase.removeChannel(existing);
                 } catch {}
             }
 
-            channel = supabase.channel(topic, {
+            const ch = supabase.channel(topic, {
                 config: {
                     broadcast: { self: true },
                     presence: { key: getDeviceId() }
                 }
             });
+            activeChannel = ch;
 
-            channel
+            ch
                 .on('presence', { event: 'sync' }, () => {
                     try {
-                        const state = channel.presenceState();
+                        const state = ch.presenceState();
                         const allPresences: any[] = Object.values(state).flat();
                         allPresences.forEach((p: any) => upsertDevice(p));
                     } catch (e) {
@@ -833,29 +889,7 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
                             closedDeviceMapRef.current.delete(fullSector.toUpperCase());
                             syncDevicePositionsAndStats();
                         } else {
-                            (supabase as any)
-                                .from('precount_location_status')
-                                .select('location_tag, status, closed_by_device_id')
-                                .eq('session_id', activeSessionId)
-                                .eq('status', 'closed')
-                                .then(({ data }: any) => {
-                                    closedLocationsRef.current.clear();
-                                    closedDeviceMapRef.current.clear();
-                                    if (data) {
-                                        data.forEach((r: any) => {
-                                            if (r.location_tag) {
-                                                const fSec = getFullSectorName(r.location_tag);
-                                                closedLocationsRef.current.add(r.location_tag.toUpperCase());
-                                                closedLocationsRef.current.add(fSec.toUpperCase());
-                                                if (r.closed_by_device_id) {
-                                                    closedDeviceMapRef.current.set(r.location_tag.toUpperCase(), r.closed_by_device_id);
-                                                    closedDeviceMapRef.current.set(fSec.toUpperCase(), r.closed_by_device_id);
-                                                }
-                                            }
-                                        });
-                                    }
-                                    syncDevicePositionsAndStats();
-                                });
+                            void fetchRemoteClosedLocations();
                         }
                         return;
                     }
@@ -879,24 +913,50 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
                     syncDevicePositionsAndStats();
                 });
 
-            if (channel.state !== 'joined' && channel.state !== 'joining') {
-                channel.subscribe((status: string) => {
+            if (ch.state !== 'joined' && ch.state !== 'joining') {
+                ch.subscribe((status: string) => {
+                    if (disposed) return;
                     if (status === 'SUBSCRIBED') {
+                        reconnectAttempts = 0;
                         try {
-                            const state = channel.presenceState();
+                            const state = ch.presenceState();
                             const allPresences: any[] = Object.values(state).flat();
                             allPresences.forEach((p: any) => upsertDevice(p));
                         } catch {}
+                        void fetchRemoteClosedLocations();
+                        void fetchRemoteDevices();
+                        void fetchRemoteCounts();
+                    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                        scheduleReconnect();
                     }
                 });
-            } else if (channel.state === 'joined') {
+            } else if (ch.state === 'joined') {
                 try {
-                    const state = channel.presenceState();
+                    const state = ch.presenceState();
                     const allPresences: any[] = Object.values(state).flat();
                     allPresences.forEach((p: any) => upsertDevice(p));
                 } catch {}
             }
-        }
+        };
+
+        subscribeChannel();
+
+        const handleWakeUp = () => {
+            if (disposed || !activeSessionId) return;
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+            if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+            void fetchRemoteClosedLocations();
+            void fetchRemoteDevices();
+            void fetchRemoteCounts();
+            if (!activeChannel || activeChannel.state !== 'joined') {
+                reconnectAttempts = 0;
+                subscribeChannel();
+            }
+        };
+
+        window.addEventListener('online', handleWakeUp);
+        window.addEventListener('focus', handleWakeUp);
+        document.addEventListener('visibilitychange', handleWakeUp);
 
         const handleSessionDeleted = () => {
             globalMonitorCache.clear();
@@ -906,19 +966,31 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
         window.addEventListener('precount:session_deleted' as any, handleSessionDeleted);
 
         return () => {
+            disposed = true;
+            if (reconnectTimer) clearTimeout(reconnectTimer);
             clearInterval(devicePollInterval);
             clearInterval(countsPollInterval);
-            if (channel) {
-                try {
-                    supabase.removeChannel(channel);
-                } catch {}
-            }
+            cleanupChannel();
+            window.removeEventListener('online', handleWakeUp);
+            window.removeEventListener('focus', handleWakeUp);
+            document.removeEventListener('visibilitychange', handleWakeUp);
             window.removeEventListener('precount:device_joined' as any, handleDeviceJoined);
             window.removeEventListener('precount:device_heartbeat' as any, handleDeviceHeartbeat);
             window.removeEventListener('precount:session_deleted' as any, handleSessionDeleted);
             window.removeEventListener('storage', handleStorageChange);
         };
     }, [sessionId]);
+
+    const visibleDevices = React.useMemo(() => {
+        return devices.filter(d => {
+            const isSelf = 
+                d.id === currentDeviceId || 
+                d.id.toLowerCase() === currentDeviceId.toLowerCase() ||
+                d.connectionId === currentDeviceId.substring(0, 8).toUpperCase() ||
+                (d.connectionId && currentDeviceId.toUpperCase().includes(d.connectionId));
+            return !isSelf;
+        });
+    }, [devices, currentDeviceId]);
 
     if (!sessionId) {
         return (
@@ -932,17 +1004,6 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
             </div>
         );
     }
-
-    const visibleDevices = React.useMemo(() => {
-        return devices.filter(d => {
-            const isSelf = 
-                d.id === currentDeviceId || 
-                d.id.toLowerCase() === currentDeviceId.toLowerCase() ||
-                d.connectionId === currentDeviceId.substring(0, 8).toUpperCase() ||
-                (d.connectionId && currentDeviceId.toUpperCase().includes(d.connectionId));
-            return !isSelf;
-        });
-    }, [devices, currentDeviceId]);
 
     const onlineCount = visibleDevices.filter(d => d.status === 'online').length;
     const totalUnits = visibleDevices.reduce((acc, d) => acc + d.totalScanned, 0);

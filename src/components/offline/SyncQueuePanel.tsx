@@ -4,14 +4,32 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Clock, RefreshCw01 as RefreshCw, AlertCircle, CheckCircle, XClose as XCircle } from '@untitledui/icons';
+import { Clock, RefreshCw01 as RefreshCw, CheckCircle, XClose as XCircle } from '@untitledui/icons';
 import { cn } from '@/lib/utils';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, PendingAction } from '@/services/db';
 import { syncManager } from '@/services/syncManager';
 
+function formatActionLabel(item: PendingAction): string {
+    const data = item.data || {};
+    if (data.product_name) return String(data.product_name);
+    if (data.filename) return String(data.filename);
+    if (data.ean) return `EAN ${data.ean}`;
+    if (data.sector) return String(data.sector);
+    if (Array.isArray(data.ids) && data.ids.length > 0) {
+        return `${data.ids.length} ítem${data.ids.length === 1 ? '' : 's'}`;
+    }
+    if (data.id) return `#${String(data.id).substring(0, 8)}`;
+    return item.entity;
+}
+
+function isPermanentErrorAction(item: PendingAction): boolean {
+    return Boolean((item as PendingAction & { permanentError?: boolean }).permanentError);
+}
+
 export function SyncQueuePanel() {
     const [isOpen, setIsOpen] = useState(false);
+    const [isForcing, setIsForcing] = useState(false);
 
     // Live query to local DB
     const queueItems = useLiveQuery(
@@ -19,8 +37,13 @@ export function SyncQueuePanel() {
         []
     );
 
-    const pendingCount = queueItems?.filter((item) => item.status === 'pending' || item.status === 'failed').length || 0;
-    const isSyncing = queueItems?.some(item => item.status === 'syncing');
+    const pendingCount =
+        queueItems?.filter(
+            (item) =>
+                (item.status === 'pending' || item.status === 'syncing' || item.status === 'failed') &&
+                !isPermanentErrorAction(item)
+        ).length || 0;
+    const isSyncing = isForcing || Boolean(queueItems?.some(item => item.status === 'syncing'));
 
     const getStatusIcon = (status: PendingAction['status']) => {
         switch (status) {
@@ -59,8 +82,36 @@ export function SyncQueuePanel() {
         return `Hace ${hours} horas`;
     };
 
-    const handleRetry = () => {
-        syncManager.processQueue();
+    const handleRetry = async () => {
+        setIsForcing(true);
+        try {
+            const mgr = syncManager as unknown as { retryAllFailed?: () => Promise<void> };
+            if (typeof mgr.retryAllFailed === 'function') {
+                await mgr.retryAllFailed();
+            } else {
+                const failedItems = await db.pendingActions
+                    .where('status')
+                    .equals('failed')
+                    .toArray();
+                if (failedItems.length > 0) {
+                    await Promise.all(
+                        failedItems
+                            .filter((it) => it.id !== undefined && !isPermanentErrorAction(it))
+                            .map((it) =>
+                                db.pendingActions.update(it.id!, {
+                                    status: 'pending',
+                                    retries: 0,
+                                    error: undefined,
+                                    nextRetryAt: 0,
+                                } as any)
+                            )
+                    );
+                }
+                await syncManager.flushNow();
+            }
+        } finally {
+            setIsForcing(false);
+        }
     };
 
     return (
@@ -130,10 +181,15 @@ export function SyncQueuePanel() {
                                                             {item.retries} reintentos
                                                         </Badge>
                                                     )}
+                                                    {isPermanentErrorAction(item) && (
+                                                        <Badge variant="outline" className="text-xs border-destructive/50 text-destructive">
+                                                            Error permanente
+                                                        </Badge>
+                                                    )}
                                                 </div>
                                                 <p className="text-sm font-medium truncate">
                                                     {/* Intentamos mostrar algo descriptivo del payload */}
-                                                    {item.data.product_name || item.data.ean || item.data.sector || `#${item.data.id?.substring(0, 8)}`}
+                                                    {formatActionLabel(item)}
                                                 </p>
                                                 <p className="text-xs text-muted-foreground mt-1">
                                                     {formatTimestamp(item.timestamp)}

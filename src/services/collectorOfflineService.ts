@@ -1,6 +1,13 @@
 import Dexie, { Table } from 'dexie';
 import { supabase } from '@/integrations/supabase/client';
 import { normalizeString } from '@/lib/utils';
+import {
+    chunkArray,
+    fetchAllSupabasePages,
+    isNetworkOnline,
+    registerReconnectWakeup,
+    withNetworkRetry
+} from './supabaseHelpers';
 
 export interface LocalProduct {
     ean: string;
@@ -61,18 +68,29 @@ export const collectorOfflineService = {
             const normLab = normalizeString(laboratory);
             const sessionKey = `${normBranch}_${normLab}`;
 
-            // A. Traer catálogo de productos desde Supabase
-            const { data: dbProducts, error: prodErr } = await supabase
-                .from('products')
-                .select('ean, name, cost, category, laboratory, id_producto')
-                .ilike('laboratory', `%${laboratory}%`);
+            if (!isNetworkOnline()) {
+                return { success: false, itemCount: 0, message: "Sin conexión para descargar catálogo actualizado." };
+            }
 
-            if (prodErr) {
+            // A. Traer catálogo completo de productos desde Supabase (paginado >1000 filas)
+            let dbProducts: any[] = [];
+            try {
+                dbProducts = await fetchAllSupabasePages<any>(
+                    (from, to) => supabase
+                        .from('products')
+                        .select('ean, name, cost, category, laboratory, id_producto')
+                        .ilike('laboratory', `%${laboratory}%`)
+                        .order('ean', { ascending: true })
+                        .range(from, to),
+                    1000,
+                    'downloadLabData:products'
+                );
+            } catch (prodErr) {
                 console.warn("[CollectorDB] Warning fetching products:", prodErr);
             }
 
             const productMap = new Map<string, LocalProduct>();
-            if (dbProducts && dbProducts.length > 0) {
+            if (dbProducts.length > 0) {
                 const mappedProducts: LocalProduct[] = dbProducts.map(p => {
                     const prod: LocalProduct = {
                         ean: p.ean,
@@ -90,64 +108,81 @@ export const collectorOfflineService = {
                 await collectorDb.products.bulkPut(mappedProducts);
             }
 
-            // B. Traer inventario cíclico activo desde Supabase
-            const { data: dbItems, error: invErr } = await supabase
-                .from('inventories')
-                .select('*')
-                .eq('branch_name', branchName)
-                .eq('laboratory', laboratory);
+            // B. Traer inventario cíclico completo desde Supabase (abortar reemplazo si falla la red)
+            const items = await fetchAllSupabasePages<any>(
+                (from, to) => supabase
+                    .from('inventories')
+                    .select('*')
+                    .eq('branch_name', branchName)
+                    .eq('laboratory', laboratory)
+                    .order('id', { ascending: true })
+                    .range(from, to),
+                1000,
+                'downloadLabData:inventories'
+            );
 
-            if (invErr) {
-                console.error("[CollectorDB] Error fetching inventories:", invErr);
-            }
-
-            const items = dbItems || [];
-            const mappedItems: LocalInventoryItem[] = items.map((item: any) => {
-                const prod = productMap.get(item.ean);
-                return {
-                    id: item.id || crypto.randomUUID(),
-                    branch_name: branchName,
-                    laboratory: laboratory,
-                    ean: item.ean,
-                    name: item.name || prod?.name || 'Producto sin nombre',
-                    systemQuantity: Number(item.system_quantity ?? item.quantity ?? 0),
-                    countedQuantity: Number(item.counted_quantity ?? item.quantity ?? 0),
-                    cost: Number(item.cost ?? prod?.cost ?? 0),
-                    category: item.category || prod?.category || 'Varios',
-                    id_producto: item.id_producto || prod?.id_producto || undefined,
-                    status: (item.status as any) || 'pending',
-                    updatedAt: item.created_at || new Date().toISOString(),
-                    isSynced: true
-                };
-            });
-
-            // Reemplazar inventario local para este laboratorio
+            // Reemplazar solo ítems ya sincronizados, preservando escaneos offline pendientes
+            let mergedCount = 0;
             await collectorDb.transaction('rw', collectorDb.inventories, collectorDb.sessions, async () => {
-                // Borrar datos anteriores de esta sucursal y laboratorio
                 const existing = await collectorDb.inventories
                     .where('[branch_name+laboratory]')
                     .equals([branchName, laboratory])
                     .toArray();
-                
-                const idsToRemove = existing.map(x => x.id);
-                if (idsToRemove.length > 0) {
-                    await collectorDb.inventories.bulkDelete(idsToRemove);
+
+                const unsyncedByEan = new Map<string, LocalInventoryItem>();
+                const syncedIdsToRemove: string[] = [];
+
+                for (const row of existing) {
+                    if (!row.isSynced) {
+                        unsyncedByEan.set(row.ean, row);
+                    } else {
+                        syncedIdsToRemove.push(row.id);
+                    }
                 }
 
-                if (mappedItems.length > 0) {
-                    await collectorDb.inventories.bulkPut(mappedItems);
+                if (syncedIdsToRemove.length > 0) {
+                    await collectorDb.inventories.bulkDelete(syncedIdsToRemove);
                 }
 
+                const itemsToPut: LocalInventoryItem[] = [];
+                for (const item of items) {
+                    // No pisar escaneos locales que todavía no se subieron
+                    if (unsyncedByEan.has(item.ean)) {
+                        continue;
+                    }
+                    const prod = productMap.get(item.ean);
+                    itemsToPut.push({
+                        id: item.id || crypto.randomUUID(),
+                        branch_name: branchName,
+                        laboratory: laboratory,
+                        ean: item.ean,
+                        name: item.name || prod?.name || 'Producto sin nombre',
+                        systemQuantity: Number(item.system_quantity ?? item.quantity ?? 0),
+                        countedQuantity: Number(item.counted_quantity ?? item.quantity ?? 0),
+                        cost: Number(item.cost ?? prod?.cost ?? 0),
+                        category: item.category || prod?.category || 'Varios',
+                        id_producto: item.id_producto || prod?.id_producto || undefined,
+                        status: (item.status as any) || 'pending',
+                        updatedAt: item.created_at || new Date().toISOString(),
+                        isSynced: true
+                    });
+                }
+
+                if (itemsToPut.length > 0) {
+                    await collectorDb.inventories.bulkPut(itemsToPut);
+                }
+
+                mergedCount = itemsToPut.length + unsyncedByEan.size;
                 await collectorDb.sessions.put({
                     key: sessionKey,
                     branchName,
                     laboratory,
                     lastDownloadedAt: new Date().toISOString(),
-                    totalItemsCount: mappedItems.length
+                    totalItemsCount: mergedCount
                 });
             });
 
-            return { success: true, itemCount: mappedItems.length };
+            return { success: true, itemCount: mergedCount };
         } catch (err: any) {
             console.error("[CollectorDB] Error downloading lab data:", err);
             return { success: false, itemCount: 0, message: err.message || "Error al descargar datos" };
@@ -251,49 +286,117 @@ export const collectorOfflineService = {
             .toArray();
     },
 
-    // 5. Sincronizar ítems pendientes con Supabase
-    async syncPendingScans(branchName: string, laboratory: string): Promise<{ success: boolean; syncedCount: number; message?: string }> {
+    // 5. Sincronizar solo ítems pendientes con Supabase en lotes acotados y con reintentos
+    async syncPendingScans(
+        branchName: string,
+        laboratory: string,
+        options?: { forceAll?: boolean }
+    ): Promise<{ success: boolean; syncedCount: number; message?: string }> {
         try {
             const items = await collectorOfflineService.getLocalLabItems(branchName, laboratory);
-            if (items.length === 0) {
-                return { success: true, syncedCount: 0, message: "No hay ítems para sincronizar" };
+            const targetItems = options?.forceAll ? items : items.filter(item => !item.isSynced);
+
+            if (targetItems.length === 0) {
+                return { success: true, syncedCount: 0, message: "No hay ítems pendientes para sincronizar" };
             }
 
-            // Convertir a formato del backend
-            const dbPayload = items.map(item => ({
-                id: item.id,
-                branch_name: branchName,
-                laboratory: laboratory,
-                ean: item.ean,
-                name: item.name,
-                quantity: item.systemQuantity,
-                counted_quantity: item.countedQuantity,
-                cost: item.cost,
-                category: item.category || 'Varios',
-                status: item.status,
-                id_producto: item.id_producto,
-                created_at: item.updatedAt
-            }));
-
-            const { error } = await (supabase as any)
-                .from('inventories')
-                .upsert(dbPayload, { onConflict: 'branch_name,laboratory,ean' });
-
-            if (error) {
-                throw error;
+            if (!isNetworkOnline()) {
+                return {
+                    success: false,
+                    syncedCount: 0,
+                    message: `${targetItems.length} ítems resguardados offline; se enviarán al recuperar conexión.`
+                };
             }
 
-            // Marcar todos los ítems locales como sincronizados
-            const updatedItems = items.map(it => ({ ...it, isSynced: true }));
-            await collectorDb.inventories.bulkPut(updatedItems);
+            let syncedTotal = 0;
+            const chunks = chunkArray(targetItems, 100);
+
+            for (const batch of chunks) {
+                if (!isNetworkOnline()) break;
+
+                const dbPayload = batch.map(item => ({
+                    id: item.id,
+                    branch_name: branchName,
+                    laboratory: laboratory,
+                    ean: item.ean,
+                    name: item.name,
+                    quantity: item.systemQuantity,
+                    counted_quantity: item.countedQuantity,
+                    cost: item.cost,
+                    category: item.category || 'Varios',
+                    status: item.status,
+                    id_producto: item.id_producto,
+                    created_at: item.updatedAt
+                }));
+
+                await withNetworkRetry(async () => {
+                    const { error } = await (supabase as any)
+                        .from('inventories')
+                        .upsert(dbPayload, { onConflict: 'branch_name,laboratory,ean' });
+                    if (error) throw error;
+                }, { maxAttempts: 2, label: `collectorSync:${branchName}/${laboratory}` });
+
+                // Confirmar en IndexedDB chunk por chunk para preservar progreso parcial si cae la red
+                await collectorDb.inventories.bulkPut(batch.map(it => ({ ...it, isSynced: true })));
+                syncedTotal += batch.length;
+            }
 
             const sessionKey = `${normalizeString(branchName)}_${normalizeString(laboratory)}`;
-            await collectorDb.sessions.update(sessionKey, { lastSyncedAt: new Date().toISOString() });
+            await collectorDb.sessions.update(sessionKey, { lastSyncedAt: new Date().toISOString() }).catch(() => {});
 
-            return { success: true, syncedCount: items.length };
+            if (syncedTotal < targetItems.length) {
+                return {
+                    success: false,
+                    syncedCount: syncedTotal,
+                    message: `Sincronizados ${syncedTotal}/${targetItems.length}; los restantes se enviarán al reconectar.`
+                };
+            }
+
+            return { success: true, syncedCount: syncedTotal };
         } catch (err: any) {
             console.error("[CollectorDB] Sync failed:", err);
             return { success: false, syncedCount: 0, message: err.message || "Error al conectar con Supabase" };
         }
+    },
+
+    // 6. Cantidad de escaneos offline pendientes de envío (opcionalmente filtrado)
+    async getPendingCount(branchName?: string, laboratory?: string): Promise<number> {
+        const all = branchName && laboratory
+            ? await collectorDb.inventories.where('[branch_name+laboratory]').equals([branchName, laboratory]).toArray()
+            : await collectorDb.inventories.toArray();
+        return all.filter(it => !it.isSynced).length;
+    },
+
+    // 7. Vaciar automáticamente todos los escaneos pendientes al volver la conexión
+    async syncAllPendingScans(): Promise<{ totalSynced: number; failedLabs: number }> {
+        if (!isNetworkOnline()) return { totalSynced: 0, failedLabs: 0 };
+
+        const allItems = await collectorDb.inventories.toArray();
+        const pendingPairs = new Map<string, { branchName: string; laboratory: string }>();
+
+        for (const item of allItems) {
+            if (!item.isSynced) {
+                const key = `${item.branch_name}\0${item.laboratory}`;
+                if (!pendingPairs.has(key)) {
+                    pendingPairs.set(key, { branchName: item.branch_name, laboratory: item.laboratory });
+                }
+            }
+        }
+
+        let totalSynced = 0;
+        let failedLabs = 0;
+        for (const pair of pendingPairs.values()) {
+            const res = await collectorOfflineService.syncPendingScans(pair.branchName, pair.laboratory);
+            totalSynced += res.syncedCount;
+            if (!res.success) failedLabs++;
+        }
+
+        return { totalSynced, failedLabs };
     }
 };
+
+if (typeof window !== 'undefined') {
+    registerReconnectWakeup(() => {
+        void collectorOfflineService.syncAllPendingScans();
+    });
+}

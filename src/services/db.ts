@@ -4,12 +4,16 @@ import Dexie, { Table } from 'dexie';
 export interface PendingAction {
     id?: number;
     type: 'create' | 'update' | 'delete';
-    entity: 'session' | 'item' | 'product' | 'device_file';
+    entity: 'session' | 'item' | 'product' | 'device_file' | 'location' | 'serial' | 'batch_export';
     data: any; // The payload to send
     timestamp: number;
     status: 'pending' | 'syncing' | 'failed' | 'success';
     retries: number;
     error?: string;
+    dedupeKey?: string;
+    nextRetryAt?: number;
+    lastAttemptAt?: number;
+    permanentError?: boolean;
 }
 
 export interface LocalSession {
@@ -135,6 +139,14 @@ export class FarmaplusDB extends Dexie {
             locations: '++id, [session_id+location_tag], status',
             precount_products: 'ean, name, session_id, id_producto, [session_id+ean], [session_id+id_producto]',
             pendingActions: '++id, status, timestamp, entity'
+        });
+
+        this.version(12).stores({
+            sessions: 'id, status, start_time, synced, user_id, branch_id, sync_pin',
+            items: 'id, session_id, ean, [session_id+ean], [session_id+ean+device_id], [session_id+location_tag], synced, id_producto, device_id, scanned_by, location_tag',
+            locations: '++id, [session_id+location_tag], status',
+            precount_products: 'ean, name, session_id, id_producto, [session_id+ean], [session_id+id_producto]',
+            pendingActions: '++id, status, timestamp, entity, dedupeKey, nextRetryAt'
         });
     }
 }

@@ -2,6 +2,7 @@
 
 import { supabase } from '@/integrations/supabase/client';
 import { normalizeString } from '@/lib/utils';
+import { fetchAllSupabasePages } from './supabaseHelpers';
 
 export interface Product {
     ean: string;
@@ -14,20 +15,21 @@ export interface Product {
     id_producto?: string;
 }
 
-// Get all products from Supabase
+// Get all products from Supabase (paginated to bypass 1000-row PostgREST cap)
 export async function getAllProducts(): Promise<Product[]> {
     try {
-        const { data, error } = await supabase
-            .from('products')
-            .select('*')
-            .order('name', { ascending: true });
+        const data = await fetchAllSupabasePages<any>(
+            (from, to) => supabase
+                .from('products')
+                .select('*')
+                .order('name', { ascending: true })
+                .order('ean', { ascending: true })
+                .range(from, to),
+            1000,
+            'getAllProducts'
+        );
 
-        if (error) {
-            console.error('Error fetching products:', error);
-            return [];
-        }
-
-        return (data || []).map(item => ({
+        return data.map(item => ({
             ean: item.ean,
             name: item.name,
             cost: item.cost || 0,
@@ -339,20 +341,21 @@ export async function getProductCountByLab(labName: string, category?: string): 
     }
 }
 
-// Get count of laboratories per branch
+// Get count of laboratories per branch (paginated to bypass 1000-row cap)
 export async function getAllBranchLabCounts(): Promise<Record<string, number>> {
     try {
-        const { data, error } = await supabase
-            .from('branch_laboratories')
-            .select('branch_name');
-
-        if (error) {
-            console.error('Error fetching branch lab counts:', error);
-            return {};
-        }
+        const data = await fetchAllSupabasePages<any>(
+            (from, to) => supabase
+                .from('branch_laboratories')
+                .select('branch_name')
+                .order('branch_name', { ascending: true })
+                .range(from, to),
+            1000,
+            'getAllBranchLabCounts'
+        );
 
         const counts: Record<string, number> = {};
-        (data || []).forEach(item => {
+        data.forEach(item => {
             counts[item.branch_name] = (counts[item.branch_name] || 0) + 1;
         });
 

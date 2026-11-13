@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { fetchAllSupabasePages } from './supabaseHelpers';
 
 export interface ExpirationSession {
     id: string;
@@ -198,27 +199,33 @@ export async function deleteExpirationItem(id: string): Promise<void> {
 }
 
 export async function getExpirationItemsBySession(sessionId: string): Promise<ExpirationItem[]> {
-    const { data, error } = await supabase
-        .from('expiration_items')
-        .select('*')
-        .eq('session_id', sessionId);
-
-    if (error) throw error;
+    const data = await fetchAllSupabasePages<any>(
+        (from, to) => supabase
+            .from('expiration_items')
+            .select('*')
+            .eq('session_id', sessionId)
+            .order('id', { ascending: true })
+            .range(from, to),
+        1000,
+        'getExpirationItemsBySession'
+    );
 
     return data.map(mapItemFromDB);
 }
 
 // Updated to optionally filter by branch (for SmartAnalystWidget)
 export async function getAllExpirationItems(branchName?: string): Promise<ExpirationItem[]> {
-    let query = supabase.from('expiration_items').select('*');
-
-    if (branchName) {
-        query = query.eq('branch_name', branchName);
-    }
-
-    const { data, error } = await query;
-
-    if (error) throw error;
+    const data = await fetchAllSupabasePages<any>(
+        (from, to) => {
+            let query = supabase.from('expiration_items').select('*');
+            if (branchName) {
+                query = query.eq('branch_name', branchName);
+            }
+            return query.order('id', { ascending: true }).range(from, to);
+        },
+        1000,
+        'getAllExpirationItems'
+    );
 
     return data.map(mapItemFromDB);
 }

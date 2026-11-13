@@ -1,7 +1,9 @@
 import { supabase } from '@/integrations/supabase/client';
 import { normalizeString } from '@/lib/utils';
-import { db, LocalItem } from '@/services/db';
+import { db } from '@/services/db';
 import { getDeviceId, getDeviceName } from '@/services/deviceTelemetry';
+import { syncManager } from '@/services/syncManager';
+import { chunkArray, isNetworkOnline, withNetworkRetry } from '@/services/supabaseHelpers';
 
 export interface SendBatchPayload {
     branchName: string;
@@ -133,120 +135,185 @@ export const preCountExportService = {
         const totalUnits = items.reduce((acc, it) => acc + (Number(it.quantity) || 1), 0);
         const totalSkus = new Set(items.map(it => it.ean)).size;
 
-        // 2. Persistir directamente los productos en precount_items para la tabla maestra del Admin
-        if (sessionId) {
-            try {
-                const itemsToUpsert = items.map(item => ({
-                    id: item.id || crypto.randomUUID(),
-                    session_id: sessionId,
-                    ean: item.ean,
-                    id_producto: item.id_producto || null,
-                    product_name: item.productName || `Producto ${item.ean}`,
-                    quantity: Number(item.quantity) || 1,
-                    scanned_at: new Date().toISOString(),
-                    device_id: deviceId,
-                    device_name: devName,
-                    location_tag: item.sector || sectorOrLab || 'General'
+        const itemsToUpsert = sessionId
+            ? items.map(item => ({
+                id: item.id || crypto.randomUUID(),
+                session_id: sessionId,
+                ean: item.ean,
+                id_producto: item.id_producto || null,
+                product_name: item.productName || `Producto ${item.ean}`,
+                quantity: Number(item.quantity) || 1,
+                scanned_at: new Date().toISOString(),
+                device_id: deviceId,
+                device_name: devName,
+                location_tag: item.sector || sectorOrLab || 'General'
+            }))
+            : [];
+
+        const deviceFileRow = sessionId
+            ? {
+                session_id: sessionId,
+                device_id: deviceId,
+                device_name: devName,
+                filename: fileName,
+                content: fileContent
+            }
+            : undefined;
+
+        const auditLogPayload = {
+            action: 'PRECOUNT_BATCH_SUBMITTED',
+            entity_type: 'precount_batch',
+            branch_id: cleanBranch,
+            details: {
+                file_name: fileName,
+                inventory_title: inventoryTitle,
+                sector: sectorOrLab,
+                branch_name: branchName,
+                device_id: deviceId,
+                device_name: devName,
+                total_units: totalUnits,
+                total_skus: totalSkus,
+                content: fileContent,
+                session_id: sessionId,
+                sent_at: new Date().toISOString(),
+                items_sample: items.slice(0, 50).map(i => ({
+                    ean: i.ean,
+                    qty: i.quantity,
+                    name: i.productName || ''
+                }))
+            }
+        };
+
+        const notificationPayload = {
+            user_id: 'admin_broadcast',
+            type: 'inventory_batch',
+            category: 'precount',
+            title: `Lote Recibido - ${branchName}`,
+            message: `Se enviaron ${totalUnits} un. (${totalSkus} SKUs) correspondientes a "${inventoryTitle}" (${sectorOrLab})`,
+            is_read: false,
+            metadata: {
+                file_name: fileName,
+                branch_name: branchName,
+                sector: sectorOrLab,
+                total_units: totalUnits,
+                total_skus: totalSkus,
+                device_id: deviceId
+            }
+        };
+
+        // 2. Respaldo .txt local inmediato
+        preCountExportService.downloadLocalTxt(fileName, items);
+
+        // Si está offline, encolar el lote completo en IndexedDB para envío automático al reconectar
+        if (!isNetworkOnline()) {
+            await syncManager.addToQueue({
+                type: 'create',
+                entity: 'batch_export',
+                data: {
+                    sessionId,
+                    fileName,
+                    itemsToUpsert,
+                    deviceFileRow,
+                    auditLogPayload,
+                    notificationPayload
+                }
+            }, { skipFlush: true });
+
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('precount:batch_sent', {
+                    detail: { fileName, totalUnits, totalSkus, sectorOrLab, queuedOffline: true }
                 }));
-
-                // Enviar en bloques de 100
-                for (let i = 0; i < itemsToUpsert.length; i += 100) {
-                    const chunk = itemsToUpsert.slice(i, i + 100);
-                    const { error: upsertErr } = await (supabase as any)
-                        .from('precount_items')
-                        .upsert(chunk, { onConflict: 'id' });
-                    if (upsertErr) {
-                        console.warn('[preCountExportService] Error en upsert de precount_items:', upsertErr);
-                    }
-                }
-                console.log(`[preCountExportService] ${itemsToUpsert.length} items sincronizados a precount_items (${devName})`);
-            } catch (upsertEx) {
-                console.error('[preCountExportService] Error sincronizando a precount_items:', upsertEx);
             }
-
-            // Subir archivo de respaldo a precount_device_files
-            try {
-                await (supabase as any)
-                    .from('precount_device_files')
-                    .insert({
-                        session_id: sessionId,
-                        device_id: deviceId,
-                        device_name: devName,
-                        filename: fileName,
-                        content: fileContent
-                    });
-            } catch (fErr) {
-                console.warn('[preCountExportService] Error guardando en precount_device_files:', fErr);
-            }
-        }
-
-        // 3. Persistir en la tabla de auditoría / batches / notificaciones de Supabase
-        try {
-            // Registrar auditoría de envío para que el admin lo reciba
-            await supabase.from('audit_logs').insert({
-                action: 'PRECOUNT_BATCH_SUBMITTED',
-                entity_type: 'precount_batch',
-                branch_id: cleanBranch,
-                details: {
-                    file_name: fileName,
-                    inventory_title: inventoryTitle,
-                    sector: sectorOrLab,
-                    branch_name: branchName,
-                    device_id: deviceId,
-                    device_name: devName,
-                    total_units: totalUnits,
-                    total_skus: totalSkus,
-                    content: fileContent,
-                    session_id: sessionId,
-                    sent_at: new Date().toISOString(),
-                    items_sample: items.slice(0, 50).map(i => ({
-                        ean: i.ean,
-                        qty: i.quantity,
-                        name: i.productName || ''
-                    }))
-                }
-            });
-
-            // 3. Crear notificación para administradores
-            await supabase.from('notifications').insert({
-                user_id: 'admin_broadcast',
-                type: 'inventory_batch',
-                category: 'precount',
-                title: `Lote Recibido - ${branchName}`,
-                message: `Se enviaron ${totalUnits} un. (${totalSkus} SKUs) correspondientes a "${inventoryTitle}" (${sectorOrLab})`,
-                is_read: false,
-                metadata: {
-                    file_name: fileName,
-                    branch_name: branchName,
-                    sector: sectorOrLab,
-                    total_units: totalUnits,
-                    total_skus: totalSkus,
-                    device_id: deviceId
-                }
-            });
-
-            // 4. Si la sesión está activa en Dexie, marcar ítems como sincronizados
-            if (sessionId) {
-                try {
-                    await db.items.where('session_id').equals(sessionId).modify({ synced: 1 });
-                } catch {}
-            }
-
-            // 5. Descargar automáticamente el archivo .txt local de respaldo
-            preCountExportService.downloadLocalTxt(fileName, items);
-
-            // 6. Notificar a otros componentes locales
-            window.dispatchEvent(new CustomEvent('precount:batch_sent', {
-                detail: { fileName, totalUnits, totalSkus, sectorOrLab }
-            }));
-
             return { success: true, fileName };
-        } catch (err: any) {
-            console.error('[ExportService] Error al enviar lote a Supabase:', err);
-            // Si falla la red, al menos garantizar la descarga del archivo local
-            preCountExportService.downloadLocalTxt(fileName, items);
-            throw err;
         }
+
+        // 3. Envío online verificando errores en cada tabla y encolando cualquier parte fallida
+        let itemsFailed = false;
+        let deviceFileFailed = false;
+        let auditFailed = false;
+        let notificationFailed = false;
+
+        if (sessionId && itemsToUpsert.length > 0) {
+            try {
+                for (const chunk of chunkArray(itemsToUpsert, 100)) {
+                    await withNetworkRetry(async () => {
+                        const { error: upsertErr } = await (supabase as any)
+                            .from('precount_items')
+                            .upsert(chunk, { onConflict: 'id' });
+                        if (upsertErr) throw upsertErr;
+                    }, { maxAttempts: 2, label: 'sendBatchToAdmin:items' });
+                }
+                await db.items.where('session_id').equals(sessionId).modify({ synced: 1 }).catch(() => {});
+            } catch (upsertEx) {
+                itemsFailed = true;
+                console.error('[preCountExportService] Error sincronizando a precount_items (encolado para reintento):', upsertEx);
+            }
+        }
+
+        if (deviceFileRow) {
+            try {
+                await withNetworkRetry(async () => {
+                    const { error: delErr } = await (supabase as any)
+                        .from('precount_device_files')
+                        .delete()
+                        .eq('session_id', sessionId)
+                        .eq('filename', fileName);
+                    if (delErr) throw delErr;
+                    const { error: insErr } = await (supabase as any)
+                        .from('precount_device_files')
+                        .insert(deviceFileRow);
+                    if (insErr) throw insErr;
+                }, { maxAttempts: 2, label: 'sendBatchToAdmin:device_file' });
+            } catch (fErr) {
+                deviceFileFailed = true;
+                console.warn('[preCountExportService] Error guardando en precount_device_files (encolado):', fErr);
+            }
+        }
+
+        try {
+            const { error: auditErr } = await supabase.from('audit_logs').insert(auditLogPayload);
+            if (auditErr) throw auditErr;
+        } catch (auditEx) {
+            auditFailed = true;
+            console.warn('[preCountExportService] Error guardando audit_logs (encolado):', auditEx);
+        }
+
+        try {
+            const { error: notifErr } = await supabase.from('notifications').insert(notificationPayload);
+            if (notifErr) throw notifErr;
+        } catch (notifEx) {
+            notificationFailed = true;
+            console.warn('[preCountExportService] Error guardando notifications (encolado):', notifEx);
+        }
+
+        if (itemsFailed || deviceFileFailed || auditFailed || notificationFailed) {
+            await syncManager.addToQueue({
+                type: 'create',
+                entity: 'batch_export',
+                data: {
+                    sessionId,
+                    fileName,
+                    itemsToUpsert: itemsFailed ? itemsToUpsert : [],
+                    deviceFileRow: deviceFileFailed ? deviceFileRow : undefined,
+                    auditLogPayload: auditFailed ? auditLogPayload : undefined,
+                    notificationPayload: notificationFailed ? notificationPayload : undefined
+                }
+            });
+        }
+
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('precount:batch_sent', {
+                detail: {
+                    fileName,
+                    totalUnits,
+                    totalSkus,
+                    sectorOrLab,
+                    queuedOffline: itemsFailed || deviceFileFailed || auditFailed || notificationFailed
+                }
+            }));
+        }
+
+        return { success: true, fileName };
     },
 
     /**

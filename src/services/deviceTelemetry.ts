@@ -3,6 +3,7 @@ import { getDeviceId, getDeviceName } from '@/services/preCountDB';
 import { isTauriEnvironment } from '@/services/mysqlTauriBridge';
 import { getFullSectorName } from '@/constants/farmaplusSectors';
 import { db } from '@/services/db';
+import { isNetworkOnline } from '@/services/supabaseHelpers';
 
 export { getDeviceId, getDeviceName };
 
@@ -35,6 +36,7 @@ let sessionStartTime = Date.now();
 let knownLocations: Map<string, number> = new Map(); // location_tag -> unitsCount
 let lastDbUpsertTime = 0;
 let lastDbLocation: string | null = null;
+let lastDbSessionId: string | null = null;
 let announcedJoinSessionId: string | null = null;
 
 export function cleanupTelemetryChannel() {
@@ -53,6 +55,7 @@ export function resetTelemetrySession() {
     knownLocations.clear();
     lastDbUpsertTime = 0;
     lastDbLocation = null;
+    lastDbSessionId = null;
     cleanupTelemetryChannel();
 }
 
@@ -94,6 +97,10 @@ let telemetryChannel: any = null;
 let telemetrySessionId: string | null = null;
 
 export async function getOrInitTelemetryChannel(sessionId: string) {
+    if (!sessionId || !isNetworkOnline()) {
+        return null;
+    }
+
     if (telemetryChannel && telemetrySessionId === sessionId && (telemetryChannel.state === 'joined' || telemetryChannel.state === 'joining')) {
         return telemetryChannel;
     }
@@ -126,6 +133,10 @@ export async function getOrInitTelemetryChannel(sessionId: string) {
                 await new Promise<void>((resolve) => {
                     existing.subscribe((status: string) => {
                         if (status === 'SUBSCRIBED') resolve();
+                        if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+                            if (telemetryChannel === existing) telemetryChannel = null;
+                            resolve();
+                        }
                     });
                     setTimeout(resolve, 1500);
                 });
@@ -135,16 +146,29 @@ export async function getOrInitTelemetryChannel(sessionId: string) {
     }
 
     telemetrySessionId = sessionId;
-    telemetryChannel = supabase.channel(`precount_presence:${sessionId}`, {
+    const channel = supabase.channel(`precount_presence:${sessionId}`, {
         config: {
             broadcast: { self: true },
             presence: { key: getDeviceId() }
         }
     });
+    telemetryChannel = channel;
 
     await new Promise<void>((resolve) => {
-        telemetryChannel.subscribe((status: string) => {
-            if (status === 'SUBSCRIBED') resolve();
+        channel.subscribe((status: string) => {
+            if (status === 'SUBSCRIBED') {
+                resolve();
+            } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+                // Limpiar referencia para permitir reconexión limpia en el siguiente latido
+                if (telemetryChannel === channel) {
+                    telemetryChannel = null;
+                    announcedJoinSessionId = null;
+                }
+                try {
+                    supabase.removeChannel(channel);
+                } catch {}
+                resolve();
+            }
         });
         setTimeout(resolve, 1500);
     });
@@ -154,7 +178,7 @@ export async function getOrInitTelemetryChannel(sessionId: string) {
 
 /**
  * Obtiene el resumen cronológico exacto de sectores escaneados desde Dexie db.items.
- * Ordena estrictamente del sector más recientemente escaneado/guardado al más antiguo (igual que la tabla).
+ * Filtra por terminal en una sola pasada lineal O(N) antes de ordenar únicamente los sectores.
  */
 export async function getOrderedSectorSummary(sessionId: string, targetDeviceId?: string): Promise<{
     orderedLocations: Array<{ code: string; count: number; lastScanned: number }>;
@@ -168,47 +192,34 @@ export async function getOrderedSectorSummary(sessionId: string, targetDeviceId?
         const myDeviceId = (targetDeviceId || getDeviceId() || '').toLowerCase();
         const myDeviceName = (typeof window !== 'undefined' ? (localStorage.getItem('precount_device_name') || localStorage.getItem('precount_user_name') || '') : '').toLowerCase().trim();
 
-        let allItems = await db.items
+        const rawItems = await db.items
             .where('session_id')
             .equals(sessionId)
             .toArray();
-
-        allItems.sort((a, b) => {
-            const timeA = a.scanned_at ? new Date(a.scanned_at).getTime() : 0;
-            const timeB = b.scanned_at ? new Date(b.scanned_at).getTime() : 0;
-            return timeB - timeA;
-        });
-
-        // Filtrar exclusivamente los items correspondientes a este dispositivo / terminal
-        allItems = allItems.filter(rec => {
-            const recDevId = (rec.device_id || '').toLowerCase();
-            const recDevName = (rec.device_name || '').toLowerCase();
-            const recScannedBy = (rec.scanned_by || '').toLowerCase();
-
-            if (recDevId && (recDevId === myDeviceId || myDeviceId.includes(recDevId) || recDevId.includes(myDeviceId))) {
-                return true;
-            }
-            if (myDeviceName && recDevName && (recDevName === myDeviceName || recDevName.includes(myDeviceName) || myDeviceName.includes(recDevName))) {
-                return true;
-            }
-            if (!recDevId && !recDevName.includes('zebra') && !recScannedBy.includes('zebra')) {
-                return true;
-            }
-            return false;
-        });
 
         const sectorMap = new Map<string, { count: number; lastScanned: number }>();
         let totalUnits = 0;
         const skusSet = new Set<string>();
 
-        for (const item of allItems) {
-            const loc = (item.location_tag || (item as any).sector || '').trim().toUpperCase();
-            const qty = Number(item.quantity) || 1;
+        for (const rec of rawItems) {
+            const recDevId = (rec.device_id || '').toLowerCase();
+            const recDevName = (rec.device_name || '').toLowerCase();
+            const recScannedBy = (rec.scanned_by || '').toLowerCase();
+
+            const matchesDevice =
+                (recDevId && (recDevId === myDeviceId || myDeviceId.includes(recDevId) || recDevId.includes(myDeviceId))) ||
+                (myDeviceName && recDevName && (recDevName === myDeviceName || recDevName.includes(myDeviceName) || myDeviceName.includes(recDevName))) ||
+                (!recDevId && !recDevName.includes('zebra') && !recScannedBy.includes('zebra'));
+
+            if (!matchesDevice) continue;
+
+            const loc = (rec.location_tag || (rec as any).sector || '').trim().toUpperCase();
+            const qty = Number(rec.quantity) || 1;
             totalUnits += qty;
-            if (item.ean) skusSet.add(item.ean);
+            if (rec.ean) skusSet.add(rec.ean);
 
             if (loc) {
-                const time = item.scanned_at ? new Date(item.scanned_at).getTime() : 0;
+                const time = rec.scanned_at ? new Date(rec.scanned_at).getTime() : 0;
                 const existing = sectorMap.get(loc);
                 if (!existing) {
                     sectorMap.set(loc, { count: qty, lastScanned: time });
@@ -219,7 +230,7 @@ export async function getOrderedSectorSummary(sessionId: string, targetDeviceId?
             }
         }
 
-        // Ordenar del más recientemente escaneado al más antiguo (idéntico a la tabla de productos)
+        // Ordenar únicamente los sectores (~5-30) del más recientemente escaneado al más antiguo
         const orderedLocations = Array.from(sectorMap.entries())
             .sort((a, b) => b[1].lastScanned - a[1].lastScanned)
             .map(([code, data]) => ({
@@ -431,27 +442,66 @@ export async function emitDeviceTelemetry(options: {
         console.warn('[Telemetry] Error enviando telemetría a Supabase:', err);
     }
 
-    // 4. Actualizar tabla precount_connected_devices en Supabase con throttling (máx 1 vez cada 15s salvo cambio de sector)
-    const nowMs = Date.now();
-    const locChanged = (activeLoc || null) !== lastDbLocation;
-    if (locChanged || nowMs - lastDbUpsertTime >= 15000) {
-        lastDbUpsertTime = nowMs;
-        lastDbLocation = activeLoc || null;
-        try {
-            await (supabase as any).from('precount_connected_devices').upsert({
-                session_id: sessionId,
-                device_id: deviceId,
-                device_name: telemetry.userName,
-                device_type: telemetry.deviceType,
-                device_model: telemetry.deviceModel,
-                battery_level: telemetry.batteryLevel,
-                is_charging: telemetry.isCharging,
-                current_location: activeLoc || null,
-                last_seen: new Date().toISOString()
-            });
-        } catch (dbErr) {
-            console.debug('[Telemetry] Error actualizando precount_connected_devices:', dbErr);
+    // 4. Actualizar tabla precount_connected_devices en Supabase con throttling por sesión y verificación de error
+    if (isNetworkOnline()) {
+        const nowMs = Date.now();
+        const sessionChanged = sessionId !== lastDbSessionId;
+        const locChanged = (activeLoc || null) !== lastDbLocation;
+        if (sessionChanged || locChanged || nowMs - lastDbUpsertTime >= 15000) {
+            lastDbSessionId = sessionId;
+            lastDbUpsertTime = nowMs;
+            lastDbLocation = activeLoc || null;
+            try {
+                const { error: dbErr } = await (supabase as any)
+                    .from('precount_connected_devices')
+                    .upsert({
+                        session_id: sessionId,
+                        device_id: deviceId,
+                        device_name: telemetry.userName,
+                        device_type: telemetry.deviceType,
+                        device_model: telemetry.deviceModel,
+                        battery_level: telemetry.batteryLevel,
+                        is_charging: telemetry.isCharging,
+                        current_location: activeLoc || null,
+                        last_seen: new Date().toISOString()
+                    }, { onConflict: 'device_id,session_id' });
+                if (dbErr) {
+                    console.debug('[Telemetry] Error upsert precount_connected_devices:', dbErr);
+                }
+            } catch (dbErr) {
+                console.debug('[Telemetry] Error actualizando precount_connected_devices:', dbErr);
+            }
         }
+    }
+}
+
+/**
+ * Emite una notificación instantánea por WebSocket Realtime (<50ms)
+ * cuando el estado de recuento cambia ('waiting' | 'started' | 'idle').
+ */
+export async function broadcastRecountStateChange(sessionId: string, payload: {
+    status: 'idle' | 'waiting' | 'started';
+    started_at?: string;
+    updated_at?: string;
+    batch_id?: string;
+    total_diffs?: number;
+}): Promise<void> {
+    if (!sessionId || !isNetworkOnline()) return;
+    try {
+        const channel = await getOrInitTelemetryChannel(sessionId);
+        if (channel) {
+            await channel.send({
+                type: 'broadcast',
+                event: 'recount_state_change',
+                payload: {
+                    ...payload,
+                    session_id: sessionId,
+                    timestamp: Date.now()
+                },
+            });
+        }
+    } catch (err) {
+        console.warn('[Telemetry] Error broadcastRecountStateChange:', err);
     }
 }
 
@@ -469,7 +519,7 @@ export async function broadcastSectorStatusChange(sessionId: string, payload: {
     opened_at?: string;
     units?: number;
 }): Promise<void> {
-    if (!sessionId) return;
+    if (!sessionId || !isNetworkOnline()) return;
     try {
         const channel = await getOrInitTelemetryChannel(sessionId);
         if (channel) {

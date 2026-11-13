@@ -3,6 +3,12 @@ import { syncManager } from './syncManager';
 import { supabase } from '@/integrations/supabase/client';
 import { isTauriEnvironment } from '@/services/mysqlTauriBridge';
 import { decompressGzipBase64ToJson } from '@/lib/compression';
+import {
+    fetchAllSupabasePages,
+    getErrorMessage,
+    isNetworkOnline,
+    withNetworkRetry
+} from './supabaseHelpers';
 
 // Device Identification Utility
 export const getDeviceId = () => {
@@ -160,10 +166,7 @@ export async function getActiveSessions(options?: { branchId?: string, role?: st
 
             let query: any = supabase
                 .from('precount_sessions')
-                .select(`
-                    *,
-                    items:precount_items(quantity)
-                `)
+                .select('*')
                 .eq('status', 'active');
             
             // Filter strictly by branch on server if branch user
@@ -171,9 +174,13 @@ export async function getActiveSessions(options?: { branchId?: string, role?: st
                 query = query.eq('branch_id', options.branchId);
             }
 
-            const { data: remoteSessions, error: sError } = await query;
+            const remoteSessions = await withNetworkRetry(async () => {
+                const { data, error } = await query;
+                if (error) throw error;
+                return data || [];
+            }, { maxAttempts: 2, label: 'getActiveSessions' });
 
-            if (!sError && remoteSessions) {
+            if (remoteSessions) {
                 const rawSessions = remoteSessions as any[];
                 const remoteIds = new Set(rawSessions.map(rs => rs.id));
                 // Filter out those we just deleted locally but haven't synced yet
@@ -191,14 +198,13 @@ export async function getActiveSessions(options?: { branchId?: string, role?: st
                     }
                 }
 
-                // Update local sessions with remote ones (simple merge and sync counts, preserving local master_catalog)
+                // Update local sessions with remote ones (preserving local master_catalog)
                 for (const rs of filteredRemote) {
-                    const { items: _items, ...sessionData } = rs;
                     const existingLocal = (localSessions.find(ls => ls.id === rs.id) || await db.sessions.get(rs.id)) as any;
 
                     await db.sessions.put({
                         ...existingLocal,
-                        ...sessionData,
+                        ...rs,
                         synced: 1,
                         master_catalog: existingLocal?.master_catalog || rs.master_catalog || [],
                         profile: existingLocal?.profile || rs.profile || 'sucursal',
@@ -239,24 +245,38 @@ export async function deleteSession(id: string): Promise<void> {
     await db.locations.where('session_id').equals(id).delete();
     await db.precount_products.where('session_id').equals(id).delete();
 
-    // 2. Cascade delete in Supabase if online
-    try {
-        const { supabase } = await import('@/integrations/supabase/client');
-        await (supabase as any).from('precount_connected_devices').delete().eq('session_id', id);
-        await (supabase as any).from('precount_location_status').delete().eq('session_id', id);
-        await (supabase as any).from('precount_device_files').delete().eq('session_id', id);
-        await (supabase as any).from('precount_items').delete().eq('session_id', id);
-        await (supabase as any).from('precount_sessions').delete().eq('id', id);
-    } catch (e) {
-        console.warn('[preCountDB] Remote delete failed or offline:', e);
-    }
-
-    // 3. Queue for Sync
+    // 2. Queue first so orphan child actions are purged and delete survives tab close / offline
     await syncManager.addToQueue({
         type: 'delete',
         entity: 'session',
         data: { id }
-    });
+    }, { skipFlush: isNetworkOnline() });
+
+    if (!isNetworkOnline()) {
+        return;
+    }
+
+    // 3. Best-effort immediate cascade delete in Supabase when online
+    try {
+        const childTables = [
+            'precount_connected_devices',
+            'precount_location_status',
+            'precount_device_files',
+            'precount_serials',
+            'precount_items'
+        ];
+        for (const table of childTables) {
+            const { error } = await (supabase as any).from(table).delete().eq('session_id', id);
+            if (error && String(error.code || '') !== '42P01') throw error;
+        }
+        const { error: sessErr } = await (supabase as any).from('precount_sessions').delete().eq('id', id);
+        if (sessErr) throw sessErr;
+
+        await db.pendingActions.where('dedupeKey').equals(`session:${id}`).delete();
+    } catch (e) {
+        console.warn('[preCountDB] Remote cascade delete deferred to SyncManager:', e);
+        void syncManager.processQueue();
+    }
 }
 
 export async function getActiveSession(): Promise<PreCountSession | null> {
@@ -613,80 +633,116 @@ export async function updatePreCountItem(id: string, updates: Partial<PreCountIt
     await db.items.update(id, { ...updates, synced: 0 });
     const item = await db.items.get(id);
 
-    // 2. Direct absolute update to Supabase if online (instant sync)
-    try {
-        const cleanUpdates: any = {};
-        if (updates.quantity !== undefined) cleanUpdates.quantity = updates.quantity;
-        if (updates.location_tag !== undefined) cleanUpdates.location_tag = updates.location_tag;
-        if (updates.product_name !== undefined) cleanUpdates.product_name = updates.product_name;
-        if (updates.id_producto !== undefined) cleanUpdates.id_producto = updates.id_producto;
+    const hasPendingCreate = (await db.pendingActions
+        .where('dedupeKey')
+        .equals(`item:${id}`)
+        .filter(a => a.type === 'create')
+        .count()) > 0;
 
-        const { error } = await supabase.from('precount_items').update(cleanUpdates).eq('id', id);
-        if (!error) {
-            await db.items.update(id, { synced: 1 });
-            await db.pendingActions.where('entity').equals('item').and(action => action.data?.id === id && action.type === 'update').delete();
-            return;
-        }
-    } catch (e) {
-        console.warn('Direct update to Supabase failed, queuing...', e);
-    }
-
-    // 3. Fallback to Queue Sync
+    // 2. Queue-before-send to guarantee zero lost edits if offline, pending create, or tab closes
     await syncManager.addToQueue({
         type: 'update',
         entity: 'item',
         data: item ? { ...item, ...updates } : { id, ...updates }
-    });
-}
+    }, { skipFlush: true });
 
-export async function deletePreCountItem(id: string): Promise<void> {
-    // 1. Delete from local IndexedDB
-    await db.items.delete(id);
-
-    // 2. Remove any pending un-synced actions for this item
-    await db.pendingActions.where('entity').equals('item').and(action => action.data?.id === id).delete();
-
-    // 3. Direct delete from Supabase if online
-    try {
-        const { error } = await supabase.from('precount_items').delete().eq('id', id);
-        if (!error) return;
-    } catch (e) {
-        console.warn('Direct delete failed, queuing...', e);
+    if (!isNetworkOnline() || hasPendingCreate || !item) {
+        if (isNetworkOnline()) {
+            void syncManager.processQueue();
+        }
+        return;
     }
 
-    // 4. Fallback to queue if offline or failed
-    await syncManager.addToQueue({
-        type: 'delete',
-        entity: 'item',
-        data: { id }
-    });
+    // 3. Direct verified update to Supabase when online and parent row already exists
+    if (!hasPendingCreate) {
+        try {
+            const cleanUpdates: any = {};
+            if (updates.quantity !== undefined) cleanUpdates.quantity = updates.quantity;
+            if (updates.location_tag !== undefined) cleanUpdates.location_tag = updates.location_tag;
+            if (updates.product_name !== undefined) cleanUpdates.product_name = updates.product_name;
+            if (updates.id_producto !== undefined) cleanUpdates.id_producto = updates.id_producto;
+
+            const { data: updatedRows, error } = await supabase
+                .from('precount_items')
+                .update(cleanUpdates)
+                .eq('id', id)
+                .select('id');
+
+            if (!error && updatedRows && updatedRows.length > 0) {
+                await db.items.update(id, { synced: 1 });
+                await db.pendingActions
+                    .where('dedupeKey')
+                    .equals(`item:${id}`)
+                    .filter(action => action.type === 'update' && action.status !== 'syncing')
+                    .delete();
+                return;
+            }
+        } catch (e) {
+            console.warn('[preCountDB] Direct update deferred to SyncManager:', e);
+        }
+    }
+
+    void syncManager.processQueue();
 }
 
-export async function deletePreCountItems(ids: string[]): Promise<void> {
+async function queueAndTryDeleteItems(ids: string[]): Promise<void> {
     if (!ids || ids.length === 0) return;
 
-    // 1. Bulk delete from local IndexedDB
+    const existingRows = await db.items.bulkGet(ids);
+    const wasSyncedMap = new Map<string, boolean>();
+    ids.forEach((id, idx) => {
+        wasSyncedMap.set(id, existingRows[idx]?.synced === 1);
+    });
+
     await db.items.bulkDelete(ids);
 
-    // 2. Remove any pending un-synced actions for these items
-    await db.pendingActions.where('entity').equals('item').and(action => ids.includes(action.data?.id)).delete();
-
-    // 3. Direct delete from Supabase in batch if online
-    try {
-        const { error } = await supabase.from('precount_items').delete().in('id', ids);
-        if (!error) return;
-    } catch (e) {
-        console.warn('Direct batch delete failed, queuing...', e);
-    }
-
-    // 4. Fallback to queue if offline or failed
+    // Encolar antes de llamar a Supabase para no perder borrados ante cierre abrupto u offline
     for (const id of ids) {
+        const wasSynced = wasSyncedMap.get(id) === true;
         await syncManager.addToQueue({
             type: 'delete',
             entity: 'item',
-            data: { id }
-        });
+            data: {
+                id,
+                _skipRemoteIfNeverSynced: !wasSynced
+            }
+        }, { skipFlush: true });
     }
+
+    if (!isNetworkOnline()) {
+        return;
+    }
+
+    const remoteIds = ids.filter(id => wasSyncedMap.get(id));
+    if (remoteIds.length === 0) {
+        return;
+    }
+
+    try {
+        const { error } = await supabase.from('precount_items').delete().in('id', remoteIds);
+        if (!error) {
+            const keys = remoteIds.map(id => `item:${id}`);
+            await db.pendingActions
+                .where('dedupeKey')
+                .anyOf(keys)
+                .filter(a => a.type === 'delete' && a.status !== 'syncing')
+                .delete();
+            return;
+        }
+    } catch (e) {
+        console.warn('[preCountDB] Direct delete deferred to SyncManager:', e);
+    }
+
+    void syncManager.processQueue();
+}
+
+export async function deletePreCountItem(id: string): Promise<void> {
+    if (!id) return;
+    await queueAndTryDeleteItems([id]);
+}
+
+export async function deletePreCountItems(ids: string[]): Promise<void> {
+    await queueAndTryDeleteItems(ids);
 }
 
 export async function getPreCountItemsBySessionId(sessionId: string): Promise<PreCountItem[]> {
@@ -727,32 +783,51 @@ export async function getSessionItems(sessionOrId: string | PreCountSession): Pr
 
 // --- Zonas / Ubicaciones ---
 
+async function upsertLocalLocationStatus(
+    sessionId: string,
+    normTag: string,
+    status: 'open' | 'closed',
+    closedAt?: string
+): Promise<void> {
+    const existing = await db.locations
+        .where('[session_id+location_tag]')
+        .equals([sessionId, normTag])
+        .first();
+    const payload = {
+        session_id: sessionId,
+        location_tag: normTag,
+        status,
+        ...(closedAt ? { closed_at: closedAt } : {})
+    };
+    if (existing?.id) {
+        await db.locations.update(existing.id, payload);
+    } else {
+        await db.locations.add(payload);
+    }
+}
+
 export async function getLocationStatus(sessionId: string, locationTag: string) {
+    const normTag = locationTag.trim().toUpperCase();
     // 1. Local check
     const local = await db.locations
         .where('[session_id+location_tag]')
-        .equals([sessionId, locationTag])
+        .equals([sessionId, normTag])
         .first();
     
     if (local) return local;
 
     // 2. Remote check if online
-    if (navigator.onLine) {
+    if (isNetworkOnline()) {
         const { data, error } = await (supabase as any)
             .from('precount_location_status')
             .select('*')
             .eq('session_id', sessionId)
-            .eq('location_tag', locationTag)
+            .eq('location_tag', normTag)
             .maybeSingle();
         
         if (data && !error) {
             const statusData = data as any;
-            await db.locations.put({
-                session_id: sessionId,
-                location_tag: locationTag,
-                status: statusData.status,
-                closed_at: statusData.closed_at
-            });
+            await upsertLocalLocationStatus(sessionId, normTag, statusData.status, statusData.closed_at);
             return statusData;
         }
     }
@@ -810,7 +885,7 @@ export async function claimOrValidateLocation(
     } catch {}
 
     // 2. Si hay conexión, ejecutar validación atómica por RPC en Supabase
-    if (navigator.onLine) {
+    if (isNetworkOnline()) {
         try {
             const { data, error } = await (supabase as any).rpc('claim_or_validate_location', {
                 p_session_id: sessionId,
@@ -823,13 +898,7 @@ export async function claimOrValidateLocation(
             if (!error && data) {
                 const res = data as ClaimLocationResult;
                 if (res.success) {
-                    // Guardar localmente como open
-                    await db.locations.put({
-                        session_id: sessionId,
-                        location_tag: normTag,
-                        status: 'open'
-                    });
-                    // Broadcast instantáneo por WebSocket a monitores
+                    await upsertLocalLocationStatus(sessionId, normTag, 'open');
                     import('./deviceTelemetry').then(({ broadcastSectorStatusChange }) => {
                         broadcastSectorStatusChange(sessionId, {
                             location_tag: normTag,
@@ -841,58 +910,54 @@ export async function claimOrValidateLocation(
                         }).catch(() => {});
                     });
                 } else if (res.code === 'ALREADY_CLOSED') {
-                    // Marcar localmente como cerrado
-                    await db.locations.put({
-                        session_id: sessionId,
-                        location_tag: normTag,
-                        status: 'closed',
-                        closed_at: res.closed_at || new Date().toISOString()
-                    });
+                    await upsertLocalLocationStatus(sessionId, normTag, 'closed', res.closed_at || new Date().toISOString());
                 }
                 return res;
             }
 
-            // Si el RPC falla porque la migración aún no se corrió en Supabase, fallback a toggle_precount_location
-            console.warn('[claimOrValidateLocation] Fallback a toggle_precount_location:', error);
-            await (supabase as any).rpc('toggle_precount_location', {
-                p_session_id: sessionId,
-                p_location_tag: normTag,
-                p_status: 'open'
-            });
-            await db.locations.put({
-                session_id: sessionId,
-                location_tag: normTag,
-                status: 'open'
-            });
-            import('./deviceTelemetry').then(({ broadcastSectorStatusChange }) => {
-                broadcastSectorStatusChange(sessionId, {
-                    location_tag: normTag,
-                    status: 'open',
-                    user_name: uName,
-                    device_name: dName,
-                    device_id: dId
-                }).catch(() => {});
-            });
-            return { success: true, code: 'GRANTED', location_tag: normTag };
+            // Fallback a toggle_precount_location solo si la función nueva no existe en la DB
+            const errCode = String((error as any)?.code || '');
+            const errMsg = getErrorMessage(error).toLowerCase();
+            if (errCode === 'PGRST202' || errCode === '42883' || errMsg.includes('could not find the function')) {
+                console.warn('[claimOrValidateLocation] Fallback a toggle_precount_location:', error);
+                const { error: fbErr } = await (supabase as any).rpc('toggle_precount_location', {
+                    p_session_id: sessionId,
+                    p_location_tag: normTag,
+                    p_status: 'open'
+                });
+                if (fbErr) throw fbErr;
+
+                await upsertLocalLocationStatus(sessionId, normTag, 'open');
+                import('./deviceTelemetry').then(({ broadcastSectorStatusChange }) => {
+                    broadcastSectorStatusChange(sessionId, {
+                        location_tag: normTag,
+                        status: 'open',
+                        user_name: uName,
+                        device_name: dName,
+                        device_id: dId
+                    }).catch(() => {});
+                });
+                return { success: true, code: 'GRANTED', location_tag: normTag };
+            }
+
+            if (error) throw error;
         } catch (err: any) {
-            console.error('[claimOrValidateLocation] Error:', err);
+            console.error('[claimOrValidateLocation] Error en red, resguardando en cola:', err);
         }
     }
 
-    // 3. Fallback Offline: Asignar en Dexie y encolar
-    await db.locations.put({
-        session_id: sessionId,
-        location_tag: normTag,
-        status: 'open'
-    });
+    // 3. Fallback Offline o fallo de red: Asignar en Dexie y encolar en entity: 'location'
+    await upsertLocalLocationStatus(sessionId, normTag, 'open');
     await syncManager.addToQueue({
         type: 'update',
-        entity: 'session',
+        entity: 'location',
         data: {
-            action: 'toggle_location',
             session_id: sessionId,
             location_tag: normTag,
-            status: 'open'
+            status: 'open',
+            user_name: uName,
+            device_id: dId,
+            device_name: dName
         }
     });
 
@@ -921,13 +986,8 @@ export async function closeLocationWithSync(
     const dName = deviceName || getDeviceName();
     const uName = operatorName || dName;
 
-    // 1. Actualizar Dexie local
-    await db.locations.put({
-        session_id: sessionId,
-        location_tag: normTag,
-        status: 'closed',
-        closed_at: now
-    });
+    // 1. Actualizar Dexie local sin duplicar filas
+    await upsertLocalLocationStatus(sessionId, normTag, 'closed', now);
 
     // 2. Broadcast instantáneo por WebSocket a monitores (<50ms)
     import('./deviceTelemetry').then(({ broadcastSectorStatusChange }) => {
@@ -942,8 +1002,21 @@ export async function closeLocationWithSync(
         }).catch(() => {});
     });
 
-    // 3. Sincronizar con Supabase
-    if (navigator.onLine) {
+    // 3. Encolar primero para garantizar recuperación si se pierde conexión o se cierra la pestaña
+    await syncManager.addToQueue({
+        type: 'update',
+        entity: 'location',
+        data: {
+            session_id: sessionId,
+            location_tag: normTag,
+            status: 'closed',
+            user_name: uName,
+            device_id: dId,
+            device_name: dName
+        }
+    }, { skipFlush: true });
+
+    if (isNetworkOnline()) {
         try {
             const { data, error } = await (supabase as any).rpc('close_precount_location', {
                 p_session_id: sessionId,
@@ -953,29 +1026,30 @@ export async function closeLocationWithSync(
                 p_device_name: dName
             });
 
-            if (error) {
-                // Fallback a toggle_precount_location si la migración aún no se ejecutó
-                await (supabase as any).rpc('toggle_precount_location', {
+            if (!error) {
+                await db.pendingActions.where('dedupeKey').equals(`location:${sessionId}:${normTag}`).delete();
+                return { success: true, closed_at: data?.closed_at || now };
+            }
+
+            const errCode = String((error as any).code || '');
+            const errMsg = getErrorMessage(error).toLowerCase();
+            if (errCode === 'PGRST202' || errCode === '42883' || errMsg.includes('could not find the function')) {
+                const { error: fbErr } = await (supabase as any).rpc('toggle_precount_location', {
                     p_session_id: sessionId,
                     p_location_tag: normTag,
                     p_status: 'closed'
                 });
+                if (!fbErr) {
+                    await db.pendingActions.where('dedupeKey').equals(`location:${sessionId}:${normTag}`).delete();
+                    return { success: true, closed_at: now };
+                }
+                throw fbErr;
             }
-            return { success: true, closed_at: data?.closed_at || now };
+            throw error;
         } catch (err) {
-            console.error('[closeLocationWithSync] Error en RPC:', err);
+            console.error('[closeLocationWithSync] Error en RPC, diferido a SyncManager:', err);
+            void syncManager.processQueue();
         }
-    } else {
-        await syncManager.addToQueue({
-            type: 'update',
-            entity: 'session',
-            data: {
-                action: 'toggle_location',
-                session_id: sessionId,
-                location_tag: normTag,
-                status: 'closed'
-            }
-        });
     }
 
     return { success: true, closed_at: now };
@@ -1028,14 +1102,14 @@ async function findLocalSessionByPin(pin: string): Promise<PreCountSession | nul
 }
 
 export async function registerConnectedDevice(sessionId: string, overrideDeviceName?: string): Promise<void> {
-    if (!sessionId) return;
+    if (!sessionId || !isNetworkOnline()) return;
     try {
         const deviceId = getDeviceId();
         const deviceName = (overrideDeviceName && overrideDeviceName.trim()) ? overrideDeviceName.trim() : getDeviceName();
         const isZebra = (typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent) && !isTauriEnvironment()) ||
             deviceName.toLowerCase().includes('zebra') ||
             deviceName.toLowerCase().includes('tc2');
-        await (supabase as any).from('precount_connected_devices').upsert({
+        const { error } = await (supabase as any).from('precount_connected_devices').upsert({
             session_id: sessionId,
             device_id: deviceId,
             device_name: deviceName,
@@ -1043,7 +1117,10 @@ export async function registerConnectedDevice(sessionId: string, overrideDeviceN
             device_model: isZebra ? 'Zebra TC22' : 'PC',
             status: 'online',
             last_seen: new Date().toISOString()
-        });
+        }, { onConflict: 'device_id,session_id' });
+        if (error) {
+            console.warn('[preCountDB] Error registrando dispositivo en Supabase:', error);
+        }
     } catch (devErr) {
         console.warn('[preCountDB] Error registrando dispositivo en Supabase:', devErr);
     }
@@ -1061,39 +1138,40 @@ export async function getSessionByPin(
     if (!cleanPin || cleanPin.length !== 6) return null;
 
     // 1. Si estamos sin conexión, buscar directamente en Dexie local
-    if (!navigator.onLine) {
+    if (!isNetworkOnline()) {
         return await findLocalSessionByPin(cleanPin);
     }
 
     try {
-        // 2. Consultar Supabase para encontrar la sesión activa con este PIN
-        const { data, error } = await (supabase as any)
-            .from('precount_sessions')
-            .select(`
-                *,
-                items:precount_items(quantity)
-            `)
-            .eq('sync_pin', cleanPin)
-            .eq('status', 'active')
-            .maybeSingle();
+        // 2. Consultar sesión sin join embebido truncado a 1000 filas
+        const sessionData = await withNetworkRetry(async () => {
+            const { data, error } = await (supabase as any)
+                .from('precount_sessions')
+                .select('*')
+                .eq('sync_pin', cleanPin)
+                .eq('status', 'active')
+                .maybeSingle();
+            if (error) throw error;
+            return data as any;
+        }, { maxAttempts: 2, label: 'getSessionByPin' });
 
-        if (error) {
-            console.error('Supabase error in getSessionByPin:', error);
-            // Fallback a Dexie si falla la red
-            return await findLocalSessionByPin(cleanPin);
-        }
-        
-        if (!data) {
+        if (!sessionData) {
             console.warn(`No session found in server for PIN: ${cleanPin}`);
-            // Fallback a Dexie
             return await findLocalSessionByPin(cleanPin);
         }
 
-        const sessionData = data as any;
-        
-        // Calcular totales de productos y unidades
-        const remoteTotalProducts = sessionData.items?.length || 0;
-        const remoteTotalUnits = sessionData.items?.reduce((sum: number, it: any) => sum + (it.quantity || 0), 0) || 0;
+        // Obtener totales reales sin límite de 1000 filas mediante get_session_summary RPC
+        let remoteTotalProducts = 0;
+        let remoteTotalUnits = 0;
+        try {
+            const { data: sumRows, error: sumErr } = await (supabase as any).rpc('get_session_summary', {
+                p_session_id: sessionData.id
+            });
+            if (!sumErr && Array.isArray(sumRows) && sumRows[0]) {
+                remoteTotalProducts = Number(sumRows[0].total_products) || 0;
+                remoteTotalUnits = Number(sumRows[0].total_units) || 0;
+            }
+        } catch {}
 
         let masterCatalog: MasterCatalogItem[] = sessionData.master_catalog || [];
         
@@ -1217,12 +1295,63 @@ export interface RecountResultSubmission {
     items: RecountResultItemSubmission[];
 }
 
+async function fetchMergedSessionItemsForRecount(sessionId: string): Promise<LocalItem[]> {
+    const localItems = await db.items.where('session_id').equals(sessionId).toArray();
+    if (!isNetworkOnline()) {
+        return localItems;
+    }
+
+    try {
+        const pendingDeletes = new Set(
+            (await db.pendingActions
+                .where('entity')
+                .equals('item')
+                .filter(a => a.type === 'delete')
+                .toArray()
+            ).map(a => a.data?.id).filter(Boolean)
+        );
+
+        const remoteItems = await fetchAllSupabasePages<any>(
+            (from, to) => supabase
+                .from('precount_items')
+                .select('*')
+                .eq('session_id', sessionId)
+                .order('id', { ascending: true })
+                .range(from, to),
+            1000,
+            'fetchMergedSessionItemsForRecount'
+        );
+
+        const merged = new Map<string, LocalItem>();
+        for (const loc of localItems) {
+            if (!pendingDeletes.has(loc.id)) {
+                merged.set(loc.id, loc);
+            }
+        }
+        for (const rem of remoteItems) {
+            if (!rem?.id || pendingDeletes.has(rem.id)) continue;
+            const existingLocal = merged.get(rem.id);
+            if (!existingLocal || existingLocal.synced !== 0) {
+                merged.set(rem.id, {
+                    ...(existingLocal || {}),
+                    ...rem,
+                    synced: 1
+                } as LocalItem);
+            }
+        }
+        return Array.from(merged.values());
+    } catch (err) {
+        console.warn('[preCountDB] Usando ítems locales para diferencias tras error de red:', err);
+        return localItems;
+    }
+}
+
 export async function getRecountDifferences(sessionId: string, includeUncountedCatalog: boolean = false): Promise<RecountProductDiff[]> {
     if (!sessionId) return [];
 
     try {
-        // 1. Obtener todos los items contados en esta sesión desde Dexie
-        const items = await db.items.where('session_id').equals(sessionId).toArray();
+        // 1. Obtener ítems completos de la sesión (combinando Dexie + Supabase paginado >1000 filas)
+        const items = await fetchMergedSessionItemsForRecount(sessionId);
 
         // 2. Obtener catálogo y productos de la sesión
         const sessionProducts = await db.precount_products.where('session_id').equals(sessionId).toArray();
@@ -1438,6 +1567,40 @@ export async function getRecountDifferences(sessionId: string, includeUncountedC
     }
 }
 
+export interface RecountSessionStateDetails {
+    status: 'idle' | 'waiting' | 'started';
+    started_at?: string;
+    updated_at?: string;
+    batch_id?: string;
+    total_diffs?: number;
+    created_at?: string;
+}
+
+async function writeRecountSessionStateRow(
+    sessionId: string,
+    payload: RecountSessionStateDetails
+): Promise<void> {
+    await withNetworkRetry(async () => {
+        const { error: delErr } = await (supabase as any)
+            .from('precount_device_files')
+            .delete()
+            .eq('session_id', sessionId)
+            .eq('filename', 'recount_session_state.json');
+        if (delErr) throw delErr;
+
+        const { error: insErr } = await (supabase as any)
+            .from('precount_device_files')
+            .insert({
+                session_id: sessionId,
+                device_id: 'system',
+                device_name: 'Admin PC',
+                filename: 'recount_session_state.json',
+                content: JSON.stringify(payload)
+            });
+        if (insErr) throw insErr;
+    }, { maxAttempts: 3, label: 'writeRecountSessionStateRow' });
+}
+
 export async function exportRecountDifferencesToCloud(sessionId: string): Promise<number> {
     const diffs = await getRecountDifferences(sessionId);
     if (!diffs || diffs.length === 0) return 0;
@@ -1447,31 +1610,36 @@ export async function exportRecountDifferencesToCloud(sessionId: string): Promis
         localStorage.setItem(`recount_differences_${sessionId}`, JSON.stringify(diffs));
     }
 
-    // Subir a Supabase precount_device_files
+    const fileRow = {
+        session_id: sessionId,
+        device_id: 'system',
+        device_name: 'Admin PC',
+        filename: 'recount_differences.json',
+        content: JSON.stringify(diffs)
+    };
+
+    if (!isNetworkOnline()) {
+        await syncManager.addToQueue({ type: 'create', entity: 'device_file', data: fileRow }, { skipFlush: true });
+        return diffs.length;
+    }
+
     try {
-        await (supabase as any)
-            .from('precount_device_files')
-            .delete()
-            .eq('session_id', sessionId)
-            .eq('filename', 'recount_differences.json');
+        await withNetworkRetry(async () => {
+            const { error: delErr } = await (supabase as any)
+                .from('precount_device_files')
+                .delete()
+                .eq('session_id', sessionId)
+                .eq('filename', 'recount_differences.json');
+            if (delErr) throw delErr;
 
-        const { error: fileErr } = await (supabase as any)
-            .from('precount_device_files')
-            .insert({
-                session_id: sessionId,
-                device_id: 'system',
-                device_name: 'Admin PC',
-                filename: 'recount_differences.json',
-                content: JSON.stringify(diffs)
-            });
-
-        if (fileErr) {
-            console.warn('[Supabase] Error subiendo recount_differences.json:', fileErr);
-        } else {
-            console.log('[Supabase] recount_differences.json subido con éxito:', diffs.length, 'productos');
-        }
+            const { error: fileErr } = await (supabase as any)
+                .from('precount_device_files')
+                .insert(fileRow);
+            if (fileErr) throw fileErr;
+        }, { maxAttempts: 2, label: 'exportRecountDifferencesToCloud' });
     } catch (e) {
-        console.warn('[Supabase] Excepción al subir recount_differences.json:', e);
+        console.warn('[Supabase] Error subiendo recount_differences.json, encolando en SyncManager:', e);
+        await syncManager.addToQueue({ type: 'create', entity: 'device_file', data: fileRow });
     }
 
     return diffs.length;
@@ -1479,7 +1647,8 @@ export async function exportRecountDifferencesToCloud(sessionId: string): Promis
 
 /**
  * Reparte los productos con diferencia de forma equitativa (EANs únicos, sin repetirse)
- * entre las terminales online (Zebras y celulares Web) y sube cada asignación a Supabase.
+ * entre las terminales online (Zebras y celulares Web) y sube primero las asignaciones
+ * verificando persistencia antes de pasar recount_session_state.json a 'started'.
  */
 export async function distributeRecountDifferencesToDevices(
     sessionId: string,
@@ -1491,6 +1660,7 @@ export async function distributeRecountDifferencesToDevices(
     }
 
     const now = new Date().toISOString();
+    const batchId = crypto.randomUUID();
     const assignments: Record<string, RecountDeviceAssignment> = {};
     for (const dev of devices) {
         assignments[dev.device_id] = {
@@ -1508,31 +1678,40 @@ export async function distributeRecountDifferencesToDevices(
         assignments[targetDevice.device_id].items.push(diffItem);
     });
 
-    // Limpiar asignaciones, estado y resultados anteriores de esta sesión
-    await (supabase as any)
-        .from('precount_device_files')
-        .delete()
-        .eq('session_id', sessionId)
-        .in('filename', ['recount_session_state.json', 'recount_assignments.json', 'recount_differences.json']);
-    await (supabase as any)
-        .from('precount_device_files')
-        .delete()
-        .eq('session_id', sessionId)
-        .like('filename', 'recount_differences_%');
-    await (supabase as any)
-        .from('precount_device_files')
-        .delete()
-        .eq('session_id', sessionId)
-        .like('filename', 'recount_result_%');
+    // Paso 1: Poner estado en 'waiting' ANTES de reemplazar archivos para evitar lecturas prematuras
+    await writeRecountSessionStateRow(sessionId, {
+        status: 'waiting',
+        batch_id: batchId,
+        updated_at: now,
+        total_diffs: diffs.length
+    });
 
-    const rowsToInsert: any[] = [
-        {
-            session_id: sessionId,
-            device_id: 'system',
-            device_name: 'Admin PC',
-            filename: 'recount_session_state.json',
-            content: JSON.stringify({ status: 'started', started_at: now })
-        },
+    // Paso 2: Limpiar asignaciones y resultados previos verificando errores
+    await withNetworkRetry(async () => {
+        const { error: delMasterErr } = await (supabase as any)
+            .from('precount_device_files')
+            .delete()
+            .eq('session_id', sessionId)
+            .in('filename', ['recount_assignments.json', 'recount_differences.json']);
+        if (delMasterErr) throw delMasterErr;
+
+        const { error: delPerDevErr } = await (supabase as any)
+            .from('precount_device_files')
+            .delete()
+            .eq('session_id', sessionId)
+            .like('filename', 'recount_differences_%');
+        if (delPerDevErr) throw delPerDevErr;
+
+        const { error: delResErr } = await (supabase as any)
+            .from('precount_device_files')
+            .delete()
+            .eq('session_id', sessionId)
+            .like('filename', 'recount_result_%');
+        if (delResErr) throw delResErr;
+    }, { maxAttempts: 3, label: 'distributeRecount:cleanup' });
+
+    // Paso 3: Subir PRIMERO recount_assignments.json + recount_differences_<deviceId>.json (sin 'started')
+    const assignmentRows: any[] = [
         {
             session_id: sessionId,
             device_id: 'system',
@@ -1541,6 +1720,7 @@ export async function distributeRecountDifferencesToDevices(
             content: JSON.stringify({
                 version: 1,
                 session_id: sessionId,
+                batch_id: batchId,
                 generated_at: now,
                 total_diffs: diffs.length,
                 assignments
@@ -1548,22 +1728,70 @@ export async function distributeRecountDifferencesToDevices(
         }
     ];
 
+    const expectedFilenames = ['recount_assignments.json'];
     for (const dev of devices) {
-        rowsToInsert.push({
+        const filename = `recount_differences_${dev.device_id}.json`;
+        expectedFilenames.push(filename);
+        assignmentRows.push({
             session_id: sessionId,
             device_id: dev.device_id,
             device_name: dev.device_name,
-            filename: `recount_differences_${dev.device_id}.json`,
+            filename,
             content: JSON.stringify(assignments[dev.device_id].items)
         });
     }
 
-    const { error } = await (supabase as any)
-        .from('precount_device_files')
-        .insert(rowsToInsert);
-    if (error) {
-        throw new Error(`Error subiendo asignaciones de recuento: ${error.message}`);
+    await withNetworkRetry(async () => {
+        const { error } = await (supabase as any)
+            .from('precount_device_files')
+            .insert(assignmentRows);
+        if (error) throw error;
+    }, { maxAttempts: 3, label: 'distributeRecount:insertAssignments' });
+
+    // Paso 4: Verificar por lectura que TODOS los archivos de asignación ya estén visibles en Postgres
+    let allVisible = false;
+    for (let checkAttempt = 0; checkAttempt < 3; checkAttempt++) {
+        const { data: verifiedRows, error: verifyErr } = await (supabase as any)
+            .from('precount_device_files')
+            .select('filename, content')
+            .eq('session_id', sessionId)
+            .in('filename', expectedFilenames);
+
+        if (!verifyErr && Array.isArray(verifiedRows)) {
+            const visibleSet = new Set(
+                verifiedRows.filter((r: any) => r?.filename && r?.content).map((r: any) => r.filename)
+            );
+            if (expectedFilenames.every(fn => visibleSet.has(fn))) {
+                allVisible = true;
+                break;
+            }
+        }
+        await new Promise(resolve => setTimeout(resolve, 150 * (checkAttempt + 1)));
     }
+
+    if (!allVisible) {
+        throw new Error('Los archivos de asignación no confirmaron lectura tras su inserción en Supabase.');
+    }
+
+    // Paso 5: Recién ahora confirmar recount_session_state.json en 'started' y emitir Realtime (<50ms)
+    const startedState: RecountSessionStateDetails = {
+        status: 'started',
+        started_at: now,
+        updated_at: now,
+        batch_id: batchId,
+        total_diffs: diffs.length
+    };
+    await writeRecountSessionStateRow(sessionId, startedState);
+
+    if (typeof window !== 'undefined') {
+        try {
+            localStorage.setItem(`recount_assignments_${sessionId}`, JSON.stringify(assignments));
+        } catch {}
+    }
+
+    import('./deviceTelemetry').then(({ broadcastRecountStateChange }) => {
+        broadcastRecountStateChange(sessionId, startedState).catch(() => {});
+    });
 
     return { totalDiffs: diffs.length, assignments };
 }
@@ -1573,51 +1801,226 @@ export async function setRecountSessionState(
     status: 'idle' | 'waiting' | 'started'
 ): Promise<void> {
     if (!sessionId) return;
-    try {
-        await (supabase as any)
-            .from('precount_device_files')
-            .delete()
-            .eq('session_id', sessionId)
-            .eq('filename', 'recount_session_state.json');
+    const now = new Date().toISOString();
+    const statePayload: RecountSessionStateDetails = {
+        status,
+        updated_at: now,
+        ...(status === 'started' ? { started_at: now } : {})
+    };
+    const fileRow = {
+        session_id: sessionId,
+        device_id: 'system',
+        device_name: 'Admin PC',
+        filename: 'recount_session_state.json',
+        content: JSON.stringify(statePayload)
+    };
 
-        await (supabase as any)
-            .from('precount_device_files')
-            .insert({
-                session_id: sessionId,
-                device_id: 'system',
-                device_name: 'Admin PC',
-                filename: 'recount_session_state.json',
-                content: JSON.stringify({ status, updated_at: new Date().toISOString() })
-            });
+    if (!isNetworkOnline()) {
+        await syncManager.addToQueue({ type: 'create', entity: 'device_file', data: fileRow }, { skipFlush: true });
+        return;
+    }
+
+    try {
+        await writeRecountSessionStateRow(sessionId, statePayload);
+        import('./deviceTelemetry').then(({ broadcastRecountStateChange }) => {
+            broadcastRecountStateChange(sessionId, statePayload).catch(() => {});
+        });
     } catch (e) {
-        console.warn('[preCountDB] Error actualizando recount_session_state.json:', e);
+        console.warn('[preCountDB] Error actualizando recount_session_state.json, encolando:', e);
+        await syncManager.addToQueue({ type: 'create', entity: 'device_file', data: fileRow });
     }
 }
 
-export async function getRecountSessionState(sessionId: string): Promise<'idle' | 'waiting' | 'started'> {
-    if (!sessionId) return 'idle';
+export async function getRecountSessionStateDetails(sessionId: string): Promise<RecountSessionStateDetails> {
+    if (!sessionId) return { status: 'idle' };
     try {
-        const { data } = await (supabase as any)
-            .from('precount_device_files')
-            .select('content')
-            .eq('session_id', sessionId)
-            .eq('filename', 'recount_session_state.json')
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+        const data = await withNetworkRetry(async () => {
+            const { data: row, error } = await (supabase as any)
+                .from('precount_device_files')
+                .select('content, created_at')
+                .eq('session_id', sessionId)
+                .eq('filename', 'recount_session_state.json')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+            if (error) throw error;
+            return row;
+        }, { maxAttempts: 2, label: 'getRecountSessionStateDetails' });
 
         if (data?.content) {
             const parsed = typeof data.content === 'string' ? JSON.parse(data.content) : data.content;
-            if (parsed?.status === 'waiting' || parsed?.status === 'started') {
-                return parsed.status;
-            }
+            const status = parsed?.status === 'waiting' || parsed?.status === 'started' ? parsed.status : 'idle';
+            return {
+                status,
+                started_at: parsed?.started_at,
+                updated_at: parsed?.updated_at,
+                batch_id: parsed?.batch_id,
+                total_diffs: typeof parsed?.total_diffs === 'number' ? parsed.total_diffs : undefined,
+                created_at: data.created_at
+            };
         }
     } catch {}
-    return 'idle';
+    return { status: 'idle' };
+}
+
+export async function getRecountSessionState(sessionId: string): Promise<'idle' | 'waiting' | 'started'> {
+    const details = await getRecountSessionStateDetails(sessionId);
+    return details.status;
 }
 
 /**
- * Descarga los resultados de recuento enviados por las terminales (Zebras / Móvil Web).
+ * Obtiene las diferencias asignadas a un dispositivo específico con reintentos ante
+ * eventual lag de lectura y respaldo sobre recount_assignments.json / caché local.
+ */
+export async function fetchDeviceRecountDifferences(
+    sessionId: string,
+    deviceId: string
+): Promise<RecountProductDiff[]> {
+    if (!sessionId || !deviceId) return [];
+    const cacheKey = `recount_assigned_${sessionId}_${deviceId}`;
+
+    if (isNetworkOnline()) {
+        const perDeviceFilename = `recount_differences_${deviceId}.json`;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+                const { data, error } = await (supabase as any)
+                    .from('precount_device_files')
+                    .select('content')
+                    .eq('session_id', sessionId)
+                    .eq('filename', perDeviceFilename)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (!error && data?.content) {
+                    const parsed = typeof data.content === 'string' ? JSON.parse(data.content) : data.content;
+                    if (Array.isArray(parsed)) {
+                        if (typeof window !== 'undefined') {
+                            try { localStorage.setItem(cacheKey, JSON.stringify(parsed)); } catch {}
+                        }
+                        return parsed;
+                    }
+                }
+
+                // Fallback al archivo maestro recount_assignments.json
+                const { data: masterData, error: masterErr } = await (supabase as any)
+                    .from('precount_device_files')
+                    .select('content')
+                    .eq('session_id', sessionId)
+                    .eq('filename', 'recount_assignments.json')
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (!masterErr && masterData?.content) {
+                    const master = typeof masterData.content === 'string' ? JSON.parse(masterData.content) : masterData.content;
+                    const devItems = master?.assignments?.[deviceId]?.items;
+                    if (Array.isArray(devItems)) {
+                        if (typeof window !== 'undefined') {
+                            try { localStorage.setItem(cacheKey, JSON.stringify(devItems)); } catch {}
+                        }
+                        return devItems;
+                    }
+                }
+            } catch (err) {
+                console.warn('[preCountDB] Error leyendo diferencias asignadas, reintentando:', err);
+            }
+
+            if (attempt < 2) {
+                await new Promise(resolve => setTimeout(resolve, 200 * (attempt + 1)));
+            }
+        }
+    }
+
+    if (typeof window !== 'undefined') {
+        try {
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed)) return parsed;
+            }
+        } catch {}
+    }
+
+    return [];
+}
+
+/**
+ * Envía el resultado del recuento de forma resiliente (offline-first):
+ * resguarda localmente y encola en SyncManager antes de intentar subida inmediata.
+ */
+export async function submitRecountResultOfflineFirst(
+    sessionId: string,
+    payload: {
+        device_id: string;
+        device_name: string;
+        platform: 'zebra' | 'web';
+        items: RecountResultItemSubmission[];
+        submitted_at?: string;
+    }
+): Promise<{ syncedImmediately: boolean; queuedOffline: boolean }> {
+    const submittedAt = payload.submitted_at || new Date().toISOString();
+    const fullPayload = {
+        ...payload,
+        submitted_at: submittedAt
+    };
+    const filename = `recount_result_${payload.device_id}.json`;
+    const fileRow = {
+        session_id: sessionId,
+        device_id: payload.device_id,
+        device_name: payload.device_name,
+        filename,
+        content: JSON.stringify(fullPayload)
+    };
+
+    if (typeof window !== 'undefined') {
+        try {
+            localStorage.setItem(`recount_result_${sessionId}_${payload.device_id}`, fileRow.content);
+        } catch {}
+    }
+
+    await syncManager.addToQueue({
+        type: 'create',
+        entity: 'device_file',
+        data: fileRow
+    }, { skipFlush: true });
+
+    if (!isNetworkOnline()) {
+        return { syncedImmediately: false, queuedOffline: true };
+    }
+
+    try {
+        await withNetworkRetry(async () => {
+            const { error: delErr } = await (supabase as any)
+                .from('precount_device_files')
+                .delete()
+                .eq('session_id', sessionId)
+                .eq('filename', filename);
+            if (delErr) throw delErr;
+
+            const { error: insErr } = await (supabase as any)
+                .from('precount_device_files')
+                .insert(fileRow);
+            if (insErr) throw insErr;
+        }, { maxAttempts: 2, label: 'submitRecountResultOfflineFirst' });
+
+        await db.pendingActions
+            .where('dedupeKey')
+            .equals(`device_file:${sessionId}:${filename}`)
+            .filter(a => a.status !== 'syncing')
+            .delete();
+
+        return { syncedImmediately: true, queuedOffline: false };
+    } catch (err) {
+        console.warn('[preCountDB] Subida de recuento diferida a SyncManager:', err);
+        void syncManager.processQueue();
+        return { syncedImmediately: false, queuedOffline: true };
+    }
+}
+
+/**
+ * Descarga los resultados de recuento enviados por las terminales (Zebras / Móvil Web),
+ * ordenados del más reciente al más antiguo y deduplicados por terminal.
  */
 export async function fetchRecountResultSubmissions(sessionId: string): Promise<RecountResultSubmission[]> {
     if (!sessionId) return [];
@@ -1625,37 +2028,44 @@ export async function fetchRecountResultSubmissions(sessionId: string): Promise<
         .from('precount_device_files')
         .select('content, device_id, device_name, created_at')
         .eq('session_id', sessionId)
-        .like('filename', 'recount_result_%');
+        .like('filename', 'recount_result_%')
+        .order('created_at', { ascending: false });
 
     if (error || !data) return [];
 
-    const submissions: RecountResultSubmission[] = [];
+    const submissionsByDevice = new Map<string, RecountResultSubmission>();
     for (const row of data) {
         if (!row.content) continue;
         try {
             const parsed = JSON.parse(row.content);
             if (Array.isArray(parsed)) {
-                submissions.push({
-                    device_id: row.device_id || 'unknown',
-                    device_name: row.device_name || row.device_id || 'Terminal',
-                    platform: 'zebra',
-                    submitted_at: row.created_at || new Date().toISOString(),
-                    items: parsed
-                });
+                const devId = row.device_id || 'unknown';
+                if (!submissionsByDevice.has(devId)) {
+                    submissionsByDevice.set(devId, {
+                        device_id: devId,
+                        device_name: row.device_name || devId || 'Terminal',
+                        platform: 'zebra',
+                        submitted_at: row.created_at || new Date().toISOString(),
+                        items: parsed
+                    });
+                }
             } else if (parsed && Array.isArray(parsed.items)) {
-                submissions.push({
-                    device_id: parsed.device_id || row.device_id || 'unknown',
-                    device_name: parsed.device_name || row.device_name || 'Terminal',
-                    platform: parsed.platform || 'web',
-                    submitted_at: parsed.submitted_at || row.created_at || new Date().toISOString(),
-                    items: parsed.items
-                });
+                const devId = parsed.device_id || row.device_id || 'unknown';
+                if (!submissionsByDevice.has(devId)) {
+                    submissionsByDevice.set(devId, {
+                        device_id: devId,
+                        device_name: parsed.device_name || row.device_name || 'Terminal',
+                        platform: parsed.platform || 'web',
+                        submitted_at: parsed.submitted_at || row.created_at || new Date().toISOString(),
+                        items: parsed.items
+                    });
+                }
             }
         } catch {
             // Ignorar JSON malformado
         }
     }
-    return submissions;
+    return Array.from(submissionsByDevice.values());
 }
 
 /**
@@ -1746,30 +2156,54 @@ export interface PreCountSerialRecord {
 }
 
 export async function savePreCountSerial(record: PreCountSerialRecord): Promise<boolean> {
+    const dedupeKey = `serial:${record.session_id}:${record.id_producto || ''}:${record.serial || record.gtin || record.raw_datamatrix || ''}`;
+
+    // Encolar antes de red para no perder series trazables ante cortes o cierres
+    await syncManager.addToQueue({
+        type: 'create',
+        entity: 'serial',
+        dedupeKey,
+        data: record
+    }, { skipFlush: true });
+
+    if (!isNetworkOnline()) {
+        return true;
+    }
+
     try {
         const { error } = await (supabase as any)
             .from('precount_serials')
             .insert(record);
-        if (error) {
-            console.warn('[preCountDB] Error insertando serie trazable:', error);
-            return false;
+        if (!error || String((error as any).code || '') === '23505') {
+            await db.pendingActions
+                .where('dedupeKey')
+                .equals(dedupeKey)
+                .filter(a => a.status !== 'syncing')
+                .delete();
+            return true;
         }
-        return true;
+        console.warn('[preCountDB] Error insertando serie trazable, diferido a SyncManager:', error);
     } catch (e) {
-        console.error('[preCountDB] Excepción guardando serie trazable:', e);
-        return false;
+        console.warn('[preCountDB] Excepción guardando serie trazable, diferido a SyncManager:', e);
     }
+
+    void syncManager.processQueue();
+    return true;
 }
 
 export async function getPreCountSerials(sessionId: string): Promise<any[]> {
     try {
-        const { data, error } = await (supabase as any)
-            .from('precount_serials')
-            .select('*')
-            .eq('session_id', sessionId)
-            .order('created_at', { ascending: false });
-        if (error) throw error;
-        return data || [];
+        return await fetchAllSupabasePages<any>(
+            (from, to) => (supabase as any)
+                .from('precount_serials')
+                .select('*')
+                .eq('session_id', sessionId)
+                .order('created_at', { ascending: false })
+                .order('id', { ascending: false })
+                .range(from, to),
+            1000,
+            'getPreCountSerials'
+        );
     } catch (e) {
         console.error('[preCountDB] Error obteniendo series de sesión:', e);
         return [];

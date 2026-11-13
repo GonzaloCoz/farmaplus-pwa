@@ -234,7 +234,7 @@ export function RecountControlDialog({
             refreshConnectedDevices(latestPresence);
             const updatedSubs = await fetchRecountResultSubmissions(sessionId);
             setSubmissions(updatedSubs);
-        }, 5000);
+        }, 3000);
 
         return () => {
             clearInterval(pollTimer);

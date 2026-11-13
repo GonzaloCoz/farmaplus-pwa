@@ -53,14 +53,25 @@ export default function StockRecountMobile() {
     const [hasJoined, setHasJoined] = useState<boolean>(() => Boolean(operatorName.trim()));
     const [recountState, setRecountState] = useState<'idle' | 'waiting' | 'started'>('waiting');
 
-    // Resolver ID de la sesión activa
+    // Resolver ID de la sesión activa (soporta HashRouter, query string directa o localStorage)
     const effectiveSessionId = useMemo(() => {
         const fromParam = searchParams.get('sessionId') || searchParams.get('session_id');
-        if (fromParam) return fromParam;
+        if (fromParam && fromParam.trim()) return fromParam.trim();
         if (typeof window !== 'undefined') {
-            return localStorage.getItem('last_precount_session_id') || 
-                   localStorage.getItem('precount_session_id') || 
-                   sessionStorage.getItem('active_precount_session_id') || 
+            const directSearch = new URLSearchParams(window.location.search);
+            const fromDirect = directSearch.get('sessionId') || directSearch.get('session_id');
+            if (fromDirect && fromDirect.trim()) return fromDirect.trim();
+
+            const hashQueryIdx = window.location.hash.indexOf('?');
+            if (hashQueryIdx !== -1) {
+                const hashParams = new URLSearchParams(window.location.hash.slice(hashQueryIdx + 1));
+                const fromHash = hashParams.get('sessionId') || hashParams.get('session_id');
+                if (fromHash && fromHash.trim()) return fromHash.trim();
+            }
+
+            return localStorage.getItem('last_precount_session_id') ||
+                   localStorage.getItem('precount_session_id') ||
+                   sessionStorage.getItem('active_precount_session_id') ||
                    '';
         }
         return '';
@@ -89,7 +100,7 @@ export default function StockRecountMobile() {
 
         const registerPresenceInDb = async () => {
             try {
-                await (supabase as any).from('precount_connected_devices').upsert({
+                const { error } = await (supabase as any).from('precount_connected_devices').upsert({
                     session_id: effectiveSessionId,
                     device_id: deviceId,
                     device_name: deviceDisplayName,
@@ -97,8 +108,13 @@ export default function StockRecountMobile() {
                     device_model: 'Móvil Web',
                     status: 'online',
                     last_seen: new Date().toISOString()
-                });
-            } catch {}
+                }, { onConflict: 'device_id,session_id' });
+                if (error) {
+                    console.warn('[StockRecountMobile] Error registrando dispositivo en precount_connected_devices:', error);
+                }
+            } catch (err) {
+                console.warn('[StockRecountMobile] Excepción registrando dispositivo:', err);
+            }
         };
 
         const checkState = async () => {
@@ -556,10 +572,16 @@ export default function StockRecountMobile() {
                             Aguardá a que el administrador presione <strong>Comenzar recuento</strong> para recibir tus EANs exclusivos.
                         </p>
                     </div>
-                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                        En línea y listo
-                    </div>
+                    {effectiveSessionId ? (
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                            En línea y listo
+                        </div>
+                    ) : (
+                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-50 text-red-700 text-xs font-medium border border-red-200">
+                            Falta sessionId en el enlace — volvé a escanear el QR
+                        </div>
+                    )}
                 </div>
             </div>
         );

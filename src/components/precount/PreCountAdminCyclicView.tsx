@@ -28,6 +28,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import PackageAdd01Icon from "@hugeicons/core-free-icons/PackageAdd01Icon";
 import Delete01Icon from "@hugeicons/core-free-icons/Delete01Icon";
 import DeletePutBackIcon from "@hugeicons/core-free-icons/DeletePutBackIcon";
+import Xls01Icon from "@hugeicons/core-free-icons/Xls01Icon";
 import { Database, RefreshCw as LucideRefreshCw, Ellipsis as EllipsisIcon, Smartphone } from 'lucide-react';
 import { exportRecountDifferencesToCloud } from '@/services/preCountDB';
 import { LabRemovalModal } from "@/components/LabRemovalModal";
@@ -89,7 +90,8 @@ import { useWindowManager } from '@/contexts/WindowManagerContext';
 import { useUser } from '@/contexts/UserContext';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { notify as toast } from '@/lib/notifications';
-import { syncMysqlToLocalDb, exportLocalSessionToFile, getLocalSessionSummary } from '@/services/tauriLocalDb';
+import { syncMysqlToLocalDb, exportLocalSessionToFile, getLocalSessionSummary, isTauriEnvironment, searchLocalBarcode } from '@/services/tauriLocalDb';
+import { db } from '@/services/db';
 import { ReportExporter } from '@/lib/reportExporter';
 
 const CATEGORIES = ["Medicamentos", "Perfumería", "Accesorios", "Varios"];
@@ -503,6 +505,123 @@ export function PreCountAdminCyclicView({
     const [showRecountControlModal, setShowRecountControlModal] = useState(false);
     const [scannedTableItems, setScannedTableItems] = useState<any[]>([]);
     const [isExportingRecount, setIsExportingRecount] = useState(false);
+    const [isExportingPlexExcel, setIsExportingPlexExcel] = useState(false);
+
+    const handleExportPlexExcel = async () => {
+        if (scannedTableItems.length === 0) {
+            toast.warning("Sin datos", "No hay productos en la tabla para exportar.");
+            return;
+        }
+        setIsExportingPlexExcel(true);
+        try {
+            const targetSessionId = sessionId || (typeof window !== 'undefined' ? (localStorage.getItem('last_precount_session_id') || localStorage.getItem('precount_session_id')) : '') || '';
+            const catalogMap = new Map<string, any>();
+            let sessionDate: string | number | undefined;
+
+            if (targetSessionId) {
+                const sessionProducts = await db.precount_products.where('session_id').equals(targetSessionId).toArray();
+                sessionProducts.forEach(p => {
+                    if (p.ean) catalogMap.set(String(p.ean).trim(), p);
+                    if (p.id_producto) catalogMap.set(`id:${String(p.id_producto).trim()}`, p);
+                });
+                const sessionObj = await db.sessions.get(targetSessionId);
+                sessionDate = sessionObj?.start_time;
+                if (Array.isArray(sessionObj?.master_catalog)) {
+                    sessionObj.master_catalog.forEach((p: any) => {
+                        const eans: string[] = Array.isArray(p.eans) && p.eans.length > 0 ? p.eans : [p.ean];
+                        eans.filter(Boolean).forEach(e => {
+                            if (!catalogMap.has(String(e).trim())) catalogMap.set(String(e).trim(), p);
+                        });
+                        if (p.id_producto && !catalogMap.has(`id:${String(p.id_producto).trim()}`)) {
+                            catalogMap.set(`id:${String(p.id_producto).trim()}`, p);
+                        }
+                    });
+                }
+            }
+
+            // Agrupar por producto (id_producto || ean) sumando cantidades entre sectores, tal cual Plex
+            const aggregated = new Map<string, {
+                idProducto: string;
+                codebar: string;
+                productoCompleto: string;
+                laboratorio: string;
+                rubro: string;
+                cantidad: number;
+                cantidadStock: number;
+                costo: number;
+                costoPpp: number;
+                precioVenta: number;
+                troquel: string;
+                nombreCompleto: string;
+                fecha: string | number | undefined;
+            }>();
+
+            for (const it of scannedTableItems) {
+                const ean = String(it.ean || '').trim();
+                if (!ean) continue;
+                const rawIdProd = String((it as any).id_producto || '').trim();
+                const cat = (rawIdProd && catalogMap.get(`id:${rawIdProd}`)) || catalogMap.get(ean);
+                const resolvedIdProd = rawIdProd || String(cat?.id_producto || '').trim();
+                const groupKey = resolvedIdProd || ean;
+
+                const existing = aggregated.get(groupKey);
+                const qty = Number(it.quantity) || 0;
+                if (existing) {
+                    existing.cantidad += qty;
+                    continue;
+                }
+
+                const cost = Number(cat?.cost ?? (it as any).cost ?? 0) || 0;
+                const salePrice = Number(cat?.salePrice ?? cat?.sale_price ?? (it as any).salePrice ?? 0) || 0;
+                const systemStock = Number(it.systemStock ?? cat?.stock ?? cat?.systemStock ?? 0) || 0;
+
+                aggregated.set(groupKey, {
+                    idProducto: resolvedIdProd,
+                    codebar: ean,
+                    productoCompleto: it.productName || cat?.name || `Producto ${ean}`,
+                    laboratorio: it.laboratory || cat?.laboratory || '',
+                    rubro: it.rubro || cat?.rubro || cat?.category || 'Varios',
+                    cantidad: qty,
+                    cantidadStock: systemStock,
+                    costo: cost,
+                    costoPpp: Number(cat?.costoPpp ?? cost) || cost,
+                    precioVenta: salePrice,
+                    troquel: String(cat?.troquel || (it as any).troquel || ''),
+                    nombreCompleto: it.user || user?.name || user?.username || 'ADMIN',
+                    fecha: it.controlDate || sessionDate,
+                });
+            }
+
+            // Enriquecer desde SQLite local en Tauri si falta costo/precio/troquel
+            if (isTauriEnvironment()) {
+                await Promise.all(Array.from(aggregated.values()).map(async (row) => {
+                    if (row.costo > 0 && row.precioVenta > 0 && row.idProducto) return;
+                    try {
+                        const localProd = await searchLocalBarcode(row.codebar);
+                        if (localProd) {
+                            if (!row.idProducto && localProd.id_producto) row.idProducto = String(localProd.id_producto);
+                            if (!row.troquel && localProd.troquel) row.troquel = String(localProd.troquel);
+                            if (!row.costo && localProd.cost) {
+                                row.costo = Number(localProd.cost) || 0;
+                                row.costoPpp = row.costo;
+                            }
+                            if (!row.precioVenta && localProd.sale_price) row.precioVenta = Number(localProd.sale_price) || 0;
+                            if (!row.cantidadStock && localProd.stock !== undefined) row.cantidadStock = Number(localProd.stock) || 0;
+                        }
+                    } catch { /* ignorar error puntual de SQLite */ }
+                }));
+            }
+
+            const rows = Array.from(aggregated.values());
+            ReportExporter.exportPreCountToPlexExcel(rows, effectiveBranchName, displayTitle);
+            toast.success("Excel Plex generado", `Se exportaron ${rows.length} productos en formato DataSet.`);
+        } catch (err: any) {
+            console.error('[PreCountAdminCyclicView] Error exportando Excel formato Plex:', err);
+            toast.error("Error al exportar Excel", err?.message || "No se pudo generar el archivo.");
+        } finally {
+            setIsExportingPlexExcel(false);
+        }
+    };
 
     const handleExportRecountToZebra = async () => {
         const targetSessionId = sessionId || (typeof window !== 'undefined' ? (localStorage.getItem('last_precount_session_id') || localStorage.getItem('precount_session_id')) : '');
@@ -958,6 +1077,26 @@ export function PreCountAdminCyclicView({
                                                     className="h-8 w-8 rounded-lg border border-border bg-transparent hover:bg-hover text-muted-foreground hover:text-foreground transition-all duration-80 cursor-pointer"
                                                 >
                                                     <Upload className="size-3.5" />
+                                                </Button>
+
+                                                {/* Botón Exportar Excel formato Plex */}
+                                                <Button
+                                                    variant="tertiary"
+                                                    size="icon"
+                                                    onClick={handleExportPlexExcel}
+                                                    disabled={isExportingPlexExcel}
+                                                    aria-label="Exportar Excel formato Plex"
+                                                    title="Exportar Excel formato Plex (DataSet)"
+                                                    className={cn(
+                                                        "h-8 w-8 rounded-lg border border-border bg-transparent hover:bg-hover text-muted-foreground hover:text-foreground transition-all duration-80 cursor-pointer",
+                                                        isExportingPlexExcel && "opacity-50 pointer-events-none"
+                                                    )}
+                                                >
+                                                    {isExportingPlexExcel ? (
+                                                        <LucideRefreshCw className="size-3.5 animate-spin" />
+                                                    ) : (
+                                                        <HugeiconsIcon icon={Xls01Icon as any} size={15} strokeWidth={1.8} />
+                                                    )}
                                                 </Button>
 
                                                 {/* Botón Filtros (Abre Dialog) */}

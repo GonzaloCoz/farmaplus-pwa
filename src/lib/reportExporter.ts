@@ -868,5 +868,184 @@ export const ReportExporter = {
       console.error('Error al exportar avance de stock a Excel:', error);
       throw error;
     }
+  },
+
+  /**
+   * Exporta los productos del Colector de Datos en el formato exacto DataSet de Plex 25 (23 columnas).
+   */
+  exportPreCountToPlexExcel: (
+    rows: Array<{
+      idInventario?: number;
+      idProducto?: string | number;
+      fecha?: Date | string | number;
+      nombreCompleto?: string;
+      idRubro?: number;
+      rubro?: string;
+      codebar: string;
+      troquel?: string | number;
+      producto?: string;
+      presentacion?: string;
+      productoCompleto: string;
+      laboratorio?: string;
+      idLaboratorio?: number;
+      cantidad: number;
+      unidades?: number;
+      cantidadStock: number;
+      unidadesStock?: number;
+      costo?: number;
+      costoPpp?: number;
+      precioVenta?: number;
+    }>,
+    branchName: string,
+    sectorOrLab?: string
+  ) => {
+    const HEADERS = [
+      'IDInventario',
+      'IDProducto',
+      'Fecha',
+      'NombreCompleto',
+      'idRubro',
+      'Rubro',
+      'Codebar',
+      'Troquel',
+      'Producto',
+      'Presentacion',
+      'ProductoCompleto',
+      'Laboratorio',
+      'idLaboratorio',
+      'Cantidad',
+      'Unidades',
+      'CantidadStock',
+      'UnidadesStock',
+      'CantidadDif',
+      'UnidadesDif',
+      'Costo',
+      'CostoPPP',
+      'PrecioVenta',
+      'PesosDif',
+    ];
+
+    const resolveRubroId = (rubro?: string, explicitId?: number): number => {
+      if (explicitId && Number.isFinite(explicitId)) return explicitId;
+      const norm = (rubro || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (norm.includes('medicament')) return 1;
+      if (norm.includes('perfum')) return 3;
+      if (norm.includes('accesor')) return 4;
+      if (norm.includes('vario')) return 2;
+      return 0;
+    };
+
+    const parseDateOnly = (raw?: Date | string | number): Date => {
+      const d = raw ? new Date(raw) : new Date();
+      if (Number.isNaN(d.getTime())) {
+        const now = new Date();
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      }
+      return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    };
+
+    const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+    const sorted = [...rows].sort((a, b) =>
+      (a.productoCompleto || '').localeCompare(b.productoCompleto || '', 'es', { sensitivity: 'base' })
+    );
+
+    const aoa: any[][] = [HEADERS];
+    for (const r of sorted) {
+      const cantidad = Number(r.cantidad) || 0;
+      const unidades = Number(r.unidades) || 0;
+      const cantidadStock = Number(r.cantidadStock) || 0;
+      const unidadesStock = Number(r.unidadesStock) || 0;
+      const cantidadDif = cantidad - cantidadStock;
+      const unidadesDif = unidades - unidadesStock;
+      const costo = round2(Number(r.costo) || 0);
+      const costoPpp = round2(Number(r.costoPpp ?? r.costo) || 0);
+      const precioVenta = round2(Number(r.precioVenta) || 0);
+      const pesosDif = round2(cantidadDif * costo);
+
+      const rawIdProd = String(r.idProducto ?? '').trim();
+      const numIdProd = rawIdProd && /^\d+$/.test(rawIdProd) ? Number(rawIdProd) : rawIdProd || 0;
+      const rawTroquel = String(r.troquel ?? '').trim();
+      const numTroquel = rawTroquel && /^\d+$/.test(rawTroquel) ? Number(rawTroquel) : 0;
+
+      aoa.push([
+        Number(r.idInventario) || 0,
+        numIdProd,
+        parseDateOnly(r.fecha),
+        (r.nombreCompleto || '').toUpperCase(),
+        resolveRubroId(r.rubro, r.idRubro),
+        r.rubro || 'Varios',
+        String(r.codebar || ''),
+        numTroquel,
+        r.producto || r.productoCompleto || '',
+        r.presentacion || '',
+        r.productoCompleto || '',
+        r.laboratorio || '',
+        Number(r.idLaboratorio) || 0,
+        cantidad,
+        unidades,
+        cantidadStock,
+        unidadesStock,
+        cantidadDif,
+        unidadesDif,
+        costo,
+        costoPpp,
+        precioVenta,
+        pesosDif,
+      ]);
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa, { cellDates: true });
+
+    // Formato de fecha (col C) y texto para Codebar (col G) para evitar notación científica
+    for (let rowIdx = 2; rowIdx <= aoa.length; rowIdx++) {
+      const dateCell = ws[`C${rowIdx}`];
+      if (dateCell) {
+        dateCell.z = 'dd/mm/yyyy';
+      }
+      const codebarCell = ws[`G${rowIdx}`];
+      if (codebarCell) {
+        codebarCell.t = 's';
+        codebarCell.z = '@';
+      }
+    }
+
+    ws['!cols'] = [
+      { wch: 12 }, // IDInventario
+      { wch: 13 }, // IDProducto
+      { wch: 12 }, // Fecha
+      { wch: 22 }, // NombreCompleto
+      { wch: 10 }, // idRubro
+      { wch: 14 }, // Rubro
+      { wch: 16 }, // Codebar
+      { wch: 11 }, // Troquel
+      { wch: 26 }, // Producto
+      { wch: 28 }, // Presentacion
+      { wch: 40 }, // ProductoCompleto
+      { wch: 20 }, // Laboratorio
+      { wch: 14 }, // idLaboratorio
+      { wch: 10 }, // Cantidad
+      { wch: 10 }, // Unidades
+      { wch: 14 }, // CantidadStock
+      { wch: 14 }, // UnidadesStock
+      { wch: 12 }, // CantidadDif
+      { wch: 12 }, // UnidadesDif
+      { wch: 12 }, // Costo
+      { wch: 12 }, // CostoPPP
+      { wch: 12 }, // PrecioVenta
+      { wch: 14 }, // PesosDif
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'DataSet');
+
+    const safeBranch = (branchName || 'sucursal').trim().replace(/[\\/:*?"<>|]/g, '').toLowerCase();
+    const safeSector = (sectorOrLab || '').trim().replace(/[\\/:*?"<>|]/g, '').toLowerCase();
+    const datePart = format(new Date(), 'dd-MM-yyyy');
+    const fileName = safeSector && safeSector !== 'sin sesión'
+      ? `inventario ${safeBranch} ${safeSector} ${datePart}.xlsx`
+      : `inventario ${safeBranch} ${datePart}.xlsx`;
+
+    XLSX.writeFile(wb, fileName);
   }
 };

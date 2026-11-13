@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
     checkPlexSession,
     getPlexBranchOperators,
+    isTauriEnvironment,
     PlexSessionStatus,
     PlexOperatorVerification
 } from '@/services/mysqlTauriBridge';
@@ -20,25 +21,29 @@ export function usePlexSession(branchName: string) {
     const [selectedOperator, setSelectedOperator] = useState<PlexOperatorVerification | null>(null);
     const [isLoadingOperators, setIsLoadingOperators] = useState(false);
 
+    const isTauri = isTauriEnvironment();
+
     // 1. Polling de detección de proceso Plex 25 en la máquina
     const check = useCallback(async () => {
+        if (!isTauri) return;
         try {
             const currentSession = await checkPlexSession();
             setSession(currentSession);
         } catch (err) {
             console.error('Error in checkPlexSession polling:', err);
         }
-    }, []);
+    }, [isTauri]);
 
     useEffect(() => {
+        if (!isTauri) return;
         check();
         const interval = setInterval(check, 3000);
         return () => clearInterval(interval);
-    }, [check]);
+    }, [check, isTauri]);
 
     // 2. Cargar operadores autorizados de la sucursal desde MySQL
     const loadOperators = useCallback(async () => {
-        if (!branchName) return;
+        if (!isTauri || !branchName) return;
         setIsLoadingOperators(true);
         try {
             const ops = await getPlexBranchOperators(branchName);

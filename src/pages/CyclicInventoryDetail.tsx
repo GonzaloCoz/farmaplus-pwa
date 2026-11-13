@@ -120,7 +120,7 @@ import { Trash01 as TrashIcon } from '@untitledui/icons';
 import { cyclicInventoryService } from '@/services/cyclicInventoryService';
 import { notify as toast } from '@/lib/notifications';
 import { usePlexSession } from '@/hooks/usePlexSession';
-import { executePlexCyclicAdjustments, getNextPlexAdjustmentIds } from '@/services/mysqlTauriBridge';
+import { executePlexCyclicAdjustments, getNextPlexAdjustmentIds, isTauriEnvironment } from '@/services/mysqlTauriBridge';
 import { useLayout } from '@/contexts/LayoutContext';
 import { useSystemModules } from '@/hooks/useSystemModules';
 import { Tooltip } from '@/components/ui/tooltip';
@@ -443,7 +443,8 @@ export default function CyclicInventoryDetail() {
 
     const [removalModalOpen, setRemovalModalOpen] = useState(false);
 
-    // Integración de Sesión en tiempo real con Plex 25
+    // Integración de Sesión en tiempo real con Plex 25 (solo escritorio Tauri)
+    const isTauri = isTauriEnvironment();
     const {
         session: plexSession,
         operators: plexOperators,
@@ -944,6 +945,7 @@ export default function CyclicInventoryDetail() {
                                             >
                                                 {progressPercentage}% avance
                                             </Badge>
+                                            {isTauri && (
                                             <Tooltip
                                                 content={
                                                     plexConnectionStatus === 'connected'
@@ -979,6 +981,7 @@ export default function CyclicInventoryDetail() {
                                                     )}
                                                 </Button>
                                             </Tooltip>
+                                            )}
                                             {isReadOnly && (
                                                 <Badge variant="outline" className="border-amber-200 bg-amber-50/50 text-amber-700 dark:border-amber-900/30 dark:bg-amber-950/30 dark:text-amber-400 font-bold rounded-lg text-[11px] px-2 py-0.5 whitespace-nowrap">
                                                     Historial (Vuelta {round})
@@ -1546,7 +1549,8 @@ export default function CyclicInventoryDetail() {
 
                         {/* Block 2 — Ajustes y Detalle por rubros */}
                         <div className="px-5 w-full space-y-3.5 pt-1">
-                            {/* Tarjeta de Sesión Plex en Tiempo Real */}
+                            {/* Tarjeta de Sesión Plex en Tiempo Real (solo escritorio Tauri) */}
+                            {isTauri && (
                             <div className={cn(
                                 "p-3 rounded-xl border transition-all text-xs flex flex-col gap-2.5",
                                 !plexSession.running
@@ -1637,6 +1641,7 @@ export default function CyclicInventoryDetail() {
                                     </p>
                                 )}
                             </div>
+                            )}
 
                             {/* Sección Ajustes de inventario */}
                             <div className="flex flex-col gap-2">

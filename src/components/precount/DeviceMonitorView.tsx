@@ -29,6 +29,7 @@ import {
     AlertCircle
 } from 'lucide-react';
 import { getFullSectorName, getSectorIcon } from '@/constants/farmaplusSectors';
+import { fetchSessionLocationsAudit, type SessionLocationAuditRow } from '@/services/branchLocationsService';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { ThinkingIndicator } from "./components";
 
@@ -187,6 +188,7 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
         if (initialDevices && initialDevices.length > 0) return initialDevices;
         return getInitialMonitoredDevices(sessionId);
     });
+    const [locationAudit, setLocationAudit] = useState<SessionLocationAuditRow[]>([]);
     const currentDeviceId = getDeviceId();
     const closedLocationsRef = React.useRef<Set<string>>(new Set());
     const closedDeviceMapRef = React.useRef<Map<string, string>>(new Map());
@@ -548,6 +550,9 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
                 } catch {}
             };
             void fetchRemoteClosedLocations();
+            void fetchSessionLocationsAudit(activeSessionId).then((rows) => {
+                if (!disposed) setLocationAudit(rows);
+            });
 
             // 3. Consultar terminales conectadas en Supabase (precount_connected_devices)
             fetchRemoteDevices = async () => {
@@ -890,6 +895,12 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
                             syncDevicePositionsAndStats();
                         } else {
                             void fetchRemoteClosedLocations();
+            void fetchSessionLocationsAudit(activeSessionId).then((rows) => {
+                if (!disposed) setLocationAudit(rows);
+            });
+                    void fetchSessionLocationsAudit(activeSessionId).then((rows) => {
+                        if (!disposed) setLocationAudit(rows);
+                    });
                         }
                         return;
                     }
@@ -911,6 +922,9 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
                     }
 
                     syncDevicePositionsAndStats();
+                    void fetchSessionLocationsAudit(activeSessionId).then((rows) => {
+                        if (!disposed) setLocationAudit(rows);
+                    });
                 });
 
             if (ch.state !== 'joined' && ch.state !== 'joining') {
@@ -924,6 +938,12 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
                             allPresences.forEach((p: any) => upsertDevice(p));
                         } catch {}
                         void fetchRemoteClosedLocations();
+            void fetchSessionLocationsAudit(activeSessionId).then((rows) => {
+                if (!disposed) setLocationAudit(rows);
+            });
+                    void fetchSessionLocationsAudit(activeSessionId).then((rows) => {
+                        if (!disposed) setLocationAudit(rows);
+                    });
                         void fetchRemoteDevices();
                         void fetchRemoteCounts();
                     } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
@@ -946,6 +966,9 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
             if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
             if (typeof navigator !== 'undefined' && !navigator.onLine) return;
             void fetchRemoteClosedLocations();
+            void fetchSessionLocationsAudit(activeSessionId).then((rows) => {
+                if (!disposed) setLocationAudit(rows);
+            });
             void fetchRemoteDevices();
             void fetchRemoteCounts();
             if (!activeChannel || activeChannel.state !== 'joined') {
@@ -1009,6 +1032,13 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
     const totalUnits = visibleDevices.reduce((acc, d) => acc + d.totalScanned, 0);
     const totalSkus = visibleDevices.reduce((acc, d) => acc + d.totalSkus, 0);
 
+    const auditTotal = locationAudit.length;
+    const auditPending = locationAudit.filter(l => l.status === 'pending').length;
+    const auditOpen = locationAudit.filter(l => l.status === 'open').length;
+    const auditClosedEmpty = locationAudit.filter(l => l.status === 'closed' && l.totalUnits === 0).length;
+    const auditClosedDone = locationAudit.filter(l => l.status === 'closed' && l.totalUnits > 0).length;
+    const auditCoveragePct = auditTotal > 0 ? Math.round(((auditClosedDone + auditClosedEmpty) / auditTotal) * 100) : 0;
+
     return (
         <div className="flex-1 flex flex-col min-h-0 space-y-4 h-full">
             {/* Header / Resumen del Monitor */}
@@ -1031,6 +1061,61 @@ export function DeviceMonitorView({ initialDevices, sessionId }: DeviceMonitorVi
                     </div>
                 </div>
             </div>
+
+            {/* Auditoría de Cobertura de Ubicaciones Vigentes (solo si la sucursal tiene QR configurados) */}
+            {auditTotal > 0 && (
+                <div className="rounded-xl border border-border/50 bg-muted/15 p-3 shrink-0 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2">
+                            <span className="font-semibold text-foreground">
+                                Auditoría de Ubicaciones Vigentes: {auditClosedDone + auditClosedEmpty}/{auditTotal} cerradas ({auditCoveragePct}%)
+                            </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-[11px]">
+                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                                {auditClosedDone} contadas
+                            </span>
+                            {auditOpen > 0 && (
+                                <span className="text-amber-600 dark:text-amber-400 font-medium">
+                                    {auditOpen} abiertas
+                                </span>
+                            )}
+                            {auditClosedEmpty > 0 && (
+                                <span className="text-orange-600 dark:text-orange-400 font-medium">
+                                    {auditClosedEmpty} cerradas en 0 u.
+                                </span>
+                            )}
+                            <span className={auditPending > 0 ? "text-rose-600 dark:text-rose-400 font-semibold" : "text-muted-foreground"}>
+                                {auditPending} sin contar
+                            </span>
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                        {locationAudit.map((loc) => {
+                            const isDone = loc.status === 'closed' && loc.totalUnits > 0;
+                            const isEmptyClosed = loc.status === 'closed' && loc.totalUnits === 0;
+                            const isOpen = loc.status === 'open';
+                            const cls = isDone
+                                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                                : isEmptyClosed
+                                ? "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300"
+                                : isOpen
+                                ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                                : "border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-300";
+                            return (
+                                <span
+                                    key={loc.locationTag}
+                                    title={`${loc.displayTitle}${loc.categoryBadge ? ` (${loc.categoryBadge})` : ''} — ${loc.totalUnits} u. / ${loc.skuCount} SKUs`}
+                                    className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium ${cls}`}
+                                >
+                                    <span>{loc.displayTitle || loc.locationTag}</span>
+                                    {loc.totalUnits > 0 && <span className="opacity-75">· {loc.totalUnits}u</span>}
+                                </span>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* Grilla de Dispositivos o Estado Vacío con ScrollArea */}
             {visibleDevices.length > 0 ? (

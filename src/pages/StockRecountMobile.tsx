@@ -35,6 +35,7 @@ interface ProductItem {
     hasDifference?: boolean;
     systemStock?: number;
     totalCounted?: number;
+    isConfirmed?: boolean;
 }
 
 interface RecountDraft {
@@ -145,7 +146,7 @@ function readSavedOperatorName(): string {
 export default function StockRecountMobile() {
     const [searchParams] = useSearchParams();
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeTab, setActiveTab] = useState<'controlar' | 'diferencias' | 'todas'>('controlar');
+    const [activeTab, setActiveTab] = useState<'controlar' | 'controlados' | 'todas'>('controlar');
     const [products, setProducts] = useState<ProductItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [secondsElapsed, setSecondsElapsed] = useState(15189); // ~ 04:13:09
@@ -820,11 +821,11 @@ export default function StockRecountMobile() {
         return () => { isMounted = false; };
     }, [effectiveSessionId, deviceId, reloadTick, hasJoined, recountState]);
 
-    // Automatically resolve images via Farmaplus VTEX API or local cache
+    // Automatically resolve images via Supabase Storage (`product-images`) or VTEX/local cache
     useEffect(() => {
         products.forEach((p) => {
             if (p.ean && !resolvedImages[p.ean]) {
-                getProductImageUrl(p.ean).then((url) => {
+                getProductImageUrl(p.ean, p.eans).then((url) => {
                     if (url) {
                         setResolvedImages((prev) => ({ ...prev, [p.ean]: url }));
                     }
@@ -866,36 +867,64 @@ export default function StockRecountMobile() {
     const handleIncrement = (id: string) => updateQuantityByDelta(id, 1);
     const handleDecrement = (id: string) => updateQuantityByDelta(id, -1);
 
-    // Lista única de productos agrupados para navegación Anterior / Siguiente
-    const uniqueEans = useMemo(() => {
+    // Listas únicas de EANs por estado para navegación Anterior / Siguiente
+    const pendingEans = useMemo(() => {
         const eans: string[] = [];
         products.forEach(p => {
-            if (!eans.includes(p.ean)) eans.push(p.ean);
+            if (!p.isConfirmed && !eans.includes(p.ean)) eans.push(p.ean);
         });
         return eans;
     }, [products]);
 
+    const controlledEans = useMemo(() => {
+        const eans: string[] = [];
+        products.forEach(p => {
+            if (p.isConfirmed && !eans.includes(p.ean)) eans.push(p.ean);
+        });
+        return eans;
+    }, [products]);
+
+    const activeTabEans = useMemo(() => {
+        if (activeTab === 'controlar') return pendingEans;
+        if (activeTab === 'controlados') return controlledEans;
+        return [];
+    }, [activeTab, pendingEans, controlledEans]);
+
     useEffect(() => {
-        if (uniqueEans.length === 0 && currentProductIndex !== 0) {
+        if (activeTabEans.length === 0 && currentProductIndex !== 0) {
             setCurrentProductIndex(0);
-        } else if (uniqueEans.length > 0 && currentProductIndex >= uniqueEans.length) {
-            setCurrentProductIndex(uniqueEans.length - 1);
+        } else if (activeTabEans.length > 0 && currentProductIndex >= activeTabEans.length) {
+            setCurrentProductIndex(activeTabEans.length - 1);
         }
-    }, [uniqueEans.length, currentProductIndex]);
+    }, [activeTabEans.length, currentProductIndex]);
+
+    const currentEan = activeTabEans.length > 0 && currentProductIndex < activeTabEans.length
+        ? activeTabEans[currentProductIndex]
+        : null;
+
+    const currentProductHasDiff = useMemo(() => {
+        if (!currentEan) return false;
+        return products.some(p => p.ean === currentEan && p.qty !== p.initialQty);
+    }, [products, currentEan]);
+
+    const canConfirm = !isSubmitting && Boolean(currentEan) && (
+        activeTab === 'controlar' ||
+        (activeTab === 'controlados' && currentProductHasDiff)
+    );
 
     const handlePreviousProduct = () => {
         if (currentProductIndex > 0) {
             setCurrentProductIndex(prev => prev - 1);
-            notify.info('Producto anterior', `Mostrando ${currentProductIndex} de ${uniqueEans.length}`);
+            notify.info('Producto anterior', `Mostrando ${currentProductIndex} de ${activeTabEans.length}`);
         } else {
             notify.info('Inicio de lista', 'Estás en el primer producto');
         }
     };
 
     const handleNextProduct = () => {
-        if (currentProductIndex < uniqueEans.length - 1) {
+        if (currentProductIndex < activeTabEans.length - 1) {
             setCurrentProductIndex(prev => prev + 1);
-            notify.info('Siguiente producto', `Mostrando ${currentProductIndex + 2} de ${uniqueEans.length}`);
+            notify.info('Siguiente producto', `Mostrando ${currentProductIndex + 2} de ${activeTabEans.length}`);
         } else {
             notify.info('Fin de lista', 'Estás en el último producto');
         }
@@ -913,26 +942,26 @@ export default function StockRecountMobile() {
             }
 
             // Tab filter
-            if (activeTab === 'diferencias') {
-                return p.hasDifference || p.qty !== p.initialQty;
-            }
             if (activeTab === 'controlar') {
-                // Si hay navegación entre productos, enfocarse en el producto actual si hay varios
-                if (uniqueEans.length > 0 && currentProductIndex < uniqueEans.length) {
-                    const currentEan = uniqueEans[currentProductIndex];
-                    return p.ean === currentEan;
-                }
-                return true;
+                return !p.isConfirmed && currentEan !== null && p.ean === currentEan;
+            }
+            if (activeTab === 'controlados') {
+                return Boolean(p.isConfirmed) && currentEan !== null && p.ean === currentEan;
             }
             return true;
         });
-    }, [products, searchQuery, activeTab, uniqueEans, currentProductIndex]);
+    }, [products, searchQuery, activeTab, currentEan]);
 
     const handleConfirm = async () => {
-        if (isSubmitting) return;
+        if (isSubmitting || !canConfirm || !currentEan) return;
         const currentProducts = productsRef.current;
         if (effectiveSessionId && currentProducts.length > 0) {
             setIsSubmitting(true);
+            const confirmedProducts = currentProducts.map((p) =>
+                p.ean === currentEan
+                    ? { ...p, initialQty: p.qty, hasDifference: false, isConfirmed: true }
+                    : p
+            );
             // Agrupar total recontado por EAN y devolver resultado al diálogo Admin de MiPlus
             const grouped = new Map<string, { ean: string; eans?: string[]; id_producto?: string; name: string; initialQty: number; recountedQty: number }>();
             for (const p of currentProducts) {
@@ -978,14 +1007,9 @@ export default function StockRecountMobile() {
                 writeOutboxEntry(effectiveSessionId, deviceId, null);
                 setPendingOutbox(null);
 
-                const confirmed = currentProducts.map((p) => ({
-                    ...p,
-                    initialQty: p.qty,
-                    hasDifference: false,
-                }));
-                productsRef.current = confirmed;
-                setProducts(confirmed);
-                writeSavedDraft(effectiveSessionId, deviceId, batchEpochRef.current, confirmed);
+                productsRef.current = confirmedProducts;
+                setProducts(confirmedProducts);
+                writeSavedDraft(effectiveSessionId, deviceId, batchEpochRef.current, confirmedProducts);
 
                 notify.success('Recuento Enviado', 'Tus diferencias recontadas fueron enviadas al panel Admin de MiPlus.');
             } catch (err: any) {
@@ -996,7 +1020,9 @@ export default function StockRecountMobile() {
                 };
                 writeOutboxEntry(effectiveSessionId, deviceId, queuedEntry);
                 setPendingOutbox(queuedEntry);
-                writeSavedDraft(effectiveSessionId, deviceId, batchEpochRef.current, currentProducts);
+                productsRef.current = confirmedProducts;
+                setProducts(confirmedProducts);
+                writeSavedDraft(effectiveSessionId, deviceId, batchEpochRef.current, confirmedProducts);
 
                 notify.warning(
                     'Guardado en cola local',
@@ -1213,7 +1239,10 @@ export default function StockRecountMobile() {
                     <div className="w-full bg-zinc-200/70 p-1 rounded-full flex items-center justify-between gap-1 select-none">
                         <button
                             type="button"
-                            onClick={() => setActiveTab('controlar')}
+                            onClick={() => {
+                                setActiveTab('controlar');
+                                setCurrentProductIndex(0);
+                            }}
                             className={`flex-1 py-1.5 px-2 rounded-full text-[11.5px] font-semibold transition-all duration-150 text-center ${
                                 activeTab === 'controlar'
                                     ? 'bg-white text-zinc-900 shadow-xs'
@@ -1224,14 +1253,17 @@ export default function StockRecountMobile() {
                         </button>
                         <button
                             type="button"
-                            onClick={() => setActiveTab('diferencias')}
+                            onClick={() => {
+                                setActiveTab('controlados');
+                                setCurrentProductIndex(0);
+                            }}
                             className={`flex-1 py-1.5 px-2 rounded-full text-[11.5px] font-semibold transition-all duration-150 text-center ${
-                                activeTab === 'diferencias'
+                                activeTab === 'controlados'
                                     ? 'bg-white text-zinc-900 shadow-xs'
                                     : 'text-zinc-500 hover:text-zinc-800'
                             }`}
                         >
-                            Con Diferencias
+                            Controlados
                         </button>
                         <button
                             type="button"
@@ -1260,6 +1292,7 @@ export default function StockRecountMobile() {
                             {/* Product Box Image (82x82 Square Thumbnail) */}
                             <div className="w-[82px] h-[82px] rounded-xl bg-white border border-zinc-100 flex items-center justify-center p-1 shrink-0 overflow-hidden select-none">
                                 <img
+                                    key={resolvedImages[product.ean] || product.image || product.ean}
                                     src={resolvedImages[product.ean] || product.image || `/products/${product.ean}.jpg`}
                                     alt={product.name}
                                     className="w-full h-full object-contain pointer-events-none"
@@ -1339,52 +1372,60 @@ export default function StockRecountMobile() {
                         <div className="py-16 text-center text-zinc-400 text-xs">
                             {isLoading
                                 ? 'Descargando productos asignados...'
-                                : 'No se encontraron productos para los criterios seleccionados.'}
+                                : activeTab === 'controlar' && products.length > 0 && pendingEans.length === 0
+                                    ? 'No quedaron más productos por terminar'
+                                    : activeTab === 'controlados' && controlledEans.length === 0
+                                        ? 'Aún no hay productos controlados.'
+                                        : 'No se encontraron productos para los criterios seleccionados.'}
                         </div>
                     )}
                 </main>
 
                 {/* 5. Bottom Navigation Bar (Pinned with Safe Area, 3 Equal-Width Columns) */}
-                <footer className="shrink-0 px-4 pt-2.5 pb-[max(12px,env(safe-area-inset-bottom))] bg-[#F4F4F5] border-t border-zinc-200/80 z-30">
-                    <div className="grid grid-cols-3 gap-2 w-full">
-                        {/* Anterior */}
-                        <button
-                            type="button"
-                            onClick={handlePreviousProduct}
-                            className="h-[38px] w-full rounded-full bg-[#EAEAEA] hover:bg-[#E0E0E0] active:scale-98 text-[#71717A] text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer select-none px-2"
-                        >
-                            <ChevronLeft className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
-                            <span className="leading-none pt-[0.5px]">Anterior</span>
-                        </button>
+                {activeTab !== 'todas' && (
+                    <footer className="shrink-0 px-4 pt-2.5 pb-[max(12px,env(safe-area-inset-bottom))] bg-[#F4F4F5] border-t border-zinc-200/80 z-30">
+                        <div className="grid grid-cols-3 gap-2 w-full">
+                            {/* Anterior */}
+                            <button
+                                type="button"
+                                onClick={handlePreviousProduct}
+                                disabled={activeTabEans.length === 0 || currentProductIndex <= 0}
+                                className="h-[38px] w-full rounded-full bg-[#EAEAEA] hover:bg-[#E0E0E0] active:scale-98 disabled:opacity-45 disabled:cursor-not-allowed text-[#71717A] text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer select-none px-2"
+                            >
+                                <ChevronLeft className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
+                                <span className="leading-none pt-[0.5px]">Anterior</span>
+                            </button>
 
-                        {/* Siguiente */}
-                        <button
-                            type="button"
-                            onClick={handleNextProduct}
-                            className="h-[38px] w-full rounded-full bg-[#EAEAEA] hover:bg-[#E0E0E0] active:scale-98 text-[#71717A] text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer select-none px-2"
-                        >
-                            <span className="leading-none pt-[0.5px]">Siguiente</span>
-                            <ChevronRight className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
-                        </button>
+                            {/* Siguiente */}
+                            <button
+                                type="button"
+                                onClick={handleNextProduct}
+                                disabled={activeTabEans.length === 0 || currentProductIndex >= activeTabEans.length - 1}
+                                className="h-[38px] w-full rounded-full bg-[#EAEAEA] hover:bg-[#E0E0E0] active:scale-98 disabled:opacity-45 disabled:cursor-not-allowed text-[#71717A] text-[12px] font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer select-none px-2"
+                            >
+                                <span className="leading-none pt-[0.5px]">Siguiente</span>
+                                <ChevronRight className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
+                            </button>
 
-                        {/* Confirmar (Electric Blue) */}
-                        <button
-                            type="button"
-                            onClick={handleConfirm}
-                            disabled={isSubmitting}
-                            className="h-[38px] w-full rounded-full bg-[#0066FF] hover:bg-[#005BEA] active:scale-98 disabled:opacity-60 text-white text-[12px] font-semibold flex items-center justify-center gap-1.5 shadow-xs shadow-blue-500/25 transition-all cursor-pointer select-none px-2"
-                        >
-                            {isSubmitting ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                            ) : (
-                                <Check className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
-                            )}
-                            <span className="leading-none pt-[0.5px]">
-                                {isSubmitting ? 'Enviando...' : 'Confirmar'}
-                            </span>
-                        </button>
-                    </div>
-                </footer>
+                            {/* Confirmar (Electric Blue) */}
+                            <button
+                                type="button"
+                                onClick={handleConfirm}
+                                disabled={!canConfirm}
+                                className="h-[38px] w-full rounded-full bg-[#0066FF] hover:bg-[#005BEA] active:scale-98 disabled:opacity-45 disabled:cursor-not-allowed text-white text-[12px] font-semibold flex items-center justify-center gap-1.5 shadow-xs shadow-blue-500/25 transition-all cursor-pointer select-none px-2"
+                            >
+                                {isSubmitting ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                                ) : (
+                                    <Check className="w-3.5 h-3.5 stroke-[2.5] shrink-0" />
+                                )}
+                                <span className="leading-none pt-[0.5px]">
+                                    {isSubmitting ? 'Enviando...' : 'Confirmar'}
+                                </span>
+                            </button>
+                        </div>
+                    </footer>
+                )}
 
             </div>
         </div>

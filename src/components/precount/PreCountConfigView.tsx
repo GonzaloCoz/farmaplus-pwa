@@ -23,11 +23,15 @@ import {
     Copy,
     KeyRound,
     Eye,
-    EyeOff
+    EyeOff,
+    QrCode,
+    ChevronUp
 } from 'lucide-react';
+import { InventoryQrLocationsPanel } from '@/components/settings/InventoryQrLocationsPanel';
 import { OFFICIAL_71_BRANCHES } from '@/lib/branchNetworkMap';
 import { cn } from '@/lib/utils';
 import { notify } from '@/lib/notifications';
+import { seedSessionLocationsFromBranch } from '@/services/branchLocationsService';
 import { OtpInput } from '@/components/ui/otp-segmented-input';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -279,6 +283,7 @@ export function PreCountConfigView({
 
     const [generatedPin, setGeneratedPin] = useState<string>(() => Math.floor(100000 + Math.random() * 900000).toString());
     const [copiedPin, setCopiedPin] = useState(false);
+    const [showQrLocationsSection, setShowQrLocationsSection] = useState(true);
     const [importSource, setImportSource] = useState<ImportSourceOption>('file');
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -982,6 +987,15 @@ export function PreCountConfigView({
                     branch_id: targetBranchId || null
                 });
                 console.log('[Supabase] Sesión sincronizada con éxito en precount_sessions:', targetSession.id, 'branch_id:', targetBranchId);
+
+                // Snapshot automático de ubicaciones QR vigentes de la sucursal (estado inicial 'pending')
+                const seededCount = await seedSessionLocationsFromBranch(
+                    targetSession.id,
+                    cleanBranchName || selectedBranch
+                );
+                if (seededCount > 0) {
+                    console.log(`[Ubicaciones QR] ${seededCount} ubicaciones vigentes vinculadas a la sesión ${targetSession.id}.`);
+                }
             } catch (supaErr) {
                 console.warn('[Supabase] Error directo en precount_sessions, encolado vía syncManager:', supaErr);
             }
@@ -1644,6 +1658,50 @@ export function PreCountConfigView({
                             </section>
                         </div>
                     </div>
+
+                    {/* SECCIÓN INFERIOR: Generador de Ubicaciones QR (A4 2×3) */}
+                    {!isBranchProfile && (
+                        <section
+                            aria-labelledby="config-qr-locations-heading"
+                            className="rounded-2xl bg-surface-2/25 dark:bg-surface-2/15 border border-border/40 p-4 sm:p-5 space-y-4"
+                        >
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                                        <QrCode className="w-4 h-4" aria-hidden="true" />
+                                    </div>
+                                    <div>
+                                        <h3 id="config-qr-locations-heading" className="text-sm font-semibold text-foreground tracking-tight">
+                                            Ubicaciones QR del Inventario (A4 2×4)
+                                        </h3>
+                                        <p className="text-xs text-muted-foreground mt-0.5 leading-normal">
+                                            Configurá las góndolas/sectores de la sucursal, imprimí las etiquetas QR en A4 y habilitá la auditoría de posiciones.
+                                        </p>
+                                    </div>
+                                </div>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setShowQrLocationsSection((prev) => !prev)}
+                                    className="h-8 px-3 text-xs font-medium text-muted-foreground hover:text-foreground rounded-xl gap-1.5"
+                                >
+                                    <span>{showQrLocationsSection ? 'Ocultar' : 'Mostrar'}</span>
+                                    {showQrLocationsSection ? (
+                                        <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" />
+                                    ) : (
+                                        <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+                                    )}
+                                </Button>
+                            </div>
+
+                            {showQrLocationsSection && (
+                                <div className="pt-2 border-t border-border/30">
+                                    <InventoryQrLocationsPanel defaultBranchName={selectedBranch} />
+                                </div>
+                            )}
+                        </section>
+                    )}
 
                     {/* BARRA INFERIOR DE ESTADO Y ACCIONES (Siempre visible al pie del panel) */}
                     <div className="pt-3.5 border-t border-border/30 flex flex-wrap items-center justify-between gap-3">

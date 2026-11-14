@@ -159,10 +159,10 @@ export function getSectorByPrefix(prefix: string): FarmaplusSectorDef | undefine
     return FARMAPLUS_SECTORS.find(s => s.prefix === clean);
 }
 
-const SECTOR_PREFIXES_REGEX = /^(ESP|CAJ|MOS|DEP|BUR|ARC|HELA|VID|GON|ROB|BAC|BOX)[-_\s]?0*(\d{1,3})$/i;
+const SECTOR_PREFIXES_REGEX = /^(?:POS:|LOC:|SECTOR:)?\s*(ESP|CAJ|MOS|DEP|BUR|ARC|HELA|VID|GON|ROB|BAC|BOX)[-_\s]?0*(\d{1,3})(?:[-_\s]?([A-Z0-9]{1,3}))?$/i;
 
 /**
- * Detects whether an input string corresponds to a Farmaplus sector code format (e.g. ESP-01, GON-2, hela_3).
+ * Detects whether an input string corresponds to a Farmaplus sector code format (e.g. ESP-01, GON-2, GON-01-B, POS:GON-01-B).
  */
 export function isSectorCode(input: string): boolean {
     if (!input || typeof input !== 'string') return false;
@@ -170,7 +170,7 @@ export function isSectorCode(input: string): boolean {
 }
 
 /**
- * Normalizes an arbitrary sector input to standard Farmaplus format: PREFIX-01 (e.g. esp1 -> ESP-01).
+ * Normalizes an arbitrary sector input to standard Farmaplus format: PREFIX-01 or PREFIX-01-B (e.g. pos:gon-1-b -> GON-01-B).
  * Returns null if the input is not a recognized Farmaplus sector code.
  */
 export function normalizeSectorCode(input: string): string | null {
@@ -180,7 +180,8 @@ export function normalizeSectorCode(input: string): string | null {
     const prefix = match[1].toUpperCase();
     const num = parseInt(match[2], 10);
     const padded = num < 10 ? `0${num}` : String(num);
-    return `${prefix}-${padded}`;
+    const face = match[3] ? `-${match[3].toUpperCase()}` : '';
+    return `${prefix}-${padded}${face}`;
 }
 
 export function parseSectorCode(code: string): { sectorDef?: FarmaplusSectorDef; numberPart?: string } {
@@ -224,8 +225,20 @@ export function getFullSectorName(code?: string | null): string {
     const trimmed = code.trim();
     if (!trimmed || trimmed.toLowerCase().includes('sin sector')) return 'Sin sector abierto';
 
+    // Formato PREFIJO-NUMERO-CARA (ej. GON-01-B, POS:GON-01-B)
+    const faceMatch = trimmed.replace(/^(POS:|LOC:|SECTOR:)\s*/i, '').match(/^([A-Za-z]+)[-_/\s]?0*(\d{1,3})[-_/\s]([A-Za-z0-9]{1,3})$/);
+    if (faceMatch) {
+        const prefix = faceMatch[1].toUpperCase();
+        const num = parseInt(faceMatch[2], 10);
+        const face = faceMatch[3].toUpperCase();
+        const fullName = SECTOR_PREFIX_FULL_NAMES[prefix];
+        if (fullName) {
+            return `${fullName} ${num} · ${face}`;
+        }
+    }
+
     // Formato PREFIJO-NUMERO (ej. ESP-01, GO-2, HELA_03, CA-1)
-    const numMatch = trimmed.match(/^([A-Za-z]+)[-_/\s]?0*(\d{1,3})$/);
+    const numMatch = trimmed.replace(/^(POS:|LOC:|SECTOR:)\s*/i, '').match(/^([A-Za-z]+)[-_/\s]?0*(\d{1,3})$/);
     if (numMatch) {
         const prefix = numMatch[1].toUpperCase();
         const num = numMatch[2];

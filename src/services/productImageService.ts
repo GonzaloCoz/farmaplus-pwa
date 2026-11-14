@@ -1,7 +1,11 @@
-// Product Image Service - Farmaplus VTEX Integration
+// Product Image Service - Supabase Storage (`product-images`) + Farmaplus VTEX fallback
 // Resolves official product packaging images on-demand by EAN
 
+const SUPABASE_BASE_URL = (import.meta.env.VITE_SUPABASE_URL || 'https://supabase.halu.com.ar').replace(/\/+$/, '');
+const PRODUCT_IMAGES_BUCKET_URL = `${SUPABASE_BASE_URL}/storage/v1/object/public/product-images`;
+
 const memoryCache = new Map<string, string>();
+const inFlightLookups = new Map<string, Promise<string | null>>();
 const LOCAL_STORAGE_KEY = 'farmaplus_product_images_cache';
 
 function getLocalCache(): Record<string, string> {
@@ -31,6 +35,23 @@ function getApiBase(): string {
     return 'https://www.farmaplus.com.ar';
 }
 
+export function getSupabaseProductImageUrl(ean: string): string {
+    const cleanEan = String(ean || '').trim();
+    return `${PRODUCT_IMAGES_BUCKET_URL}/${encodeURIComponent(cleanEan)}.jpg`;
+}
+
+async function checkImageExists(url: string): Promise<boolean> {
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3500);
+        const res = await fetch(url, { method: 'HEAD', signal: controller.signal });
+        clearTimeout(timeout);
+        return res.ok;
+    } catch {
+        return false;
+    }
+}
+
 export interface ProductLookupResult {
     ean: string;
     imageUrl: string | null;
@@ -44,6 +65,14 @@ export async function lookupProductByEan(ean: string): Promise<ProductLookupResu
     }
     const cleanEan = ean.trim();
 
+    // 1. Check Supabase Storage bucket first (fast, no CORS issues)
+    const storageUrl = getSupabaseProductImageUrl(cleanEan);
+    if (await checkImageExists(storageUrl)) {
+        setLocalCache(cleanEan, storageUrl);
+        return { ean: cleanEan, imageUrl: storageUrl };
+    }
+
+    // 2. Fallback to Farmaplus VTEX Public Catalog API
     try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 6000);
@@ -78,9 +107,9 @@ export async function lookupProductByEan(ean: string): Promise<ProductLookupResu
     return { ean: cleanEan, imageUrl: null };
 }
 
-export async function getProductImageUrl(ean: string): Promise<string | null> {
-    if (!ean || ean.trim().length === 0) return null;
-    const cleanEan = ean.trim();
+export async function getProductImageUrl(ean: string, relatedEans?: string[]): Promise<string | null> {
+    const cleanEan = String(ean || '').trim();
+    if (!cleanEan) return null;
 
     // 1. Memory Cache
     if (memoryCache.has(cleanEan)) {
@@ -94,24 +123,47 @@ export async function getProductImageUrl(ean: string): Promise<string | null> {
         return local[cleanEan];
     }
 
-    // 3. Fallback to pre-bundled local files (e.g. /products/{ean}.jpg)
-    const localRelativePath = `/products/${cleanEan}.jpg`;
-
-    // 4. Fetch from Farmaplus VTEX Public Catalog API
-    const res = await lookupProductByEan(cleanEan);
-    if (res.imageUrl) {
-        return res.imageUrl;
+    if (inFlightLookups.has(cleanEan)) {
+        return inFlightLookups.get(cleanEan)!;
     }
 
-    return localRelativePath;
+    const promise = (async (): Promise<string | null> => {
+        const candidates = Array.from(
+            new Set([cleanEan, ...(relatedEans || [])].map((e) => String(e || '').trim()).filter(Boolean))
+        );
+
+        // 3. Try Supabase Storage bucket (`product-images/{ean}.jpg`) for primary and related EANs
+        for (const candidate of candidates) {
+            const storageUrl = getSupabaseProductImageUrl(candidate);
+            if (await checkImageExists(storageUrl)) {
+                setLocalCache(cleanEan, storageUrl);
+                return storageUrl;
+            }
+        }
+
+        // 4. Fallback to VTEX lookup
+        const res = await lookupProductByEan(cleanEan);
+        if (res.imageUrl) {
+            return res.imageUrl;
+        }
+
+        // 5. Final fallback to pre-bundled local files
+        return `/products/${cleanEan}.jpg`;
+    })();
+
+    inFlightLookups.set(cleanEan, promise);
+    try {
+        return await promise;
+    } finally {
+        inFlightLookups.delete(cleanEan);
+    }
 }
 
 export async function prefetchProductImages(eans: string[]): Promise<void> {
     const uniqueEans = Array.from(new Set(eans.filter(Boolean)));
     const uncached = uniqueEans.filter((ean) => !memoryCache.has(ean) && !getLocalCache()[ean]);
 
-    // Batch fetch in chunks of 4 parallel requests to prevent throttling
-    const chunkSize = 4;
+    const chunkSize = 6;
     for (let i = 0; i < uncached.length; i += chunkSize) {
         const chunk = uncached.slice(i, i + chunkSize);
         await Promise.allSettled(chunk.map((ean) => getProductImageUrl(ean)));

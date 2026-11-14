@@ -24,9 +24,18 @@ import {
     Wifi,
     WifiOff,
     Check,
-    ShieldCheck
+    ShieldCheck,
+    FileSpreadsheet,
+    FileText
 } from 'lucide-react';
 import { toast } from '@/lib/notifications';
+import {
+    computeUncountedCatalogAudit,
+    exportUncountedAuditExcel,
+    exportUncountedPlexTxt,
+    exportCountedPlexTxt,
+    type UncountedAuditResult
+} from '@/services/uncountedAuditService';
 import { useUser } from '@/contexts/UserContext';
 import { useSystemModules } from '@/hooks/useSystemModules';
 import { db } from '@/services/db';
@@ -89,6 +98,8 @@ export function SendPlexApiDialog({
     const [adjustmentStatus, setAdjustmentStatus] = useState<string>('PENDIENTE');
     const [isRestoring, setIsRestoring] = useState<boolean>(false);
     const [trazablesRestored, setTrazablesRestored] = useState<boolean>(false);
+    const [uncountedAudit, setUncountedAudit] = useState<UncountedAuditResult | null>(null);
+    const [isAuditingUncounted, setIsAuditingUncounted] = useState<boolean>(false);
 
     // Resolver ID de la sesión activa
     const effectiveSessionId = useMemo(() => {
@@ -159,6 +170,137 @@ export function SendPlexApiDialog({
         if (items && items.length > 0) return items;
         return liveDbItems || [];
     }, [items, liveDbItems]);
+
+    useEffect(() => {
+        if (!open || !effectiveSessionId) {
+            setUncountedAudit(null);
+            return;
+        }
+        let cancelled = false;
+        setIsAuditingUncounted(true);
+        computeUncountedCatalogAudit(effectiveSessionId, activeItems)
+            .then((res) => {
+                if (!cancelled) setUncountedAudit(res);
+            })
+            .catch(() => {
+                if (!cancelled) setUncountedAudit(null);
+            })
+            .finally(() => {
+                if (!cancelled) setIsAuditingUncounted(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [open, effectiveSessionId, activeItems]);
+
+    const handleDownloadUncountedExcel = () => {
+        if (!uncountedAudit || uncountedAudit.items.length === 0) return;
+        exportUncountedAuditExcel(uncountedAudit, targetBranch.name, inventoryTitle);
+        toast.success(`Excel de auditoría generado (${uncountedAudit.summary.uncountedSkus} productos sin contar).`);
+    };
+
+    const handleDownloadUncountedTxt = () => {
+        if (!uncountedAudit || uncountedAudit.items.length === 0) return;
+        exportUncountedPlexTxt(uncountedAudit, targetBranch.name);
+        toast.success(`Archivo .txt de bajas Plex generado (${uncountedAudit.summary.uncountedSkus} líneas).`);
+    };
+
+    const handleDownloadCountedTxt = async () => {
+        if (!activeItems || activeItems.length === 0) {
+            toast.warning('No hay productos inventariados para exportar.');
+            return;
+        }
+        const { exportedCount, totalUnits: exportedUnits } = await exportCountedPlexTxt(
+            effectiveSessionId,
+            activeItems,
+            targetBranch.name
+        );
+        if (exportedCount === 0) {
+            toast.warning('No hay productos con cantidad mayor a 0 para exportar.');
+            return;
+        }
+        toast.success(`Respaldo .txt generado: ${exportedCount} SKUs (${exportedUnits} un.).`);
+    };
+
+    const renderUncountedAuditCard = () => {
+        if (isAuditingUncounted) {
+            return (
+                <div className="p-3 rounded-2xl bg-surface-2/60 dark:bg-surface-3/50 border border-border/40 text-xs flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                    <span>Auditando catálogo importado vs. productos inventariados...</span>
+                </div>
+            );
+        }
+        if (!uncountedAudit || uncountedAudit.summary.totalCatalogWithStock === 0) {
+            return null;
+        }
+
+        const { summary } = uncountedAudit;
+        const hasUncounted = summary.uncountedSkus > 0;
+
+        return (
+            <div className={`p-3.5 rounded-2xl border space-y-2.5 text-xs ${
+                hasUncounted
+                    ? 'bg-amber-500/5 border-amber-500/25'
+                    : 'bg-emerald-500/5 border-emerald-500/25'
+            }`}>
+                <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-foreground flex items-center gap-1.5">
+                        <AlertTriangle className={`w-3.5 h-3.5 shrink-0 ${hasUncounted ? 'text-amber-500' : 'text-emerald-500'}`} />
+                        <span>Auditoría de No Inventariados (Baja a 0)</span>
+                    </span>
+                    <Badge
+                        variant="outline"
+                        className={`text-[10px] font-semibold ${
+                            hasUncounted
+                                ? 'border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/10'
+                                : 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10'
+                        }`}
+                    >
+                        Cobertura {summary.coveragePct.toFixed(1)}%
+                    </Badge>
+                </div>
+
+                {hasUncounted ? (
+                    <>
+                        <div className="text-[11px] text-muted-foreground leading-relaxed">
+                            Inventariados <strong className="text-foreground">{summary.countedCatalogSkus.toLocaleString('es-AR')}</strong> de{' '}
+                            <strong className="text-foreground">{summary.totalCatalogWithStock.toLocaleString('es-AR')}</strong> SKUs con stock.{' '}
+                            Quedan <strong className="text-amber-600 dark:text-amber-400">{summary.uncountedSkus.toLocaleString('es-AR')} SKUs</strong>{' '}
+                            ({summary.totalUncountedUnits.toLocaleString('es-AR')} un. · Costo{' '}
+                            <strong className="text-foreground">${summary.totalUncountedCost.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</strong>) sin capturar para dar de baja en otra sesión de Plex.
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={handleDownloadUncountedExcel}
+                                className="h-8 px-3 text-[11px] rounded-lg border-emerald-500/30 hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                            >
+                                <FileSpreadsheet className="w-3.5 h-3.5 mr-1.5" />
+                                Excel Auditoría (.xlsx)
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={handleDownloadUncountedTxt}
+                                className="h-8 px-3 text-[11px] rounded-lg border-amber-500/30 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                            >
+                                <FileText className="w-3.5 h-3.5 mr-1.5" />
+                                TXT Bajas Plex (.txt)
+                            </Button>
+                        </div>
+                    </>
+                ) : (
+                    <p className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                        Se inventariaron los {summary.totalCatalogWithStock.toLocaleString('es-AR')} SKUs con stock del catálogo importado. No hay bajas pendientes.
+                    </p>
+                )}
+            </div>
+        );
+    };
 
     // Resolver Sucursal e IP de destino priorizando la configuración activa del inventario
     const targetBranch = useMemo(() => {
@@ -605,6 +747,8 @@ export function SendPlexApiDialog({
                                 </li>
                             </ol>
                         </div>
+
+                        {renderUncountedAuditCard()}
                     </div>
                 ) : (
                     /* Vista principal de Configuración y Resumen */
@@ -669,6 +813,8 @@ export function SendPlexApiDialog({
                             </div>
                         </div>
 
+                        {renderUncountedAuditCard()}
+
                         {connError && (
                             <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs flex items-start gap-2">
                                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -706,6 +852,18 @@ export function SendPlexApiDialog({
                         </Button>
                     ) : (
                         <>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                disabled={isSending || activeItems.length === 0}
+                                onClick={handleDownloadCountedTxt}
+                                title="Descargar archivo .txt de respaldo para importar manualmente en Plex"
+                                className="rounded-xl h-9 px-3 text-xs font-semibold border-border/60 hover:bg-hover mr-auto flex items-center gap-1.5"
+                            >
+                                <FileText className="w-3.5 h-3.5" />
+                                <span>TXT Inventariados</span>
+                            </Button>
+
                             <DialogClose asChild>
                                 <Button
                                     type="button"

@@ -53,7 +53,9 @@ import {
   ChevronsUpDown,
   LogOut as LogOutIcon,
   Webhook as WebhookIcon,
+  QrCode as QrCodeIcon,
 } from "lucide-react";
+import { InventoryQrLocationsPanel } from "@/components/settings/InventoryQrLocationsPanel";
 import { HugeiconsIcon } from "@hugeicons/react";
 import CheckIcon from "@hugeicons/core-free-icons/CheckIcon";
 import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
@@ -77,6 +79,7 @@ const SECTIONS: SettingsSection[] = [
   { id: "notifications", label: "Notificaciones", icon: "bell", description: "Qué notificaciones recibes y cuándo." },
   { id: "appearance", label: "Apariencia", icon: "palette", description: "Perfil, tinte de color y tema para este dispositivo." },
   { id: "security", label: "Seguridad", icon: "shield", description: "Protección de inicio de sesión y sesiones activas." },
+  { id: "inventory-qr", label: "Ubicaciones QR", iconComponent: QrCodeIcon, description: "Generar etiquetas QR en A4 (2×4) y padrón de ubicaciones vigentes." },
   { id: "modules", label: "Módulos", iconComponent: WebhookIcon, description: "Control en tiempo real de servicios e integraciones con servidores." },
   { id: "members", label: "Miembros", icon: "users", description: "Quiénes pueden acceder a este espacio de trabajo." },
 ];
@@ -291,6 +294,8 @@ function SectionPanel({ id, onLogout }: { id: string; onLogout?: () => void }) {
       return <SecurityPanel onLogout={onLogout} />;
     case "modules":
       return <ModulesPanel />;
+    case "inventory-qr":
+      return <InventoryQrLocationsPanel />;
     case "members":
       return <MembersPanel />;
     default:

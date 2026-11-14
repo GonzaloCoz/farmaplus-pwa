@@ -31,6 +31,7 @@ import DeletePutBackIcon from "@hugeicons/core-free-icons/DeletePutBackIcon";
 import Xls01Icon from "@hugeicons/core-free-icons/Xls01Icon";
 import { Database, RefreshCw as LucideRefreshCw, Ellipsis as EllipsisIcon, Smartphone } from 'lucide-react';
 import { exportRecountDifferencesToCloud } from '@/services/preCountDB';
+import { exportCountedPlexTxt } from '@/services/uncountedAuditService';
 import { LabRemovalModal } from "@/components/LabRemovalModal";
 import { SendPlexApiDialog } from './SendPlexApiDialog';
 import { RecountControlDialog } from './RecountControlDialog';
@@ -623,6 +624,30 @@ export function PreCountAdminCyclicView({
         }
     };
 
+    const handleExportPlexTxt = async () => {
+        const sourceItems = scannedTableItems.length > 0 ? scannedTableItems : (items || []);
+        if (sourceItems.length === 0) {
+            toast.warning("Sin datos", "No hay productos inventariados para exportar.");
+            return;
+        }
+        try {
+            const targetSessionId = sessionId || (typeof window !== 'undefined' ? (localStorage.getItem('last_precount_session_id') || localStorage.getItem('precount_session_id')) : '') || '';
+            const { exportedCount, totalUnits } = await exportCountedPlexTxt(
+                targetSessionId || undefined,
+                sourceItems,
+                effectiveBranchName || 'Sucursal'
+            );
+            if (exportedCount === 0) {
+                toast.warning("Sin datos", "No hay productos con cantidad mayor a 0 para exportar.");
+                return;
+            }
+            toast.success("TXT Plex generado", `Se exportaron ${exportedCount} SKUs (${totalUnits} un.) en formato ID;EAN;CANTIDAD;0.`);
+        } catch (err: any) {
+            console.error('[PreCountAdminCyclicView] Error exportando TXT Plex:', err);
+            toast.error("Error al exportar TXT", err?.message || "No se pudo generar el archivo .txt.");
+        }
+    };
+
     const handleExportRecountToZebra = async () => {
         const targetSessionId = sessionId || (typeof window !== 'undefined' ? (localStorage.getItem('last_precount_session_id') || localStorage.getItem('precount_session_id')) : '');
         if (!targetSessionId) {
@@ -942,6 +967,12 @@ export function PreCountAdminCyclicView({
                                                         icon={Download}
                                                         label="Descargar reporte EXCEL"
                                                         onSelect={handleExportExcel}
+                                                    />
+                                                    <MenuItem
+                                                        index={2}
+                                                        icon={Document}
+                                                        label="Descargar archivo .TXT (Plex)"
+                                                        onSelect={handleExportPlexTxt}
                                                     />
                                                 </DropdownContent>
                                             </DropdownMenu>

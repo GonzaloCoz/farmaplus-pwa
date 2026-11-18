@@ -12,7 +12,7 @@ import { notify as toast } from '@/lib/notifications';
 import { cn } from '@/lib/utils';
 import { Elevated } from '@/lib/elevated';
 import { db } from '@/services/db';
-import { upsertPreCountItem, updatePreCountItem, deletePreCountItems, getDeviceId } from '@/services/preCountDB';
+import { upsertPreCountItem, updatePreCountItem, deletePreCountItems, getDeviceId, isItemRecentlySaved, isItemRecentlyDeleted } from '@/services/preCountDB';
 import { syncManager } from '@/services/syncManager';
 import { supabase } from '@/integrations/supabase/client';
 import { DragStepper } from '@/components/ui/drag-stepper';
@@ -173,7 +173,83 @@ export function PreCountProductsView({
         return null;
     }, [activeSector, effectiveSessionId]);
 
-    // Consulta reactiva en vivo desde Dexie db.items para la sesión activa
+    // Cache en memoria del catálogo de la sesión (cargado una sola vez por sesión, evita leer 20k+ filas en cada useLiveQuery)
+    type CatalogMeta = { lab?: string; rubro?: string; name?: string; systemStock?: number; is_hidden?: boolean; is_traceable?: boolean; gtin?: string; is_parent?: boolean; id_producto_padre?: string; unidades_padre?: number; parent_name?: string };
+    const catalogMetaRef = useRef<{ sessionId: string; map: Map<string, CatalogMeta> }>({ sessionId: '', map: new Map() });
+    const [catalogMetaVersion, setCatalogMetaVersion] = useState(0);
+
+    useEffect(() => {
+        let cancelled = false;
+        if (!effectiveSessionId) {
+            catalogMetaRef.current = { sessionId: '', map: new Map() };
+            return;
+        }
+        if (catalogMetaRef.current.sessionId === effectiveSessionId && catalogMetaRef.current.map.size > 0) return;
+
+        const loadMeta = async () => {
+            try {
+                const map = new Map<string, CatalogMeta>();
+                const sessionProducts = await db.precount_products.where('session_id').equals(effectiveSessionId).toArray();
+                for (let i = 0; i < sessionProducts.length; i++) {
+                    const p = sessionProducts[i];
+                    map.set(p.ean, {
+                        lab: p.laboratory,
+                        rubro: p.rubro,
+                        name: p.name,
+                        systemStock: p.stock ?? (p as any).systemStock,
+                        is_hidden: Boolean((p as any).is_hidden),
+                        is_traceable: Boolean((p as any).is_traceable || (p as any).trazable),
+                        gtin: (p as any).gtin || '',
+                        is_parent: Boolean((p as any).is_parent),
+                        id_producto_padre: (p as any).id_producto_padre || undefined,
+                        unidades_padre: Number((p as any).unidades_padre) || undefined,
+                        parent_name: (p as any).parent_name || undefined,
+                    });
+                }
+                if (sessionProducts.length === 0) {
+                    const session = await db.sessions.get(effectiveSessionId);
+                    if (session?.master_catalog && Array.isArray(session.master_catalog)) {
+                        for (let i = 0; i < session.master_catalog.length; i++) {
+                            const p: any = session.master_catalog[i];
+                            const eans: string[] = (p.eans && p.eans.length > 0) ? p.eans : [p.ean];
+                            for (let j = 0; j < eans.length; j++) {
+                                const ean = eans[j];
+                                if (!ean) continue;
+                                map.set(ean, {
+                                    lab: p.laboratory,
+                                    rubro: p.rubro || p.category,
+                                    name: p.name,
+                                    systemStock: p.systemStock ?? p.stock,
+                                    is_hidden: Boolean(p.is_hidden),
+                                    is_traceable: Boolean(p.is_traceable || p.trazable),
+                                    gtin: p.gtin || '',
+                                    is_parent: Boolean(p.is_parent),
+                                    id_producto_padre: p.id_producto_padre || undefined,
+                                    unidades_padre: Number(p.unidades_padre) || undefined,
+                                    parent_name: p.parent_name || undefined,
+                                });
+                            }
+                        }
+                    }
+                }
+                if (!cancelled) {
+                    catalogMetaRef.current = { sessionId: effectiveSessionId, map };
+                    setCatalogMetaVersion((v) => v + 1);
+                }
+            } catch (e) {
+                console.warn('[PreCountProductsView] Error cacheando catálogo de sesión:', e);
+            }
+        };
+
+        void loadMeta();
+        const onCatalogLoaded = () => { void loadMeta(); };
+        window.addEventListener('precount:catalog_loaded', onCatalogLoaded);
+        return () => {
+            cancelled = true;
+            window.removeEventListener('precount:catalog_loaded', onCatalogLoaded);
+        };
+    }, [effectiveSessionId]);
+
     // Consulta reactiva en vivo desde Dexie db.items para la sesión activa
     const dbItems = useLiveQuery(
         async () => {
@@ -211,48 +287,10 @@ export function PreCountProductsView({
                     });
                 }
                 
-                // Mapear metadatos desde precount_products si no vinieron en el item
-                const productsMap = new Map<string, { lab?: string; rubro?: string; name?: string; systemStock?: number; is_hidden?: boolean; is_traceable?: boolean; gtin?: string; is_parent?: boolean; id_producto_padre?: string; unidades_padre?: number; parent_name?: string }>();
-                const sessionProducts = await db.precount_products.where('session_id').equals(effectiveSessionId).toArray();
-                sessionProducts.forEach(p => {
-                    productsMap.set(p.ean, { 
-                        lab: p.laboratory, 
-                        rubro: p.rubro, 
-                        name: p.name,
-                        systemStock: p.stock ?? (p as any).systemStock,
-                        is_hidden: Boolean((p as any).is_hidden),
-                        is_traceable: Boolean((p as any).is_traceable || (p as any).trazable),
-                        gtin: (p as any).gtin || '',
-                        is_parent: Boolean((p as any).is_parent),
-                        id_producto_padre: (p as any).id_producto_padre || undefined,
-                        unidades_padre: Number((p as any).unidades_padre) || undefined,
-                        parent_name: (p as any).parent_name || undefined,
-                    });
-                });
-
-                if (sessionProducts.length === 0) {
-                    const session = await db.sessions.get(effectiveSessionId);
-                    if (session?.master_catalog && Array.isArray(session.master_catalog)) {
-                        session.master_catalog.forEach((p: any) => {
-                            const eans: string[] = (p.eans && p.eans.length > 0) ? p.eans : [p.ean];
-                            eans.filter(Boolean).forEach(ean => {
-                                productsMap.set(ean, { 
-                                    lab: p.laboratory, 
-                                    rubro: p.rubro || p.category, 
-                                    name: p.name,
-                                    systemStock: p.systemStock ?? p.stock,
-                                    is_hidden: Boolean(p.is_hidden),
-                                    is_traceable: Boolean(p.is_traceable || p.trazable),
-                                    gtin: p.gtin || '',
-                                    is_parent: Boolean(p.is_parent),
-                                    id_producto_padre: p.id_producto_padre || undefined,
-                                    unidades_padre: Number(p.unidades_padre) || undefined,
-                                    parent_name: p.parent_name || undefined,
-                                });
-                            });
-                        });
-                    }
-                }
+                // Reutilizar mapa de catálogo cacheado en memoria (O(1), sin re-leer Dexie precount_products)
+                const productsMap = catalogMetaRef.current.sessionId === effectiveSessionId
+                    ? catalogMetaRef.current.map
+                    : new Map<string, CatalogMeta>();
 
                 // Fallback a SQLite local (stock_local.db en Tauri de escritorio) para items escaneados
                 if (isTauriEnvironment()) {
@@ -320,7 +358,7 @@ export function PreCountProductsView({
                 return [];
             }
         },
-        [effectiveSessionId, isBranchMode, user?.id, user?.name, user?.username]
+        [effectiveSessionId, isBranchMode, user?.id, user?.name, user?.username, catalogMetaVersion]
     );
 
     // Sincronizar ítems de todos los usuarios y dispositivos desde Supabase para la sesión activa
@@ -377,55 +415,82 @@ export function PreCountProductsView({
 
                     // Limpiar ítems de Dexie que ya habían sido sincronizados al servidor (synced === 1) pero que fueron eliminados en Supabase
                     const orphanedLocalItems = localSessionItems.filter(
-                        (loc) => loc.synced === 1 && !remoteIds.has(loc.id) && !pendingIds.has(loc.id) && !unsyncedLocalIds.has(loc.id)
+                        (loc) =>
+                            loc.synced === 1 &&
+                            !remoteIds.has(loc.id) &&
+                            !pendingIds.has(loc.id) &&
+                            !unsyncedLocalIds.has(loc.id) &&
+                            !isItemRecentlySaved(loc.id)
                     );
                     if (orphanedLocalItems.length > 0) {
                         await db.items.bulkDelete(orphanedLocalItems.map((i) => i.id));
                     }
 
-                    const safeRemoteItems = allRemote.filter((item: any) => !pendingIds.has(item.id) && !unsyncedLocalIds.has(item.id));
+                    const safeRemoteItems = allRemote.filter(
+                        (item: any) =>
+                            !pendingIds.has(item.id) &&
+                            !unsyncedLocalIds.has(item.id) &&
+                            !isItemRecentlyDeleted(item.id)
+                    );
                     if (safeRemoteItems.length > 0) {
-                        const localRows: any[] = [];
+                        const localById = new Map(localSessionItems.map((l) => [l.id, l]));
+                        const localByDevKey = new Map<string, any>();
+                        for (const l of localSessionItems) {
+                            if (l.device_id) {
+                                localByDevKey.set(`${l.device_id}|${l.ean}|${l.location_tag || ''}`, l);
+                            }
+                        }
+                        const changedRows: any[] = [];
+                        const idsToDelete: string[] = [];
                         for (const item of safeRemoteItems) {
-                            // Emparejar por ID exacto, o por (device_id + ean + sector) del mismo dispositivo sin tocar otros equipos ni ítems pendientes
-                            const existingLocal = localSessionItems.find(
-                                (l) =>
-                                    l.id === item.id ||
-                                    (l.device_id &&
-                                        item.device_id &&
-                                        l.device_id === item.device_id &&
-                                        l.ean === item.ean &&
-                                        (l.location_tag || '') === (item.location_tag || ''))
-                            );
+                            const devKey = item.device_id ? `${item.device_id}|${item.ean}|${item.location_tag || ''}` : '';
+                            const existingLocal = localById.get(item.id) || (devKey ? localByDevKey.get(devKey) : undefined);
 
-                            // Nunca eliminar un ítem local no sincronizado o con acción pendiente
                             if (
                                 existingLocal &&
                                 existingLocal.id !== item.id &&
                                 existingLocal.synced !== 0 &&
                                 !pendingIds.has(existingLocal.id)
                             ) {
-                                await db.items.delete(existingLocal.id);
+                                idsToDelete.push(existingLocal.id);
                             }
 
-                            localRows.push({
-                                id: item.id,
-                                session_id: item.session_id,
-                                ean: item.ean,
-                                product_name: item.product_name || `Producto ${item.ean}`,
-                                quantity: item.quantity || 0,
-                                scanned_at: existingLocal?.scanned_at || item.scanned_at || item.created_at || new Date().toISOString(),
-                                scanned_by: item.scanned_by || undefined,
-                                synced: 1,
-                                id_producto: item.id_producto || undefined,
-                                device_id: item.device_id || undefined,
-                                device_name: item.device_name || undefined,
-                                location_tag: item.location_tag || undefined,
-                                laboratory: item.laboratory || undefined,
-                                rubro: item.rubro || undefined,
-                            });
+                            const nextQty = item.quantity || 0;
+                            const nextName = item.product_name || `Producto ${item.ean}`;
+                            const nextLoc = item.location_tag || undefined;
+                            const unchanged =
+                                existingLocal &&
+                                existingLocal.id === item.id &&
+                                existingLocal.synced === 1 &&
+                                (existingLocal.quantity || 0) === nextQty &&
+                                existingLocal.product_name === nextName &&
+                                (existingLocal.location_tag || undefined) === nextLoc;
+
+                            if (!unchanged) {
+                                changedRows.push({
+                                    id: item.id,
+                                    session_id: item.session_id,
+                                    ean: item.ean,
+                                    product_name: nextName,
+                                    quantity: nextQty,
+                                    scanned_at: existingLocal?.scanned_at || item.scanned_at || item.created_at || new Date().toISOString(),
+                                    scanned_by: item.scanned_by || undefined,
+                                    synced: 1,
+                                    id_producto: item.id_producto || undefined,
+                                    device_id: item.device_id || undefined,
+                                    device_name: item.device_name || undefined,
+                                    location_tag: nextLoc,
+                                    laboratory: item.laboratory || undefined,
+                                    rubro: item.rubro || undefined,
+                                });
+                            }
                         }
-                        await db.items.bulkPut(localRows);
+                        if (idsToDelete.length > 0) {
+                            await db.items.bulkDelete(idsToDelete);
+                        }
+                        if (changedRows.length > 0) {
+                            await db.items.bulkPut(changedRows);
+                        }
                     }
                 }
             } catch (err) {
@@ -433,15 +498,26 @@ export function PreCountProductsView({
             }
         };
 
-        void syncRemoteItems();
+        let isSyncingRemote = false;
+        const runSyncRemoteItems = async () => {
+            if (isSyncingRemote) return;
+            isSyncingRemote = true;
+            try {
+                await syncRemoteItems();
+            } finally {
+                isSyncingRemote = false;
+            }
+        };
+
+        void runSyncRemoteItems();
         const pollInterval = setInterval(() => {
             if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
             if (typeof navigator !== 'undefined' && !navigator.onLine) return;
-            void syncRemoteItems();
-        }, 4000);
+            void runSyncRemoteItems();
+        }, 12000);
 
         const handleForceRefresh = () => {
-            void syncRemoteItems();
+            void runSyncRemoteItems();
         };
         window.addEventListener('precount:item_scanned' as any, handleForceRefresh);
         window.addEventListener('precount:item_added' as any, handleForceRefresh);
@@ -491,6 +567,7 @@ export function PreCountProductsView({
                         try {
                             if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
                                 const item = payload.new as any;
+                                if (isItemRecentlyDeleted(item.id)) return;
                                 // Si el ítem local está pendiente de sincronización o tiene edición en cola, no sobreescribir
                                 const localItem = await db.items.get(item.id);
                                 if (localItem && localItem.synced === 0) {
@@ -607,8 +684,15 @@ export function PreCountProductsView({
         } else if (dbItems !== undefined) {
             setTableData(prev => {
                 const addingRow = prev.find(r => r.isAdding);
+                const pendingTempRows = prev.filter(
+                    r => !r.isAdding && r.id.startsWith('temp-new-') && !deletedTempIdsRef.current.has(r.id) && !tempToRealIdRef.current.has(r.id)
+                );
                 const merged = applyPendingQty(dbItems);
-                return addingRow ? [addingRow, ...merged] : merged;
+                return [
+                    ...(addingRow ? [addingRow] : []),
+                    ...pendingTempRows,
+                    ...merged,
+                ];
             });
         }
     }, [propItems, dbItems]);

@@ -14,6 +14,8 @@ import {
     endSession,
     getActiveSessions,
     deleteSession as deleteSessionDB,
+    isItemRecentlySaved,
+    isItemRecentlyDeleted,
 } from '@/services/preCountDB';
 import { notify } from '@/lib/notifications';
 import { useUser } from '@/contexts/UserContext';
@@ -363,14 +365,25 @@ export function usePreCount(): UsePreCountReturn {
                 const remoteIds = new Set(allRemote.map((i: any) => i.id));
 
                 const orphaned = localItems.filter(
-                    (l) => l.synced === 1 && !remoteIds.has(l.id) && !pendingIds.has(l.id) && !unsyncedIds.has(l.id)
+                    (l) =>
+                        l.synced === 1 &&
+                        !remoteIds.has(l.id) &&
+                        !pendingIds.has(l.id) &&
+                        !unsyncedIds.has(l.id) &&
+                        !isItemRecentlySaved(l.id)
                 );
                 if (orphaned.length > 0) {
                     await db.items.bulkDelete(orphaned.map((i) => i.id));
                 }
 
                 const safeRows = allRemote
-                    .filter((item: any) => item?.id && !pendingIds.has(item.id) && !unsyncedIds.has(item.id))
+                    .filter(
+                        (item: any) =>
+                            item?.id &&
+                            !pendingIds.has(item.id) &&
+                            !unsyncedIds.has(item.id) &&
+                            !isItemRecentlyDeleted(item.id)
+                    )
                     .map((item: any) => ({
                         id: item.id,
                         session_id: item.session_id,

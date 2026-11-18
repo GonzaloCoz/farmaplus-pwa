@@ -241,8 +241,9 @@ export function PreCountList({ items, mode = "full", onUpdate, onDelete, onEditR
         [getLab, getRubro, onDelete, onEditRequest]
     );
 
-    // Items para swipeable en mobile
+    // Items para swipeable en mobile (evita crear miles de elementos JSX en Desktop)
     const swipeableItems = useMemo<SwipeableListItem[]>(() => {
+        if (!isMobile) return [];
         return filteredItems.map((item) => ({
             id: item.id,
             leftActions: [
@@ -264,7 +265,7 @@ export function PreCountList({ items, mode = "full", onUpdate, onDelete, onEditR
                 }
             ]
         }));
-    }, [filteredItems, onEditRequest, onDelete]);
+    }, [isMobile, filteredItems, onEditRequest, onDelete]);
 
     const renderSwipeableItem = (swipeItem: SwipeableListItem) => {
         const originalItem = filteredItems.find(i => i.id === swipeItem.id);

@@ -988,13 +988,16 @@ export function PreCountConfigView({
                 });
                 console.log('[Supabase] Sesión sincronizada con éxito en precount_sessions:', targetSession.id, 'branch_id:', targetBranchId);
 
-                // Snapshot automático de ubicaciones QR vigentes de la sucursal (estado inicial 'pending')
-                const seededCount = await seedSessionLocationsFromBranch(
-                    targetSession.id,
-                    cleanBranchName || selectedBranch
-                );
-                if (seededCount > 0) {
-                    console.log(`[Ubicaciones QR] ${seededCount} ubicaciones vigentes vinculadas a la sesión ${targetSession.id}.`);
+                // Snapshot automático de ubicaciones QR vigentes de la sucursal (desactivado temporalmente)
+                const ENABLE_INVENTORY_QR_LOCATIONS = false;
+                if (ENABLE_INVENTORY_QR_LOCATIONS) {
+                    const seededCount = await seedSessionLocationsFromBranch(
+                        targetSession.id,
+                        cleanBranchName || selectedBranch
+                    );
+                    if (seededCount > 0) {
+                        console.log(`[Ubicaciones QR] ${seededCount} ubicaciones vigentes vinculadas a la sesión ${targetSession.id}.`);
+                    }
                 }
             } catch (supaErr) {
                 console.warn('[Supabase] Error directo en precount_sessions, encolado vía syncManager:', supaErr);
@@ -1659,8 +1662,8 @@ export function PreCountConfigView({
                         </div>
                     </div>
 
-                    {/* SECCIÓN INFERIOR: Generador de Ubicaciones QR (A4 2×3) */}
-                    {!isBranchProfile && (
+                    {/* SECCIÓN INFERIOR: Generador de Ubicaciones QR (desactivado temporalmente) */}
+                    {false && !isBranchProfile && (
                         <section
                             aria-labelledby="config-qr-locations-heading"
                             className="rounded-2xl bg-surface-2/25 dark:bg-surface-2/15 border border-border/40 p-4 sm:p-5 space-y-4"

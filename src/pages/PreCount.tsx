@@ -1712,7 +1712,9 @@ export default function PreCount() {
         // Mapa de catálogo para resolver ID de producto si no vino grabado
         const productMap = new Map<string, string>();
         try {
-            const allCatalogProds = await db.precount_products.toArray();
+            const allCatalogProds = session?.id
+                ? await db.precount_products.where('session_id').equals(session.id).toArray()
+                : [];
             for (const p of allCatalogProds) {
                 if (p.id_producto) {
                     if (p.ean) productMap.set(String(p.ean).trim(), String(p.id_producto).trim());

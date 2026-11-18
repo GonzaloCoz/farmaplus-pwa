@@ -422,6 +422,46 @@ export function applyParentChildConversionToMap(
     }
 }
 
+// Ventana de protección en memoria (20s) para evitar carreras entre syncRemoteItems en vuelo y altas/bajas locales
+const RECENT_OP_TTL_MS = 20_000;
+const recentlySavedItems = new Map<string, number>();
+const recentlyDeletedItems = new Map<string, number>();
+
+export function markItemRecentlySaved(id: string) {
+    if (!id) return;
+    recentlyDeletedItems.delete(id);
+    recentlySavedItems.set(id, Date.now() + RECENT_OP_TTL_MS);
+}
+
+export function markItemsRecentlyDeleted(ids: string[]) {
+    const exp = Date.now() + RECENT_OP_TTL_MS;
+    for (const id of ids) {
+        if (!id) continue;
+        recentlySavedItems.delete(id);
+        recentlyDeletedItems.set(id, exp);
+    }
+}
+
+export function isItemRecentlySaved(id: string): boolean {
+    const exp = recentlySavedItems.get(id);
+    if (!exp) return false;
+    if (Date.now() > exp) {
+        recentlySavedItems.delete(id);
+        return false;
+    }
+    return true;
+}
+
+export function isItemRecentlyDeleted(id: string): boolean {
+    const exp = recentlyDeletedItems.get(id);
+    if (!exp) return false;
+    if (Date.now() > exp) {
+        recentlyDeletedItems.delete(id);
+        return false;
+    }
+    return true;
+}
+
 export async function upsertPreCountItem(item: { 
     session_id: string, 
     ean: string, 
@@ -553,6 +593,8 @@ export async function upsertPreCountItem(item: {
         await db.items.add(newItem);
         resultItem = newItem;
     }
+
+    markItemRecentlySaved(resultItem.id);
 
     // Queue Sync with full metadata to avoid deletion mismatch
     await syncManager.addToQueue({
@@ -694,6 +736,7 @@ async function queueAndTryDeleteItems(ids: string[]): Promise<void> {
         wasSyncedMap.set(id, existingRows[idx]?.synced === 1);
     });
 
+    markItemsRecentlyDeleted(ids);
     await db.items.bulkDelete(ids);
 
     // Encolar antes de llamar a Supabase para no perder borrados ante cierre abrupto u offline
@@ -713,7 +756,8 @@ async function queueAndTryDeleteItems(ids: string[]): Promise<void> {
         return;
     }
 
-    const remoteIds = ids.filter(id => wasSyncedMap.get(id));
+    // Enviar DELETE a Supabase para todos los IDs (si aún no existía en servidor es no-op; si syncManager ya lo subió, lo borra)
+    const remoteIds = ids.filter(Boolean);
     if (remoteIds.length === 0) {
         return;
     }

@@ -106,11 +106,12 @@ export function SettingsDialog({
   const isBranchUser = user?.role === 'branch';
   const isAdmin = user?.role === 'admin' || user?.username?.toLowerCase() === 'gcoz';
   const visibleSections = SECTIONS.filter((s) => {
+    if (s.id === 'inventory-qr') return false; // Desactivado temporalmente
     if (s.id === 'modules' && !isAdmin) return false;
     if (isBranchUser && (s.id === 'members' || s.id === 'security')) return false;
     return true;
   });
-  const [section, setSection] = useState(() => (isBranchUser && (defaultSection === 'members' || defaultSection === 'security' || defaultSection === 'modules') ? 'general' : defaultSection));
+  const [section, setSection] = useState(() => (defaultSection === 'inventory-qr' || (isBranchUser && (defaultSection === 'members' || defaultSection === 'security' || defaultSection === 'modules')) ? 'general' : defaultSection));
   const current = visibleSections.find((s) => s.id === section) ?? visibleSections[0];
 
   useEffect(() => {

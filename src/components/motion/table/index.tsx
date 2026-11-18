@@ -285,7 +285,11 @@ export function Table<T>({
                       <tr
                         key={entry.id}
                         ref={(el) => {
-                          rowRefs.current[entry.id] = el;
+                          if (el) {
+                            rowRefs.current[entry.id] = el;
+                          } else {
+                            delete rowRefs.current[entry.id];
+                          }
                         }}
                         data-selected={isSelected}
                         style={{ height: rowHeight }}

@@ -1,0 +1,15 @@
+[package]
+name = "sincronia"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[dependencies]
+comun = { path = "../comun" }
+trama = { path = "../trama" }
+almacen = { path = "../almacen" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+blake3 = "1.5"

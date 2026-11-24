@@ -1,0 +1,28 @@
+[package]
+name = "anfitrion"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.4", features = [] }
+
+[dependencies]
+comun = { path = "../comun" }
+trama = { path = "../trama" }
+almacen = { path = "../almacen" }
+reglas = { path = "../reglas" }
+ciclicos = { path = "../ciclicos" }
+vencimientos = { path = "../vencimientos" }
+informes = { path = "../informes" }
+despacho = { path = "../despacho" }
+enlace = { path = "../enlace" }
+actualizador = { path = "../actualizador" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tauri = { version = "2.12.5", features = ["tray-icon"] }

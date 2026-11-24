@@ -1,0 +1,14 @@
+[package]
+name = "ciclicos"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[dependencies]
+comun = { path = "../comun" }
+almacen = { path = "../almacen" }
+reglas = { path = "../reglas" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

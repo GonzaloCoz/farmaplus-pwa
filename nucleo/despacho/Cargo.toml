@@ -1,0 +1,21 @@
+[package]
+name = "despacho"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[dependencies]
+comun = { path = "../comun" }
+trama = { path = "../trama" }
+almacen = { path = "../almacen" }
+reglas = { path = "../reglas" }
+enlace = { path = "../enlace" }
+sincronia = { path = "../sincronia" }
+ciclicos = { path = "../ciclicos" }
+colector = { path = "../colector" }
+vencimientos = { path = "../vencimientos" }
+informes = { path = "../informes" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

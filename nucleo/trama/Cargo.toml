@@ -1,0 +1,20 @@
+[package]
+name = "trama"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+comun = { path = "../comun" }
+serde = { workspace = true }
+thiserror = { workspace = true }
+blake3 = "1.5"
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+x25519-dalek = { version = "2.0", features = ["static_secrets"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+chacha20poly1305 = "0.10"
+zstd = "0.13"
+zeroize = { version = "1.8", features = ["derive"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Security_Cryptography", "Win32_Foundation", "Win32_System_Memory"] }

@@ -1,0 +1,12 @@
+[package]
+name = "informes"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[dependencies]
+comun = { path = "../comun" }
+almacen = { path = "../almacen" }
+serde.workspace = true
+thiserror.workspace = true

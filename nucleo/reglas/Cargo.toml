@@ -1,0 +1,11 @@
+[package]
+name = "reglas"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+comun = { path = "../comun" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

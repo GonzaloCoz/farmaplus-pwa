@@ -1,0 +1,36 @@
+[workspace]
+resolver = "2"
+members = [
+    "comun",
+    "trama",
+    "almacen",
+    "reglas",
+    "enlace",
+    "sincronia",
+    "ciclicos",
+    "colector",
+    "vencimientos",
+    "informes",
+    "despacho",
+    "actualizador",
+    "anfitrion",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77.2"
+authors = ["MiPlus"]
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+debug = false
+panic = "abort"
